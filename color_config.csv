@@ -1,0 +1,49 @@
+Category,Column1,Name,Shape,Current Color,Hex Code,Where Used,Notes
+Device Type,Pneumatic,Cylinder / Linear Actuator,4 sides,SDC Blue,#1574c4,Node border + sidebar left stripe,
+Device Type,Pneumatic,Rotary Actuator,5 sides,SDC Blue,#1574c4,Node border + sidebar left stripe,
+Device Type,Pneumatic,Gripper,6 sides,SDC Blue,#1574c4,Node border + sidebar left stripe,
+Device Type,Pneumatic,Vacuum Generator,8 sides,SDC Blue,#1574c4,Node border + sidebar left stripe,
+Device Type,Servo,Servo Axis,10 sides,SDC Dark Blue,#061d39,Node border + sidebar left stripe,
+Device Type,Timer,Timer / Dwell,12 sides,SDC Gray,#d9d9d9,Node border + sidebar left stripe,
+Device Type,Logic,Digital Sensor / PEC,14 sides,SDC Light Blue,aacee8,Node border + sidebar left stripe,
+Device Type,Logic,Parameter,oval,SDC Yellow,#ffde51,Node border + sidebar left stripe,
+Device Type,Vision,Vision System,4 sides,SDC Yellow,#fa9150,Node border + sidebar left stripe,
+Device Type,Verify,Verfiy/Branch,16 sides,SDC Gray,#d9d9d9,,
+,,,,,,,
+,,,,,,,
+Operation Badge,,Extend,4 sides,SDC Blue,#1574c4,Badge on action row,Cylinder/Rotary extend
+Operation Badge,,Retract,4 sides,SDC Light Blue,aacee8,Badge on action row,Cylinder/Rotary retract
+,,,,,,,
+Operation Badge,,Engage,4 sides,SDC Blue,#1574c4,Badge on action row,Gripper engage
+Operation Badge,,Disengage,4 sides,SDC Light Blue,aacee8,Badge on action row,Gripper disengage
+,,,,,,,
+Operation Badge,,VacOn,4 sides,SDC Blue,#1574c4,Badge on action row,Vacuum on
+Operation Badge,,VacOnEject,4 sides,SDC Light Blue,aacee8,Badge on action row,Vacuum on + eject
+Operation Badge,,VacOff,4 sides,SDC Light Blue,aacee8,Badge on action row,Vacuum off
+,,,,,,,
+,,,,,,,
+Operation Badge,,SetOn,4 sides,SDC Blue,#1574c4,Badge on action row,Parameter latch ON
+Operation Badge,,SetOff,4 sides,SDC Light Blue,aacee8,Badge on action row,Parameter latch OFF
+Operation Badge,,SetValue,4 sides,SDC Light Green,#befa4f,Badge on action row,Parameter set value
+,,,,,,,
+Operation Badge,,WaitOn,4 sides,SDC Blue,#1574c4,Badge on action row,Parameter wait ON
+Operation Badge,,WaitOff,4 sides,SDC Light Blue,aacee8,Badge on action row,Parameter wait OFF
+,,,,,,,
+,,,,,,,
+Operation Badge,,VerifyValue,4 sides,SDC Gray,#d9d9d9,Badge on action row,Analog sensor verify
+Operation Badge,,Check,4 sides,SDC Gray,#d9d9d9,Badge on action row,Check/decision
+,,,,,,,
+,,,,,,,
+Operation Badge,,Inspect (Vision),4 sides,SDC Yellow,#ffde51,Badge on action row,Vision inspect legacy
+Operation Badge,,VisionInspect,4 sides,SDC Yellow,#ffde51,Badge on action row,Vision inspect new
+,,,,,,,
+Operation Badge,,ServoMove,4 sides,SDC Blue,#1574c4,Badge on action row,Servo absolute move
+Operation Badge,,ServoIncr,4 sides,SDC Light Green,#befa4f,Badge on action row,Servo incremental move
+Operation Badge,,ServoIndex,4 sides,SDC Light Blue,aacee8,Badge on action row,Servo rotary index
+,,,,,,,
+Outcome,,Outcome 1 (Pass),4 sides,SDC Light Green,#74c415,Outcome chip + branch label,First outcome of any job
+Outcome,,Outcome 2 (Fail),4 sides,Red,#fa5650,Outcome chip + branch label,Second outcome of any job
+Outcome,,Outcome 3,,,,Outcome chip + branch label,Third outcome (if any)
+Outcome,,Outcome 4,,,,Outcome chip + branch label,Fourth outcome (if any)
+Outcome,,Outcome 5,,,,Outcome chip + branch label,Fifth outcome (if any)
+Outcome,,Outcome 6,,,,Outcome chip + branch label,Sixth outcome (if any)

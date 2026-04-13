@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<EIPCFG>
+  <COMMON>
+    <SOFTWARE name="RSLogix5000" rev="1.0" ver="20.10"/>
+    <CONN name="ROBOT" mode="1" />
+    <RUNGS yes="1"/>
+  </COMMON>
+  <IMPLICIT>
+    <SLOT conn="ROBOT" num="2" name="SLOT2">
+      <INPUT name="INPUT2">
+        <REG type="NUMERIC" start="50" total="10" real="1"/>
+        <REG type="POSITION" start="101" total="8" jpos="0" group="1"/>
+      </INPUT>
+      <OUTPUT name="OUTPUT2">
+        <REG type="NUMERIC" start="60" total="10" real="1"/>
+        <REG type="POSITION" start="111" total="8" jpos="0" group="1"/>
+        <REG type="CURPOS" jpos="0" group="1"/>
+        <REG type="CURPOS" jpos="1" group="1"/>
+      </OUTPUT>
+    </SLOT>
+    <SLOT conn="ROBOT" num="3" name="SLOT3">
+      <INPUT name="INPUT3">
+        <REG type="POSITION" start="121" total="8" jpos="0" group="1"/>
+      </INPUT>
+      <OUTPUT name="OUTPUT3">
+        <REG type="POSITION" start="131" total="8" jpos="0" group="1"/>
+        <REG type="CURPOS" jpos="0" group="2"/>
+        <REG type="CURPOS" jpos="1" group="2"/>
+      </OUTPUT>
+    </SLOT>
+  </IMPLICIT>
+  <EXPLICIT>
+  </EXPLICIT>
+</EIPCFG>

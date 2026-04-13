@@ -1,0 +1,69 @@
+Startup Checklist for all SDC Fanuc Robot: Last Edit 2/10/2026
+
+1. When robot has power turned on
+	* verify ordered software is installed; follow sequence to check<> Status>Type>Version ID>Next>Order FI... verify software options to the slip sheet robot came with.
+	* if not installed<> use black USB from fanuc to load software through Bios menu> F1+F5 while power cycling> software load USB>    DO NOT choose existing personality.
+	* after software is verified, take an "image Backup" and "all the Above backup" store in file in the job folder as initial image and AOA
+
+2. setup robot Config Menu
+	* follow this path <> Menu>Next>system>type>config: set all the following setting to match Below
+
+	1	use HOT START: 			FALSE
+	2	I/O power fail recovery:			Recover All
+	3	Cold Start AutoExec PRG			NULL
+	4	Hot Stort AutoExec PRG			NULL
+	5	Hot Start Done Signal			DO[0]
+	6	Restore Selected Prg			TRUE
+	7	Enable UI Signals			TRUE
+	8	START for CONTINUE only			TRUE
+	9	CSTOPI  for ABORT			TRUE
+	10	abort all programs by CSTOPI			TRUE
+	11	PROD-START DEPEND ON PNS			FALSE
+	12	DETECT FAULT_RESET SIGNAL			FALL
+	13	use PPABN SIGNAL: 			GROUPS
+	14	WAIT TIMEOUT			10.00SEC
+	15	RECEIVE TIMEOUT			30.00SEC
+	16	RETURN TO TOP OF PROGRAM			TRUE
+	17	Original program name{F1}			PRG
+	18	Original program name{F2}			MAIN
+	19	Original program name{F3}			SUB
+	20	Original program name{F4}			TEST
+	21	Original program name{F5}			******
+	22	Deefault logical command			detail
+	23	maximum of ACC instruction			100
+	24	Minimum of AA instruction			0
+	25	WJNT for default motion			*****
+	26	Auto display of alarm menu			FALSE
+	27	Force Message			ENABLE
+	28	Allow force I/O in AUTO mode			TRUE
+	29	Allow chg. Ovrd. In AUTO mode			TRUE
+	30	signal to set in auto mode			DO[200]
+	31	signal to set in T1 mode			DO[201]
+	32	signal to set in T2 mode			DO[202]
+	33	signal to set if E-STOP			DO[203]
+	34	set if input simulated			DO[204]
+	35	set if output simulated			DO[205]
+	36	Sim. Input wait delay			0.00sec
+	37	set if Sim. Skip enabled			DO[0]
+	38	set when prompt displayed			DO[0]
+	39	output when wait on input			DETAIL
+	40	signal if override=100			DO[206]
+	41	hand broken			groups
+	42	remote/local setup			op panel key
+	43	external I/O (ON:remote)			DI[0]
+	44	UOP auto assignment			None
+	45	Multi program selection			TRUE
+
+
+3. Setup I/O 
+	* Use The I/O config file "DIOCFGSV.IO" to set Up digital I/O and UOP assignments
+	* Use the EDA config file "EIPCFG" to setup EDA: make sure connection 2 in Ethernet IP config word size is set to Zero
+
+4. Ethernet Config 
+	follow Path<> setup>type>next >hostComm>enter>Port 1> assign your IP address 
+
+5. Load standard TP Programs
+	
+
+
+

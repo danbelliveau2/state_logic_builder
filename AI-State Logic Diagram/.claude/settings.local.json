@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l \"C:\\\\Users\\\\dbelliveau\\\\Downloads\\\\1103 STATE LOGIC DIAGRAMS \\(2\\).drawio\")",
+      "Bash(head -100 \"C:\\\\Users\\\\dbelliveau\\\\Downloads\\\\1103 STATE LOGIC DIAGRAMS \\(2\\).drawio\")",
+      "Bash(cat \"C:\\\\Users\\\\dbelliveau\\\\Downloads\\\\1103 STATE LOGIC DIAGRAMS \\(2\\).drawio\")",
+      "Bash(python3:*)",
+      "Bash(unzip -l \"C:\\\\Users\\\\dbelliveau\\\\Downloads\\\\SDC_StateLogic_Template_rev5.1.xlsm\")",
+      "Bash(unzip -p \"C:\\\\Users\\\\dbelliveau\\\\Downloads\\\\SDC_StateLogic_Template_rev5.1.xlsm\" xl/workbook.xml)",
+      "Bash(unzip -p \"C:\\\\Users\\\\dbelliveau\\\\Downloads\\\\SDC_StateLogic_Template_rev5.1.xlsm\" xl/worksheets/sheet1.xml)",
+      "Bash(unzip -p \"C:\\\\Users\\\\dbelliveau\\\\Downloads\\\\SDC_StateLogic_Template_rev5.1.xlsm\" xl/sharedStrings.xml)",
+      "Bash(pdftotext \"X:\\\\Electrical Dept\\\\EE Process and Standards Documents\\\\PLC Software Standardization Guide - Rev1.pdf\" -)",
+      "Bash(unzip -p \"C:\\\\Users\\\\dbelliveau\\\\Downloads\\\\SDC_StateLogic_Template_rev5.1.xlsm\" xl/worksheets/sheet2.xml)",
+      "Bash(npm install)",
+      "Bash(where node)",
+      "Bash(where bun)",
+      "Bash(where pnpm)"
+    ]
+  }
+}
