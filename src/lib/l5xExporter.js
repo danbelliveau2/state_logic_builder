@@ -1552,12 +1552,6 @@ function generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs = [], tra
       `[XIC(Status.State[2]) XIC(Initialized) ,XIC(Status.State[${completeStep}]) ]MOVE(3,Control.StateReg);`)
   );
 
-  // State 127: Fault — with fault state capture
-  rungs.push(
-    buildRung(rungNum++, 'State 127: Fault',
-      `XIC(q_AlarmActive)[ONS(ONS.2) LIMIT(4,Control.StateReg,99) MOVE(Control.StateReg,FaultState) MOVE(Control.StateReg,RestartState) ,MOVE(127,Control.StateReg) ];`)
-  );
-
   // ── Process Transitions ───────────────────────────────────────────────────
 
   // State 3 → first process state (with home position verify)
@@ -2003,6 +1997,12 @@ function generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs = [], tra
       );
     }
   }
+
+  // State 127: Fault — with fault state capture (placed after all process states)
+  rungs.push(
+    buildRung(rungNum++, 'State 127: Fault',
+      `XIC(q_AlarmActive)[ONS(ONS.2) LIMIT(4,Control.StateReg,99) MOVE(Control.StateReg,FaultState) MOVE(Control.StateReg,RestartState) ,MOVE(127,Control.StateReg) ];`)
+  );
 
   // ── Cycle Time Tracking ──────────────────────────────────────────────────
   // RTO accumulates while in process states (4-59), resets + computes on cycle restart
