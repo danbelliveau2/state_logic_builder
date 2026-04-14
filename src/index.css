@@ -998,6 +998,9 @@ body {
   left: 50%;
   transform: translate(-50%);
   z-index: 5;
+  display: flex;
+  gap: 6px;
+  align-items: center;
 }
 
 .canvas-select-btn {

@@ -16,6 +16,8 @@ import { hasSensorForOperation, needsTimerForOperation } from '../../lib/conditi
 import { getSensorTagForOperation, getDelayTimerForOperation } from '../../lib/tagNaming.js';
 import { OUTCOME_COLORS } from '../../lib/outcomeColors.js';
 import { buildAvailableInputs } from '../../lib/availableInputs.js';
+import { ENTRY_RULES, getEntryRuleMeta, resolveEntryRule, isEntryRuleOverridden } from '../../lib/entryRules.js';
+import { START_CONDITIONS, getStartConditionMeta, resolveIndexSync, isIndexSyncOverridden } from '../../lib/indexSync.js';
 
 // Tiny local ID generator (mirrors store uid — not exported from store)
 let _localId = Date.now();
@@ -2228,12 +2230,246 @@ function ContextMenu({ x, y, nodeId, smId, onClose }) {
   );
 }
 
+
+// ── Home-node config pills (Entry Rule + Start Condition) ─────────────────────
+
+/**
+ * Generic labeled pill with a portaled dropdown.
+ * Used for both Entry Rule and Start Condition controls on home nodes.
+ */
+function ConfigPill({ label, options, effective, meta, overridden, overrideText, tooltip, onPick }) {
+  const [open, setOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState(null);
+  const pillRef = useRef(null);
+  const btnRef = useRef(null);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e) {
+      const insidePill = pillRef.current && pillRef.current.contains(e.target);
+      const insideMenu = menuRef.current && menuRef.current.contains(e.target);
+      if (!insidePill && !insideMenu) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDocClick, true);
+    return () => document.removeEventListener('mousedown', onDocClick, true);
+  }, [open]);
+
+  return (
+    <>
+      <div
+        ref={pillRef}
+        style={{
+          pointerEvents: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 4,
+        }}
+        onMouseDown={e => e.stopPropagation()}
+        onClick={e => e.stopPropagation()}
+        title={tooltip}
+      >
+        <button
+          ref={btnRef}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (overridden) return;
+            if (!open && btnRef.current) {
+              const r = btnRef.current.getBoundingClientRect();
+              setMenuPos({ top: r.bottom + 6, left: r.left + r.width / 2 });
+            }
+            setOpen(v => !v);
+          }}
+          style={{
+            fontSize: 14,
+            fontWeight: 700,
+            padding: '6px 16px',
+            borderRadius: 999,
+            border: `2px solid ${overridden ? '#475569' : meta.border}`,
+            background: overridden ? 'rgba(71,85,105,0.15)' : meta.bg,
+            color: overridden ? '#94a3b8' : meta.color,
+            cursor: overridden ? 'not-allowed' : 'pointer',
+            whiteSpace: 'nowrap',
+            opacity: overridden ? 0.55 : 1,
+            textDecoration: overridden ? 'line-through' : 'none',
+            lineHeight: 1.2,
+            boxShadow: overridden ? 'none' : '0 2px 6px rgba(0,0,0,0.15)',
+          }}
+        >
+          {overridden ? (overrideText ?? `${meta.short} (overridden)`) : meta.label} {overridden ? '' : '▾'}
+        </button>
+      </div>
+      {open && !overridden && menuPos && createPortal(
+        <div
+          ref={menuRef}
+          onMouseDown={e => e.stopPropagation()}
+          onClick={e => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            top: menuPos.top,
+            left: menuPos.left,
+            transform: 'translateX(-50%)',
+            background: '#ffffff',
+            border: '1px solid #d1d5db',
+            borderRadius: 8,
+            width: 260,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+            zIndex: 100000,
+            overflow: 'hidden',
+          }}
+        >
+          {options.map(o => (
+            <button
+              key={o.value}
+              onClick={(e) => {
+                e.stopPropagation();
+                onPick(o.value);
+                setOpen(false);
+              }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                padding: '8px 10px', textAlign: 'left', background: 'none',
+                border: 'none', color: '#374151', fontSize: 12, cursor: 'pointer',
+                borderBottom: '1px solid #e5e7eb',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = '#f3f4f6'}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+              title={o.desc}
+            >
+              <span style={{
+                width: 10, height: 10, borderRadius: 999,
+                background: o.color, border: `1px solid ${o.border}`,
+                flex: '0 0 auto',
+              }} />
+              <span style={{ flex: 1, fontWeight: 600, color: o.color }}>{o.label}</span>
+              {o.value === effective && <span style={{ color: meta.color, fontSize: 13 }}>✓</span>}
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
+/**
+ * Unified "START CONDITIONS" panel above the home node.
+ * Two rows: "When:" (index timing) and "Run:" (part-tracking rule).
+ * Index timing row only shown on indexing/dial machines.
+ */
+function HomeConfigPills({ smId, nodeId, sm, machineConfig }) {
+  const store = useDiagramStore();
+  const homeNode = sm?.nodes?.find(n => n.id === nodeId);
+
+  const entryEffective = resolveEntryRule(homeNode, sm, machineConfig);
+  const entryMeta = getEntryRuleMeta(entryEffective);
+  const entryOverridden = isEntryRuleOverridden(nodeId, sm);
+
+  const indexEffective = resolveIndexSync(homeNode, sm, machineConfig);
+  const indexMeta = getStartConditionMeta(indexEffective);
+  const indexOverridden = isIndexSyncOverridden(nodeId, sm);
+
+  const isIndexing = (machineConfig?.machineType ?? 'indexing') === 'indexing';
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: isIndexing ? -120 : -100,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 9,
+        pointerEvents: 'auto',
+      }}
+      onMouseDown={e => e.stopPropagation()}
+      onClick={e => e.stopPropagation()}
+    >
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+        alignItems: 'center',
+      }}>
+        {/* Header */}
+        <div style={{
+          fontSize: 10,
+          fontWeight: 600,
+          letterSpacing: '0.06em',
+          textTransform: 'uppercase',
+          color: '#94a3b8',
+          textAlign: 'center',
+        }}>
+          Start Conditions
+        </div>
+
+        {/* Index timing row (indexing machines only) */}
+        {isIndexing && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+            <ConfigPill
+              options={START_CONDITIONS}
+              effective={indexEffective}
+              meta={indexMeta}
+              overridden={indexOverridden}
+              overrideText={`${indexMeta.short} (explicit)`}
+              tooltip={indexOverridden
+                ? 'Start condition is handled by the explicit IndexComplete wait node you drew after home.'
+                : 'When this station begins relative to the dial index.'}
+              onPick={(v) => store.updateNodeData(smId, nodeId, { indexSync: v })}
+            />
+            {indexEffective === 'midIndex' && !indexOverridden && (
+              <>
+                <span style={{ fontSize: 11, color: '#64748b' }}>at</span>
+                <input
+                  type="number"
+                  value={homeNode?.data?.midIndexAngle ?? ''}
+                  placeholder="°"
+                  onChange={(e) => {
+                    const val = e.target.value === '' ? null : Number(e.target.value);
+                    store.updateNodeData(smId, nodeId, { midIndexAngle: val });
+                  }}
+                  style={{
+                    width: 50,
+                    padding: '2px 4px',
+                    fontSize: 12,
+                    border: '1px solid #d1d5db',
+                    borderRadius: 4,
+                    textAlign: 'center',
+                    background: '#fff',
+                    color: '#374151',
+                  }}
+                />
+                <span style={{ fontSize: 11, color: '#64748b' }}>°</span>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Part-tracking rule row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+          <ConfigPill
+            options={ENTRY_RULES}
+            effective={entryEffective}
+            meta={entryMeta}
+            overridden={entryOverridden}
+            tooltip={entryOverridden
+              ? 'Overridden — the decision node after home controls part-tracking branching.'
+              : 'Whether this station runs based on part-tracking status.'}
+            onPick={(v) => store.updateNodeData(smId, nodeId, { entryRule: v })}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main StateNode Component ──────────────────────────────────────────────────
 
 export function StateNode({ data, selected, id }) {
   const { actions = [], isInitial, isComplete, isFault, stateNumber } = data;
   const store = useDiagramStore();
   const sm = useDiagramStore(s => s.getActiveSm());
+  const machineConfig = useDiagramStore(s => s.project?.machineConfig);
   const openPickerOnNodeId = useDiagramStore(s => s.openPickerOnNodeId);
   const closePickerSignal = useDiagramStore(s => s._closePickerSignal);
   const devices = sm?.devices ?? [];
@@ -2501,6 +2737,11 @@ export function StateNode({ data, selected, id }) {
         </NodeToolbar>
       )}
 
+      {/* Home-node config pills (Entry Rule + Start Condition) */}
+      {isInitial && sm && (
+        <HomeConfigPills smId={sm.id} nodeId={id} sm={sm} machineConfig={machineConfig} />
+      )}
+
       {/* State number badge (small, top-left corner) */}
       {stateNumber != null && (
         <div className="state-node__step-num" style={{
@@ -2525,16 +2766,30 @@ export function StateNode({ data, selected, id }) {
             <span>Cycle Complete</span>
           </div>
         ) : isInitial ? (
-          // Home node: auto-display device home positions
-          homeDevices.length > 0 ? (
-            homeDevices.map(d => (
-              <HomeRow key={d.id} device={d} />
-            ))
-          ) : (
-            <div className="state-node__empty">
-              Home — add devices to populate
+          // Home node: header + device home positions
+          <div>
+            <div style={{
+              textAlign: 'center',
+              padding: '6px 8px 4px',
+              fontSize: 13,
+              fontWeight: 700,
+              color: '#5a9a48',
+              letterSpacing: '0.03em',
+              borderBottom: '1px solid rgba(90,154,72,0.25)',
+              marginBottom: 2,
+            }}>
+              🏠 Home Conditions
             </div>
-          )
+            {homeDevices.length > 0 ? (
+              homeDevices.map(d => (
+                <HomeRow key={d.id} device={d} />
+              ))
+            ) : (
+              <div className="state-node__empty" style={{ fontSize: 11, padding: '8px 10px', color: '#94a3b8' }}>
+                Add devices to populate home positions
+              </div>
+            )}
+          </div>
         ) : (
           // Regular node: show actions
           actions.length > 0 ? (

@@ -132,7 +132,7 @@ export function Toolbar() {
     if (!sm) return alert('No state machine selected.');
     if (sm.nodes.length === 0) return alert('No states defined. Add at least one state before exporting.');
     try {
-      downloadL5X(sm, sms, trackingFields);
+      downloadL5X(sm, sms, trackingFields, project?.machineConfig ?? null);
     } catch (err) {
       alert(`Export error: ${err.message}`);
       console.error(err);

@@ -23,6 +23,8 @@ import {
   getDeviceTags,
 } from './tagNaming.js';
 import { DEVICE_TYPES, getSensorConfigKey } from './deviceTypes.js';
+import { resolveEntryRule } from './entryRules.js';
+import { resolveIndexSync, isIndexSyncOverridden } from './indexSync.js';
 
 // ── Unified inputRef → tag resolver ─────────────────────────────────────────
 //
@@ -226,17 +228,10 @@ function getWaitStep() {
   return STEP_BASE; // always 1
 }
 
-function getCompleteStep(orderedNodes, devices) {
-  // Calculate total step slots used (accounting for vision multi-step nodes)
-  let totalSlots = orderedNodes.length;
-  for (const n of orderedNodes) {
-    const hasVisionInspect = (n.data?.actions ?? []).some(a => {
-      const dev = (devices ?? []).find(d => d.id === a.deviceId);
-      return dev?.type === 'VisionSystem' && (a.operation === 'Inspect' || a.operation === 'VisionInspect');
-    });
-    if (hasVisionInspect) totalSlots += 3; // 3 extra sub-state slots (4 total sub-states)
-  }
-  return STEP_BASE + STEP_INCREMENT * (totalSlots + 1);
+function getCompleteStep(_orderedNodes, _devices) {
+  // SDC Standard: Cycle Complete is always state 60 (reserved).
+  // Process states occupy 4-59, init states 100-124.
+  return 60;
 }
 
 // ── State description for Status tag comments ────────────────────────────────
@@ -521,7 +516,7 @@ function buildStatusTagXml(orderedNodes, stepMap, devices) {
   const boolDec = generate128BoolDecorated();
 
   return `
-<Tag Name="Status" TagType="Base" DataType="StateLogicStatus" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Tag Name="Status" TagType="Base" DataType="StateLogicStatus" Usage="Public" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
 <Comments>
 ${comments.join('\n')}
 </Comments>
@@ -662,6 +657,9 @@ ${cdata('Station Alarm Data')}
 ${cdata('Station Warning Data')}
 </Description>
 </Tag>`, 'Warning');
+
+  // NOTE: ProgramAlarmHandler references \Alarms.p_ProgramID, \Alarms.p_Active, \Alarms.p_History
+  // and controller-scope g_CPUDateTime — these are provided by the Alarms program and controller tags.
 
   // Program fault handler AOI instance
   addTag(`
@@ -930,9 +928,10 @@ ${cdata('0.000000')}
 
       case 'ServoAxis': {
         const sp = DEVICE_TYPES.ServoAxis.tagPatterns;
-        const axisTag = sp.axisTag.replace(/\{name\}/g, device.name);
-        const mamTag = sp.mamControl.replace(/\{name\}/g, device.name);
-        const motionParamTag = sp.motionParam.replace(/\{name\}/g, device.name);
+        const axNum = String(device.axisNumber ?? 1).padStart(2, '0');
+        const axisTag = sp.axisTag.replace(/\{name\}/g, device.name).replace(/\{axisNum\}/g, axNum);
+        const mamTag = sp.mamControl.replace(/\{name\}/g, device.name).replace(/\{axisNum\}/g, axNum);
+        const motionParamTag = sp.motionParam.replace(/\{name\}/g, device.name).replace(/\{axisNum\}/g, axNum);
 
         // Axis tag (AXIS_CIP_DRIVE, InOut)
         addTag(buildAxisTagXml(axisTag, `${device.displayName} - CIP Axis`), axisTag);
@@ -1515,7 +1514,7 @@ function buildHomeVerifyConditions(devices, allSMs = [], trackingFields = []) {
 
 // ── R02_StateTransitions ─────────────────────────────────────────────────────
 
-function generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs = [], trackingFields = []) {
+function generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs = [], trackingFields = [], machineConfig = null) {
   const rungs = [];
   let rungNum = 0;
   const devices = sm.devices ?? [];
@@ -1905,11 +1904,71 @@ function generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs = [], tra
         const conditions = buildVerifyConditions(srcNode, devices, allSMs, trackingFields);
         const desc = getStateDescription(tgtNode, devices);
 
+        // Index sync gating — only on the home/initial node's first transition,
+        // only on indexing machines, and only when there's no user-drawn
+        // IndexComplete wait node covering it.
+        let indexSyncGate = '';
+        if (srcNode.data?.isInitial
+            && (machineConfig?.machineType ?? 'indexing') === 'indexing'
+            && !isIndexSyncOverridden(srcNode.id, sm)) {
+          const mode = resolveIndexSync(srcNode, sm, machineConfig);
+          if (mode === 'afterIndex') {
+            indexSyncGate = 'XIC(\\Supervisor.IndexComplete)';
+          } else if (mode === 'midIndex') {
+            const angle = srcNode.data?.midIndexAngle;
+            if (angle != null && angle > 0) {
+              const stationNum = sm.stationNumber ?? 0;
+              indexSyncGate = `GEQ(\\Supervisor.IndexAngle,p_MidIndexStart_S${String(stationNum).padStart(2,'0')})`;
+            }
+          }
+          // 'independent' → no auto-wait
+        }
+
+        // Entry rule gating — only on the home/initial node's first outgoing transition
+        // (and only when the next node is NOT a decision node, which would handle branching itself).
+        let entryRuleGate = '';
+        let entryRuleSkipRung = null;
+        const tgtIsBranchingDecision = tgtNode?.type === 'decisionNode' && (tgtNode?.data?.exitCount ?? 1) === 2;
+        if (srcNode.data?.isInitial && !tgtIsBranchingDecision) {
+          const rule = resolveEntryRule(srcNode, sm, machineConfig);
+          const mcType = machineConfig?.machineType ?? 'indexing';
+          const stationNum = sm.stationNumber ?? 0;
+          // Reject tag convention: dial → \Supervisor.StationStatus[n].Reject ;  inline → local q_UpstreamReject
+          const rejectTag = mcType === 'indexing'
+            ? `\\Supervisor.StationStatus[${stationNum}].Reject`
+            : 'q_UpstreamReject';
+
+          if (rule === 'ifGood') {
+            entryRuleGate = `XIO(${rejectTag})`;
+            entryRuleSkipRung = buildRung(
+              rungNum,
+              `Entry Rule (If Good): reject present → skip sequence → Cycle Complete`,
+              `XIC(Status.State[${srcStep}])XIC(${rejectTag})MOVE(${completeStep},Control.StateReg);`
+            );
+          } else if (rule === 'ifReject') {
+            entryRuleGate = `XIC(${rejectTag})`;
+            entryRuleSkipRung = buildRung(
+              rungNum,
+              `Entry Rule (If Reject): no reject → skip sequence → Cycle Complete`,
+              `XIC(Status.State[${srcStep}])XIO(${rejectTag})MOVE(${completeStep},Control.StateReg);`
+            );
+          } else if (rule === 'custom') {
+            // Placeholder — user wires custom condition post-import
+            entryRuleGate = `XIC(p_CustomEntryRule_S${String(stationNum).padStart(2,'0')})`;
+          }
+          // 'always' → no gate, no skip
+        }
+
+        if (entryRuleSkipRung) {
+          rungs.push(entryRuleSkipRung);
+          rungNum++;
+        }
+
         rungs.push(
           buildRung(
             rungNum++,
             `State ${tgtStep}: ${desc}`,
-            `XIC(Status.State[${srcStep}])${conditions}MOVE(${tgtStep},Control.StateReg);`
+            `XIC(Status.State[${srcStep}])${indexSyncGate}${entryRuleGate}${conditions}MOVE(${tgtStep},Control.StateReg);`
           )
         );
       }
@@ -2315,9 +2374,10 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
     for (const [, entry] of Object.entries(servoMoveMap)) {
       const { device, moves } = entry;
       const sp = DEVICE_TYPES.ServoAxis.tagPatterns;
-      const axisTag = sp.axisTag.replace(/\{name\}/g, device.name);
-      const mamTag = sp.mamControl.replace(/\{name\}/g, device.name);
-      const motionParamTag = sp.motionParam.replace(/\{name\}/g, device.name);
+      const axNum = String(device.axisNumber ?? 1).padStart(2, '0');
+      const axisTag = sp.axisTag.replace(/\{name\}/g, device.name).replace(/\{axisNum\}/g, axNum);
+      const mamTag = sp.mamControl.replace(/\{name\}/g, device.name).replace(/\{axisNum\}/g, axNum);
+      const motionParamTag = sp.motionParam.replace(/\{name\}/g, device.name).replace(/\{axisNum\}/g, axNum);
 
       // Rung A: Position Selection — conditional MOVE of target position per state
       if (moves.length > 0) {
@@ -2959,32 +3019,68 @@ ${cdata('State Transition Time Done')}
 </Member>
 </Members>
 </DataType>
+<DataType Name="STRING100" Family="StringFamily" Class="User">
+<Members>
+<Member Name="LEN" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="DATA" DataType="SINT" Dimension="100" Radix="ASCII" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+</DataType>
 <DataType Name="AlarmData" Family="NoFamily" Class="User">
 <Members>
-<Member Name="ZZZZZZZZZZAlarmDat0" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
-<Member Name="Active" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZAlarmDat0" BitNumber="0" ExternalAccess="Read/Write">
+<Member Name="ProgramID" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
 <Description>
-${cdata('Alarm Active')}
+${cdata('Unique ID given to each AOI instance.')}
 </Description>
 </Member>
-<Member Name="Latched" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZAlarmDat0" BitNumber="1" ExternalAccess="Read/Write">
+<Member Name="AlarmID" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
 <Description>
-${cdata('Alarm Latched')}
+${cdata('Index number of the alarm taken from the array attached to the AOI.')}
 </Description>
 </Member>
-<Member Name="IsWarning" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZAlarmDat0" BitNumber="2" ExternalAccess="Read/Write">
+<Member Name="Severity" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
 <Description>
-${cdata('Is Warning (not fault)')}
+${cdata('Fault = 0, Warning = 1')}
+</Description>
+</Member>
+<Member Name="Group" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+${cdata('Alarm group number. 0 -31')}
+</Description>
+</Member>
+<Member Name="Message" DataType="STRING100" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+${cdata('Message Description (Default Language)')}
+</Description>
+</Member>
+<Member Name="TimeStamp" DataType="LINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+${cdata('UTC microseconds. Time it went active.')}
 </Description>
 </Member>
 <Member Name="Count" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
 <Description>
-${cdata('Alarm Occurrence Count')}
+${cdata('Count of Alarm Occurrences')}
 </Description>
 </Member>
-<Member Name="Description" DataType="STRING" Dimension="0" Hidden="false" ExternalAccess="Read/Write">
+<Member Name="Duration" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
 <Description>
-${cdata('Alarm Description Text')}
+${cdata('Duration in seconds')}
+</Description>
+</Member>
+<Member Name="ZZZZZZZZZZAlarmData8" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="Active" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZAlarmData8" BitNumber="0" ExternalAccess="Read/Write">
+<Description>
+${cdata('Alarm Active')}
+</Description>
+</Member>
+<Member Name="DoNotSaveToHistory" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZAlarmData8" BitNumber="1" ExternalAccess="Read/Write">
+<Description>
+${cdata('Set this flag to prevent the alarm from cluttering up the history.')}
+</Description>
+</Member>
+<Member Name="HMI_ResetCount" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZAlarmData8" BitNumber="2" ExternalAccess="Read/Write">
+<Description>
+${cdata('HMI Reset input')}
 </Description>
 </Member>
 </Members>
@@ -3509,7 +3605,7 @@ ${cdata('Manages a single robot sequence request through the AAMAIN command hand
 
 // ── Program XML export (no Controller wrapper) ──────────────────────────────
 
-export function exportProgramXml(sm, allSMs = [], trackingFields = []) {
+export function exportProgramXml(sm, allSMs = [], trackingFields = [], machineConfig = null) {
   if (!sm) throw new Error('No state machine provided');
 
   const programName = buildProgramName(sm.stationNumber ?? 0, sm.name ?? 'Unnamed');
@@ -3519,7 +3615,7 @@ export function exportProgramXml(sm, allSMs = [], trackingFields = []) {
   const tagsXml = generateAllTags(sm, orderedNodes, stepMap, trackingFields);
   const r00 = generateR00Main();
   const r01 = generateR01Inputs(sm);
-  const r02 = generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs, trackingFields);
+  const r02 = generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs, trackingFields, machineConfig);
   const r03 = generateR03StateLogic(sm, orderedNodes, stepMap, allSMs, trackingFields);
   const r20 = generateR20Alarms(sm, orderedNodes, stepMap);
 
@@ -3544,7 +3640,7 @@ ${r20}
 
 // ── Main export function ─────────────────────────────────────────────────────
 
-export function exportToL5X(sm, allSMs = [], trackingFields = []) {
+export function exportToL5X(sm, allSMs = [], trackingFields = [], machineConfig = null) {
   if (!sm) throw new Error('No state machine provided');
 
   const programName = buildProgramName(sm.stationNumber ?? 0, sm.name ?? 'Unnamed');
@@ -3553,7 +3649,7 @@ export function exportToL5X(sm, allSMs = [], trackingFields = []) {
   const robotDevices = (sm.devices ?? []).filter(d => d.type === 'Robot');
   const needsRangeCheck = hasServos || hasAnalogSensors;
 
-  const programXml = exportProgramXml(sm, allSMs, trackingFields);
+  const programXml = exportProgramXml(sm, allSMs, trackingFields, machineConfig);
   const dataTypes = generateDataTypes(hasServos, trackingFields, robotDevices);
   const aoi = generateAOI(needsRangeCheck, robotDevices.length > 0);
 
@@ -3573,8 +3669,8 @@ ${programXml}
 
 // ── Download helpers ─────────────────────────────────────────────────────────
 
-export function downloadL5X(sm, allSMs = [], trackingFields = []) {
-  const xml = exportToL5X(sm, allSMs, trackingFields);
+export function downloadL5X(sm, allSMs = [], trackingFields = [], machineConfig = null) {
+  const xml = exportToL5X(sm, allSMs, trackingFields, machineConfig);
   const blob = new Blob([xml], { type: 'text/xml;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -3596,7 +3692,7 @@ export async function downloadAllL5XAsZip(stateMachines, trackingFields = [], pr
   for (const sm of stateMachines) {
     if ((sm.nodes ?? []).length === 0) continue;
     const name = buildProgramName(sm.stationNumber ?? 0, sm.name ?? 'Unnamed');
-    const xml = exportToL5X(sm, stateMachines, trackingFields);
+    const xml = exportToL5X(sm, stateMachines, trackingFields, project?.machineConfig ?? null);
     files.push({ name: `${name}.L5X`, content: xml });
   }
 

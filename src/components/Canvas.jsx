@@ -141,9 +141,32 @@ export function Canvas() {
   const store = useDiagramStore();
   const sm = store.getActiveSm();
   const reactFlowWrapper = useRef(null);
-  const { screenToFlowPosition, setCenter, getViewport, setViewport, fitView } = useReactFlow();
+  const { screenToFlowPosition, setCenter, getViewport, setViewport, fitView, getNodes } = useReactFlow();
   const [selectMode, setSelectMode] = useState(false);
   const prevSmIdRef = useRef(null);
+
+  // ── Straighten selected nodes (align centers to median center X) ────────────
+  const straightenSelected = useCallback(() => {
+    if (!sm) return;
+    const selected = getNodes().filter(n => n.selected);
+    if (selected.length < 2) return;
+    // Compute center X for each node, find the median
+    const centers = selected.map(n => {
+      const w = n.measured?.width ?? n.width ?? 240;
+      return { id: n.id, centerX: n.position.x + w / 2, width: w, y: n.position.y };
+    });
+    const sorted = [...centers].sort((a, b) => a.centerX - b.centerX);
+    const medianCenterX = sorted[Math.floor(sorted.length / 2)].centerX;
+    store._pushHistory();
+    const changes = centers
+      .filter(c => Math.abs(c.centerX - medianCenterX) > 0.5)
+      .map(c => ({
+        id: c.id,
+        type: 'position',
+        position: { x: medianCenterX - c.width / 2, y: c.y },
+      }));
+    if (changes.length > 0) store.onNodesChange(sm.id, changes);
+  }, [sm, store, getNodes]);
 
   // ── Viewport persistence per SM ──────────────────────────────────────────
   // Save viewport when switching away from an SM, restore when switching to one
@@ -245,7 +268,7 @@ export function Canvas() {
     const currentSm = useDiagramStore.getState().getActiveSm();
     if (!currentSm) return;
 
-    const SNAP_THRESHOLD = 25; // px in flow coordinates
+    const SNAP_THRESHOLD = 50; // px in flow coordinates — strong snap keeps nodes in column
 
     // Find connected nodes (parent + child via edges)
     const connectedNodeIds = new Set();
@@ -327,11 +350,15 @@ export function Canvas() {
       prevSelectedId ??
       (smNodes.length > 0 ? smNodes[smNodes.length - 1].id : null);
 
-    // Default position: straight below source node; branch → offset right
+    // Default position: straight below source node (center-aligned); branch → offset right
     if (!opts.position && connectFromId) {
       const sourceNode = smNodes.find(n => n.id === connectFromId);
       if (sourceNode) {
         const existingOutEdges = (sm.edges ?? []).filter(e => e.source === connectFromId);
+        // Center-align: compute source center, then offset new node so its center matches
+        const srcW = sourceNode.measured?.width ?? sourceNode.width ?? 240;
+        const newW = 240; // default new node width before render
+        const centerAlignedX = sourceNode.position.x + (srcW - newW) / 2;
         if (existingOutEdges.length > 0) {
           // Branch: offset to the right
           opts = { ...opts, position: {
@@ -339,9 +366,9 @@ export function Canvas() {
             y: sourceNode.position.y + 200,
           }};
         } else {
-          // Straight below source
+          // Straight below source — center-aligned
           opts = { ...opts, position: {
-            x: sourceNode.position.x,
+            x: centerAlignedX,
             y: sourceNode.position.y + 200,
           }};
         }
@@ -538,8 +565,12 @@ export function Canvas() {
     useDiagramStore.setState({ _isDrawingConnection: false, _drawingWaypoints: [], _drawingSource: null });
 
     const existingOutEdges = (sm.edges ?? []).filter(e => e.source === fromNode.id);
+    // Center-align new node on source when dropping straight down
+    const srcW = fromNode.measured?.width ?? fromNode.width ?? 240;
+    const newW = 240;
+    const centerAlignedX = fromNode.position.x + (srcW - newW) / 2;
     const position = {
-      x: existingOutEdges.length > 0 ? cursorFlow.x : fromNode.position.x,
+      x: existingOutEdges.length > 0 ? cursorFlow.x : centerAlignedX,
       y: cursorFlow.y,
     };
 
@@ -918,7 +949,7 @@ export function Canvas() {
           </div>
         </div>
 
-        {/* Bottom toolbar — Select */}
+        {/* Bottom toolbar — Select + Straighten */}
         <div className="canvas-select-toggle">
           <button
             className={`btn btn--sm canvas-select-btn${selectMode ? ' canvas-select-btn--active' : ''}`}
@@ -930,6 +961,20 @@ export function Canvas() {
               <path d="M11 7L13 14L10.5 11.5L8 14L6 7" fill="currentColor" stroke="currentColor" strokeWidth="1" />
             </svg>
             <span>{selectMode ? 'Select ON' : 'Select'}</span>
+          </button>
+          <button
+            className="btn btn--sm canvas-select-btn"
+            onClick={straightenSelected}
+            title="Align selected nodes vertically (same X position)"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="8" y1="1" x2="8" y2="15" />
+              <polyline points="4,5 8,1 12,5" />
+              <polyline points="4,11 8,15 12,11" />
+              <circle cx="4" cy="8" r="1.5" fill="currentColor" />
+              <circle cx="12" cy="8" r="1.5" fill="currentColor" />
+            </svg>
+            <span>Straighten</span>
           </button>
         </div>
       </ReactFlow>

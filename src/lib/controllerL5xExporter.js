@@ -392,6 +392,82 @@ ${rungs.join('\n')}
  * @param {object} project — Full project object from the store
  * @returns {string} Complete L5X XML string
  */
+
+// ── Alarms Program Generator ──────────────────────────────────────────────────
+// Centralized alarm aggregation program. Every station's R20_Alarms calls
+// ProgramAlarmHandler with \Alarms.p_ProgramID, \Alarms.p_Active, \Alarms.p_History.
+// This program provides those public arrays.
+
+function generateAlarmsProgram(stationNames = []) {
+  const tags = [];
+
+  // p_ProgramID — public INT, unique per station (assigned by CE or auto-incremented)
+  tags.push(`<Tag Name="p_ProgramID" TagType="Base" DataType="INT" Radix="Decimal" Usage="Public" Constant="false" ExternalAccess="Read/Write">
+<Description>${cdata('Unique program ID counter — each station reads this to identify its alarms')}</Description>
+</Tag>`);
+
+  // p_Active — public AlarmData[100], active alarms from all stations
+  tags.push(`<Tag Name="p_Active" TagType="Base" DataType="AlarmData" Dimensions="100" Usage="Public" Constant="false" ExternalAccess="Read/Write">
+<Description>${cdata('Active alarms aggregate — written by each station ProgramAlarmHandler')}</Description>
+</Tag>`);
+
+  // p_History — public AlarmData[100], alarm history from all stations
+  tags.push(`<Tag Name="p_History" TagType="Base" DataType="AlarmData" Dimensions="100" Usage="Public" Constant="false" ExternalAccess="Read/Write">
+<Description>${cdata('Alarm history — written by each station ProgramAlarmHandler')}</Description>
+</Tag>`);
+
+  // q_AnyAlarmActive — output: true if any station has an active alarm
+  tags.push(`<Tag Name="q_AnyAlarmActive" TagType="Base" DataType="BOOL" Usage="Output" Constant="false" ExternalAccess="Read/Write">
+<Description>${cdata('TRUE when any station has an active alarm')}</Description>
+</Tag>`);
+
+  // q_AnyWarningActive — output: true if any station has an active warning
+  tags.push(`<Tag Name="q_AnyWarningActive" TagType="Base" DataType="BOOL" Usage="Output" Constant="false" ExternalAccess="Read/Write">
+<Description>${cdata('TRUE when any station has an active warning')}</Description>
+</Tag>`);
+
+  // Build R00_Main with JSR to R01
+  const r00 = `<Routine Name="R00_Main" Type="RLL">
+<RLLContent>
+${buildRung(0, 'Call alarm aggregation', 'JSR(R01_AlarmAggregation,0);')}
+</RLLContent>
+</Routine>`;
+
+  // Build R01_AlarmAggregation — OR all station q_AlarmActive outputs
+  const aggRungs = [];
+  let rungNum = 0;
+
+  if (stationNames.length > 0) {
+    // OR all station alarm-active signals
+    const alarmBranches = stationNames.map(n => `XIC(\\${n}.q_AlarmActive)`).join(' ,');
+    aggRungs.push(buildRung(rungNum++, 'Any station alarm active',
+      `[${alarmBranches}]OTE(q_AnyAlarmActive);`));
+
+    const warnBranches = stationNames.map(n => `XIC(\\${n}.q_WarningActive)`).join(' ,');
+    aggRungs.push(buildRung(rungNum++, 'Any station warning active',
+      `[${warnBranches}]OTE(q_AnyWarningActive);`));
+  } else {
+    aggRungs.push(buildRung(rungNum++, 'No stations configured', 'NOP();'));
+  }
+
+  const r01 = `<Routine Name="R01_AlarmAggregation" Type="RLL">
+<RLLContent>
+${aggRungs.join('')}
+</RLLContent>
+</Routine>`;
+
+  return `<Program Name="Alarms" TestEdits="false" MainRoutineName="R00_Main" Disabled="false" Class="Standard" UseAsFolder="false">
+<Description>${cdata('Centralized alarm aggregation — provides p_ProgramID, p_Active, p_History arrays referenced by every station ProgramAlarmHandler.')}</Description>
+<Tags>
+${tags.join('\n')}
+</Tags>
+<Routines>
+${r00}
+${r01}
+</Routines>
+</Program>`;
+}
+
 export function exportControllerL5X(project) {
   const allSMs = project.stateMachines ?? [];
   const trackingFields = project.partTracking?.fields ?? [];
@@ -441,7 +517,7 @@ export function exportControllerL5X(project) {
 
   for (const sm of allSMs) {
     try {
-      const programXml = exportProgramXml(sm, allSMs, trackingFields);
+      const programXml = exportProgramXml(sm, allSMs, trackingFields, project?.machineConfig ?? null);
       // Strip Use="Target" from program — controller export doesn't need it
       const cleaned = programXml.replace(' Use="Target"', '');
       smProgramXmls.push(cleaned);
@@ -467,6 +543,7 @@ export function exportControllerL5X(project) {
   // Order: supervisor first (if present), then SM programs, then RecipeManager
   const jsrProgramNames = [];
   if (hasSupervisor) jsrProgramNames.push('Supervisor');
+  jsrProgramNames.push('Alarms');
   jsrProgramNames.push(...smProgramNames);
   if (hasRecipes) jsrProgramNames.push('RecipeManager');
 
@@ -477,13 +554,21 @@ export function exportControllerL5X(project) {
   if (recipeTagsXml) {
     controllerTags.push(recipeTagsXml);
   }
+  // g_CPUDateTime — DINT[7] WallClockTime, populated by GSV in MainProgram or Supervisor
+  controllerTags.push(`<Tag Name="g_CPUDateTime" TagType="Base" DataType="DINT" Dimensions="7" Radix="Decimal" Constant="false" ExternalAccess="Read/Write">
+<Description>${cdata('CPU WallClockTime - DINT[7] {Year,Month,Day,Hour,Min,Sec,uSec}. Populated by GSV WallClockTime.')}</Description>
+</Tag>`);
   const controllerTagsXml = controllerTags.length > 0
     ? `<Tags>\n${controllerTags.join('\n')}\n</Tags>`
     : '<Tags/>';
 
+  // ── Generate Alarms program (central alarm aggregator) ──────────────────
+  const alarmsXml = generateAlarmsProgram(smProgramNames);
+
   // ── Build scheduled programs list ─────────────────────────────────────────
   const scheduledPrograms = ['MainProgram'];
   if (hasSupervisor) scheduledPrograms.push('Supervisor');
+  scheduledPrograms.push('Alarms');
   scheduledPrograms.push(...smProgramNames);
   if (hasRecipes) scheduledPrograms.push('RecipeManager');
 
@@ -494,6 +579,7 @@ export function exportControllerL5X(project) {
   // ── Assemble all programs ─────────────────────────────────────────────────
   const allPrograms = [mainProgramXml];
   if (hasSupervisor) allPrograms.push(supervisorXml);
+  allPrograms.push(alarmsXml);
   allPrograms.push(...smProgramXmls);
   if (hasRecipes) allPrograms.push(recipeManagerXml);
 
