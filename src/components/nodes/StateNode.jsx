@@ -59,6 +59,87 @@ function getOperationColor(operation, deviceType) {
   return DEVICE_TYPES[deviceType]?.color ?? '#9ca3af';
 }
 
+// ── Operation Switcher Popup ──────────────────────────────────────────────────
+// Small portaled dropdown that appears when clicking an operation badge.
+// Shows available operations for the device type so user can quickly switch.
+// Uses screen coordinates from the click event (not anchorEl ref) for reliable positioning.
+function OperationSwitcher({ action, device, smId, nodeId, pos, onClose }) {
+  const menuRef = useRef(null);
+  const store = useDiagramStore();
+  const deviceDef = DEVICE_TYPES[device.type];
+  const operations = deviceDef?.operations ?? [];
+
+  // Click outside to close — use setTimeout so the opening click doesn't immediately close
+  useEffect(() => {
+    function handleDown(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        onClose();
+      }
+    }
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleDown, true);
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', handleDown, true);
+    };
+  }, [onClose]);
+
+  if (operations.length < 2) return null;
+
+  return createPortal(
+    <div ref={menuRef} className="nodrag nowheel" style={{
+      position: 'fixed',
+      top: pos.top,
+      left: pos.left,
+      zIndex: 10000,
+      background: '#fff',
+      border: '1px solid #d1d5db',
+      borderRadius: 8,
+      boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+      padding: '4px 0',
+      minWidth: 140,
+    }}>
+      {operations.map(op => {
+        const color = getOperationColor(op.value, device.type);
+        const LIGHT_BG_COLORS = new Set(['#aacee8', '#befa4f', '#d9d9d9']);
+        const isLightBg = LIGHT_BG_COLORS.has(color);
+        const isActive = action.operation === op.value;
+        return (
+          <div
+            key={op.value}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              if (!isActive) {
+                store.updateAction(smId, nodeId, action.id, { operation: op.value });
+              }
+              onClose();
+            }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '6px 12px', cursor: 'pointer',
+              background: isActive ? '#f0f7ff' : 'transparent',
+              fontWeight: isActive ? 700 : 500,
+              fontSize: 12,
+            }}
+            onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = '#f5f5f5'; }}
+            onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+          >
+            <span style={{
+              display: 'inline-block', width: 10, height: 10, borderRadius: 3,
+              background: color, border: isLightBg ? '1px solid #b0b0b0' : 'none',
+              flexShrink: 0,
+            }} />
+            <span style={{ color: '#1e293b' }}>{op.label}</span>
+            {isActive && <span style={{ marginLeft: 'auto', color: '#1574c4', fontSize: 11 }}>✓</span>}
+          </div>
+        );
+      })}
+    </div>,
+    document.body
+  );
+}
+
 /** Build short verify-condition text for a single action */
 function buildActionVerifyText(action, device) {
   if (!device) return null;
@@ -2504,6 +2585,7 @@ export function StateNode({ data, selected, id }) {
   const [pickerInitialStep, setPickerInitialStep] = useState(null);
   const [ctxMenu, setCtxMenu] = useState(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [opSwitcher, setOpSwitcher] = useState(null); // { actionId, pos: {top, left} }
   const addMenuRef = useRef(null);
 
   // Close add-menu when clicking outside
@@ -2803,14 +2885,34 @@ export function StateNode({ data, selected, id }) {
                     setEditingActionId(action.id); setPickerInitialStep(null); setShowPicker(true);
                   }
                 }}
-                onClickOp={action.operation === 'ServoMove' ? (e) => {
-                  e.stopPropagation();
-                  if (editingActionId === action.id && showPicker) {
-                    setShowPicker(false); setEditingActionId(null); setPickerInitialStep(null);
-                  } else {
-                    setEditingActionId(action.id); setPickerInitialStep('servoMoves'); setShowPicker(true);
+                onClickOp={(() => {
+                  const dev = devices?.find(d => d.id === action.deviceId);
+                  const devDef = dev ? DEVICE_TYPES[dev.type] : null;
+                  // Servo: open picker at servo positions step
+                  if (action.operation === 'ServoMove' || action.operation === 'ServoIncr' || action.operation === 'ServoIndex') {
+                    return (e) => {
+                      e.stopPropagation();
+                      if (editingActionId === action.id && showPicker) {
+                        setShowPicker(false); setEditingActionId(null); setPickerInitialStep(null);
+                      } else {
+                        setEditingActionId(action.id); setPickerInitialStep('servoMoves'); setShowPicker(true);
+                      }
+                    };
                   }
-                } : undefined}
+                  // Any device with 2+ operations: open operation switcher popup
+                  if (devDef && (devDef.operations?.length ?? 0) >= 2) {
+                    return (e) => {
+                      e.stopPropagation();
+                      if (opSwitcher?.actionId === action.id) {
+                        setOpSwitcher(null);
+                      } else {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setOpSwitcher({ actionId: action.id, pos: { top: rect.bottom + 4, left: rect.left } });
+                      }
+                    };
+                  }
+                  return undefined;
+                })()}
               />
             ))
           ) : (
@@ -2823,6 +2925,23 @@ export function StateNode({ data, selected, id }) {
           )
         )}
       </div>
+
+      {/* Operation Switcher popup (for pneumatic/gripper/vac badge clicks) */}
+      {opSwitcher && (() => {
+        const act = actions.find(a => a.id === opSwitcher.actionId);
+        const dev = act ? devices?.find(d => d.id === act.deviceId) : null;
+        if (!act || !dev) return null;
+        return (
+          <OperationSwitcher
+            action={act}
+            device={dev}
+            smId={sm?.id}
+            nodeId={id}
+            pos={opSwitcher.pos}
+            onClose={() => setOpSwitcher(null)}
+          />
+        );
+      })()}
 
       {/* SM Output badges — shown below actions for outputs triggered by this node */}
       {triggeredOutputs.length > 0 && (
