@@ -176,17 +176,17 @@ export function Toolbar() {
   }, [project]);
 
   const handleSaveProject = useCallback(async () => {
+    // Always download JSON file so the user has a local copy
+    exportProjectJSON(project);
+    setHasUnsavedChanges(false);
+
+    // Also save to server if available (background, non-blocking)
     if (serverAvailable) {
-      setSaving(true);
       try {
         await store.saveCurrentProject();
-        setHasUnsavedChanges(false);
       } catch (err) {
-        alert('Save failed: ' + err.message);
+        console.warn('Server save failed (JSON download still succeeded):', err.message);
       }
-      setSaving(false);
-    } else {
-      exportProjectJSON(project);
     }
   }, [serverAvailable, project, store]);
 
@@ -485,7 +485,7 @@ export function Toolbar() {
         <button
           className={`btn ${hasUnsavedChanges ? 'btn--warning' : 'btn--ghost'}`}
           onClick={handleSaveProject}
-          title={serverAvailable ? 'Save project to server (Ctrl+S)' : 'Download project as JSON'}
+          title="Download project as JSON (Ctrl+S)"
           disabled={saving}
           style={hasUnsavedChanges ? { fontWeight: 'bold' } : {}}
         >

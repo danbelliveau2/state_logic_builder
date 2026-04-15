@@ -406,22 +406,16 @@ export function AddDeviceModal() {
   // DI  = PLC→Robot digital (PLC outputs, robot reads as DI[n])
   // DO  = Robot→PLC digital (robot writes DO[n], PLC reads as input)
   // Register = bidirectional DINT/REAL values (R[n])
+  // Minimal user-facing defaults. ME only cares about interactions that
+  // affect sequencing — "is the part gripped?", "is it safe to move into
+  // the dial?". Standard handshake plumbing (program command, program done,
+  // ack registers, auto-mode status, etc.) is handled automatically by the
+  // Run_Robot_Seq AOI and R95 output copies — not exposed here.
   const DEFAULT_ROBOT_SIGNALS = [
-    // DI — PLC outputs to Robot (Fanuc DI[n])
-    { id: 'di_39', number: 39, name: 'CycleRunning',    group: 'DI', direction: 'output', dataType: 'BOOL', description: 'Machine cycle is running' },
-    { id: 'di_40', number: 40, name: 'StopLoop',        group: 'DI', direction: 'output', dataType: 'BOOL', description: 'Stop after current cycle' },
-    { id: 'di_27', number: 27, name: 'ResetPR101',      group: 'DI', direction: 'output', dataType: 'BOOL', description: 'Reset position register PR[101]' },
-    // DO — Robot outputs to PLC (Fanuc DO[n])
-    { id: 'do_1',  number: 1,  name: 'PrgDone',         group: 'DO', direction: 'input', dataType: 'BOOL', description: 'Program complete' },
-    { id: 'do_2',  number: 2,  name: 'InvalidPrgCmd',   group: 'DO', direction: 'input', dataType: 'BOOL', description: 'Invalid program command' },
-    { id: 'do_30', number: 30, name: 'TimeoutFault',    group: 'DO', direction: 'input', dataType: 'BOOL', description: 'Robot timeout fault' },
-    { id: 'do_31', number: 31, name: 'RPHomeG1',        group: 'DO', direction: 'input', dataType: 'BOOL', description: 'Reference position — Home gripper 1', isRefPos: true },
-    { id: 'do_32', number: 32, name: 'RPHomeG2',        group: 'DO', direction: 'input', dataType: 'BOOL', description: 'Reference position — Home gripper 2', isRefPos: true },
-    { id: 'do_40', number: 40, name: 'AutoMode',        group: 'DO', direction: 'input', dataType: 'BOOL', description: 'Robot in Auto mode' },
-    // Registers — bidirectional DINT/REAL values (Fanuc R[n])
-    { id: 'reg_50', number: 50, name: 'PrgCommand',     group: 'Register', direction: 'output', dataType: 'DINT', description: 'Program command number (PLC→Robot)' },
-    { id: 'reg_51', number: 51, name: 'OverrideSpeed',  group: 'Register', direction: 'output', dataType: 'DINT', description: 'Speed override % (PLC→Robot)' },
-    { id: 'reg_60', number: 60, name: 'PrgAck',         group: 'Register', direction: 'input',  dataType: 'DINT', description: 'Program acknowledge (Robot→PLC)' },
+    // DI — PLC→Robot interlocks
+    { id: 'di_ok_enter_dial', number: 1, name: 'OkToEnterDial', group: 'DI', direction: 'output', dataType: 'BOOL', description: 'PLC permits robot to enter the dial' },
+    // DO — Robot→PLC status the PLC waits on
+    { id: 'do_part_grip',     number: 1, name: 'PartGrip',      group: 'DO', direction: 'input',  dataType: 'BOOL', description: 'Robot has gripped the part' },
   ];
 
   // Migrate old-format signals (pre-Fanuc model): add number if missing, convert DCS→DO
@@ -436,6 +430,31 @@ export function AddDeviceModal() {
   const [robotSignals, setRobotSignals] = useState(
     migrateRobotSignals(existingDevice?.signals ?? DEFAULT_ROBOT_SIGNALS)
   );
+
+  // Robot sequences (programs the robot can run — PLC sends number, waits for done)
+  const DEFAULT_ROBOT_SEQUENCES = [
+    { id: 'seq_1', number: 1, name: 'Home',  description: 'Move to home / perch position' },
+    { id: 'seq_2', number: 2, name: 'Pick',  description: 'Pick part from nest' },
+    { id: 'seq_3', number: 3, name: 'Place', description: 'Place part at target' },
+  ];
+  const [robotSequences, setRobotSequences] = useState(
+    existingDevice?.sequences ?? DEFAULT_ROBOT_SEQUENCES
+  );
+  function addRobotSequence() {
+    const nextNum = robotSequences.reduce((m, s) => Math.max(m, s.number || 0), 0) + 1;
+    setRobotSequences(prev => [...prev, {
+      id: `seq_${Date.now()}`,
+      number: nextNum,
+      name: '',
+      description: '',
+    }]);
+  }
+  function updateRobotSequence(index, field, value) {
+    setRobotSequences(prev => prev.map((s, i) => i === index ? { ...s, [field]: value } : s));
+  }
+  function removeRobotSequence(index) {
+    setRobotSequences(prev => prev.filter((_, i) => i !== index));
+  }
 
   function addRobotSignal(group = 'DO') {
     // Auto-assign next available number for this group
@@ -649,7 +668,8 @@ export function AddDeviceModal() {
       sensorUnit: isAnalog ? sensorUnit : undefined,
       setpoints: isAnalog ? setpoints : undefined,
       // Robot-specific
-      signals: isRobot ? robotSignals.filter(s => s.name.trim()) : undefined,
+      signals:   isRobot ? robotSignals.filter(s => s.name.trim())   : undefined,
+      sequences: isRobot ? robotSequences.filter(s => s.name?.trim()) : undefined,
       // Conveyor-specific
       driveType: isConveyor ? driveType : undefined,
       bidirectional: isConveyor ? bidirectional : undefined,
@@ -726,6 +746,7 @@ export function AddDeviceModal() {
               setTimerMs(dev.timerMs ?? 1000);
               if (dev.jobs) setJobs(dev.jobs);
               if (dev.signals) setRobotSignals(dev.signals);
+              if (dev.sequences) setRobotSequences(dev.sequences);
               if (dev.setpoints) setSetpoints(dev.setpoints);
               setDataType(dev.dataType ?? 'boolean');
               setParamScope(dev.paramScope ?? 'local');
@@ -1025,6 +1046,75 @@ export function AddDeviceModal() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </>
+          )}
+
+          {/* Robot: Sequences (programs the robot runs — PLC sends number, waits for done) */}
+          {isRobot && (
+            <>
+              <div style={{ marginTop: 12 }}>
+                <div className="props-actions-header">
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed' }}>Sequences — Robot Programs</span>
+                  <button type="button" className="btn btn--xs btn--primary" onClick={addRobotSequence}>
+                    + Add
+                  </button>
+                </div>
+                <div className="form-hint" style={{ marginTop: 0 }}>
+                  Programs the robot runs on command. PLC writes sequence number → robot echoes → robot runs program → robot signals complete.
+                </div>
+                {robotSequences.length === 0 && (
+                  <div style={{ fontSize: 12, color: '#94a3b8', padding: '4px 0', fontStyle: 'italic' }}>
+                    No sequences — add at least Home / Pick / Place
+                  </div>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 4 }}>
+                  {robotSequences.map((seq, idx) => (
+                    <div key={seq.id} style={{
+                      display: 'grid',
+                      gridTemplateColumns: '54px 140px 1fr auto',
+                      gap: 5,
+                      alignItems: 'center',
+                      background: '#faf5ff',
+                      padding: '4px 6px',
+                      borderRadius: 5,
+                      border: '1px solid #e9d5ff',
+                      borderLeftWidth: 3,
+                      borderLeftColor: '#7c3aed',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <span style={{ fontSize: 10, color: '#7c3aed', fontWeight: 700 }}>#</span>
+                        <input
+                          className="form-input"
+                          type="number"
+                          min="1"
+                          value={seq.number ?? ''}
+                          onChange={e => updateRobotSequence(idx, 'number', Number(e.target.value) || 1)}
+                          style={{ width: 38, fontSize: 11, padding: '2px 3px', textAlign: 'center' }}
+                        />
+                      </div>
+                      <input
+                        className="form-input"
+                        value={seq.name}
+                        onChange={e => updateRobotSequence(idx, 'name', e.target.value)}
+                        placeholder="Name (e.g. Pick)"
+                        style={{ fontSize: 12 }}
+                      />
+                      <input
+                        className="form-input"
+                        value={seq.description ?? ''}
+                        onChange={e => updateRobotSequence(idx, 'description', e.target.value)}
+                        placeholder="Description (optional)"
+                        style={{ fontSize: 11, color: '#475569' }}
+                      />
+                      <button type="button"
+                        className="icon-btn icon-btn--sm icon-btn--danger"
+                        onClick={() => removeRobotSequence(idx)}
+                        title="Remove sequence"
+                      >✕</button>
+                    </div>
+                  ))}
+                </div>
               </div>
             </>
           )}

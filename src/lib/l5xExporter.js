@@ -25,6 +25,39 @@ import {
 import { DEVICE_TYPES, getSensorConfigKey } from './deviceTypes.js';
 import { resolveEntryRule } from './entryRules.js';
 import { resolveIndexSync, isIndexSyncOverridden } from './indexSync.js';
+import { derivePartTrackingTable } from './partTracking.js';
+
+/**
+ * Merge global PT fields (project.partTracking.fields) with fields derived
+ * from this SM's auto-generated PT table. Returns a deduplicated fields[]
+ * list suitable for tag/UDT generation.
+ *
+ * Each derived row becomes a synthetic BOOL field:
+ *   { id: 'pt_<name>', name, dataType: 'boolean', _derived: true }
+ */
+function buildEffectiveTrackingFields(sm, stepMap, globalFields = []) {
+  const byName = new Map();
+  for (const f of (globalFields ?? [])) {
+    if (f?.name) byName.set(f.name, f);
+  }
+  const rows = derivePartTrackingTable(sm, stepMap);
+  for (const row of rows) {
+    if (!row.enabled) continue;
+    if (byName.has(row.fieldName)) continue;
+    // Numeric data-output rows (vision R0..Rn) become REAL fields;
+    // everything else stays BOOL.
+    const dataType = row.dataType === 'real' ? 'real' : 'boolean';
+    byName.set(row.fieldName, {
+      id: `pt_${row.fieldName}`,
+      name: row.fieldName,
+      dataType,
+      unit: row.unit ?? '',
+      description: row.description ?? '',
+      _derived: true,
+    });
+  }
+  return Array.from(byName.values());
+}
 
 // ── Unified inputRef → tag resolver ─────────────────────────────────────────
 //
@@ -1484,6 +1517,23 @@ function buildVerifyConditions(node, devices, allSMs = [], trackingFields = []) 
         }
         break;
       }
+
+      case 'Robot': {
+        // RunSequence: transition when Run_Robot_Seq AOI reports .Complete
+        // WaitInput:   transition when the named DO bit matches expected value
+        // SetOutput:   immediate — latched in R03, no verify condition
+        if (action.operation === 'RunSequence') {
+          const instName = `RunSeq_${device.name}_${(action.sequenceName ?? 'Seq').replace(/[^a-zA-Z0-9_]/g, '')}`;
+          conditions += `XIC(${instName}.Complete)`;
+        } else if (action.operation === 'WaitInput') {
+          const sig = (device.signals ?? []).find(s => s.id === action.signalId)
+            ?? { name: action.signalName };
+          const tag = `${device.name}_RIN.${sig.name}`;
+          conditions += action.signalValue === 'OFF' ? `XIO(${tag})` : `XIC(${tag})`;
+        }
+        // SetOutput has no verify — the PLC drives the bit in R03
+        break;
+      }
     }
   }
 
@@ -2311,6 +2361,47 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
     }
   }
 
+  // ── Robot output rungs ────────────────────────────────────────────────
+  // RunSequence: call Run_Robot_Seq AOI while in the run state (handshake
+  //   drives ROUT.Command, verifies CMDEcho, tracks running→complete).
+  // SetOutput:   OTE/OTU the specified PLC→Robot DI bit while in state.
+  //   (R95_RobotOutputs copies ROUT → module:O1 bulk.)
+  for (const node of orderedNodes) {
+    const step = stepMap[node.id];
+    for (const action of node.data.actions ?? []) {
+      const device = devices.find(d => d.id === action.deviceId);
+      if (!device || device.type !== 'Robot') continue;
+
+      if (action.operation === 'RunSequence') {
+        const seqName = (action.sequenceName ?? 'Seq').replace(/[^a-zA-Z0-9_]/g, '');
+        const instName = `RunSeq_${device.name}_${seqName}`;
+        const rinTag = `${device.name}_RIN`;
+        const seqReqTag = `${device.name}_SeqRequest`;
+        const seqRunTag = `${device.name}_RunningSeq`;
+        const seqNum = action.sequenceNumber ?? 0;
+        rungs.push(
+          buildRung(
+            rungNum++,
+            `${device.displayName} Run Sequence #${seqNum} (${action.sequenceName ?? ''})`,
+            `XIC(Status.State[${step}])Run_Robot_Seq(${instName},${seqNum},30,${seqRunTag},${seqReqTag},${rinTag});`
+          )
+        );
+      } else if (action.operation === 'SetOutput') {
+        const sig = (device.signals ?? []).find(s => s.id === action.signalId) ?? { name: action.signalName };
+        const tag = `${device.name}_ROUT.${sig.name}`;
+        const instr = action.signalValue === 'OFF' ? 'OTU' : 'OTE';
+        rungs.push(
+          buildRung(
+            rungNum++,
+            `${device.displayName} Set ${sig.name} ${action.signalValue ?? 'ON'}`,
+            `XIC(Status.State[${step}])${instr}(${tag});`
+          )
+        );
+      }
+      // WaitInput is a transition-only condition (R02) — no R03 rung.
+    }
+  }
+
   // ── Part Tracking: Clear all fields at cycle start ─────────────────────
   // On rising edge of CycleRunning (entering first process state), OTU all PT fields
   // so stale pass/fail data from a previous part doesn't carry over.
@@ -2322,32 +2413,139 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
     );
   }
 
-  // ── Part Tracking OTE / OTU rungs ──────────────────────────────────────
-  // TrackSet  → OTE(PartTracking.FieldName) when in the set state
-  // TrackClear → OTU(PartTracking.FieldName) when in the clear state
-  for (const node of orderedNodes) {
-    const step = stepMap[node.id];
-    for (const action of node.data.actions ?? []) {
-      if (action.deviceId !== '_tracking') continue;
-      const field = trackingFields.find(f => f.id === action.trackingFieldId);
-      if (!field) continue;
-      const ptTag = `PartTracking.${field.name}`;
-      if (action.operation === 'TrackSet') {
+  // ── Part Tracking OTE / OTU rungs (table-driven) ──────────────────────
+  // Rows derived from: Cycle Complete, dual-branch decision nodes, vision
+  // inspect actions. Each enabled row emits writes based on its kind.
+  {
+    const ptRows = derivePartTrackingTable(sm, stepMap);
+    for (const row of ptRows) {
+      if (!row.enabled) continue;
+      const ptTag = `PartTracking.${row.fieldName}`;
+
+      if (row.kind === 'stationResult' || row.kind === 'stationComplete') {
+        // Single OTE when in the Cycle Complete state (rolled-up overall outcome)
+        const step = stepMap[row.setAtNodeId];
+        if (step == null) continue;
         rungs.push(
           buildRung(
             rungNum++,
-            `Part Tracking: ${field.name} Set`,
+            `Part Tracking: ${row.fieldName} (Station Result)`,
             `XIC(Status.State[${step}])OTE(${ptTag});`
           )
         );
-      } else if (action.operation === 'TrackClear') {
+        continue;
+      }
+
+      if (row.kind === 'custom') {
+        // Manual custom row: write at selected state, value determines latch/unlatch
+        const step = stepMap[row.setAtNodeId];
+        if (step == null) continue;
+        const instr = row.writeValue === 'FALSE' ? 'OTU' : 'OTE';
         rungs.push(
           buildRung(
             rungNum++,
-            `Part Tracking: ${field.name} Clear`,
-            `XIC(Status.State[${step}])OTU(${ptTag});`
+            `Part Tracking: ${row.fieldName} (Custom)`,
+            `XIC(Status.State[${step}])${instr}(${ptTag});`
           )
         );
+        continue;
+      }
+
+      if (row.kind === 'decision') {
+        // Write TRUE when in pass branch's target state, FALSE when in fail branch's target state
+        const passEdge = (sm.edges ?? []).find(e => e.source === row.setAtNodeId && e.sourceHandle === 'exit-pass');
+        const failEdge = (sm.edges ?? []).find(e => e.source === row.setAtNodeId && e.sourceHandle === 'exit-fail');
+        const passStep = passEdge ? stepMap[passEdge.target] : null;
+        const failStep = failEdge ? stepMap[failEdge.target] : null;
+        if (passStep != null) {
+          rungs.push(
+            buildRung(
+              rungNum++,
+              `Part Tracking: ${row.fieldName} Pass`,
+              `XIC(Status.State[${passStep}])OTE(${ptTag});`
+            )
+          );
+        }
+        if (failStep != null) {
+          rungs.push(
+            buildRung(
+              rungNum++,
+              `Part Tracking: ${row.fieldName} Fail`,
+              `XIC(Status.State[${failStep}])OTU(${ptTag});`
+            )
+          );
+        }
+        continue;
+      }
+
+      if (row.kind === 'visionNumeric') {
+        // Copy the vision numeric output into a REAL PT field. Runs during
+        // the state where the inspect action sits (value is stable once the
+        // job has reported a result).
+        const step = stepMap[row.setAtNodeId];
+        if (step == null) continue;
+        const src = row._sourceTag;
+        if (!src) continue;
+        rungs.push(
+          buildRung(
+            rungNum++,
+            `Part Tracking: ${row.fieldName} (Vision Numeric)`,
+            `XIC(Status.State[${step}])MOV(${src},${ptTag});`
+          )
+        );
+        continue;
+      }
+
+      if (row.kind === 'analogCheck') {
+        // Record In_Range result of the range-check AOI during the state
+        // where the probe check runs. OTE while in range, OTU when out.
+        const step = stepMap[row.setAtNodeId];
+        if (step == null) continue;
+        const device = devices.find(d => d.name === row._deviceName);
+        if (!device) continue;
+        const rcTag = `${device.name}${row._setpointName ?? ''}RC.In_Range`;
+        rungs.push(
+          buildRung(
+            rungNum++,
+            `Part Tracking: ${row.fieldName} In Range`,
+            `XIC(Status.State[${step}])XIC(${rcTag})OTE(${ptTag});`
+          )
+        );
+        rungs.push(
+          buildRung(
+            rungNum++,
+            `Part Tracking: ${row.fieldName} Out of Range`,
+            `XIC(Status.State[${step}])XIO(${rcTag})OTU(${ptTag});`
+          )
+        );
+        continue;
+      }
+
+      if (row.kind === 'vision') {
+        // Vision inspect state node: pass/fail branches connect from its exit handles
+        const passEdge = (sm.edges ?? []).find(e => e.source === row.setAtNodeId && e.sourceHandle === 'exit-pass');
+        const failEdge = (sm.edges ?? []).find(e => e.source === row.setAtNodeId && e.sourceHandle === 'exit-fail');
+        const passStep = passEdge ? stepMap[passEdge.target] : null;
+        const failStep = failEdge ? stepMap[failEdge.target] : null;
+        if (passStep != null) {
+          rungs.push(
+            buildRung(
+              rungNum++,
+              `Part Tracking: ${row.fieldName} Vision Pass`,
+              `XIC(Status.State[${passStep}])OTE(${ptTag});`
+            )
+          );
+        }
+        if (failStep != null) {
+          rungs.push(
+            buildRung(
+              rungNum++,
+              `Part Tracking: ${row.fieldName} Vision Fail`,
+              `XIC(Status.State[${failStep}])OTU(${ptTag});`
+            )
+          );
+        }
+        continue;
       }
     }
   }
@@ -2917,23 +3115,19 @@ export function generateDataTypes(hasServos = false, trackingFields = [], robotD
 
   let partTrackingUDT = '';
   if (trackingFields.length > 0) {
-    const members = trackingFields.map(f =>
-      `<Member Name="${escapeXml(f.name)}" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
-<Description>
-${cdata(f.description || `Part Tracking: ${f.name}`)}
-</Description>
-</Member>`
-    );
-    // PartTracking UDT requires a hidden backing SINT for BOOL bit-packing
+    // Split fields: BOOLs get bit-packed into hidden SINTs; REALs emitted as
+    // full members so numeric vision / probe outputs can be read downstream.
+    const boolFields = trackingFields.filter(f => (f.dataType ?? 'boolean') === 'boolean');
+    const realFields = trackingFields.filter(f => f.dataType === 'real');
+
     const hiddenMembers = [];
-    const boolCount = trackingFields.length;
-    const sintCount = Math.ceil(boolCount / 8);
+    const sintCount = Math.ceil(boolFields.length / 8);
     for (let si = 0; si < sintCount; si++) {
       hiddenMembers.push(
         `<Member Name="ZZZZZZZZZZPartTrack${si}" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>`
       );
     }
-    const boolMembers = trackingFields.map((f, i) => {
+    const boolMembers = boolFields.map((f, i) => {
       const sintIdx = Math.floor(i / 8);
       const bitNum = i % 8;
       return `<Member Name="${escapeXml(f.name)}" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZPartTrack${sintIdx}" BitNumber="${bitNum}" ExternalAccess="Read/Write">
@@ -2942,11 +3136,20 @@ ${cdata(f.description || `Part Tracking: ${f.name}`)}
 </Description>
 </Member>`;
     });
+    const realMembers = realFields.map(f => {
+      const unitSuffix = f.unit ? ` (${f.unit})` : '';
+      return `<Member Name="${escapeXml(f.name)}" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+${cdata((f.description || `Part Tracking: ${f.name}`) + unitSuffix)}
+</Description>
+</Member>`;
+    });
     partTrackingUDT = `
 <DataType Name="PartTracking_UDT" Family="NoFamily" Class="User">
 <Members>
 ${hiddenMembers.join('\n')}
 ${boolMembers.join('\n')}
+${realMembers.join('\n')}
 </Members>
 </DataType>`;
   }
@@ -2957,8 +3160,55 @@ ${boolMembers.join('\n')}
     robotUDTs = generateFanucRobotUDTs(robotDevices);
   }
 
+  // ── CPU_TimeDate UDT (required by ProgramAlarmHandler AOI) ────────────────
+  const cpuTimeDateUDT = `
+<DataType Name="CPU_TimeDate" Family="NoFamily" Class="User">
+<Description>
+${cdata('CPU Time And Date Array')}
+</Description>
+<Members>
+<Member Name="Year" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Month" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Day" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Hour" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Minutes" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Seconds" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Milliseconds" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Microseconds" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="UTCMicroseconds" DataType="LINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+</DataType>`;
+
+  // ── StationStatus UDT (required by Supervisor on indexing/dial machines) ──
+  const stationStatusUDT = `
+<DataType Name="StationStatus" Family="NoFamily" Class="User">
+<Members>
+<Member Name="ZZZZZZZZZZStationSta0" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="PartPresent" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZStationSta0" BitNumber="0" ExternalAccess="Read/Write">
+<Description>
+${cdata('Part present at this station')}
+</Description>
+</Member>
+<Member Name="Reject" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZStationSta0" BitNumber="1" ExternalAccess="Read/Write">
+<Description>
+${cdata('Part marked reject - station skips processing')}
+</Description>
+</Member>
+<Member Name="Complete" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZStationSta0" BitNumber="2" ExternalAccess="Read/Write">
+<Description>
+${cdata('Station processing complete for this part')}
+</Description>
+</Member>
+<Member Name="HeadNumber" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+${cdata('Head/nest number currently at this station position')}
+</Description>
+</Member>
+</Members>
+</DataType>`;
+
   return `
-<DataTypes Use="Context">${servoUDT}${partTrackingUDT}${robotUDTs}
+<DataTypes Use="Context">${cpuTimeDateUDT}${stationStatusUDT}${servoUDT}${partTrackingUDT}${robotUDTs}
 <DataType Name="StateLogicControl" Family="NoFamily" Class="User">
 <Members>
 <Member Name="StateReg" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
@@ -3384,125 +3634,202 @@ ${hasRobots ? generateAOIRunRobotSeq() : ''}
 </AddOnInstructionDefinitions>`;
 }
 
-// ── ProgramAlarmHandler AOI ──────────────────────────────────────────────────
+// ── ProgramAlarmHandler AOI (v3.0 — from SDC 1116 production standard) ───────
 
 function generateAOIProgramAlarmHandler() {
   return `
-<AddOnInstructionDefinition Name="ProgramAlarmHandler" Class="Standard" Revision="1.0" ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" CreatedDate="2024-01-01T00:00:00.000Z" CreatedBy="SDC" EditedDate="2024-01-01T00:00:00.000Z" EditedBy="SDC" SoftwareRevision="v35.00">
+<AddOnInstructionDefinition Name="ProgramAlarmHandler" Class="Standard" Revision="3.0" RevisionExtension="a" Vendor="Steven Douglas Corp." ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" CreatedDate="2017-08-23T18:02:02.410Z" CreatedBy="SDC" EditedDate="2026-03-06T16:45:45.860Z" EditedBy="SDC" SoftwareRevision="v37.00">
 <Description>
-${cdata('Processes AlarmData array and sets q_AlarmActive / q_WarningActive outputs')}
+${cdata('Creates a shared Alarm History array and a shared Active Alarms array.')}
 </Description>
 <Parameters>
 <Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
-<Description>
-${cdata('Enable Input - System Defined Parameter')}
-</Description>
+<Description><![CDATA[Enable Input - System Defined Parameter]]></Description>
 </Parameter>
 <Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
-<Description>
-${cdata('Enable Output - System Defined Parameter')}
-</Description>
+<Description><![CDATA[Enable Output - System Defined Parameter]]></Description>
 </Parameter>
-<Parameter Name="ProgramID" TagType="Base" DataType="DINT" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
-<DefaultData Format="L5K">
-${cdata('0')}
-</DefaultData>
-<DefaultData Format="Decorated">
-<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
-</DefaultData>
+<Parameter Name="PublicProgramIDTag" TagType="Base" DataType="INT" Usage="InOut" Radix="Decimal" Required="true" Visible="true" Constant="false">
+<Description><![CDATA[Master Program ID tag used for all handler instances to obtain a unique ID]]></Description>
 </Parameter>
-<Parameter Name="Alarms" TagType="Base" DataType="AlarmData" Dimensions="10" Usage="InOut" Required="true" Visible="true" ExternalAccess="Read/Write"/>
-<Parameter Name="Active" TagType="Base" DataType="AlarmData" Dimensions="100" Usage="InOut" Required="true" Visible="true" ExternalAccess="Read/Write"/>
-<Parameter Name="History" TagType="Base" DataType="AlarmData" Dimensions="100" Usage="InOut" Required="true" Visible="true" ExternalAccess="Read/Write"/>
-<Parameter Name="DateTime" TagType="Base" DataType="DINT" Dimensions="7" Usage="InOut" Required="true" Visible="true" ExternalAccess="Read/Write"/>
-<Parameter Name="AlarmActive" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read Only">
-<DefaultData Format="L5K">
-${cdata('0')}
-</DefaultData>
-<DefaultData Format="Decorated">
-<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
-</DefaultData>
+<Parameter Name="LocalAlarmsArrayTag" TagType="Base" DataType="AlarmData" Dimensions="1" Usage="InOut" Required="true" Visible="true" Constant="false">
+<Description><![CDATA[Local array tag. Faults, Warnings]]></Description>
 </Parameter>
-<Parameter Name="WarningActive" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read Only">
-<DefaultData Format="L5K">
-${cdata('0')}
-</DefaultData>
-<DefaultData Format="Decorated">
-<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
-</DefaultData>
+<Parameter Name="AlarmActiveArrayTag" TagType="Base" DataType="AlarmData" Dimensions="1" Usage="InOut" Required="true" Visible="true" Constant="false">
+<Description><![CDATA[Active array tag. \\Alarms.Active]]></Description>
+</Parameter>
+<Parameter Name="AlarmHistoryArrayTag" TagType="Base" DataType="AlarmData" Dimensions="1" Usage="InOut" Required="true" Visible="true" Constant="false">
+<Description><![CDATA[History array tag. \\Alarms.History]]></Description>
+</Parameter>
+<Parameter Name="ControllerTimeClockTag" TagType="Base" DataType="CPU_TimeDate" Usage="InOut" Required="true" Visible="true" Constant="false"/>
+<Parameter Name="AlarmActiveTag" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="true" Visible="true" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="ActiveAlarmArrayIndex" TagType="Base" DataType="INT" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="ActiveAlarmDuration" TagType="Base" DataType="DINT" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="DINT" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="MyProgramID" TagType="Base" DataType="INT" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="None">
+<Description><![CDATA[This alarm handler's Program ID]]></Description>
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="WarningActiveTag" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
 </Parameter>
 </Parameters>
 <LocalTags>
-<LocalTag Name="idx" DataType="DINT" Radix="Decimal" ExternalAccess="Read/Write">
-<DefaultData Format="L5K">
-${cdata('0')}
-</DefaultData>
+<LocalTag Name="ActiveIndex" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="DataIndex" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="tempLength" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="ShiftIter" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="prevSecond" DataType="SINT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="SINT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="AlarmsActive_size" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="AlarmsHistory_size" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="OneSecond" DataType="BOOL" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="EmptyAlarmData" DataType="AlarmData" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[[0,0,0,0,[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,0,0,0]]]></DefaultData>
 <DefaultData Format="Decorated">
-<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+<Structure DataType="AlarmData">
+<DataValueMember Name="ProgramID" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="AlarmID" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Severity" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Group" DataType="INT" Radix="Decimal" Value="0"/>
+<StructureMember Name="Message" DataType="STRING100">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING100" Radix="ASCII"><![CDATA[]]></DataValueMember>
+</StructureMember>
+<DataValueMember Name="TimeStamp" DataType="LINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Count" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Duration" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Active" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DoNotSaveToHistory" DataType="BOOL" Value="0"/>
+<DataValueMember Name="HMI_ResetCount" DataType="BOOL" Value="0"/>
+</Structure>
 </DefaultData>
 </LocalTag>
-<LocalTag Name="anyAlarm" DataType="BOOL" Radix="Decimal" ExternalAccess="Read/Write">
-<DefaultData Format="L5K">
-${cdata('0')}
-</DefaultData>
-<DefaultData Format="Decorated">
-<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
-</DefaultData>
-</LocalTag>
-<LocalTag Name="anyWarning" DataType="BOOL" Radix="Decimal" ExternalAccess="Read/Write">
-<DefaultData Format="L5K">
-${cdata('0')}
-</DefaultData>
-<DefaultData Format="Decorated">
-<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
-</DefaultData>
+<LocalTag Name="AlarmsLocal_size" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
 </LocalTag>
 </LocalTags>
 <Routines>
 <Routine Name="Logic" Type="ST">
 <STContent>
-<Line Number="0">
-<![CDATA[anyAlarm := 0;]]>
-</Line>
-<Line Number="1">
-<![CDATA[anyWarning := 0;]]>
-</Line>
-<Line Number="2">
-<![CDATA[FOR idx := 0 TO 9 BY 1 DO]]>
-</Line>
-<Line Number="3">
-<![CDATA[  IF Alarms[idx].Active AND NOT Alarms[idx].IsWarning THEN]]>
-</Line>
-<Line Number="4">
-<![CDATA[    anyAlarm := 1;]]>
-</Line>
-<Line Number="5">
-<![CDATA[  END_IF;]]>
-</Line>
-<Line Number="6">
-<![CDATA[  IF Alarms[idx].Active AND Alarms[idx].IsWarning THEN]]>
-</Line>
-<Line Number="7">
-<![CDATA[    anyWarning := 1;]]>
-</Line>
-<Line Number="8">
-<![CDATA[  END_IF;]]>
-</Line>
-<Line Number="9">
-<![CDATA[END_FOR;]]>
-</Line>
-<Line Number="10">
-<![CDATA[AlarmActive := anyAlarm;]]>
-</Line>
-<Line Number="11">
-<![CDATA[WarningActive := anyWarning;]]>
-</Line>
+<Line Number="0"><![CDATA[PublicProgramIDTag := PublicProgramIDTag + 1;]]></Line>
+<Line Number="1"><![CDATA[MyProgramID := PublicProgramIDTag;]]></Line>
+<Line Number="2"><![CDATA[]]></Line>
+<Line Number="3"><![CDATA[SIZE(AlarmActiveArrayTag, 0, AlarmsActive_size);]]></Line>
+<Line Number="4"><![CDATA[SIZE(AlarmHistoryArrayTag, 0, AlarmsHistory_size);]]></Line>
+<Line Number="5"><![CDATA[SIZE(LocalAlarmsArrayTag, 0, AlarmsLocal_size);]]></Line>
+<Line Number="6"><![CDATA[]]></Line>
+<Line Number="7"><![CDATA[if (ControllerTimeClockTag.Seconds <> prevSecond) then]]></Line>
+<Line Number="8"><![CDATA[	prevSecond := ControllerTimeClockTag.Seconds;]]></Line>
+<Line Number="9"><![CDATA[	OneSecond := 1;]]></Line>
+<Line Number="10"><![CDATA[else]]></Line>
+<Line Number="11"><![CDATA[	OneSecond := 0;]]></Line>
+<Line Number="12"><![CDATA[end_if;]]></Line>
+<Line Number="13"><![CDATA[]]></Line>
+<Line Number="14"><![CDATA[for ActiveIndex := 0 to AlarmsActive_size - 1 by 1 do]]></Line>
+<Line Number="15"><![CDATA[	if (AlarmActiveArrayTag[ActiveIndex].ProgramID = PublicProgramIDTag) then]]></Line>
+<Line Number="16"><![CDATA[		DataIndex := AlarmActiveArrayTag[ActiveIndex].AlarmID;]]></Line>
+<Line Number="17"><![CDATA[		if ((DataIndex < 0) OR (DataIndex >= AlarmsLocal_size)) then]]></Line>
+<Line Number="18"><![CDATA[			tempLength := AlarmsActive_size - 1 - ActiveIndex;]]></Line>
+<Line Number="19"><![CDATA[			if (tempLength > 0) then]]></Line>
+<Line Number="20"><![CDATA[				COP(AlarmActiveArrayTag[ActiveIndex + 1], AlarmActiveArrayTag[ActiveIndex], tempLength);]]></Line>
+<Line Number="21"><![CDATA[			end_if;]]></Line>
+<Line Number="22"><![CDATA[			COP(EmptyAlarmData, AlarmActiveArrayTag[AlarmsActive_size - 1], 1);]]></Line>
+<Line Number="23"><![CDATA[			exit;]]></Line>
+<Line Number="24"><![CDATA[		end_if;]]></Line>
+<Line Number="25"><![CDATA[		if (OneSecond) then]]></Line>
+<Line Number="26"><![CDATA[			LocalAlarmsArrayTag[DataIndex].Duration := LocalAlarmsArrayTag[DataIndex].Duration +1;]]></Line>
+<Line Number="27"><![CDATA[			AlarmActiveArrayTag[ActiveIndex].Duration := AlarmActiveArrayTag[ActiveIndex].Duration +1;]]></Line>
+<Line Number="28"><![CDATA[		end_if;]]></Line>
+<Line Number="29"><![CDATA[		if (NOT LocalAlarmsArrayTag[DataIndex].Active) then]]></Line>
+<Line Number="30"><![CDATA[			if (NOT LocalAlarmsArrayTag[DataIndex].DoNotSaveToHistory) then]]></Line>
+<Line Number="31"><![CDATA[				for ShiftIter := AlarmsHistory_size - 2 to 0 by -1 do]]></Line>
+<Line Number="32"><![CDATA[					COP(AlarmHistoryArrayTag[ShiftIter], AlarmHistoryArrayTag[ShiftIter + 1], 1);]]></Line>
+<Line Number="33"><![CDATA[				end_for;]]></Line>
+<Line Number="34"><![CDATA[				COP(AlarmActiveArrayTag[ActiveIndex], AlarmHistoryArrayTag[0], 1);]]></Line>
+<Line Number="35"><![CDATA[			end_if;]]></Line>
+<Line Number="36"><![CDATA[			tempLength := AlarmsActive_size - 1 - ActiveIndex;]]></Line>
+<Line Number="37"><![CDATA[			if (ActiveIndex < (AlarmsActive_size - 1)) then]]></Line>
+<Line Number="38"><![CDATA[				COP(AlarmActiveArrayTag[ActiveIndex + 1], AlarmActiveArrayTag[ActiveIndex], tempLength);]]></Line>
+<Line Number="39"><![CDATA[			end_if;]]></Line>
+<Line Number="40"><![CDATA[			COP(EmptyAlarmData, AlarmActiveArrayTag[AlarmsActive_size - 1], 1);]]></Line>
+<Line Number="41"><![CDATA[		end_if;]]></Line>
+<Line Number="42"><![CDATA[	end_if;]]></Line>
+<Line Number="43"><![CDATA[end_for;]]></Line>
+<Line Number="44"><![CDATA[]]></Line>
+<Line Number="45"><![CDATA[AlarmActiveTag := 0;]]></Line>
+<Line Number="46"><![CDATA[WarningActiveTag := 0;]]></Line>
+<Line Number="47"><![CDATA[]]></Line>
+<Line Number="48"><![CDATA[For DataIndex := 0 to AlarmsLocal_size - 1 By 1 Do]]></Line>
+<Line Number="49"><![CDATA[	If (LocalAlarmsArrayTag[DataIndex].Active) Then]]></Line>
+<Line Number="50"><![CDATA[		If (LocalAlarmsArrayTag[DataIndex].Severity = 0) Then]]></Line>
+<Line Number="51"><![CDATA[			AlarmActiveTag := 1;]]></Line>
+<Line Number="52"><![CDATA[		End_If;]]></Line>
+<Line Number="53"><![CDATA[		If (LocalAlarmsArrayTag[DataIndex].Severity = 1) Then]]></Line>
+<Line Number="54"><![CDATA[			WarningActiveTag := 1;]]></Line>
+<Line Number="55"><![CDATA[		End_If;]]></Line>
+<Line Number="56"><![CDATA[		ActiveAlarmArrayIndex := DataIndex;]]></Line>
+<Line Number="57"><![CDATA[		ActiveAlarmDuration := LocalAlarmsArrayTag[DataIndex].Duration;]]></Line>
+<Line Number="58"><![CDATA[		For ActiveIndex := 0 to AlarmsActive_size - 1 By 1 Do]]></Line>
+<Line Number="59"><![CDATA[			If ((AlarmActiveArrayTag[ActiveIndex].ProgramID = PublicProgramIDTag) AND (AlarmActiveArrayTag[ActiveIndex].AlarmID = DataIndex)) Then]]></Line>
+<Line Number="60"><![CDATA[				Exit;]]></Line>
+<Line Number="61"><![CDATA[			End_If;]]></Line>
+<Line Number="62"><![CDATA[		End_For;]]></Line>
+<Line Number="63"><![CDATA[		If (ActiveIndex > AlarmsActive_size - 1) Then]]></Line>
+<Line Number="64"><![CDATA[			For ShiftIter := AlarmsActive_size - 2 to 0 By -1 Do]]></Line>
+<Line Number="65"><![CDATA[				COP(AlarmActiveArrayTag[ShiftIter], AlarmActiveArrayTag[ShiftIter + 1], 1);]]></Line>
+<Line Number="66"><![CDATA[			End_For;]]></Line>
+<Line Number="67"><![CDATA[			LocalAlarmsArrayTag[DataIndex].ProgramID := PublicProgramIDTag;]]></Line>
+<Line Number="68"><![CDATA[			LocalAlarmsArrayTag[DataIndex].AlarmID := DataIndex;]]></Line>
+<Line Number="69"><![CDATA[			COP(ControllerTimeClockTag.UTCMicroseconds, LocalAlarmsArrayTag[DataIndex].TimeStamp, 1);]]></Line>
+<Line Number="70"><![CDATA[			LocalAlarmsArrayTag[DataIndex].Duration := 0;]]></Line>
+<Line Number="71"><![CDATA[			LocalAlarmsArrayTag[DataIndex].Count := LocalAlarmsArrayTag[DataIndex].Count +1;]]></Line>
+<Line Number="72"><![CDATA[			COP(LocalAlarmsArrayTag[DataIndex], AlarmActiveArrayTag[0], 1);]]></Line>
+<Line Number="73"><![CDATA[		End_If;]]></Line>
+<Line Number="74"><![CDATA[	End_If;]]></Line>
+<Line Number="75"><![CDATA[End_For;]]></Line>
+<Line Number="76"><![CDATA[]]></Line>
+<Line Number="77"><![CDATA[if (AlarmActiveTag) then]]></Line>
+<Line Number="78"><![CDATA[	ActiveAlarmArrayIndex := 9999;]]></Line>
+<Line Number="79"><![CDATA[	ActiveAlarmDuration := 0;]]></Line>
+<Line Number="80"><![CDATA[end_if;]]></Line>
 </STContent>
 </Routine>
 </Routines>
-<Dependencies>
-<Dependency Type="DataType" Name="AlarmData"/>
-</Dependencies>
 </AddOnInstructionDefinition>`;
 }
 
@@ -3612,11 +3939,14 @@ export function exportProgramXml(sm, allSMs = [], trackingFields = [], machineCo
   const orderedNodes = orderNodes(sm.nodes ?? [], sm.edges ?? []);
   const stepMap = buildStepMap(orderedNodes, sm.devices ?? []);
 
-  const tagsXml = generateAllTags(sm, orderedNodes, stepMap, trackingFields);
+  // Merge caller-provided PT fields with this SM's auto-derived PT table
+  const effectiveTrackingFields = buildEffectiveTrackingFields(sm, stepMap, trackingFields);
+
+  const tagsXml = generateAllTags(sm, orderedNodes, stepMap, effectiveTrackingFields);
   const r00 = generateR00Main();
   const r01 = generateR01Inputs(sm);
-  const r02 = generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs, trackingFields, machineConfig);
-  const r03 = generateR03StateLogic(sm, orderedNodes, stepMap, allSMs, trackingFields);
+  const r02 = generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs, effectiveTrackingFields, machineConfig);
+  const r03 = generateR03StateLogic(sm, orderedNodes, stepMap, allSMs, effectiveTrackingFields);
   const r20 = generateR20Alarms(sm, orderedNodes, stepMap);
 
   const stationDesc = `S${String(sm.stationNumber ?? 0).padStart(2, '0')} ${sm.description ?? sm.name ?? ''}`;
@@ -3649,8 +3979,13 @@ export function exportToL5X(sm, allSMs = [], trackingFields = [], machineConfig 
   const robotDevices = (sm.devices ?? []).filter(d => d.type === 'Robot');
   const needsRangeCheck = hasServos || hasAnalogSensors;
 
+  // UDT needs the merged field list (global + derived from this SM's PT table)
+  const orderedNodes = orderNodes(sm.nodes ?? [], sm.edges ?? []);
+  const stepMap = buildStepMap(orderedNodes, sm.devices ?? []);
+  const effectiveTrackingFields = buildEffectiveTrackingFields(sm, stepMap, trackingFields);
+
   const programXml = exportProgramXml(sm, allSMs, trackingFields, machineConfig);
-  const dataTypes = generateDataTypes(hasServos, trackingFields, robotDevices);
+  const dataTypes = generateDataTypes(hasServos, effectiveTrackingFields, robotDevices);
   const aoi = generateAOI(needsRangeCheck, robotDevices.length > 0);
 
   const now = new Date().toUTCString();

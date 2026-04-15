@@ -367,12 +367,40 @@ export const DEVICE_TYPES = {
     colorBg: '#f3eaff',
     sides: 6,
     category: 'Robot',
-    operations: [],
-    tagPatterns: {},
+    // PLC side of robot integration: the robot runs sequences (programs),
+    // PLC sets/waits on user DI/DO bits. No positions in PLC — those live
+    // in the robot program as PR[] registers.
+    operations: [
+      { value: 'RunSequence', label: 'Run Sequence',   verb: 'Run',     icon: '▶' },
+      { value: 'SetOutput',   label: 'Set Signal',     verb: 'Set',     icon: '●' },
+      { value: 'WaitInput',   label: 'Wait for Signal',verb: 'Wait',    icon: '⏳' },
+    ],
+    tagPatterns: {
+      rinTag:       '{name}_RIN',
+      routTag:      '{name}_ROUT',
+      seqReqTag:    '{name}_SeqRequest',
+      seqRunTag:    '{name}_RunningSeq',
+      runSeqInst:   'RunSeq_{name}_{seqName}',
+    },
     defaultTimerPreMs: 0,
-    transitionConditions: {},
-    // Signals are user-defined per device instance (stored in device.signals[])
-    // Each signal: { id, name, direction: 'input'|'output', dataType: 'BOOL'|'DINT'|'REAL', description }
+    transitionConditions: {
+      RunSequence: {
+        type: 'robotSeqComplete',
+        labelTemplate: "'{deviceName}' '{sequenceName}' Complete",
+      },
+      SetOutput: {
+        type: 'immediate',
+        labelTemplate: "'{deviceName}' '{signalName}' Set",
+      },
+      WaitInput: {
+        type: 'robotSignalOn',
+        labelTemplate: "'{deviceName}' '{signalName}' ON",
+      },
+    },
+    // Per-instance data:
+    //   device.sequences[] = [{ id, number, name, description }]
+    //   device.signals[]   = [{ id, number, name, group: 'DI'|'DO'|'Register',
+    //                           direction: 'input'|'output', dataType, description }]
   },
 
   Conveyor: {
