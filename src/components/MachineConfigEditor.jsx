@@ -1042,6 +1042,12 @@ export function MachineConfigEditor() {
             <option value="5069-L330ER">5069-L330ER (CompactLogix)</option>
             <option value="5069-L340ER">5069-L340ER (CompactLogix)</option>
             <option value="5069-L350ER">5069-L350ER (CompactLogix)</option>
+            <option value="5069-L306ERM">5069-L306ERM (CompactLogix Motion)</option>
+            <option value="5069-L310ERM">5069-L310ERM (CompactLogix Motion)</option>
+            <option value="5069-L320ERM">5069-L320ERM (CompactLogix Motion)</option>
+            <option value="5069-L330ERM">5069-L330ERM (CompactLogix Motion)</option>
+            <option value="5069-L340ERM">5069-L340ERM (CompactLogix Motion)</option>
+            <option value="5069-L350ERM">5069-L350ERM (CompactLogix Motion)</option>
           </select>
         </div>
         <div className="machine-config__field">
