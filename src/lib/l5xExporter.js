@@ -25,6 +25,39 @@ import {
 import { DEVICE_TYPES, getSensorConfigKey } from './deviceTypes.js';
 import { resolveEntryRule } from './entryRules.js';
 import { resolveIndexSync, isIndexSyncOverridden } from './indexSync.js';
+import { derivePartTrackingTable } from './partTracking.js';
+
+/**
+ * Merge global PT fields (project.partTracking.fields) with fields derived
+ * from this SM's auto-generated PT table. Returns a deduplicated fields[]
+ * list suitable for tag/UDT generation.
+ *
+ * Each derived row becomes a synthetic BOOL field:
+ *   { id: 'pt_<name>', name, dataType: 'boolean', _derived: true }
+ */
+function buildEffectiveTrackingFields(sm, stepMap, globalFields = []) {
+  const byName = new Map();
+  for (const f of (globalFields ?? [])) {
+    if (f?.name) byName.set(f.name, f);
+  }
+  const rows = derivePartTrackingTable(sm, stepMap);
+  for (const row of rows) {
+    if (!row.enabled) continue;
+    if (byName.has(row.fieldName)) continue;
+    // Numeric data-output rows (vision R0..Rn) become REAL fields;
+    // everything else stays BOOL.
+    const dataType = row.dataType === 'real' ? 'real' : 'boolean';
+    byName.set(row.fieldName, {
+      id: `pt_${row.fieldName}`,
+      name: row.fieldName,
+      dataType,
+      unit: row.unit ?? '',
+      description: row.description ?? '',
+      _derived: true,
+    });
+  }
+  return Array.from(byName.values());
+}
 
 // ── Unified inputRef → tag resolver ─────────────────────────────────────────
 //
@@ -1484,6 +1517,23 @@ function buildVerifyConditions(node, devices, allSMs = [], trackingFields = []) 
         }
         break;
       }
+
+      case 'Robot': {
+        // RunSequence: transition when Run_Robot_Seq AOI reports .Complete
+        // WaitInput:   transition when the named DO bit matches expected value
+        // SetOutput:   immediate — latched in R03, no verify condition
+        if (action.operation === 'RunSequence') {
+          const instName = `RunSeq_${device.name}_${(action.sequenceName ?? 'Seq').replace(/[^a-zA-Z0-9_]/g, '')}`;
+          conditions += `XIC(${instName}.Complete)`;
+        } else if (action.operation === 'WaitInput') {
+          const sig = (device.signals ?? []).find(s => s.id === action.signalId)
+            ?? { name: action.signalName };
+          const tag = `${device.name}_RIN.${sig.name}`;
+          conditions += action.signalValue === 'OFF' ? `XIO(${tag})` : `XIC(${tag})`;
+        }
+        // SetOutput has no verify — the PLC drives the bit in R03
+        break;
+      }
     }
   }
 
@@ -2311,6 +2361,47 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
     }
   }
 
+  // ── Robot output rungs ────────────────────────────────────────────────
+  // RunSequence: call Run_Robot_Seq AOI while in the run state (handshake
+  //   drives ROUT.Command, verifies CMDEcho, tracks running→complete).
+  // SetOutput:   OTE/OTU the specified PLC→Robot DI bit while in state.
+  //   (R95_RobotOutputs copies ROUT → module:O1 bulk.)
+  for (const node of orderedNodes) {
+    const step = stepMap[node.id];
+    for (const action of node.data.actions ?? []) {
+      const device = devices.find(d => d.id === action.deviceId);
+      if (!device || device.type !== 'Robot') continue;
+
+      if (action.operation === 'RunSequence') {
+        const seqName = (action.sequenceName ?? 'Seq').replace(/[^a-zA-Z0-9_]/g, '');
+        const instName = `RunSeq_${device.name}_${seqName}`;
+        const rinTag = `${device.name}_RIN`;
+        const seqReqTag = `${device.name}_SeqRequest`;
+        const seqRunTag = `${device.name}_RunningSeq`;
+        const seqNum = action.sequenceNumber ?? 0;
+        rungs.push(
+          buildRung(
+            rungNum++,
+            `${device.displayName} Run Sequence #${seqNum} (${action.sequenceName ?? ''})`,
+            `XIC(Status.State[${step}])Run_Robot_Seq(${instName},${seqNum},30,${seqRunTag},${seqReqTag},${rinTag});`
+          )
+        );
+      } else if (action.operation === 'SetOutput') {
+        const sig = (device.signals ?? []).find(s => s.id === action.signalId) ?? { name: action.signalName };
+        const tag = `${device.name}_ROUT.${sig.name}`;
+        const instr = action.signalValue === 'OFF' ? 'OTU' : 'OTE';
+        rungs.push(
+          buildRung(
+            rungNum++,
+            `${device.displayName} Set ${sig.name} ${action.signalValue ?? 'ON'}`,
+            `XIC(Status.State[${step}])${instr}(${tag});`
+          )
+        );
+      }
+      // WaitInput is a transition-only condition (R02) — no R03 rung.
+    }
+  }
+
   // ── Part Tracking: Clear all fields at cycle start ─────────────────────
   // On rising edge of CycleRunning (entering first process state), OTU all PT fields
   // so stale pass/fail data from a previous part doesn't carry over.
@@ -2322,32 +2413,139 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
     );
   }
 
-  // ── Part Tracking OTE / OTU rungs ──────────────────────────────────────
-  // TrackSet  → OTE(PartTracking.FieldName) when in the set state
-  // TrackClear → OTU(PartTracking.FieldName) when in the clear state
-  for (const node of orderedNodes) {
-    const step = stepMap[node.id];
-    for (const action of node.data.actions ?? []) {
-      if (action.deviceId !== '_tracking') continue;
-      const field = trackingFields.find(f => f.id === action.trackingFieldId);
-      if (!field) continue;
-      const ptTag = `PartTracking.${field.name}`;
-      if (action.operation === 'TrackSet') {
+  // ── Part Tracking OTE / OTU rungs (table-driven) ──────────────────────
+  // Rows derived from: Cycle Complete, dual-branch decision nodes, vision
+  // inspect actions. Each enabled row emits writes based on its kind.
+  {
+    const ptRows = derivePartTrackingTable(sm, stepMap);
+    for (const row of ptRows) {
+      if (!row.enabled) continue;
+      const ptTag = `PartTracking.${row.fieldName}`;
+
+      if (row.kind === 'stationResult' || row.kind === 'stationComplete') {
+        // Single OTE when in the Cycle Complete state (rolled-up overall outcome)
+        const step = stepMap[row.setAtNodeId];
+        if (step == null) continue;
         rungs.push(
           buildRung(
             rungNum++,
-            `Part Tracking: ${field.name} Set`,
+            `Part Tracking: ${row.fieldName} (Station Result)`,
             `XIC(Status.State[${step}])OTE(${ptTag});`
           )
         );
-      } else if (action.operation === 'TrackClear') {
+        continue;
+      }
+
+      if (row.kind === 'custom') {
+        // Manual custom row: write at selected state, value determines latch/unlatch
+        const step = stepMap[row.setAtNodeId];
+        if (step == null) continue;
+        const instr = row.writeValue === 'FALSE' ? 'OTU' : 'OTE';
         rungs.push(
           buildRung(
             rungNum++,
-            `Part Tracking: ${field.name} Clear`,
-            `XIC(Status.State[${step}])OTU(${ptTag});`
+            `Part Tracking: ${row.fieldName} (Custom)`,
+            `XIC(Status.State[${step}])${instr}(${ptTag});`
           )
         );
+        continue;
+      }
+
+      if (row.kind === 'decision') {
+        // Write TRUE when in pass branch's target state, FALSE when in fail branch's target state
+        const passEdge = (sm.edges ?? []).find(e => e.source === row.setAtNodeId && e.sourceHandle === 'exit-pass');
+        const failEdge = (sm.edges ?? []).find(e => e.source === row.setAtNodeId && e.sourceHandle === 'exit-fail');
+        const passStep = passEdge ? stepMap[passEdge.target] : null;
+        const failStep = failEdge ? stepMap[failEdge.target] : null;
+        if (passStep != null) {
+          rungs.push(
+            buildRung(
+              rungNum++,
+              `Part Tracking: ${row.fieldName} Pass`,
+              `XIC(Status.State[${passStep}])OTE(${ptTag});`
+            )
+          );
+        }
+        if (failStep != null) {
+          rungs.push(
+            buildRung(
+              rungNum++,
+              `Part Tracking: ${row.fieldName} Fail`,
+              `XIC(Status.State[${failStep}])OTU(${ptTag});`
+            )
+          );
+        }
+        continue;
+      }
+
+      if (row.kind === 'visionNumeric') {
+        // Copy the vision numeric output into a REAL PT field. Runs during
+        // the state where the inspect action sits (value is stable once the
+        // job has reported a result).
+        const step = stepMap[row.setAtNodeId];
+        if (step == null) continue;
+        const src = row._sourceTag;
+        if (!src) continue;
+        rungs.push(
+          buildRung(
+            rungNum++,
+            `Part Tracking: ${row.fieldName} (Vision Numeric)`,
+            `XIC(Status.State[${step}])MOV(${src},${ptTag});`
+          )
+        );
+        continue;
+      }
+
+      if (row.kind === 'analogCheck') {
+        // Record In_Range result of the range-check AOI during the state
+        // where the probe check runs. OTE while in range, OTU when out.
+        const step = stepMap[row.setAtNodeId];
+        if (step == null) continue;
+        const device = devices.find(d => d.name === row._deviceName);
+        if (!device) continue;
+        const rcTag = `${device.name}${row._setpointName ?? ''}RC.In_Range`;
+        rungs.push(
+          buildRung(
+            rungNum++,
+            `Part Tracking: ${row.fieldName} In Range`,
+            `XIC(Status.State[${step}])XIC(${rcTag})OTE(${ptTag});`
+          )
+        );
+        rungs.push(
+          buildRung(
+            rungNum++,
+            `Part Tracking: ${row.fieldName} Out of Range`,
+            `XIC(Status.State[${step}])XIO(${rcTag})OTU(${ptTag});`
+          )
+        );
+        continue;
+      }
+
+      if (row.kind === 'vision') {
+        // Vision inspect state node: pass/fail branches connect from its exit handles
+        const passEdge = (sm.edges ?? []).find(e => e.source === row.setAtNodeId && e.sourceHandle === 'exit-pass');
+        const failEdge = (sm.edges ?? []).find(e => e.source === row.setAtNodeId && e.sourceHandle === 'exit-fail');
+        const passStep = passEdge ? stepMap[passEdge.target] : null;
+        const failStep = failEdge ? stepMap[failEdge.target] : null;
+        if (passStep != null) {
+          rungs.push(
+            buildRung(
+              rungNum++,
+              `Part Tracking: ${row.fieldName} Vision Pass`,
+              `XIC(Status.State[${passStep}])OTE(${ptTag});`
+            )
+          );
+        }
+        if (failStep != null) {
+          rungs.push(
+            buildRung(
+              rungNum++,
+              `Part Tracking: ${row.fieldName} Vision Fail`,
+              `XIC(Status.State[${failStep}])OTU(${ptTag});`
+            )
+          );
+        }
+        continue;
       }
     }
   }
@@ -2917,23 +3115,19 @@ export function generateDataTypes(hasServos = false, trackingFields = [], robotD
 
   let partTrackingUDT = '';
   if (trackingFields.length > 0) {
-    const members = trackingFields.map(f =>
-      `<Member Name="${escapeXml(f.name)}" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
-<Description>
-${cdata(f.description || `Part Tracking: ${f.name}`)}
-</Description>
-</Member>`
-    );
-    // PartTracking UDT requires a hidden backing SINT for BOOL bit-packing
+    // Split fields: BOOLs get bit-packed into hidden SINTs; REALs emitted as
+    // full members so numeric vision / probe outputs can be read downstream.
+    const boolFields = trackingFields.filter(f => (f.dataType ?? 'boolean') === 'boolean');
+    const realFields = trackingFields.filter(f => f.dataType === 'real');
+
     const hiddenMembers = [];
-    const boolCount = trackingFields.length;
-    const sintCount = Math.ceil(boolCount / 8);
+    const sintCount = Math.ceil(boolFields.length / 8);
     for (let si = 0; si < sintCount; si++) {
       hiddenMembers.push(
         `<Member Name="ZZZZZZZZZZPartTrack${si}" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>`
       );
     }
-    const boolMembers = trackingFields.map((f, i) => {
+    const boolMembers = boolFields.map((f, i) => {
       const sintIdx = Math.floor(i / 8);
       const bitNum = i % 8;
       return `<Member Name="${escapeXml(f.name)}" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZPartTrack${sintIdx}" BitNumber="${bitNum}" ExternalAccess="Read/Write">
@@ -2942,11 +3136,20 @@ ${cdata(f.description || `Part Tracking: ${f.name}`)}
 </Description>
 </Member>`;
     });
+    const realMembers = realFields.map(f => {
+      const unitSuffix = f.unit ? ` (${f.unit})` : '';
+      return `<Member Name="${escapeXml(f.name)}" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+${cdata((f.description || `Part Tracking: ${f.name}`) + unitSuffix)}
+</Description>
+</Member>`;
+    });
     partTrackingUDT = `
 <DataType Name="PartTracking_UDT" Family="NoFamily" Class="User">
 <Members>
 ${hiddenMembers.join('\n')}
 ${boolMembers.join('\n')}
+${realMembers.join('\n')}
 </Members>
 </DataType>`;
   }
@@ -3736,11 +3939,14 @@ export function exportProgramXml(sm, allSMs = [], trackingFields = [], machineCo
   const orderedNodes = orderNodes(sm.nodes ?? [], sm.edges ?? []);
   const stepMap = buildStepMap(orderedNodes, sm.devices ?? []);
 
-  const tagsXml = generateAllTags(sm, orderedNodes, stepMap, trackingFields);
+  // Merge caller-provided PT fields with this SM's auto-derived PT table
+  const effectiveTrackingFields = buildEffectiveTrackingFields(sm, stepMap, trackingFields);
+
+  const tagsXml = generateAllTags(sm, orderedNodes, stepMap, effectiveTrackingFields);
   const r00 = generateR00Main();
   const r01 = generateR01Inputs(sm);
-  const r02 = generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs, trackingFields, machineConfig);
-  const r03 = generateR03StateLogic(sm, orderedNodes, stepMap, allSMs, trackingFields);
+  const r02 = generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs, effectiveTrackingFields, machineConfig);
+  const r03 = generateR03StateLogic(sm, orderedNodes, stepMap, allSMs, effectiveTrackingFields);
   const r20 = generateR20Alarms(sm, orderedNodes, stepMap);
 
   const stationDesc = `S${String(sm.stationNumber ?? 0).padStart(2, '0')} ${sm.description ?? sm.name ?? ''}`;
@@ -3773,8 +3979,13 @@ export function exportToL5X(sm, allSMs = [], trackingFields = [], machineConfig 
   const robotDevices = (sm.devices ?? []).filter(d => d.type === 'Robot');
   const needsRangeCheck = hasServos || hasAnalogSensors;
 
+  // UDT needs the merged field list (global + derived from this SM's PT table)
+  const orderedNodes = orderNodes(sm.nodes ?? [], sm.edges ?? []);
+  const stepMap = buildStepMap(orderedNodes, sm.devices ?? []);
+  const effectiveTrackingFields = buildEffectiveTrackingFields(sm, stepMap, trackingFields);
+
   const programXml = exportProgramXml(sm, allSMs, trackingFields, machineConfig);
-  const dataTypes = generateDataTypes(hasServos, trackingFields, robotDevices);
+  const dataTypes = generateDataTypes(hasServos, effectiveTrackingFields, robotDevices);
   const aoi = generateAOI(needsRangeCheck, robotDevices.length > 0);
 
   const now = new Date().toUTCString();

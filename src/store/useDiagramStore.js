@@ -320,10 +320,27 @@ export const useDiagramStore = create(
         if (!project.standardsProfile) project.standardsProfile = { ...defaultStandardsProfile };
         if (!project.machineConfig) project.machineConfig = { ...defaultMachineConfig };
         // Migration: remove legacy _autoVision Parameter devices (replaced by Part Tracking)
+        // Migration: remove inline TrackSet/TrackClear actions (PT is now table-driven per SM)
         for (const sm of (project.stateMachines ?? [])) {
           if (sm.devices) {
             sm.devices = sm.devices.filter(d => !d._autoVision);
           }
+          // Strip legacy inline PT actions from state nodes
+          if (Array.isArray(sm.nodes)) {
+            sm.nodes = sm.nodes.map(n => {
+              const actions = n.data?.actions;
+              if (!Array.isArray(actions) || actions.length === 0) return n;
+              const filtered = actions.filter(a => {
+                if (a?.deviceId !== '_tracking') return true;
+                return a?.operation !== 'TrackSet' && a?.operation !== 'TrackClear';
+              });
+              return filtered.length === actions.length
+                ? n
+                : { ...n, data: { ...n.data, actions: filtered } };
+            });
+          }
+          // Ensure partTrackingOverrides exists for table-driven PT
+          if (!sm.partTrackingOverrides) sm.partTrackingOverrides = {};
           // Keep smOutputs on SM for backward compat rendering but also ensure it exists
           if (!sm.smOutputs) sm.smOutputs = [];
           // Migration: convert old latch-pattern (triggerNodeId/clearNodeId/autoClear) to new OTE model (activeNodeId)
@@ -1801,17 +1818,23 @@ export const useDiagramStore = create(
         const passEdgeId = uid();
         const failEdgeId = uid();
 
+        // Part tracking is now table-driven (per SM). No PT actions are
+        // inserted into branch nodes — the PT table derives writes from
+        // the decision node itself. Keeps the diagram clean.
+        const passActions = [];
+        const failActions = [];
+
         const passNode = {
           id: passId,
           type: 'stateNode',
           position: { x: decisionNode.position.x - 280, y: decisionNode.position.y + 220 },
-          data: { label: exit1Label, actions: [], isInitial: false, stepNumber: sm.nodes.length },
+          data: { label: exit1Label, actions: passActions, isInitial: false, stepNumber: sm.nodes.length },
         };
         const failNode = {
           id: failId,
           type: 'stateNode',
           position: { x: decisionNode.position.x + 280, y: decisionNode.position.y + 220 },
-          data: { label: exit2Label, actions: [], isInitial: false, stepNumber: sm.nodes.length + 1 },
+          data: { label: exit2Label, actions: failActions, isInitial: false, stepNumber: sm.nodes.length + 1 },
         };
 
         const passEdge = {
@@ -1997,25 +2020,30 @@ export const useDiagramStore = create(
         const passEdgeId = uid();
         const failEdgeId = uid();
 
-        // Pass branch node (left) — blank node (PT updated inside vision node)
+        // Part tracking is now table-driven. Branch nodes stay clean.
+        // The SM's PT table derives pass/fail writes from the vision node.
+        const passActions = [];
+        const failActions = [];
+
+        // Pass branch node (left)
         const passNode = {
           id: passId,
           type: 'stateNode',
           position: { x: visionNode.position.x - 280, y: visionNode.position.y + 220 },
           data: {
             label: passLabel,
-            actions: [],
+            actions: passActions,
             isInitial: false,
           },
         };
-        // Fail branch node (right) — blank node (PT updated inside vision node)
+        // Fail branch node (right)
         const failNode = {
           id: failId,
           type: 'stateNode',
           position: { x: visionNode.position.x + 280, y: visionNode.position.y + 220 },
           data: {
             label: failLabel,
-            actions: [],
+            actions: failActions,
             isInitial: false,
           },
         };
@@ -2403,6 +2431,118 @@ export const useDiagramStore = create(
             },
           };
         });
+      },
+
+      /**
+       * Toggle whether a derived PT row is emitted in the L5X for this SM.
+       * Stored as sm.partTrackingOverrides[fieldName] = { enabled: false }.
+       * Absent override = enabled (default).
+       */
+      togglePartTrackingRow(smId, fieldName, enabled) {
+        get()._pushHistory();
+        set(s => ({
+          project: _updateProject(s, sms => sms.map(sm => {
+            if (sm.id !== smId) return sm;
+            const overrides = { ...(sm.partTrackingOverrides ?? {}) };
+            // For custom rows, toggle inside the customRows array instead
+            const customRows = overrides.customRows ?? [];
+            const customIdx = customRows.findIndex(r => r.fieldName === fieldName);
+            if (customIdx >= 0) {
+              const updated = [...customRows];
+              updated[customIdx] = { ...updated[customIdx], enabled };
+              overrides.customRows = updated;
+            } else if (enabled) {
+              delete overrides[fieldName];
+            } else {
+              overrides[fieldName] = { ...(overrides[fieldName] ?? {}), enabled: false };
+            }
+            return { ...sm, partTrackingOverrides: overrides };
+          })),
+        }));
+      },
+
+      /** Add a custom (manual) PT row to this SM. */
+      addPartTrackingCustomRow(smId, row) {
+        get()._pushHistory();
+        const newRow = {
+          id: uid(),
+          fieldName: 'NewField',
+          setAtNodeId: null,
+          writeValue: 'TRUE',
+          enabled: true,
+          ...row,
+        };
+        set(s => ({
+          project: _updateProject(s, sms => sms.map(sm => {
+            if (sm.id !== smId) return sm;
+            const overrides = { ...(sm.partTrackingOverrides ?? {}) };
+            overrides.customRows = [...(overrides.customRows ?? []), newRow];
+            return { ...sm, partTrackingOverrides: overrides };
+          })),
+        }));
+        return newRow.id;
+      },
+
+      /** Update a custom PT row by its ID. */
+      updatePartTrackingCustomRow(smId, rowId, updates) {
+        get()._pushHistory();
+        set(s => ({
+          project: _updateProject(s, sms => sms.map(sm => {
+            if (sm.id !== smId) return sm;
+            const overrides = { ...(sm.partTrackingOverrides ?? {}) };
+            const rows = overrides.customRows ?? [];
+            overrides.customRows = rows.map(r => r.id === rowId ? { ...r, ...updates } : r);
+            return { ...sm, partTrackingOverrides: overrides };
+          })),
+        }));
+      },
+
+      /** Remove a custom PT row by its ID. */
+      deletePartTrackingCustomRow(smId, rowId) {
+        get()._pushHistory();
+        set(s => ({
+          project: _updateProject(s, sms => sms.map(sm => {
+            if (sm.id !== smId) return sm;
+            const overrides = { ...(sm.partTrackingOverrides ?? {}) };
+            overrides.customRows = (overrides.customRows ?? []).filter(r => r.id !== rowId);
+            return { ...sm, partTrackingOverrides: overrides };
+          })),
+        }));
+      },
+
+      /**
+       * Sweep legacy inline TrackSet/TrackClear actions from all SM nodes.
+       * PT is now table-driven, so these actions are no longer authored inline.
+       * Called once after loading a project to clean up old data.
+       */
+      stripLegacyPartTrackingActions() {
+        let stripped = 0;
+        set(s => ({
+          project: _updateProject(s, sms => sms.map(sm => {
+            if (!Array.isArray(sm.nodes)) return sm;
+            let smMutated = false;
+            const nodes = sm.nodes.map(n => {
+              const actions = n.data?.actions;
+              if (!Array.isArray(actions) || actions.length === 0) return n;
+              const filtered = actions.filter(a => {
+                if (a?.deviceId !== '_tracking') return true;
+                if (a?.operation === 'TrackSet' || a?.operation === 'TrackClear') {
+                  stripped++;
+                  smMutated = true;
+                  return false;
+                }
+                return true;
+              });
+              if (!smMutated || filtered.length === actions.length) return n;
+              return { ...n, data: { ...n.data, actions: filtered } };
+            });
+            return smMutated ? { ...sm, nodes } : sm;
+          })),
+        }));
+        if (stripped > 0) {
+          console.log(`[Part Tracking] Migration: removed ${stripped} inline TrackSet/TrackClear action(s). PT is now table-driven.`);
+        }
+        return stripped;
       },
 
       // ── Signal actions (unified: replaces referencePositions + smOutputs) ──

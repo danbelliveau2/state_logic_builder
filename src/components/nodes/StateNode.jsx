@@ -18,6 +18,7 @@ import { OUTCOME_COLORS } from '../../lib/outcomeColors.js';
 import { buildAvailableInputs } from '../../lib/availableInputs.js';
 import { ENTRY_RULES, getEntryRuleMeta, resolveEntryRule, isEntryRuleOverridden } from '../../lib/entryRules.js';
 import { START_CONDITIONS, getStartConditionMeta, resolveIndexSync, isIndexSyncOverridden } from '../../lib/indexSync.js';
+import { PartTrackingPill } from '../PartTrackingPanel.jsx';
 
 // Tiny local ID generator (mirrors store uid — not exported from store)
 let _localId = Date.now();
@@ -191,10 +192,40 @@ function buildActionVerifyText(action, device) {
       if (tag) parts.push(`${tag}=${action.operation === 'WaitOff' ? 'OFF' : 'ON'}`);
       break;
     }
+    case 'Robot': {
+      if (action.operation === 'RunSequence') {
+        const n = action.sequenceNumber ?? '?';
+        parts.push(`Seq #${n} → wait PrgDone`);
+      } else if (action.operation === 'SetOutput') {
+        const n = action.signalNumber != null ? `DI[${action.signalNumber}]` : '';
+        parts.push(`${n} ${action.signalName ?? ''} = ${action.signalValue ?? 'ON'}`.trim());
+      } else if (action.operation === 'WaitInput') {
+        const n = action.signalNumber != null ? `DO[${action.signalNumber}]` : '';
+        parts.push(`${n} ${action.signalName ?? ''} = ${action.signalValue ?? 'ON'}`.trim());
+      }
+      break;
+    }
     case 'AnalogSensor': {
       const spName = action.setpointName ?? '';
       if (spName) {
-        parts.push(`${device.name}${spName}RC.In_Range`);
+        const sp = device.setpoints?.find(s => s.name === spName);
+        if (sp) {
+          const nominal = sp.nominal ?? sp.defaultValue;
+          const tol = sp.tolerance;
+          const low = sp.lowLimit;
+          const high = sp.highLimit;
+          if (nominal !== undefined && tol !== undefined) {
+            parts.push(`${spName}: ${Number(nominal).toFixed(2)} ± ${Number(tol).toFixed(2)}`);
+          } else if (low !== undefined && high !== undefined) {
+            parts.push(`${spName}: ${Number(low).toFixed(2)} – ${Number(high).toFixed(2)}`);
+          } else if (nominal !== undefined) {
+            parts.push(`${spName}: ${Number(nominal).toFixed(2)}`);
+          } else {
+            parts.push(spName);
+          }
+        } else {
+          parts.push(spName);
+        }
       }
       break;
     }
@@ -498,11 +529,27 @@ function ActionRow({ action, devices, onClickName, onClickOp, smId, nodeId }) {
   } else if (action.operation === 'VisionInspect') {
     const mode = action.continuous ? 'Search' : 'Snap';
     opLabel = `${action.jobName ?? '?'} [${mode}]`;
-  } else if (action.operation === 'VerifyValue') {
-    const spName = action.setpointName ?? '?';
-    const sp = device.setpoints?.find(s => s.name === action.setpointName);
-    const val = sp?.defaultValue;
-    opLabel = val !== undefined ? `${spName} ${Number(val).toFixed(1)}` : spName;
+  } else if (device?.type === 'Robot') {
+    if (action.operation === 'RunSequence') {
+      opLabel = action.sequenceName
+        ? `▶ ${action.sequenceName}`
+        : `▶ Seq#${action.sequenceNumber ?? '?'}`;
+    } else if (action.operation === 'SetOutput') {
+      opLabel = `Set ${action.signalValue ?? 'ON'}`;
+    } else if (action.operation === 'WaitInput') {
+      opLabel = `Wait ${action.signalValue ?? 'ON'}`;
+    } else {
+      opLabel = action.operation;
+    }
+  } else if (device?.type === 'AnalogSensor') {
+    // AnalogSensor: badge shows the operation ("Check Range" / "Read Value");
+    // the setpoint being tested is rendered in the verify line below.
+    if (action.operation === 'ReadValue') {
+      opLabel = 'Read Value';
+    } else {
+      // CheckRange (and legacy 'VerifyValue')
+      opLabel = 'Check Range';
+    }
   } else if (device.type === 'CheckResults') {
     const outs = device.outcomes ?? [];
     if (device._autoVerify && outs.length === 1 && outs[0].label) {
@@ -799,6 +846,7 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
 
   // Part Tracking state
   const [selectedTrackingFieldId, setSelectedTrackingFieldId] = useState(null);
+  const [ptExpanded, setPtExpanded] = useState(false);
   const trackingFields = store.project?.partTracking?.fields ?? [];
 
   // Servo config state
@@ -849,10 +897,22 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
       return;
     }
 
-    // AnalogSensor: go straight to setpoint picker (skip the single "VerifyValue" op step)
+    // Robot: show operation picker first (Run Sequence / Set Signal / Wait Signal)
+    if (dev?.type === 'Robot') {
+      setStep('operation');
+      return;
+    }
+
+    // AnalogSensor: show operation picker first (Check In Range / Read Value),
+    // then pick setpoint. A single setpoint + single op auto-completes.
     if (dev?.type === 'AnalogSensor') {
-      setSelectedOp('VerifyValue');
-      setStep('setpoint');
+      const analogOps = DEVICE_TYPES.AnalogSensor.operations ?? [];
+      if (analogOps.length === 1) {
+        setSelectedOp(analogOps[0].value);
+        setStep('setpoint');
+      } else {
+        setStep('operation');
+      }
       return;
     }
 
@@ -871,6 +931,41 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
 
   function selectOp(opValue) {
     const dev = devices.find(d => d.id === selectedDeviceId);
+    // Robot: route to the right sub-picker (sequence, set-signal, wait-signal)
+    if (dev?.type === 'Robot') {
+      setSelectedOp(opValue);
+      if (opValue === 'RunSequence') {
+        const seqs = dev.sequences ?? [];
+        // Always show the picker if defaults will be used (legacy devices) so the
+        // user can see what they're choosing. Only auto-commit when a real user-
+        // defined single sequence exists.
+        if (seqs.length === 1) {
+          const actionData = { deviceId: selectedDeviceId, operation: 'RunSequence',
+            sequenceNumber: seqs[0].number, sequenceName: seqs[0].name };
+          store.addAction(smId, nodeId, actionData); onClose();
+        } else {
+          setStep('robotSequence');
+        }
+      } else if (opValue === 'SetOutput') {
+        setStep('robotSetOutput');
+      } else if (opValue === 'WaitInput') {
+        setStep('robotWaitInput');
+      }
+      return;
+    }
+    // AnalogSensor: both ops (CheckRange / ReadValue) require a setpoint pick next
+    if (dev?.type === 'AnalogSensor') {
+      setSelectedOp(opValue);
+      const setpoints = dev.setpoints ?? [];
+      if (setpoints.length === 1) {
+        const actionData = { deviceId: selectedDeviceId, operation: opValue, setpointName: setpoints[0].name };
+        store.addAction(smId, nodeId, actionData);
+        onClose();
+      } else {
+        setStep('setpoint');
+      }
+      return;
+    }
     if (dev?.type === 'ServoAxis') {
       setSelectedOp(opValue);
       if (opValue === 'ServoMove') {
@@ -1433,6 +1528,34 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
             </>
           )}
 
+          {/* Part Tracking — collapsible, only show if tracking fields exist */}
+          {trackingFields.length > 0 && (
+            <>
+              <div className="inline-picker__divider" />
+              <button
+                className="inline-picker__item"
+                style={{ borderLeft: '3px solid #6366f1', fontWeight: 600, color: '#6366f1', fontSize: 11 }}
+                onClick={() => setPtExpanded(prev => !prev)}
+              >
+                <span style={{ fontSize: 14 }}>📋</span>
+                <span style={{ flex: 1, textAlign: 'left' }}>Part Tracking</span>
+                <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 'auto' }}>{ptExpanded ? '▲' : '▼'}</span>
+              </button>
+              {ptExpanded && trackingFields.map(f => (
+                <button key={f.id} className="inline-picker__item" onClick={() => {
+                  setSelectedTrackingFieldId(f.id);
+                  setStep('tracking-op');
+                }}
+                  style={{ paddingLeft: 24, borderLeft: '3px solid #6366f1' }}
+                >
+                  <span style={{ fontSize: 12 }}>📋</span>
+                  <span>{f.name}</span>
+                  <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 'auto' }}>{f.type === 'real' ? 'REAL' : 'BOOL'}</span>
+                </button>
+              ))}
+            </>
+          )}
+
           {/* Advanced section - Parameters */}
           {devices.filter(d => d.type === 'Parameter' && !d._autoVerify && !d._autoVision && !d.crossSmId).length > 0 && (
             <>
@@ -1920,24 +2043,202 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
       {/* ── Analog sensor setpoint step ───────────────────────────────────── */}
       {step === 'setpoint' && selectedDevice && (
         <>
-          <div className="inline-picker__title">{selectedDevice.displayName}</div>
+          <div className="inline-picker__title">
+            {selectedDevice.displayName}
+            {selectedOp && (
+              <span style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', marginLeft: 6 }}>
+                · {selectedOp === 'ReadValue' ? 'Read Value' : 'Check Range'}
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 10, color: '#9ca3af', padding: '0 8px 4px' }}>
+            Pick the setpoint to test
+          </div>
           {analogSetpoints.length === 0 && (
             <div className="inline-picker__empty">
               No setpoints defined — edit this sensor in the Subject Library to add them.
             </div>
           )}
-          {analogSetpoints.map(sp => (
-            <button key={sp.name} className="inline-picker__item inline-picker__item--position"
-              onClick={() => selectSetpoint(sp.name)}>
-              <span className="inline-picker__pos-name">{sp.name}</span>
-              <span className="inline-picker__pos-value">{Number(sp.defaultValue ?? 0).toFixed(1)}</span>
-            </button>
-          ))}
-          <button className="inline-picker__back" onClick={() => { setStep('device'); setSelectedDeviceId(null); }}>
+          {analogSetpoints.map(sp => {
+            const nominal = sp.nominal ?? sp.defaultValue;
+            const tol = sp.tolerance;
+            let rangeLabel;
+            if (nominal !== undefined && tol !== undefined) {
+              rangeLabel = `${Number(nominal).toFixed(2)} ± ${Number(tol).toFixed(2)}`;
+            } else if (sp.lowLimit !== undefined && sp.highLimit !== undefined) {
+              rangeLabel = `${Number(sp.lowLimit).toFixed(2)} – ${Number(sp.highLimit).toFixed(2)}`;
+            } else {
+              rangeLabel = Number(nominal ?? 0).toFixed(1);
+            }
+            return (
+              <button key={sp.name} className="inline-picker__item inline-picker__item--position"
+                onClick={() => selectSetpoint(sp.name)}>
+                <span className="inline-picker__pos-name">{sp.name}</span>
+                <span className="inline-picker__pos-value">{rangeLabel}</span>
+              </button>
+            );
+          })}
+          <button className="inline-picker__back" onClick={() => {
+            // Back to operation picker if this is the analog sensor flow (both ops available)
+            const analogOps = DEVICE_TYPES.AnalogSensor?.operations ?? [];
+            if (selectedDevice?.type === 'AnalogSensor' && analogOps.length > 1) {
+              setStep('operation');
+              setSelectedOp(null);
+            } else {
+              setStep('device');
+              setSelectedDeviceId(null);
+              setSelectedOp(null);
+            }
+          }}>
             ← Back
           </button>
         </>
       )}
+
+      {/* ── Robot: sequence picker ───────────────────────────────────────── */}
+      {step === 'robotSequence' && selectedDevice && (() => {
+        // Fallback defaults for legacy robot devices created before sequences existed.
+        // The user can customize these in the Subject Library.
+        const DEFAULT_SEQS = [
+          { id: 'seq_default_1', number: 1, name: 'Home',  description: 'Move to home / perch position' },
+          { id: 'seq_default_2', number: 2, name: 'Pick',  description: 'Pick part from nest' },
+          { id: 'seq_default_3', number: 3, name: 'Place', description: 'Place part at target' },
+        ];
+        const persistedSeqs = selectedDevice.sequences ?? [];
+        const usingDefaults = persistedSeqs.length === 0;
+        const seqs = usingDefaults ? DEFAULT_SEQS : persistedSeqs;
+        return (
+          <>
+            <div className="inline-picker__title">
+              {selectedDevice.displayName}
+              <span style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', marginLeft: 6 }}>· Run Sequence</span>
+            </div>
+            <div style={{ fontSize: 10, color: '#9ca3af', padding: '0 8px 4px' }}>
+              {usingDefaults
+                ? 'Default programs (edit the robot in Subject Library to customize)'
+                : 'Pick a program to run'}
+            </div>
+            {seqs.map(seq => (
+              <button key={seq.id ?? seq.number} className="inline-picker__item inline-picker__item--position"
+                onClick={() => {
+                  const actionData = { deviceId: selectedDeviceId, operation: 'RunSequence',
+                    sequenceNumber: seq.number, sequenceName: seq.name };
+                  if (editActionId) store.updateAction(smId, nodeId, editActionId, actionData);
+                  else store.addAction(smId, nodeId, actionData);
+                  onClose();
+                }}>
+                <span className="inline-picker__pos-name">{seq.name}</span>
+                <span className="inline-picker__pos-value">#{seq.number}</span>
+              </button>
+            ))}
+            <button className="inline-picker__back" onClick={() => { setStep('operation'); setSelectedOp(null); }}>
+              ← Back
+            </button>
+          </>
+        );
+      })()}
+
+      {/* ── Robot: set-output (PLC→Robot DI) picker ──────────────────────── */}
+      {step === 'robotSetOutput' && selectedDevice && (() => {
+        // Fallback: legacy robot devices without a signals list still get the baseline DI.
+        const DEFAULT_DI = [
+          { id: 'di_default_ok_enter_dial', number: 1, name: 'OkToEnterDial', group: 'DI', direction: 'output', dataType: 'BOOL' },
+        ];
+        const persisted = (selectedDevice.signals ?? []).filter(s => s.direction === 'output' && s.group === 'DI');
+        const usingDefaults = persisted.length === 0;
+        const outs = usingDefaults ? DEFAULT_DI : persisted;
+        return (
+          <>
+            <div className="inline-picker__title">
+              {selectedDevice.displayName}
+              <span style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', marginLeft: 6 }}>· Set Signal</span>
+            </div>
+            <div style={{ fontSize: 10, color: '#9ca3af', padding: '0 8px 4px' }}>
+              {usingDefaults
+                ? 'Default PLC→Robot signals (edit robot in Subject Library to customize)'
+                : 'Pick a PLC→Robot signal to set'}
+            </div>
+            {outs.map(sig => (
+              <div key={sig.id ?? sig.number} className="robot-sig-row">
+                <div className="robot-sig-row__label">
+                  <span className="robot-sig-row__name" title={sig.name}>{sig.name}</span>
+                  <span className="robot-sig-row__addr">DI[{sig.number}]</span>
+                </div>
+                <button className="robot-sig-row__btn robot-sig-row__btn--on"
+                  onClick={() => {
+                    const actionData = { deviceId: selectedDeviceId, operation: 'SetOutput',
+                      signalId: sig.id, signalName: sig.name, signalNumber: sig.number, signalValue: 'ON' };
+                    if (editActionId) store.updateAction(smId, nodeId, editActionId, actionData);
+                    else store.addAction(smId, nodeId, actionData);
+                    onClose();
+                  }}>ON</button>
+                <button className="robot-sig-row__btn robot-sig-row__btn--off"
+                  onClick={() => {
+                    const actionData = { deviceId: selectedDeviceId, operation: 'SetOutput',
+                      signalId: sig.id, signalName: sig.name, signalNumber: sig.number, signalValue: 'OFF' };
+                    if (editActionId) store.updateAction(smId, nodeId, editActionId, actionData);
+                    else store.addAction(smId, nodeId, actionData);
+                    onClose();
+                  }}>OFF</button>
+              </div>
+            ))}
+            <button className="inline-picker__back" onClick={() => { setStep('operation'); setSelectedOp(null); }}>
+              ← Back
+            </button>
+          </>
+        );
+      })()}
+
+      {/* ── Robot: wait-input (Robot→PLC DO) picker ──────────────────────── */}
+      {step === 'robotWaitInput' && selectedDevice && (() => {
+        // Fallback: legacy robot devices without a signals list still get the baseline DO.
+        const DEFAULT_DO = [
+          { id: 'do_default_part_grip', number: 1, name: 'PartGrip', group: 'DO', direction: 'input', dataType: 'BOOL' },
+        ];
+        const persisted = (selectedDevice.signals ?? []).filter(s => s.direction === 'input' && s.group === 'DO');
+        const usingDefaults = persisted.length === 0;
+        const ins = usingDefaults ? DEFAULT_DO : persisted;
+        return (
+          <>
+            <div className="inline-picker__title">
+              {selectedDevice.displayName}
+              <span style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', marginLeft: 6 }}>· Wait for Signal</span>
+            </div>
+            <div style={{ fontSize: 10, color: '#9ca3af', padding: '0 8px 4px' }}>
+              {usingDefaults
+                ? 'Default Robot→PLC signals (edit robot in Subject Library to customize)'
+                : 'Pick a Robot→PLC signal to wait on'}
+            </div>
+            {ins.map(sig => (
+              <div key={sig.id ?? sig.number} className="robot-sig-row">
+                <div className="robot-sig-row__label">
+                  <span className="robot-sig-row__name" title={sig.name}>{sig.name}</span>
+                  <span className="robot-sig-row__addr">DO[{sig.number}]</span>
+                </div>
+                <button className="robot-sig-row__btn robot-sig-row__btn--on"
+                  onClick={() => {
+                    const actionData = { deviceId: selectedDeviceId, operation: 'WaitInput',
+                      signalId: sig.id, signalName: sig.name, signalNumber: sig.number, signalValue: 'ON' };
+                    if (editActionId) store.updateAction(smId, nodeId, editActionId, actionData);
+                    else store.addAction(smId, nodeId, actionData);
+                    onClose();
+                  }}>ON</button>
+                <button className="robot-sig-row__btn robot-sig-row__btn--off"
+                  onClick={() => {
+                    const actionData = { deviceId: selectedDeviceId, operation: 'WaitInput',
+                      signalId: sig.id, signalName: sig.name, signalNumber: sig.number, signalValue: 'OFF' };
+                    if (editActionId) store.updateAction(smId, nodeId, editActionId, actionData);
+                    else store.addAction(smId, nodeId, actionData);
+                    onClose();
+                  }}>OFF</button>
+              </div>
+            ))}
+            <button className="inline-picker__back" onClick={() => { setStep('operation'); setSelectedOp(null); }}>
+              ← Back
+            </button>
+          </>
+        );
+      })()}
 
       {/* ── Vision: job picker step ────────────────────────────────────────── */}
       {step === 'visionJob' && selectedDevice && (
@@ -2457,7 +2758,7 @@ function HomeConfigPills({ smId, nodeId, sm, machineConfig }) {
     <div
       style={{
         position: 'absolute',
-        top: isIndexing ? -120 : -100,
+        top: isIndexing ? -160 : -140,
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 9,
@@ -2538,6 +2839,11 @@ function HomeConfigPills({ smId, nodeId, sm, machineConfig }) {
               : 'Whether this station runs based on part-tracking status.'}
             onPick={(v) => store.updateNodeData(smId, nodeId, { entryRule: v })}
           />
+        </div>
+
+        {/* Part Tracking table pill — opens a portaled editable table */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', marginTop: 2 }}>
+          <PartTrackingPill sm={sm} />
         </div>
       </div>
     </div>

@@ -264,17 +264,42 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     setSensorRef(inp.ref);
     setSensorTag(inp.tag);
     setSensorInputType(inp.inputType ?? 'bool');
+    let e1, e2;
     if (inp.inputType === 'range') {
       setConditionType('range');
-      setExit1Label(`InRange_${shortName}`);
-      setExit2Label(`OutOfRange_${shortName}`);
+      e1 = `InRange_${shortName}`;
+      e2 = `OutOfRange_${shortName}`;
     } else {
       setConditionType('on');
-      setExit1Label(`On_${shortName}`);
-      setExit2Label(`Off_${shortName}`);
+      e1 = `On_${shortName}`;
+      e2 = `Off_${shortName}`;
     }
+    setExit1Label(e1);
+    setExit2Label(e2);
     setConditions([newCond]);
-    setShowBranchConfig(true);
+
+    // ── Auto-commit: sensors always branch, skip the config step ──────
+    // Save node data and create branches immediately — no extra "Done" click.
+    const autoData = {
+      signalId: `sensor_${inp.ref}`,
+      signalName: shortName,
+      signalSource: inp.group,
+      signalSmName: null,
+      signalType: 'sensor',
+      decisionType: 'signal',
+      exitCount: 2,
+      exit1Label: e1,
+      exit2Label: e2,
+      nodeMode: 'decide',
+      conditionType: inp.inputType === 'range' ? 'range' : 'on',
+      sensorRef: inp.ref,
+      sensorTag: inp.tag,
+      sensorInputType: inp.inputType ?? 'bool',
+      conditions: [newCond],
+    };
+    store.updateNodeData(smId, nodeId, autoData);
+    store.addDecisionBranches(smId, nodeId, e1, e2);
+    onClose();
   }
 
   // Derive primary display fields from the first condition so the node label
