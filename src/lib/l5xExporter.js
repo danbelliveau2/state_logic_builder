@@ -341,9 +341,8 @@ ${cdata(`[0,${preMs},0]`)}
 }
 
 export function buildBoolTagXml(name, description, usage, externalAccess = 'Read/Write') {
-  const usageAttr = usage ? ` Usage="${usage}"` : '';
   return `
-<Tag Name="${name}" TagType="Base" DataType="BOOL" Radix="Decimal"${usageAttr} Constant="false" ExternalAccess="${externalAccess}" OpcUaAccess="None">
+<Tag Name="${name}" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="${externalAccess}" OpcUaAccess="None">
 <Description>
 ${cdata(description)}
 </Description>
