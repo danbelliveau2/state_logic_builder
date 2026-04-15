@@ -5,9 +5,8 @@
  * Conditions pills). Collapsed = pill button matching Start Conditions style.
  * Expanded = portaled floating card with the full table.
  *
- * Rows are auto-derived from:
+ * Rows are auto-derived from SUBJECTS (devices), not decision nodes:
  *   - Cycle Complete (overall StationResult)
- *   - Dual-branch decision nodes (pass/fail per device)
  *   - Vision Inspect actions (BOOL result + one REAL row per numeric data output)
  *   - Analog sensor Check Range actions (BOOL per setpoint)
  * and may be appended with user-added custom rows. Rows sort by state number.
@@ -246,7 +245,7 @@ function PtTableOverlay({ sm, rows, anchor, onClose }) {
           + Add custom row
         </button>
         <span style={{ fontSize: 10, color: '#94a3b8', flex: 1 }}>
-          Auto rows come from vision results, probe range checks, decisions, data outputs, and Cycle Complete. Uncheck to skip.
+          Auto rows come from vision results, vision data outputs, probe range checks, and Cycle Complete. Uncheck to skip.
         </span>
       </div>
     </div>

@@ -559,13 +559,23 @@ export function AddDeviceModal() {
     }
   }, [hasEngSensor, hasDisSensor, isGripper]);
 
-  // Auto-generate PLC name from display name
+  // Auto-generate PLC name from display name.
+  // Keeps the PLC Tag Stem in sync with the Subject Name (including during
+  // edits) UNLESS the user has manually overridden the stem — in which case
+  // we preserve their custom value. A stem is considered "manual" when it
+  // differs from what a clean auto-derive from displayName would produce.
+  const [nameManuallyEdited, setNameManuallyEdited] = useState(() => {
+    if (!existingDevice) return false;
+    const derived = (existingDevice.displayName ?? '').replace(/[^a-zA-Z0-9]/g, '');
+    return (existingDevice.name ?? '') !== derived;
+  });
+
   useEffect(() => {
-    if (!isEdit || !existingDevice) {
+    if (!nameManuallyEdited) {
       const generated = displayName.replace(/[^a-zA-Z0-9]/g, '');
       setName(generated);
     }
-  }, [displayName]);
+  }, [displayName, nameManuallyEdited]);
 
   function handleTypeChange(newType) {
     setType(newType);
@@ -776,14 +786,32 @@ export function AddDeviceModal() {
           <div className="form-hint">Plain English name as seen by the ME</div>
 
           {/* PLC Tag Name */}
-          <label className="form-label">PLC Tag Stem *</label>
+          <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>PLC Tag Stem *</span>
+            {nameManuallyEdited && (
+              <button
+                type="button"
+                onClick={() => setNameManuallyEdited(false)}
+                style={{
+                  fontSize: 10, padding: '1px 6px', border: '1px solid #d1d5db',
+                  borderRadius: 4, background: '#f9fafb', color: '#374151',
+                  cursor: 'pointer',
+                }}
+                title="Re-link stem to Subject Name"
+              >↻ Auto-link</button>
+            )}
+          </label>
           <input
             className="form-input mono"
             value={name}
-            onChange={e => setName(e.target.value)}
+            onChange={e => { setName(e.target.value); setNameManuallyEdited(true); }}
             placeholder="e.g. PostCutterCylinder"
           />
-          <div className="form-hint">PascalCase, no spaces — used in all generated tag names</div>
+          <div className="form-hint">
+            {nameManuallyEdited
+              ? 'Manually edited — will not auto-sync with Subject Name. Click ↻ Auto-link to re-link.'
+              : 'Auto-derived from Subject Name. PascalCase, no spaces — used in all generated tag names.'}
+          </div>
 
           {/* Home Position selector — shown for devices with fixed home positions (not servo) */}
           {Array.isArray(DEVICE_TYPES[type]?.homePositions) && (

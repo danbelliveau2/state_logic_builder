@@ -1313,6 +1313,123 @@ body {
   font-size: 16px;
 }
 
+/* ─── Handles: larger hit-zone, small visible dot, grows on proximity ──── */
+/*
+ * Source handles (bottom/left/right) have a 30x30 transparent hit zone, but
+ * we override React Flow's default position so the handle's OUTER edge sits
+ * flush with the node edge (not 15px past it). RF uses the handle's outer
+ * edge for Position.Bottom/Right/etc as the edge-line anchor — if the handle
+ * extends past the node, the line visually starts in empty space past the
+ * node. Pulling the handle inward keeps the edge line reaching the node edge.
+ *
+ * Consequence: the hit zone extends INTO the node rather than past it. That's
+ * fine — users aim for the visible dot, and a 30px target around it (mostly
+ * inside the node) is plenty generous without breaking edge geometry.
+ *
+ * Target handles (top) stay small and static — users drop onto them during a
+ * drag, they don't drag FROM them, so no proximity-grow is needed.
+ */
+.react-flow__handle.sdc-handle {
+  width: 30px !important;
+  height: 30px !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  z-index: 5;
+  cursor: crosshair !important;
+}
+
+.react-flow__handle.sdc-handle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--sdc-handle-color, #64748b);
+  border: 2px solid #fff;
+  box-sizing: border-box;
+  transform: translate(-50%, -50%);
+  transition: width 120ms ease, height 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+  pointer-events: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+/* Color variants */
+.sdc-handle--pass  { --sdc-handle-color: #5a9a48; }
+.sdc-handle--fail  { --sdc-handle-color: #ef4444; }
+.sdc-handle--retry { --sdc-handle-color: #f59e0b; }
+
+/* ── Anchor fixes: pull each handle so its outer edge aligns with node edge ── */
+/* Bottom: default is `bottom:0; transform: translate(-50%, 50%)` — shifts handle
+ * DOWN by 50% of height, putting its bottom edge at node_bottom + height/2.
+ * We remove the Y translate so the handle's bottom edge sits AT node_bottom.
+ * Dot is repositioned to the handle's bottom edge so it still visually straddles
+ * the node edge. */
+.react-flow__handle.sdc-handle.react-flow__handle-bottom {
+  transform: translateX(-50%) !important;
+}
+.react-flow__handle.sdc-handle.react-flow__handle-bottom::before {
+  top: auto;
+  bottom: 0;
+  transform: translate(-50%, 50%);
+}
+
+/* Left: default is `left:0; transform: translate(-50%, -50%)` — shifts handle
+ * LEFT by 50% of width, putting its left edge at node_left - width/2.
+ * Remove the X translate so the handle's left edge sits AT node_left. */
+.react-flow__handle.sdc-handle.react-flow__handle-left {
+  transform: translateY(-50%) !important;
+}
+.react-flow__handle.sdc-handle.react-flow__handle-left::before {
+  left: 0;
+  transform: translate(-50%, -50%);
+}
+
+/* Right: default is `right:0; transform: translate(50%, -50%)` — pushes handle
+ * RIGHT by 50% of width. Remove X translate so right edge sits AT node_right. */
+.react-flow__handle.sdc-handle.react-flow__handle-right {
+  transform: translateY(-50%) !important;
+}
+.react-flow__handle.sdc-handle.react-flow__handle-right::before {
+  left: auto;
+  right: 0;
+  transform: translate(50%, -50%);
+}
+
+/* Target handle (top): smaller hit zone, never grows, and also anchor-corrected
+ * so the incoming edge reaches the node's top edge cleanly. */
+.react-flow__handle.sdc-handle.react-flow__handle-top {
+  width: 18px !important;
+  height: 18px !important;
+  cursor: default !important;
+  transform: translateX(-50%) !important;
+}
+.react-flow__handle.sdc-handle.react-flow__handle-top::before {
+  top: 0;
+  transform: translate(-50%, -50%);
+}
+
+/* Proximity grow — ONLY on direct hover of source handles (not top) */
+.react-flow__handle.sdc-handle:not(.react-flow__handle-top):hover::before {
+  width: 18px;
+  height: 18px;
+  box-shadow:
+    0 0 0 7px color-mix(in srgb, var(--sdc-handle-color, #64748b) 30%, transparent),
+    0 2px 4px rgba(0, 0, 0, 0.35);
+}
+
+/* While actively dragging a connection, keep source handles visible */
+.react-flow__handle.sdc-handle.connectingfrom:not(.react-flow__handle-top)::before,
+.react-flow__handle.sdc-handle.connecting:not(.react-flow__handle-top)::before {
+  width: 18px;
+  height: 18px;
+  box-shadow:
+    0 0 0 7px color-mix(in srgb, var(--sdc-handle-color, #64748b) 35%, transparent),
+    0 2px 4px rgba(0, 0, 0, 0.35);
+}
+
 /* ─── Action Rows ───────────────────────────────────────────────────────── */
 .action-row {
   display: flex;
@@ -5088,6 +5205,44 @@ select.standards-editor__input {
   margin-bottom: 10px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--color-border);
+}
+/* Per-row mode toggle (Seq+Devices / Devices Only) inside the generate table */
+.sm-gen-mode-toggle {
+  display: inline-flex;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+}
+.sm-gen-mode-toggle--disabled {
+  opacity: 0.45;
+}
+.sm-gen-mode-toggle__btn {
+  padding: 4px 10px;
+  border: none;
+  background: #fff;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .1s, color .1s;
+}
+.sm-gen-mode-toggle__btn + .sm-gen-mode-toggle__btn {
+  border-left: 1px solid #cbd5e1;
+}
+.sm-gen-mode-toggle__btn:not(:disabled):hover {
+  background: #f1f5f9;
+}
+.sm-gen-mode-toggle__btn--active {
+  background: #1574C4;
+  color: #fff;
+  font-weight: 600;
+}
+.sm-gen-mode-toggle__btn--active:not(:disabled):hover {
+  background: #1568af;
+}
+.sm-gen-mode-toggle__btn:disabled {
+  cursor: not-allowed;
 }
 .sm-gen-panel__tool-btn {
   display: flex;

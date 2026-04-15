@@ -137,6 +137,62 @@ function getVerifyEdgeData(sm, sourceNodeId) {
 // Viewport storage per SM (persists across tab lifetime, not in localStorage)
 const smViewports = {};
 
+/**
+ * Compute the position of a source handle for axis-preservation math.
+ * Mirrors the layout of StateNode's / DecisionNode's handles.
+ */
+function getSourceHandlePos(fromNode, handleId) {
+  const nodeW = fromNode.measured?.width  ?? fromNode.width  ?? 240;
+  const nodeH = fromNode.measured?.height ?? fromNode.height ?? 80;
+  let x = fromNode.position.x + nodeW / 2;
+  let y = fromNode.position.y + nodeH;
+  if (handleId === 'exit-pass') {
+    x = fromNode.position.x;
+    y = fromNode.position.y + nodeH / 2;
+  } else if (handleId === 'exit-fail') {
+    x = fromNode.position.x + nodeW;
+    y = fromNode.position.y + nodeH / 2;
+  } else if (handleId === 'exit-retry') {
+    x = fromNode.position.x + nodeW / 2;
+    y = fromNode.position.y + nodeH;
+  }
+  return { x, y };
+}
+
+/**
+ * Given the source handle and the drawn waypoints, deduce which axis each
+ * terminal segment travels along so RoutableEdge can clamp to the moving
+ * node on the correct axis (and not destroy the user's drawn shape).
+ *   'vertical'   = segment moves up/down (endpoints share X)
+ *   'horizontal' = segment moves left/right (endpoints share Y)
+ */
+function computeSegmentAxes(fromNode, handleId, wps) {
+  if (!fromNode || !Array.isArray(wps) || wps.length === 0) {
+    return { firstSegmentAxis: 'vertical', lastSegmentAxis: 'vertical' };
+  }
+  const handle = getSourceHandlePos(fromNode, handleId);
+  const wp0 = wps[0];
+  const dx0 = Math.abs(wp0.x - handle.x);
+  const dy0 = Math.abs(wp0.y - handle.y);
+  let firstSegmentAxis;
+  if (dx0 < 1 && dy0 >= 1)      firstSegmentAxis = 'vertical';
+  else if (dy0 < 1 && dx0 >= 1) firstSegmentAxis = 'horizontal';
+  else                          firstSegmentAxis = dy0 >= dx0 ? 'vertical' : 'horizontal';
+
+  let lastSegmentAxis;
+  if (wps.length >= 2) {
+    const wpPrev = wps[wps.length - 2];
+    const wpLast = wps[wps.length - 1];
+    // Segment prev→last is vertical if they share X; then last→target is the opposite axis.
+    if (Math.abs(wpPrev.x - wpLast.x) < 1) lastSegmentAxis = 'horizontal';
+    else                                    lastSegmentAxis = 'vertical';
+  } else {
+    // Single waypoint: last segment is the opposite axis of the first.
+    lastSegmentAxis = firstSegmentAxis === 'vertical' ? 'horizontal' : 'vertical';
+  }
+  return { firstSegmentAxis, lastSegmentAxis };
+}
+
 export function Canvas() {
   const store = useDiagramStore();
   const sm = store.getActiveSm();
@@ -144,6 +200,11 @@ export function Canvas() {
   const { screenToFlowPosition, setCenter, getViewport, setViewport, fitView, getNodes } = useReactFlow();
   const [selectMode, setSelectMode] = useState(false);
   const prevSmIdRef = useRef(null);
+  // Timestamp of the most recent onConnectEnd — used to suppress the pane-click
+  // that React Flow fires on the SAME mouseup as the drag-release. Without this
+  // guard, a single drag-release produces two waypoints (one at the corner from
+  // onConnectEnd, one at the click position from onPaneClick).
+  const lastConnectEndAt = useRef(0);
 
   // ── Straighten selected nodes (align centers to median center X) ────────────
   const straightenSelected = useCallback(() => {
@@ -308,35 +369,38 @@ export function Canvas() {
     }
   }, []);
 
-  // ── Invert scroll-zoom so it matches other apps (scroll up = zoom in) ─────
+  // ── Scroll-wheel zoom: direct viewport control (scroll up = zoom in) ──────
+  // We disable React Flow's built-in zoomOnScroll and drive the viewport
+  // ourselves. Keeps zoom step small, direction predictable, anchors at the
+  // mouse pointer. Ignore .nowheel subtrees (picker menus, node popups).
   useEffect(() => {
     const el = reactFlowWrapper.current;
     if (!el) return;
-    let isSynthetic = false;
     function handleWheel(e) {
-      if (isSynthetic) return;           // let our synthetic event pass through
-      if (e.ctrlKey || e.metaKey) return; // don't touch pinch-zoom
-      e.stopPropagation();
+      // Let elements opt out (popups/menus/scroll areas)
+      if (e.target.closest && e.target.closest('.nowheel')) return;
       e.preventDefault();
-      // Dispatch a new wheel event with inverted deltaY to the original target
-      isSynthetic = true;
-      e.target.dispatchEvent(new WheelEvent('wheel', {
-        bubbles: true,
-        cancelable: true,
-        clientX: e.clientX,
-        clientY: e.clientY,
-        deltaX: e.deltaX,
-        deltaY: -e.deltaY,
-        deltaMode: e.deltaMode,
-        ctrlKey: e.ctrlKey,
-        metaKey: e.metaKey,
-        shiftKey: e.shiftKey,
-      }));
-      isSynthetic = false;
+
+      const vp = getViewport();
+      // Scroll up (deltaY < 0) → zoom out; one click ~= 10% zoom
+      const factor = e.deltaY < 0 ? 1 / 1.1 : 1.1;
+      const nextZoom = Math.max(0.05, Math.min(2, vp.zoom * factor));
+
+      // Keep the point under the mouse fixed during zoom
+      const rect = el.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      // Flow coord under mouse: (mx - vp.x) / vp.zoom
+      // Solve for new vp.x/y so that same flow coord stays under (mx, my):
+      const flowX = (mx - vp.x) / vp.zoom;
+      const flowY = (my - vp.y) / vp.zoom;
+      const nextX = mx - flowX * nextZoom;
+      const nextY = my - flowY * nextZoom;
+      setViewport({ x: nextX, y: nextY, zoom: nextZoom });
     }
-    el.addEventListener('wheel', handleWheel, { passive: false, capture: true });
-    return () => el.removeEventListener('wheel', handleWheel, { capture: true });
-  }, []);
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, [getViewport, setViewport]);
 
   // ── Shared helper: add a node and auto-connect from previously selected ───
   const addNodeWithAutoConnect = useCallback((opts = {}) => {
@@ -502,6 +566,10 @@ export function Canvas() {
     if (drawingWps && drawingWps.length > 0) {
       edgeCond.waypoints = drawingWps;
       edgeCond.manualRoute = true;
+      const fromNode = (sm.nodes ?? []).find(n => n.id === connection.source);
+      const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(fromNode, connection.sourceHandle, drawingWps);
+      edgeCond.firstSegmentAxis = firstSegmentAxis;
+      edgeCond.lastSegmentAxis  = lastSegmentAxis;
     }
     const edgeId = store.addEdge(sm.id, connection, edgeCond);
     // Don't open transition modal for decision exit edges — they're auto-configured
@@ -552,12 +620,36 @@ export function Canvas() {
     // ── Shift held OR Draw Path toggle active → enter manual draw mode ────
     const drawPathModeActive = useDiagramStore.getState()._drawPathMode;
     if (event.shiftKey || drawPathModeActive) {
-      const firstWp = { x: cursorFlow.x, y: cursorFlow.y };
+      // Ortho-snap the first waypoint to the CORNER between the source
+      // handle and the release cursor — not the raw cursor. Otherwise the
+      // waypoint sits off-grid and the next click kinks through it.
+      const nodeW = fromNode.measured?.width  ?? fromNode.width  ?? 240;
+      const nodeH = fromNode.measured?.height ?? fromNode.height ?? 80;
+      let handleX = fromNode.position.x + nodeW / 2;
+      let handleY = fromNode.position.y + nodeH;
+      if (fromHandle === 'exit-pass') {
+        handleX = fromNode.position.x;
+        handleY = fromNode.position.y + nodeH / 2;
+      } else if (fromHandle === 'exit-fail') {
+        handleX = fromNode.position.x + nodeW;
+        handleY = fromNode.position.y + nodeH / 2;
+      } else if (fromHandle === 'exit-retry') {
+        handleX = fromNode.position.x + nodeW / 2;
+        handleY = fromNode.position.y + nodeH;
+      }
+      const dx = Math.abs(cursorFlow.x - handleX);
+      const dy = Math.abs(cursorFlow.y - handleY);
+      const firstWp = dx > dy
+        ? { x: cursorFlow.x, y: handleY }   // horizontal-first → corner at (cursorX, handleY)
+        : { x: handleX, y: cursorFlow.y };  // vertical-first   → corner at (handleX, cursorY)
       useDiagramStore.setState({
         _isDrawingConnection: true,
         _drawingSource: { nodeId: fromNode.id, handleId: fromHandle },
         _drawingWaypoints: [firstWp],
       });
+      // Block the pane-click that fires on this same mouseup from adding a
+      // second, off-axis waypoint.
+      lastConnectEndAt.current = Date.now();
       return;
     }
 
@@ -582,6 +674,9 @@ export function Canvas() {
     if (drawingWps && drawingWps.length > 0) {
       edgeCond.waypoints = drawingWps;
       edgeCond.manualRoute = true;
+      const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(fromNode, fromHandle, drawingWps);
+      edgeCond.firstSegmentAxis = firstSegmentAxis;
+      edgeCond.lastSegmentAxis  = lastSegmentAxis;
     }
     store.addEdge(
       sm.id,
@@ -639,10 +734,15 @@ export function Canvas() {
     const decExitData = getDecisionExitData(fromNodeId, fromHandle);
     const edgeCond = decExitData ?? getVerifyEdgeData(sm, fromNodeId);
 
-    // Include waypoints as manual route
+    // Include waypoints as manual route and record segment axes so the
+    // drawn shape is preserved when endpoint nodes move.
     if (wps.length > 0) {
       edgeCond.waypoints = wps;
       edgeCond.manualRoute = true;
+      const fromNode = sm.nodes.find(n => n.id === fromNodeId);
+      const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(fromNode, fromHandle, wps);
+      edgeCond.firstSegmentAxis = firstSegmentAxis;
+      edgeCond.lastSegmentAxis  = lastSegmentAxis;
     }
 
     const edgeId = store.addEdge(
@@ -685,8 +785,17 @@ export function Canvas() {
   }, [store, finalizeManualDraw]);
 
   const onEdgeClick = useCallback((event, edge) => {
+    // If we're in manual draw mode, clicking an existing edge terminates
+    // the connection into that edge's target node. This gives the user a
+    // bigger hit target — the incoming "branch" of a node counts as the node.
+    const isDrawing = useDiagramStore.getState()._isDrawingConnection;
+    const drawSource = useDiagramStore.getState()._drawingSource;
+    if (isDrawing && drawSource && edge.target && edge.target !== drawSource.nodeId) {
+      finalizeManualDraw(edge.target);
+      return;
+    }
     store.setSelectedEdge(edge.id);
-  }, [store]);
+  }, [store, finalizeManualDraw]);
 
   const onEdgeDoubleClick = useCallback((event, edge) => {
     store.setSelectedEdge(edge.id);
@@ -697,6 +806,11 @@ export function Canvas() {
     // If we're in drawing-connection mode (handle drag), add an ortho-snapped waypoint
     const isDrawing = useDiagramStore.getState()._isDrawingConnection;
     if (isDrawing) {
+      // Drop the pane-click that fires simultaneously with onConnectEnd — the
+      // drag-release already planted the first waypoint at the ortho corner.
+      if (Date.now() - lastConnectEndAt.current < 250) {
+        return;
+      }
       const flowPos = screenToFlowPosition({ x: event.clientX, y: event.clientY });
       useDiagramStore.setState(s => {
         const prev = s._drawingWaypoints;
@@ -885,6 +999,9 @@ export function Canvas() {
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         minZoom={0.05}
+        zoomOnScroll={false}
+        zoomOnPinch={true}
+        panOnScroll={false}
         fitView
         fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
         defaultEdgeOptions={{

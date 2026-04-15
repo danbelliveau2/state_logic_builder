@@ -99,25 +99,31 @@ export function buildAvailableInputs(devices, allSMs, currentSmId, trackingField
       case 'Robot':
         for (const sig of (d.signals ?? [])) {
           if (!sig.name?.trim()) continue;
-          // Only signals with direction 'input' (robot→PLC) are checkable conditions
-          if (sig.direction === 'input') {
-            const grp = sig.group || 'DO';
-            let tag, inputGroup;
-            if (grp === 'Register') {
-              tag = `${d.name}R${sig.number ?? 0}`;
-              inputGroup = 'Robot Registers';
-            } else {
-              tag = `i_${d.name}${sig.name}`;
-              inputGroup = sig.isRefPos ? 'Robot Reference Positions' : 'Robot DO';
-            }
-            inputs.push({
-              ref: `${d.id}:${sig.id}`,
-              tag,
-              label: `${d.displayName} ${sig.name}${sig.number ? ` [${sig.number}]` : ''}`,
-              inputType: (sig.dataType === 'DINT' || sig.dataType === 'REAL') ? 'range' : 'bool',
-              group: inputGroup,
-            });
+          // Include BOTH directions for decision picking:
+          //   direction 'input'  = Robot→PLC (group 'DO' / 'Register')  → tag i_ / Rn
+          //   direction 'output' = PLC→Robot (group 'DI' / 'Register')  → tag q_ / Rn
+          // The PLC can legitimately check either: its own DI commands it sends,
+          // or the robot's DO status bits.
+          const grp = sig.group || (sig.direction === 'output' ? 'DI' : 'DO');
+          const isOutputReg = sig.direction === 'output';
+          let tag, inputGroup;
+          if (grp === 'Register') {
+            tag = `${d.name}R${sig.number ?? 0}`;
+            inputGroup = isOutputReg ? 'Robot Output Registers' : 'Robot Registers';
+          } else if (grp === 'DI') {
+            tag = `q_${d.name}${sig.name}`;
+            inputGroup = 'Robot DI';
+          } else {
+            tag = `i_${d.name}${sig.name}`;
+            inputGroup = sig.isRefPos ? 'Robot Reference Positions' : 'Robot DO';
           }
+          inputs.push({
+            ref: `${d.id}:${sig.id}`,
+            tag,
+            label: `${d.displayName} ${sig.name}${sig.number ? ` [${sig.number}]` : ''}`,
+            inputType: (sig.dataType === 'DINT' || sig.dataType === 'REAL') ? 'range' : 'bool',
+            group: inputGroup,
+          });
         }
         break;
       case 'Conveyor':
@@ -150,13 +156,23 @@ export function buildAvailableInputs(devices, allSMs, currentSmId, trackingField
         const pfx = d.dataType === 'boolean' ? 'q_' : 'p_';
         inputs.push({ ref: `${d.id}:cross:${otherSm.id}`, tag: `${pfx}${d.name}`, label: `${d.displayName} (${otherSm.name})`, inputType: 'bool', group: 'Cross-SM Parameters', paramScope: 'cross-sm', crossSmId: otherSm.id, deviceId: d.id });
       }
-      // Robot signals available cross-SM
+      // Robot signals available cross-SM (both directions)
       if (d.type === 'Robot') {
         for (const sig of (d.signals ?? [])) {
-          if (!sig.name?.trim() || sig.direction !== 'input') continue;
-          const grp = sig.group || 'DO';
-          const tag = grp === 'Register' ? `${d.name}R${sig.number ?? 0}` : `i_${d.name}${sig.name}`;
-          const sigGroup = grp === 'Register' ? 'Robot Registers' : 'Robot DO';
+          if (!sig.name?.trim()) continue;
+          const grp = sig.group || (sig.direction === 'output' ? 'DI' : 'DO');
+          const isOutputReg = sig.direction === 'output';
+          let tag, sigGroup;
+          if (grp === 'Register') {
+            tag = `${d.name}R${sig.number ?? 0}`;
+            sigGroup = isOutputReg ? 'Robot Output Registers' : 'Robot Registers';
+          } else if (grp === 'DI') {
+            tag = `q_${d.name}${sig.name}`;
+            sigGroup = 'Robot DI';
+          } else {
+            tag = `i_${d.name}${sig.name}`;
+            sigGroup = 'Robot DO';
+          }
           inputs.push({
             ref: `${d.id}:${sig.id}:cross:${otherSm.id}`,
             tag,

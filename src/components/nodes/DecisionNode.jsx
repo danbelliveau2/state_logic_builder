@@ -18,6 +18,7 @@ import { Handle, Position } from '@xyflow/react';
 import { useDiagramStore } from '../../store/useDiagramStore.js';
 import { buildAvailableInputs } from '../../lib/availableInputs.js';
 import { computeStateNumbers } from '../../lib/computeStateNumbers.js';
+import { useReactFlowZoomScale } from '../../lib/useReactFlowZoomScale.js';
 
 // ── Inline Edit Popup ──────────────────────────────────────────────────────────
 
@@ -67,7 +68,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
   const [exitCount, setExitCount] = useState(data.exitCount ?? 2);
   const [exit1Label, setExit1Label] = useState(data.exit1Label ?? 'Pass');
   const [exit2Label, setExit2Label] = useState(data.exit2Label ?? 'Fail');
-  const [nodeMode, setNodeMode] = useState(data.nodeMode ?? 'wait');  // 'wait' | 'decide'
+  const [nodeMode, setNodeMode] = useState(data.nodeMode ?? 'wait');  // 'wait' | 'decide' | 'verify'
 
   // Condition config for sensor branching
   const [conditionType, setConditionType] = useState(data.conditionType ?? 'on');  // 'on' | 'off' | 'range'
@@ -83,6 +84,12 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
 
   // After picking any signal/vision, show branch config step
   const [showBranchConfig, setShowBranchConfig] = useState(!!data.signalId);
+
+  // Expanded-section tracking — keyed by section name. Default: all collapsed.
+  // A key is present (true) only when the user has opened that section.
+  const [expandedSections, setExpandedSections] = useState({});
+  const toggleSection = (key) => setExpandedSections(s => ({ ...s, [key]: !s[key] }));
+  const isExpanded = (key) => !!expandedSections[key];
 
   // Multi-condition support (AND/OR logic for multiple checks)
   const [conditions, setConditions] = useState(() => {
@@ -143,7 +150,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     setExit1Label(`Pass_${jobName}`);
     setExit2Label(`Fail_${jobName}`);
     setExitCount(2);
-    setNodeMode('wait');
+    // nodeMode stays whatever the user chose at the top of the popup
     setConditions([newCond]);
     setShowBranchConfig(true);
   }
@@ -178,12 +185,12 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     setExit1Label(`True_${name}`);
     setExit2Label(`False_${name}`);
     setExitCount(1);
-    setNodeMode('wait');
+    // nodeMode stays whatever the user chose at the top of the popup
     setConditions([newCond]);
     setShowBranchConfig(true);
   }
 
-  // Part Tracking field picked -> show branch config (default to 'decide' — PT is already set, no waiting)
+  // Part Tracking field picked -> show branch config
   function handlePTPick(field) {
     const isVisionLinked = !!field._visionLinked;
     const isRealField = field.type === 'real';
@@ -228,7 +235,10 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     setExit1Label(`Pass_${field.name}`);
     setExit2Label(`Fail_${field.name}`);
     setExitCount(2);
-    setNodeMode('decide');
+    // nodeMode stays whatever the user chose at the top of the popup.
+    // If the user hadn't changed it from the default 'wait', switch to 'decide'
+    // since PT is a latched value and waiting on it doesn't make sense.
+    if (nodeMode === 'wait' && !data.nodeMode) setNodeMode('decide');
     setConditionType('on');
     setSensorRef(null);
     setSensorTag('');
@@ -260,7 +270,6 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     setSignalType('sensor');
     setDecisionType('signal');
     setExitCount(2);
-    setNodeMode('decide');
     setSensorRef(inp.ref);
     setSensorTag(inp.tag);
     setSensorInputType(inp.inputType ?? 'bool');
@@ -278,28 +287,34 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     setExit2Label(e2);
     setConditions([newCond]);
 
-    // ── Auto-commit: sensors always branch, skip the config step ──────
-    // Save node data and create branches immediately — no extra "Done" click.
-    const autoData = {
-      signalId: `sensor_${inp.ref}`,
-      signalName: shortName,
-      signalSource: inp.group,
-      signalSmName: null,
-      signalType: 'sensor',
-      decisionType: 'signal',
-      exitCount: 2,
-      exit1Label: e1,
-      exit2Label: e2,
-      nodeMode: 'decide',
-      conditionType: inp.inputType === 'range' ? 'range' : 'on',
-      sensorRef: inp.ref,
-      sensorTag: inp.tag,
-      sensorInputType: inp.inputType ?? 'bool',
-      conditions: [newCond],
-    };
-    store.updateNodeData(smId, nodeId, autoData);
-    store.addDecisionBranches(smId, nodeId, e1, e2);
-    onClose();
+    // ── Auto-commit ONLY when mode is 'decide' — wait/verify should stop on
+    //    branch config so the user can review timers/retries/etc.
+    if (nodeMode === 'decide') {
+      const autoData = {
+        signalId: `sensor_${inp.ref}`,
+        signalName: shortName,
+        signalSource: inp.group,
+        signalSmName: null,
+        signalType: 'sensor',
+        decisionType: 'signal',
+        exitCount: 2,
+        exit1Label: e1,
+        exit2Label: e2,
+        nodeMode: 'decide',
+        conditionType: inp.inputType === 'range' ? 'range' : 'on',
+        sensorRef: inp.ref,
+        sensorTag: inp.tag,
+        sensorInputType: inp.inputType ?? 'bool',
+        conditions: [newCond],
+      };
+      store.updateNodeData(smId, nodeId, autoData);
+      store.addDecisionBranches(smId, nodeId, e1, e2);
+      onClose();
+      return;
+    }
+
+    // Wait / Verify: fall through to branch config so user can confirm
+    setShowBranchConfig(true);
   }
 
   // Derive primary display fields from the first condition so the node label
@@ -313,7 +328,11 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
       : (cond.group ?? '');
     const type = cond.signalType ?? 'signal';
     let exit1, exit2;
-    if (cond.inputType === 'range') {
+    // Verify mode: always Pass/Fail — it's a hard confirmation gate.
+    if (nodeMode === 'verify') {
+      exit1 = `Pass_${name}`;
+      exit2 = `Fail_${name}`;
+    } else if (cond.inputType === 'range') {
       exit1 = `InRange_${name}`;
       exit2 = `OutOfRange_${name}`;
     } else if (cond.signalType === 'sensor') {
@@ -359,9 +378,9 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
       sensorRef,
       sensorTag,
       sensorInputType,
-      // Retry counter (wait mode only)
-      retryEnabled: nodeMode === 'wait' ? retryEnabled : false,
-      retryMax: nodeMode === 'wait' && retryEnabled ? Number(retryMax) || 3 : undefined,
+      // Retry counter (available for wait, decide, and verify modes)
+      retryEnabled,
+      retryMax: retryEnabled ? Number(retryMax) || 3 : undefined,
       // Multi-condition
       conditions: conditions.length > 0 ? conditions : undefined,
       conditionLogic: conditions.length > 1 ? conditionLogic : undefined,
@@ -372,8 +391,8 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     } else if (exitCount === 1) {
       store.addDecisionSingleBranch(smId, nodeId, finalExit1Label);
     }
-    // Create retry branch if retry is enabled (only for wait mode with 2 exits)
-    if (nodeMode === 'wait' && retryEnabled && exitCount === 2) {
+    // Create retry branch if retry is enabled (any mode with 2 exits)
+    if (retryEnabled && exitCount === 2) {
       store.addDecisionRetryBranch(smId, nodeId);
     }
     onClose();
@@ -388,12 +407,15 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
   };
 
   // Popup rendered via createPortal -- style comes from parent (fixed position, to the RIGHT)
+  // Scale to match canvas zoom so the popup grows with zoomed-in nodes.
+  const zoomStyle = useReactFlowZoomScale();
   const popupContent = (
     <div
       ref={popupRef}
       className="nodrag nowheel"
       style={{
         ...style,
+        ...zoomStyle,
         width: 260,
         background: '#1a1f2e',
         border: '1px solid #374151',
@@ -409,49 +431,108 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
       onMouseDown={e => e.stopPropagation()}
     >
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px 6px', borderBottom: '1px solid #374151', flexShrink: 0 }}>
-        <span style={{ fontWeight: 700, fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          {showBranchConfig
-            ? (signalType === 'visionJob' ? `📷 ${signalName}` : signalType === 'partTracking' ? `📋 ${signalName}` : signalType === 'sensor' ? `🔌 ${signalName}` : `⚡ ${signalName}`)
-            : editingConditionIdx !== null ? '✎ Change Condition'
-            : addingCondition ? '+ Add Condition' : 'Wait On…'}
-        </span>
-        {showBranchConfig ? (
-          <button
-            className="nodrag"
-            onClick={() => setShowBranchConfig(false)}
-            style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 11, padding: '0 2px' }}
-          >{'\u2190'} Back</button>
-        ) : editingConditionIdx !== null ? (
-          <button
-            className="nodrag"
-            onClick={() => { setEditingConditionIdx(null); setShowBranchConfig(true); }}
-            style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 11, padding: '0 2px' }}
-          >{'\u2190'} Cancel</button>
-        ) : addingCondition ? (
-          <button
-            className="nodrag"
-            onClick={() => { setAddingCondition(false); setShowBranchConfig(true); }}
-            style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 11, padding: '0 2px' }}
-          >{'\u2190'} Cancel</button>
-        ) : (
-          <button
-            className="nodrag"
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 2px' }}
-          >{'\u00d7'}</button>
-        )}
+      <div style={{ flexShrink: 0, borderBottom: '1px solid #374151' }}>
+        {/* Title row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px 4px' }}>
+          <span style={{ fontWeight: 700, fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            {showBranchConfig
+              ? (signalType === 'visionJob' ? `📷 ${signalName}` : signalType === 'partTracking' ? `📋 ${signalName}` : signalType === 'sensor' ? `🔌 ${signalName}` : `⚡ ${signalName}`)
+              : editingConditionIdx !== null ? '✎ Change Condition'
+              : addingCondition ? '+ Add Condition'
+              : nodeMode === 'decide' ? 'Decide On…'
+              : nodeMode === 'verify' ? 'Verify…'
+              : 'Wait On…'}
+          </span>
+          {showBranchConfig ? (
+            <button
+              className="nodrag"
+              onClick={() => setShowBranchConfig(false)}
+              style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 11, padding: '0 2px' }}
+            >{'\u2190'} Back</button>
+          ) : editingConditionIdx !== null ? (
+            <button
+              className="nodrag"
+              onClick={() => { setEditingConditionIdx(null); setShowBranchConfig(true); }}
+              style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 11, padding: '0 2px' }}
+            >{'\u2190'} Cancel</button>
+          ) : addingCondition ? (
+            <button
+              className="nodrag"
+              onClick={() => { setAddingCondition(false); setShowBranchConfig(true); }}
+              style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 11, padding: '0 2px' }}
+            >{'\u2190'} Cancel</button>
+          ) : (
+            <button
+              className="nodrag"
+              onClick={onClose}
+              style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 2px' }}
+            >{'\u00d7'}</button>
+          )}
+        </div>
+        {/* Mode selector row — always visible so user can switch Wait/Decide/Verify at any step */}
+        {editingConditionIdx === null && !addingCondition && (() => {
+          const modes = [
+            { key: 'wait',   label: 'Wait',   emoji: '\u23F3', active: '#0072B5', activeBorder: '#3b82f6', tip: 'Pause step until condition is TRUE.' },
+            { key: 'decide', label: 'Decide', emoji: '\u26A1', active: '#7c3aed', activeBorder: '#8b5cf6', tip: 'Read condition NOW and branch — no pause.' },
+            { key: 'verify', label: 'Verify', emoji: '\u2713', active: '#16a34a', activeBorder: '#22c55e', tip: 'Confirm condition is TRUE; if not, fault.' },
+          ];
+          return (
+            <div style={{ padding: '2px 8px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {modes.map(m => {
+                  const isActive = nodeMode === m.key;
+                  return (
+                    <button
+                      key={m.key}
+                      className="nodrag"
+                      onClick={() => setNodeMode(m.key)}
+                      style={{
+                        flex: 1, padding: '5px 0', borderRadius: 5, cursor: 'pointer', fontSize: 11, fontWeight: 600,
+                        background: isActive ? m.active : '#111827',
+                        border: isActive ? `1px solid ${m.activeBorder}` : '1px solid #374151',
+                        color: isActive ? '#fff' : '#6b7280',
+                      }}
+                    >{m.emoji} {m.label}</button>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 9, color: '#6b7280', lineHeight: 1.3, padding: '0 2px' }}>
+                {modes.find(m => m.key === nodeMode)?.tip}
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* -- Signal picker (step 1) -- */}
-      {!showBranchConfig && (
+      {!showBranchConfig && (() => {
+        // Collapsible section header. Entire row clickable; chevron + label.
+        const SectionHeader = ({ sectionKey, emoji, label, color = '#6b7280' }) => {
+          const collapsed = !isExpanded(sectionKey);
+          return (
+            <div
+              className="nodrag"
+              onClick={() => toggleSection(sectionKey)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                fontSize: 9, fontWeight: 700, color, padding: '6px 10px 2px',
+                textTransform: 'uppercase', letterSpacing: '0.05em',
+                cursor: 'pointer', userSelect: 'none',
+              }}
+            >
+              <span style={{ fontSize: 8, width: 8, display: 'inline-block', transition: 'transform 120ms', transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>{'\u25BE'}</span>
+              <span>{emoji} {label}</span>
+            </div>
+          );
+        };
+        return (
         <div ref={listRef} style={{ padding: '4px 0', overflowY: 'auto', flex: 1 }}>
 
           {/* VISION section */}
           {visionSignals.length > 0 && (
             <>
-              <div style={{ fontSize: 9, fontWeight: 700, color: '#6b7280', padding: '4px 10px 2px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{'\uD83D\uDCF7'} Vision</div>
-              {visionSignals.map(sig => (
+              <SectionHeader sectionKey="vision" emoji={'\uD83D\uDCF7'} label="Vision" />
+              {isExpanded('vision') && visionSignals.map(sig => (
                 <button
                   key={sig.id}
                   className="nodrag"
@@ -474,8 +555,8 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
           {/* PART RESULTS section — vision-linked PT fields from upstream stations */}
           {ptFields.some(f => f._visionLinked) && (
             <>
-              <div style={{ fontSize: 9, fontWeight: 700, color: '#fbbf24', padding: '6px 10px 2px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{'\u2B50'} Part Results (from upstream)</div>
-              {ptFields.filter(f => f._visionLinked).map(field => {
+              <SectionHeader sectionKey="partResults" emoji={'\u2B50'} label="Part Results (from upstream)" color="#fbbf24" />
+              {isExpanded('partResults') && ptFields.filter(f => f._visionLinked).map(field => {
                 const isCurrentSm = field._visionSmId === smId;
                 return (
                   <button
@@ -510,8 +591,8 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
           {/* PART TRACKING section — user-defined fields */}
           {ptFields.some(f => !f._visionLinked) && (
             <>
-              <div style={{ fontSize: 9, fontWeight: 700, color: '#6b7280', padding: '6px 10px 2px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{'📋'} Part Tracking</div>
-              {ptFields.filter(f => !f._visionLinked).map(field => (
+              <SectionHeader sectionKey="partTracking" emoji={'\uD83D\uDCCB'} label="Part Tracking" />
+              {isExpanded('partTracking') && ptFields.filter(f => !f._visionLinked).map(field => (
                 <button
                   key={field.id}
                   className="nodrag"
@@ -531,46 +612,98 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
             </>
           )}
 
-          {/* SENSORS & DEVICES section */}
+          {/* SENSORS & DEVICES section + separate ROBOT section */}
           {sensorInputs.length > 0 && (() => {
-            // Group by the 'group' field
-            const grouped = {};
-            for (const inp of sensorInputs) {
-              const g = inp.group || 'Other';
-              if (!grouped[g]) grouped[g] = [];
-              grouped[g].push(inp);
-            }
+            // Partition: anything whose group starts with "Robot " is a robot signal
+            const isRobotGroup = (g) => typeof g === 'string' && g.startsWith('Robot ');
+            const robotInputs  = sensorInputs.filter(inp => isRobotGroup(inp.group));
+            const deviceInputs = sensorInputs.filter(inp => !isRobotGroup(inp.group));
+
+            const groupBy = (items) => {
+              const out = {};
+              for (const inp of items) {
+                const g = inp.group || 'Other';
+                if (!out[g]) out[g] = [];
+                out[g].push(inp);
+              }
+              return out;
+            };
+            const deviceGrouped = groupBy(deviceInputs);
+            const robotGrouped  = groupBy(robotInputs);
+
+            const renderItem = (inp, accentHex, accentBg) => (
+              <button
+                key={inp.ref}
+                className="nodrag"
+                onClick={() => handleSensorPick(inp)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  width: '100%', background: signalId === `sensor_${inp.ref}` ? '#1e293b' : 'none',
+                  border: 'none', borderLeft: signalId === `sensor_${inp.ref}` ? `3px solid ${accentHex}` : '3px solid transparent',
+                  color: '#e5e7eb', cursor: 'pointer', padding: '4px 10px 4px 20px',
+                  textAlign: 'left', fontSize: 11,
+                }}
+              >
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inp.label}</span>
+                <span style={{
+                  fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3,
+                  color: inp.inputType === 'range' ? '#fbbf24' : accentHex,
+                  background: inp.inputType === 'range' ? '#78350f' : accentBg,
+                }}>
+                  {inp.inputType === 'range' ? 'RANGE' : 'BOOL'}
+                </span>
+              </button>
+            );
+
             return (
               <>
-                <div style={{ fontSize: 9, fontWeight: 700, color: '#6b7280', padding: '6px 10px 2px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{'🔌'} Sensors & Devices</div>
-                {Object.entries(grouped).map(([groupName, items]) => (
-                  <div key={groupName}>
-                    <div style={{ fontSize: 8, color: '#4b5563', padding: '3px 10px 1px 16px', fontWeight: 600 }}>{groupName}</div>
-                    {items.map(inp => (
-                      <button
-                        key={inp.ref}
-                        className="nodrag"
-                        onClick={() => handleSensorPick(inp)}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 6,
-                          width: '100%', background: signalId === `sensor_${inp.ref}` ? '#1e293b' : 'none',
-                          border: 'none', borderLeft: signalId === `sensor_${inp.ref}` ? '3px solid #22d3ee' : '3px solid transparent',
-                          color: '#e5e7eb', cursor: 'pointer', padding: '4px 10px 4px 20px',
-                          textAlign: 'left', fontSize: 11,
-                        }}
-                      >
-                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inp.label}</span>
-                        <span style={{
-                          fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3,
-                          color: inp.inputType === 'range' ? '#fbbf24' : '#22d3ee',
-                          background: inp.inputType === 'range' ? '#78350f' : '#164e63',
-                        }}>
-                          {inp.inputType === 'range' ? 'RANGE' : 'BOOL'}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                ))}
+                {deviceInputs.length > 0 && (
+                  <>
+                    <SectionHeader sectionKey="sensors" emoji={'\uD83D\uDD0C'} label="Sensors & Devices" />
+                    {isExpanded('sensors') && Object.entries(deviceGrouped).map(([groupName, items]) => {
+                      const subKey = `sensors/${groupName}`;
+                      const subCollapsed = !isExpanded(subKey);
+                      return (
+                        <div key={groupName}>
+                          <div
+                            className="nodrag"
+                            onClick={() => toggleSection(subKey)}
+                            style={{ fontSize: 8, color: '#4b5563', padding: '3px 10px 1px 16px', fontWeight: 600, cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 4 }}
+                          >
+                            <span style={{ fontSize: 7, display: 'inline-block', width: 7, transform: subCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 120ms' }}>{'\u25BE'}</span>
+                            {groupName}
+                          </div>
+                          {!subCollapsed && items.map(inp => renderItem(inp, '#22d3ee', '#164e63'))}
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+
+                {robotInputs.length > 0 && (
+                  <>
+                    <SectionHeader sectionKey="robot" emoji={'\uD83E\uDD16'} label="Robot" color="#c4b5fd" />
+                    {isExpanded('robot') && Object.entries(robotGrouped).map(([groupName, items]) => {
+                      // Strip the "Robot " prefix for the sub-label — section header already says Robot
+                      const subLabel = groupName.replace(/^Robot\s+/, '');
+                      const subKey = `robot/${groupName}`;
+                      const subCollapsed = !isExpanded(subKey);
+                      return (
+                        <div key={groupName}>
+                          <div
+                            className="nodrag"
+                            onClick={() => toggleSection(subKey)}
+                            style={{ fontSize: 8, color: '#4b5563', padding: '3px 10px 1px 16px', fontWeight: 600, cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 4 }}
+                          >
+                            <span style={{ fontSize: 7, display: 'inline-block', width: 7, transform: subCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 120ms' }}>{'\u25BE'}</span>
+                            {subLabel}
+                          </div>
+                          {!subCollapsed && items.map(inp => renderItem(inp, '#a78bfa', '#3b2a6b'))}
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
               </>
             );
           })()}
@@ -578,8 +711,8 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
           {/* SIGNALS section (all user signals -- position, state, condition merged) */}
           {projectSignals.length > 0 && (
             <>
-              <div style={{ fontSize: 9, fontWeight: 700, color: '#6b7280', padding: '6px 10px 2px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{'\u26A1'} Signals</div>
-              {projectSignals.map(sig => {
+              <SectionHeader sectionKey="signals" emoji={'\u26A1'} label="Signals" />
+              {isExpanded('signals') && projectSignals.map(sig => {
                 const badge = typeBadgeMap[sig.type];
                 const cleanState = (sig.stateName ?? '').replace(/^\[\d+\]\s*[✓⌂⏳]?\s*/, '');
                 const subtext = sig.type === 'state' && sig.smName && cleanState
@@ -613,138 +746,122 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {/* -- Branch config (step 2) -- works for vision, signals, sensors */}
       {showBranchConfig && (() => {
         const isVision = signalType === 'visionJob';
         const isSensor = signalType === 'sensor';
+        const isVerify = nodeMode === 'verify';
         const isRange = sensorInputType === 'range';
-        const singleLabel = isVision ? 'Pass' : 'True';
-        const dualLabel1 = isVision ? 'Pass' : isSensor
-          ? (isRange ? 'In Range' : (conditionType === 'off' ? 'Off' : 'On'))
+        // Verify mode forces Pass/Fail semantics regardless of underlying signal.
+        const singleLabel = isVerify ? 'Pass' : isVision ? 'Pass' : 'True';
+        const dualLabel1 = isVerify ? 'Pass'
+          : isVision ? 'Pass'
+          : isSensor ? (isRange ? 'In Range' : (conditionType === 'off' ? 'Off' : 'On'))
           : 'True';
-        const dualLabel2 = isVision ? 'Fail' : isSensor
-          ? (isRange ? 'Out of Range' : (conditionType === 'off' ? 'On' : 'Off'))
+        const dualLabel2 = isVerify ? 'Fail'
+          : isVision ? 'Fail'
+          : isSensor ? (isRange ? 'Out of Range' : (conditionType === 'off' ? 'On' : 'Off'))
           : 'False';
         return (
         <div style={{ padding: '8px 10px', flex: 1, display: 'flex', flexDirection: 'column', gap: 6, overflowY: 'auto' }}>
 
-          {/* Wait / Decide toggle */}
-          <div style={{ display: 'flex', gap: 4, marginBottom: 2 }}>
-            <button
-              className="nodrag"
-              onClick={() => setNodeMode('wait')}
-              style={{
-                flex: 1, padding: '5px 0', borderRadius: 5, cursor: 'pointer', fontSize: 11, fontWeight: 600,
-                background: nodeMode === 'wait' ? '#0072B5' : '#111827',
-                border: nodeMode === 'wait' ? '1px solid #3b82f6' : '1px solid #374151',
-                color: nodeMode === 'wait' ? '#fff' : '#6b7280',
-              }}
-            >⏳ Wait</button>
-            <button
-              className="nodrag"
-              onClick={() => setNodeMode('decide')}
-              style={{
-                flex: 1, padding: '5px 0', borderRadius: 5, cursor: 'pointer', fontSize: 11, fontWeight: 600,
-                background: nodeMode === 'decide' ? '#7c3aed' : '#111827',
-                border: nodeMode === 'decide' ? '1px solid #8b5cf6' : '1px solid #374151',
-                color: nodeMode === 'decide' ? '#fff' : '#6b7280',
-              }}
-            >⚡ Decide</button>
-          </div>
-          <div style={{ fontSize: 9, color: '#6b7280', marginBottom: 2, lineHeight: 1.4 }}>
-            {nodeMode === 'wait'
-              ? 'Step pauses until condition is TRUE, then advances.'
-              : 'Step immediately checks current value and routes — no waiting.'}
-          </div>
-
-          {/* ── Retry counter (wait mode only) ─────────────── */}
-          {nodeMode === 'wait' && (
-            <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 6, padding: '6px 8px', marginBottom: 2 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <label
-                  className="nodrag"
-                  style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', flex: 1 }}
-                  onClick={() => setRetryEnabled(!retryEnabled)}
-                >
-                  <span style={{
-                    width: 14, height: 14, borderRadius: 3, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    background: retryEnabled ? '#f59e0b' : '#1a1f2e',
-                    border: retryEnabled ? '1px solid #d97706' : '1px solid #374151',
-                    fontSize: 10, color: '#000', fontWeight: 700,
-                  }}>
-                    {retryEnabled ? '\u2713' : ''}
-                  </span>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: retryEnabled ? '#f59e0b' : '#6b7280' }}>
-                    Retry Counter
-                  </span>
-                </label>
-                {retryEnabled && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span style={{ fontSize: 9, color: '#9ca3af' }}>Max:</span>
-                    <input
-                      className="nodrag"
-                      type="number"
-                      min={1}
-                      max={99}
-                      value={retryMax}
-                      onChange={e => setRetryMax(e.target.value)}
-                      style={{
-                        width: 44, background: '#1a1f2e', border: '1px solid #374151',
-                        color: '#e5e7eb', borderRadius: 4, padding: '2px 4px', fontSize: 11,
-                        textAlign: 'center', boxSizing: 'border-box',
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
+          {/* ── Retry counter (available in all modes: wait, decide, verify) ── */}
+          <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 6, padding: '6px 8px', marginBottom: 2 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <label
+                className="nodrag"
+                style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', flex: 1 }}
+                onClick={() => setRetryEnabled(!retryEnabled)}
+              >
+                <span style={{
+                  width: 14, height: 14, borderRadius: 3, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  background: retryEnabled ? '#f59e0b' : '#1a1f2e',
+                  border: retryEnabled ? '1px solid #d97706' : '1px solid #374151',
+                  fontSize: 10, color: '#000', fontWeight: 700,
+                }}>
+                  {retryEnabled ? '\u2713' : ''}
+                </span>
+                <span style={{ fontSize: 10, fontWeight: 600, color: retryEnabled ? '#f59e0b' : '#6b7280' }}>
+                  Retry Counter
+                </span>
+              </label>
               {retryEnabled && (
-                <div style={{ fontSize: 8, color: '#6b7280', marginTop: 3, lineHeight: 1.3 }}>
-                  If condition fails, retry up to {retryMax}x before taking the fail branch.
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ fontSize: 9, color: '#9ca3af' }}>Max:</span>
+                  <input
+                    className="nodrag"
+                    type="number"
+                    min={1}
+                    max={99}
+                    value={retryMax}
+                    onChange={e => setRetryMax(e.target.value)}
+                    style={{
+                      width: 44, background: '#1a1f2e', border: '1px solid #374151',
+                      color: '#e5e7eb', borderRadius: 4, padding: '2px 4px', fontSize: 11,
+                      textAlign: 'center', boxSizing: 'border-box',
+                    }}
+                  />
                 </div>
               )}
             </div>
-          )}
+            {retryEnabled && (
+              <div style={{ fontSize: 8, color: '#6b7280', marginTop: 3, lineHeight: 1.3 }}>
+                {nodeMode === 'verify'
+                  ? `If verify fails, retry up to ${retryMax}x before taking the fail branch.`
+                  : nodeMode === 'decide'
+                  ? `If decision comes back false, retry up to ${retryMax}x before taking the false branch.`
+                  : `If condition fails, retry up to ${retryMax}x before taking the fail branch.`}
+              </div>
+            )}
+          </div>
 
           {/* ── Sensor condition config (single condition only) ─── */}
           {isSensor && conditions.length <= 1 && (
             <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 6, padding: '6px 8px' }}>
               <div style={{ fontSize: 9, fontWeight: 700, color: '#22d3ee', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Condition</div>
 
-              {/* Boolean sensor: On / Off toggle */}
-              {!isRange && (
-                <div style={{ display: 'flex', gap: 4 }}>
-                  <button
-                    className="nodrag"
-                    onClick={() => {
-                      setConditionType('on');
-                      setExit1Label(`On_${signalName}`);
-                      setExit2Label(`Off_${signalName}`);
-                    }}
-                    style={{
-                      flex: 1, padding: '5px 0', borderRadius: 4, cursor: 'pointer', fontSize: 11, fontWeight: 600,
-                      background: conditionType === 'on' ? '#16a34a' : '#1a1f2e',
-                      border: conditionType === 'on' ? '1px solid #22c55e' : '1px solid #374151',
-                      color: conditionType === 'on' ? '#fff' : '#6b7280',
-                    }}
-                  >✓ Check ON</button>
-                  <button
-                    className="nodrag"
-                    onClick={() => {
-                      setConditionType('off');
-                      setExit1Label(`Off_${signalName}`);
-                      setExit2Label(`On_${signalName}`);
-                    }}
-                    style={{
-                      flex: 1, padding: '5px 0', borderRadius: 4, cursor: 'pointer', fontSize: 11, fontWeight: 600,
-                      background: conditionType === 'off' ? '#dc2626' : '#1a1f2e',
-                      border: conditionType === 'off' ? '1px solid #ef4444' : '1px solid #374151',
-                      color: conditionType === 'off' ? '#fff' : '#6b7280',
-                    }}
-                  >✗ Check OFF</button>
-                </div>
-              )}
+              {/* Boolean sensor: On / Off toggle — label changes by mode */}
+              {!isRange && (() => {
+                // Wait = "Wait for ON", Decide = "Check ON", Verify = "Verify ON"
+                const verb = nodeMode === 'wait' ? 'Wait for'
+                           : nodeMode === 'verify' ? 'Verify'
+                           : 'Check';
+                return (
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button
+                      className="nodrag"
+                      onClick={() => {
+                        setConditionType('on');
+                        setExit1Label(`On_${signalName}`);
+                        setExit2Label(`Off_${signalName}`);
+                      }}
+                      style={{
+                        flex: 1, padding: '5px 0', borderRadius: 4, cursor: 'pointer', fontSize: 11, fontWeight: 600,
+                        background: conditionType === 'on' ? '#16a34a' : '#1a1f2e',
+                        border: conditionType === 'on' ? '1px solid #22c55e' : '1px solid #374151',
+                        color: conditionType === 'on' ? '#fff' : '#6b7280',
+                      }}
+                    >{'\u2713'} {verb} ON</button>
+                    <button
+                      className="nodrag"
+                      onClick={() => {
+                        setConditionType('off');
+                        setExit1Label(`Off_${signalName}`);
+                        setExit2Label(`On_${signalName}`);
+                      }}
+                      style={{
+                        flex: 1, padding: '5px 0', borderRadius: 4, cursor: 'pointer', fontSize: 11, fontWeight: 600,
+                        background: conditionType === 'off' ? '#dc2626' : '#1a1f2e',
+                        border: conditionType === 'off' ? '1px solid #ef4444' : '1px solid #374151',
+                        color: conditionType === 'off' ? '#fff' : '#6b7280',
+                      }}
+                    >{'\u2717'} {verb} OFF</button>
+                  </div>
+                );
+              })()}
 
               {/* Range sensor: setpoint picker */}
               {isRange && (() => {
@@ -1065,7 +1182,8 @@ export function DecisionNode({ data, selected, id }) {
 
   // Derived mode flags used in render below
   const isSensor = signalType === 'sensor' || !!sensorRef;
-  const isDecide = nodeMode === 'decide' || exitCount === 2;
+  const isVerify = nodeMode === 'verify';
+  const isDecide = !isVerify && (nodeMode === 'decide' || exitCount === 2);
 
   // Display text
   const isVisionJob = signalType === 'visionJob';
@@ -1118,7 +1236,11 @@ export function DecisionNode({ data, selected, id }) {
       const maxStr = rangeMax !== undefined && rangeMax !== '' ? rangeMax : '?';
       sourceLabel = `Range: ${minStr} – ${maxStr}`;
     } else {
-      sourceLabel = conditionType === 'off' ? 'Check: OFF' : 'Check: ON';
+      // Wait = "On" / "Off"; Decide = "Check: On/Off"; Verify = "Verify: On/Off"
+      const state = conditionType === 'off' ? 'OFF' : 'ON';
+      sourceLabel = isVerify ? `Verify: ${state}`
+                  : isDecide ? `Check: ${state}`
+                  : state;
     }
   } else if (isVisionJob) {
     sourceLabel = signalName && signalName !== displayName ? signalName : null;
@@ -1227,18 +1349,28 @@ export function DecisionNode({ data, selected, id }) {
       >
         {/* Line 1: mode label */}
         <span style={{ fontSize: 10, color: mutedColor, marginBottom: 2 }}>
-          {isSensor ? (isDecide ? '🔌 Branch:' : '🔌 Wait:') : isDecide ? 'Decide:' : 'Wait on:'}
+          {isVerify
+            ? (isSensor ? '🔌 ✓ Verify:' : '✓ Verify:')
+            : isSensor
+              ? (isDecide ? '🔌 Branch:' : '🔌 Wait:')
+              : isDecide ? 'Decide:' : 'Wait on:'}
         </span>
-        {/* Line 2: signal name */}
-        <span style={{
-          fontSize: 14,
-          fontWeight: 700,
-          lineHeight: 1.2,
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          maxWidth: '100%',
-        }}>
+        {/* Line 2: signal name — wraps to 2 lines if long */}
+        <span
+          title={displayName}
+          style={{
+            fontSize: 14,
+            fontWeight: 700,
+            lineHeight: 1.2,
+            maxWidth: '100%',
+            wordBreak: 'break-word',
+            overflowWrap: 'anywhere',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+          }}
+        >
           {displayName}
         </span>
         {/* Line 3: source name (only if different from signal name) */}
@@ -1247,8 +1379,8 @@ export function DecisionNode({ data, selected, id }) {
             {sourceLabel}
           </span>
         )}
-        {/* Retry badge */}
-        {retryEnabled && nodeMode === 'wait' && (
+        {/* Retry badge — shows in any mode when retry is enabled */}
+        {retryEnabled && (
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: 3,
             fontSize: 9, fontWeight: 700,
@@ -1278,7 +1410,7 @@ export function DecisionNode({ data, selected, id }) {
         type="target"
         position={Position.Top}
         id="input"
-        style={{ left: '50%', background: '#64748b', width: 10, height: 10, border: '2px solid #fff' }}
+        className="sdc-handle"
       />
 
       {/* Bottom handle for single-exit or unconfigured nodes */}
@@ -1287,7 +1419,7 @@ export function DecisionNode({ data, selected, id }) {
           type="source"
           position={Position.Bottom}
           id="exit-single"
-          style={{ left: '50%', background: '#64748b', width: 10, height: 10, border: '2px solid #fff' }}
+          className="sdc-handle"
         />
       )}
 
@@ -1298,13 +1430,13 @@ export function DecisionNode({ data, selected, id }) {
             type="source"
             position={Position.Left}
             id="exit-pass"
-            style={{ top: '50%', background: '#5a9a48', width: 10, height: 10, border: '2px solid #fff' }}
+            className="sdc-handle sdc-handle--pass"
           />
           <Handle
             type="source"
             position={Position.Right}
             id="exit-fail"
-            style={{ top: '50%', background: '#ef4444', width: 10, height: 10, border: '2px solid #fff' }}
+            className="sdc-handle sdc-handle--fail"
           />
         </>
       )}
@@ -1315,7 +1447,7 @@ export function DecisionNode({ data, selected, id }) {
           type="source"
           position={Position.Bottom}
           id="exit-retry"
-          style={{ left: '50%', background: '#f59e0b', width: 10, height: 10, border: '2px solid #fff' }}
+          className="sdc-handle sdc-handle--retry"
           isConnectable
         />
       )}
@@ -1339,6 +1471,7 @@ export function DecisionNode({ data, selected, id }) {
 function DecisionContextMenu({ x, y, nodeId, smId, onClose }) {
   const store = useDiagramStore();
   const ref = useRef(null);
+  const zoomStyle = useReactFlowZoomScale();
 
   useEffect(() => {
     function handleClick(e) {
@@ -1363,6 +1496,7 @@ function DecisionContextMenu({ x, y, nodeId, smId, onClose }) {
         padding: '4px 0',
         minWidth: 140,
         fontSize: 13,
+        ...zoomStyle,
       }}
     >
       <button

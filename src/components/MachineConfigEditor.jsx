@@ -582,13 +582,23 @@ function StationDetail({ station, sms, onUpdate, onLinkSm, onUnlinkSm, onPrev, o
 }
 
 // ── SM Generator Panel ─────────────────────────────────────────────────────
-// Axis types for the PnP configurator
+// Subject types offered as axes in the station configurator. Covers the full
+// DEVICE_TYPES list so you can add any subject (e.g. vision, robot, timer,
+// analog probe) from the Setup screen without a separate round-trip to the
+// Subject Library. Only types that make sense as a stand-alone axis row are
+// included (Parameter/Custom are excluded — those are configured specially).
 const AXIS_TYPES = [
   { id: 'pneumatic', label: 'Pneumatic' },
-  { id: 'servo', label: 'Servo' },
-  { id: 'gripper', label: 'Gripper' },
-  { id: 'vacuum', label: 'Vacuum' },
-  { id: 'sensor', label: 'Sensor' },
+  { id: 'rotary',    label: 'Rotary Pneu' },
+  { id: 'servo',     label: 'Servo' },
+  { id: 'gripper',   label: 'Gripper' },
+  { id: 'vacuum',    label: 'Vacuum' },
+  { id: 'sensor',    label: 'Dig Sensor' },
+  { id: 'analog',    label: 'Analog Probe' },
+  { id: 'vision',    label: 'Vision' },
+  { id: 'robot',     label: 'Robot' },
+  { id: 'conveyor',  label: 'Conveyor' },
+  { id: 'timer',     label: 'Timer' },
 ];
 const AXIS_LABELS = ['X', 'Z', 'A3', 'A4', 'A5', 'A6']; // auto-assigned labels
 const DEFAULT_LOAD_AXES = [
@@ -640,6 +650,8 @@ function SmGeneratorPanel({ stations, sms }) {
         copyFromSmId: null,
         axes: defaultAxes(st.type),
         verifyType: st.type === 'verify' ? 'vision' : null,
+        // Per-station: generate full sequence scaffolding vs. devices only
+        generateSequence: true,
       };
     }
     return cfgs;
@@ -657,6 +669,7 @@ function SmGeneratorPanel({ stations, sms }) {
             copyFromSmId: null,
             axes: defaultAxes(st.type),
             verifyType: st.type === 'verify' ? 'vision' : null,
+            generateSequence: true,
           };
         }
       }
@@ -694,6 +707,10 @@ function SmGeneratorPanel({ stations, sms }) {
           copyFromSmId: c.copyFromSmId ?? null,
           axes: c.axes ?? [],
           verifyType: c.stationType === 'verify' ? (c.verifyType ?? 'vision') : null,
+          // Per-station toggle — when false, only devices and the Home +
+          // Cycle Complete nodes are produced. The user builds the sequence
+          // manually. Copy-from-SM is unaffected (always copies full graph).
+          generateSequence: c.generateSequence !== false,
         };
       });
     if (configs.length === 0) return;
@@ -740,6 +757,7 @@ function SmGeneratorPanel({ stations, sms }) {
             </button>
           </div>
 
+
           {/* ── Existing SMs section ─────────────────────────── */}
           {nonEmpty.filter(st => hasSmSet.has(st.id)).length > 0 && (
             <div className="sm-gen-existing">
@@ -781,6 +799,7 @@ function SmGeneratorPanel({ stations, sms }) {
                 <th>Name</th>
                 <th style={{ width: 90 }}>Type</th>
                 <th>Config</th>
+                <th style={{ width: 200 }}>Mode</th>
                 <th style={{ width: 160 }}>Copy From</th>
               </tr>
             </thead>
@@ -866,6 +885,25 @@ function SmGeneratorPanel({ stations, sms }) {
                       {cfg.checked && cfg.copyFromSmId && (
                         <span className="sm-gen-table__manual">Copying</span>
                       )}
+                    </td>
+                    <td>
+                      {/* Per-station mode: disabled when copying (full graph is cloned) */}
+                      <div className={`sm-gen-mode-toggle${cfg.copyFromSmId ? ' sm-gen-mode-toggle--disabled' : ''}`}>
+                        <button
+                          type="button"
+                          className={`sm-gen-mode-toggle__btn${cfg.generateSequence !== false ? ' sm-gen-mode-toggle__btn--active' : ''}`}
+                          onClick={() => updateCfg(st.id, { generateSequence: true })}
+                          disabled={!cfg.checked || !!cfg.copyFromSmId}
+                          title="Scaffold a full PnP-style state sequence"
+                        >Seq + Devices</button>
+                        <button
+                          type="button"
+                          className={`sm-gen-mode-toggle__btn${cfg.generateSequence === false ? ' sm-gen-mode-toggle__btn--active' : ''}`}
+                          onClick={() => updateCfg(st.id, { generateSequence: false })}
+                          disabled={!cfg.checked || !!cfg.copyFromSmId}
+                          title="Only create the subjects — you'll build the sequence yourself"
+                        >Devices Only</button>
+                      </div>
                     </td>
                     <td>
                       <select

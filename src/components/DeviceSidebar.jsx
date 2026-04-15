@@ -4,7 +4,7 @@
  * Subjects can be drag-reordered within the sidebar.
  */
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { DEVICE_TYPES, DEVICE_CATEGORIES } from '../lib/deviceTypes.js';
 import { useDiagramStore } from '../store/useDiagramStore.js';
 import { DeviceIcon } from './DeviceIcons.jsx';
@@ -298,13 +298,29 @@ export function DeviceSidebar() {
   const store = useDiagramStore();
   const sm = store.getActiveSm();
   const [collapsed, setCollapsed] = useState(false);
-  const [width, setWidth] = useState(220);
+  // User-dragged width. Auto-width based on content acts as a floor.
+  const [userWidth, setUserWidth] = useState(220);
   const resizing = useRef(false);
 
   // Drag-to-reorder state
   const [dragDeviceId, setDragDeviceId] = useState(null);
   const [dragOverId, setDragOverId] = useState(null);
   const [dragPosition, setDragPosition] = useState(null); // 'above' | 'below'
+
+  // Auto-size floor: grow sidebar so the longest visible subject name fits.
+  // Heuristic: ~7.0px/char at 12px font + icon (28) + inner padding (32) + safety (16).
+  const autoMinWidth = useMemo(() => {
+    const devs = (sm?.devices ?? []).filter(d => !d._autoVerify && !d._autoVision && !d.crossSmId);
+    if (devs.length === 0) return 220;
+    const longest = devs.reduce(
+      (m, d) => Math.max(m, (d.displayName ?? d.name ?? '').length),
+      0
+    );
+    return Math.min(Math.max(220, Math.round(longest * 7.0 + 76)), 500);
+  }, [sm?.devices]);
+
+  // Effective width is the larger of user's choice and the auto floor.
+  const width = Math.max(userWidth, autoMinWidth);
 
   const handleMouseDown = useCallback((e) => {
     e.preventDefault();
@@ -313,7 +329,7 @@ export function DeviceSidebar() {
     const startW = width;
     function onMove(ev) {
       const newW = Math.min(Math.max(startW + (ev.clientX - startX), 160), 500);
-      setWidth(newW);
+      setUserWidth(newW);
     }
     function onUp() {
       resizing.current = false;

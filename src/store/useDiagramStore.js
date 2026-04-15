@@ -1012,6 +1012,10 @@ export const useDiagramStore = create(
           let nodeY = 100;
           const yStep = 180;
           const nodeList = []; // track { id, type } for edge creation
+          // When false: only Home + Cycle Complete are created; devices are
+          // still built but the scaffolded sequence steps are skipped so the
+          // user can design the flow themselves.
+          const seqEnabled = cfg.generateSequence !== false;
 
           // Helper: create a state node and push it
           const mkState = (label, opts = {}) => {
@@ -1057,7 +1061,7 @@ export const useDiagramStore = create(
           const homeNodeId = mkState('Home', { isInitial: true });
 
           // 1. For indexing machines, add "Wait for Index Complete" decision node after Home
-          if (machineType === 'indexing') {
+          if (machineType === 'indexing' && seqEnabled) {
             const waitId = uid();
             sm.nodes.push({
               id: waitId,
@@ -1184,6 +1188,88 @@ export const useDiagramStore = create(
                   devId, label: axLabel, type: 'sensor',
                   extOp: 'Verify', retOp: null, extExtra: {}, retExtra: {},
                 });
+              } else if (axis.type === 'rotary') {
+                sm.devices.push({
+                  id: devId, type: 'PneumaticRotaryActuator',
+                  name: devName, displayName: devDisplay,
+                  tagStem: devName,
+                  sensorArrangement: '2-sensor (Ext + Ret)',
+                });
+                axisDevices.push({
+                  devId, label: axLabel, type: 'rotary',
+                  extOp: 'Extend', retOp: 'Retract', extExtra: {}, retExtra: {},
+                });
+              } else if (axis.type === 'analog') {
+                sm.devices.push({
+                  id: devId, type: 'AnalogSensor',
+                  name: devName, displayName: devDisplay,
+                  tagStem: devName,
+                  sensorUnit: 'mm',
+                  setpoints: [{ id: uid(), name: 'Test', nominal: 10.0, tolerance: 1.0 }],
+                });
+                axisDevices.push({
+                  devId, label: axLabel, type: 'analog',
+                  extOp: 'CheckRange', retOp: null, extExtra: { setpointName: 'Test' }, retExtra: {},
+                });
+              } else if (axis.type === 'vision') {
+                const jobName = `${axLabel}_Inspect`;
+                sm.devices.push({
+                  id: devId, type: 'VisionSystem',
+                  name: devName, displayName: devDisplay,
+                  tagStem: devName,
+                  jobs: [{ id: uid(), name: jobName, outcomes: ['Pass', 'Fail'], numericOutputs: [] }],
+                });
+                axisDevices.push({
+                  devId, label: axLabel, type: 'vision',
+                  extOp: 'VisionInspect', retOp: null,
+                  extExtra: { jobName, ptFieldName: jobName, outcomes: [{ id: uid(), label: 'Pass' }, { id: uid(), label: 'Fail' }] },
+                  retExtra: {},
+                });
+              } else if (axis.type === 'robot') {
+                sm.devices.push({
+                  id: devId, type: 'Robot',
+                  name: devName, displayName: devDisplay,
+                  tagStem: devName,
+                  sequences: [
+                    { id: uid(), number: 1, name: 'Home',  description: 'Move to home / perch position' },
+                    { id: uid(), number: 2, name: 'Pick',  description: 'Pick part from nest' },
+                    { id: uid(), number: 3, name: 'Place', description: 'Place part at target' },
+                  ],
+                  signals: [
+                    { id: uid(), number: 1, name: 'OkToEnterDial', group: 'DI', direction: 'output', dataType: 'BOOL' },
+                    { id: uid(), number: 1, name: 'PartGrip',      group: 'DO', direction: 'input',  dataType: 'BOOL' },
+                  ],
+                });
+                axisDevices.push({
+                  devId, label: axLabel, type: 'robot',
+                  extOp: 'RunSequence', retOp: null,
+                  extExtra: { sequenceNumber: 2, sequenceName: 'Pick' },
+                  retExtra: {},
+                });
+              } else if (axis.type === 'conveyor') {
+                sm.devices.push({
+                  id: devId, type: 'Conveyor',
+                  name: devName, displayName: devDisplay,
+                  tagStem: devName,
+                  driveType: 'VFD',
+                  bidirectional: false,
+                  hasSpeedControl: true,
+                });
+                axisDevices.push({
+                  devId, label: axLabel, type: 'conveyor',
+                  extOp: 'Run', retOp: 'Stop', extExtra: {}, retExtra: {},
+                });
+              } else if (axis.type === 'timer') {
+                sm.devices.push({
+                  id: devId, type: 'Timer',
+                  name: devName, displayName: devDisplay,
+                  tagStem: devName,
+                  timerMs: 1000,
+                });
+                axisDevices.push({
+                  devId, label: axLabel, type: 'timer',
+                  extOp: 'Wait', retOp: null, extExtra: {}, retExtra: {},
+                });
               }
               axisNum++;
             }
@@ -1211,7 +1297,7 @@ export const useDiagramStore = create(
             const homeNode = sm.nodes.find(n => n.id === homeNodeId);
             if (homeNode) homeNode.data.actions = homeActions;
 
-            if (motionAxes.length >= 2) {
+            if (seqEnabled && motionAxes.length >= 2) {
               // PnP-style: identify X (horizontal) and Z (vertical) by label, rest are mid axes
               // Z = label contains 'z' or 'vert'; X = label contains 'x' or 'horiz'; fallback: first=X, second=Z
               let zIdx = motionAxes.findIndex(a => /^z$/i.test(a.label) || /vert/i.test(a.label));
@@ -1251,7 +1337,7 @@ export const useDiagramStore = create(
               }
               mkState(`${zAxis.label} Retract (2)`, { actions: [{ id: uid(), deviceId: zAxis.devId, operation: zRetOp, ...zRetract }] });
               mkState(`${xAxis.label} to Pick`, { actions: [{ id: uid(), deviceId: xAxis.devId, operation: xAxis.retOp, ...xAxis.retExtra }] });
-            } else {
+            } else if (seqEnabled) {
               // Single axis or no motion axes — simple extend/retract
               for (const ax of axisDevices) {
                 if (ax.extOp) {
@@ -1266,8 +1352,10 @@ export const useDiagramStore = create(
             }
 
             // Sensor checks at end of sequence
-            for (const sen of sensorAxes) {
-              mkState(`Check ${sen.label}`, { actions: [{ id: uid(), deviceId: sen.devId, operation: sen.extOp }] });
+            if (seqEnabled) {
+              for (const sen of sensorAxes) {
+                mkState(`Check ${sen.label}`, { actions: [{ id: uid(), deviceId: sen.devId, operation: sen.extOp }] });
+              }
             }
 
           } else if (cfg.stationType === 'verify') {
@@ -1280,7 +1368,9 @@ export const useDiagramStore = create(
                 tagStem: `${safeName}Cam`,
                 jobs: [{ id: uid(), name: jobName, outcomes: ['Pass', 'Fail'], numericOutputs: [] }],
               });
-              mkState('Vision Inspect', { actions: [{ id: uid(), deviceId: devId, operation: 'VisionInspect', jobName, ptFieldName: jobName, outcomes: [{ id: uid(), label: 'Pass' }, { id: uid(), label: 'Fail' }] }] });
+              if (seqEnabled) {
+                mkState('Vision Inspect', { actions: [{ id: uid(), deviceId: devId, operation: 'VisionInspect', jobName, ptFieldName: jobName, outcomes: [{ id: uid(), label: 'Pass' }, { id: uid(), label: 'Fail' }] }] });
+              }
             } else if (cfg.verifyType === 'sensor') {
               const devId = uid();
               sm.devices.push({
@@ -1288,7 +1378,9 @@ export const useDiagramStore = create(
                 name: `${safeName}Sensor`, displayName: `${displayName} Sensor`,
                 tagStem: `${safeName}Sensor`,
               });
-              mkState('Check Sensor', { actions: [{ id: uid(), deviceId: devId, operation: 'Verify' }] });
+              if (seqEnabled) {
+                mkState('Check Sensor', { actions: [{ id: uid(), deviceId: devId, operation: 'Verify' }] });
+              }
             } else if (cfg.verifyType === 'mechanical') {
               const devId = uid();
               sm.devices.push({
@@ -1297,14 +1389,16 @@ export const useDiagramStore = create(
                 tagStem: `${safeName}Probe`,
                 sensorArrangement: '2-sensor (Ext + Ret)',
               });
-              mkState('Extend Probe', { actions: [{ id: uid(), deviceId: devId, operation: 'Extend' }] });
-              mkState('Retract Probe', { actions: [{ id: uid(), deviceId: devId, operation: 'Retract' }] });
+              if (seqEnabled) {
+                mkState('Extend Probe', { actions: [{ id: uid(), deviceId: devId, operation: 'Extend' }] });
+                mkState('Retract Probe', { actions: [{ id: uid(), deviceId: devId, operation: 'Retract' }] });
+              }
             }
           } else if ((cfg.stationType === 'process' || cfg.stationType === 'reject' || cfg.stationType === 'unload') && cfg.axes && cfg.axes.length > 0) {
             // ── Process / Reject / Unload station: create devices, empty sequence ─
             // Reject & Unload also prepend a gating decision node (autoOpen) so the
             // user picks which upstream vision result gates this station's sequence.
-            if (cfg.stationType === 'reject' || cfg.stationType === 'unload') {
+            if ((cfg.stationType === 'reject' || cfg.stationType === 'unload') && seqEnabled) {
               const gateId = uid();
               const gateLabel = cfg.stationType === 'reject' ? 'Run if Rejected' : 'Run if Good Part';
               sm.nodes.push({
@@ -1374,9 +1468,11 @@ export const useDiagramStore = create(
               axisNum++;
             }
             // Add a single empty node — user fills in the actual sequence
-            const processLabel = cfg.stationType === 'reject' ? 'Reject' :
-                                 cfg.stationType === 'unload' ? 'Unload' : 'Process';
-            mkState(processLabel, {});
+            if (seqEnabled) {
+              const processLabel = cfg.stationType === 'reject' ? 'Reject' :
+                                   cfg.stationType === 'unload' ? 'Unload' : 'Process';
+              mkState(processLabel, {});
+            }
           }
           // For load/unload with no axes: just Wait → Complete
 

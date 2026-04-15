@@ -2450,33 +2450,6 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
         continue;
       }
 
-      if (row.kind === 'decision') {
-        // Write TRUE when in pass branch's target state, FALSE when in fail branch's target state
-        const passEdge = (sm.edges ?? []).find(e => e.source === row.setAtNodeId && e.sourceHandle === 'exit-pass');
-        const failEdge = (sm.edges ?? []).find(e => e.source === row.setAtNodeId && e.sourceHandle === 'exit-fail');
-        const passStep = passEdge ? stepMap[passEdge.target] : null;
-        const failStep = failEdge ? stepMap[failEdge.target] : null;
-        if (passStep != null) {
-          rungs.push(
-            buildRung(
-              rungNum++,
-              `Part Tracking: ${row.fieldName} Pass`,
-              `XIC(Status.State[${passStep}])OTE(${ptTag});`
-            )
-          );
-        }
-        if (failStep != null) {
-          rungs.push(
-            buildRung(
-              rungNum++,
-              `Part Tracking: ${row.fieldName} Fail`,
-              `XIC(Status.State[${failStep}])OTU(${ptTag});`
-            )
-          );
-        }
-        continue;
-      }
-
       if (row.kind === 'visionNumeric') {
         // Copy the vision numeric output into a REAL PT field. Runs during
         // the state where the inspect action sits (value is stable once the

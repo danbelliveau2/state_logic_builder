@@ -16,6 +16,7 @@ import { hasSensorForOperation, needsTimerForOperation } from '../../lib/conditi
 import { getSensorTagForOperation, getDelayTimerForOperation } from '../../lib/tagNaming.js';
 import { OUTCOME_COLORS } from '../../lib/outcomeColors.js';
 import { buildAvailableInputs } from '../../lib/availableInputs.js';
+import { useReactFlowZoomScale } from '../../lib/useReactFlowZoomScale.js';
 import { ENTRY_RULES, getEntryRuleMeta, resolveEntryRule, isEntryRuleOverridden } from '../../lib/entryRules.js';
 import { START_CONDITIONS, getStartConditionMeta, resolveIndexSync, isIndexSyncOverridden } from '../../lib/indexSync.js';
 import { PartTrackingPill } from '../PartTrackingPanel.jsx';
@@ -86,6 +87,7 @@ function OperationSwitcher({ action, device, smId, nodeId, pos, onClose }) {
     };
   }, [onClose]);
 
+  const zoomStyle = useReactFlowZoomScale();
   if (operations.length < 2) return null;
 
   return createPortal(
@@ -100,6 +102,7 @@ function OperationSwitcher({ action, device, smId, nodeId, pos, onClose }) {
       boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
       padding: '4px 0',
       minWidth: 140,
+      ...zoomStyle,
     }}>
       {operations.map(op => {
         const color = getOperationColor(op.value, device.type);
@@ -2505,6 +2508,7 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
 function ContextMenu({ x, y, nodeId, smId, onClose }) {
   const store = useDiagramStore();
   const ref = useRef(null);
+  const zoomStyle = useReactFlowZoomScale();
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -2518,7 +2522,7 @@ function ContextMenu({ x, y, nodeId, smId, onClose }) {
     <div
       ref={ref}
       className="context-menu"
-      style={{ position: 'fixed', left: x, top: y, zIndex: 10000 }}
+      style={{ position: 'fixed', left: x, top: y, zIndex: 10000, ...zoomStyle }}
     >
       <button
         className="context-menu__item"
@@ -2620,6 +2624,7 @@ function ContextMenu({ x, y, nodeId, smId, onClose }) {
  * Used for both Entry Rule and Start Condition controls on home nodes.
  */
 function ConfigPill({ label, options, effective, meta, overridden, overrideText, tooltip, onPick }) {
+  const zoomStyleConfigPill = useReactFlowZoomScale('top center');
   const [open, setOpen] = useState(false);
   const [menuPos, setMenuPos] = useState(null);
   const pillRef = useRef(null);
@@ -2691,7 +2696,9 @@ function ConfigPill({ label, options, effective, meta, overridden, overrideText,
             position: 'fixed',
             top: menuPos.top,
             left: menuPos.left,
-            transform: 'translateX(-50%)',
+            // Combine horizontal centering with zoom scale
+            transform: `translateX(-50%) ${zoomStyleConfigPill.transform}`,
+            transformOrigin: zoomStyleConfigPill.transformOrigin,
             background: '#ffffff',
             border: '1px solid #d1d5db',
             borderRadius: 8,
@@ -2977,7 +2984,7 @@ export function StateNode({ data, selected, id }) {
       <Handle
         type="target"
         position={Position.Top}
-        style={{ background: '#64748b', width: 10, height: 10, border: '2px solid #fff' }}
+        className="sdc-handle"
       />
 
       {/* SVG shape background (hexagon, octagon, diamond) */}
@@ -3267,13 +3274,13 @@ export function StateNode({ data, selected, id }) {
             type="source"
             position={Position.Left}
             id="exit-pass"
-            style={{ top: '50%', background: '#5a9a48', width: 10, height: 10, border: '2px solid #fff' }}
+            className="sdc-handle sdc-handle--pass"
           />
           <Handle
             type="source"
             position={Position.Right}
             id="exit-fail"
-            style={{ top: '50%', background: '#ef4444', width: 10, height: 10, border: '2px solid #fff' }}
+            className="sdc-handle sdc-handle--fail"
           />
         </>
       ) : showVisionSingleHandle ? (
@@ -3281,13 +3288,13 @@ export function StateNode({ data, selected, id }) {
           type="source"
           position={Position.Bottom}
           id="exit-single"
-          style={{ background: '#64748b', width: 10, height: 10, border: '2px solid #fff' }}
+          className="sdc-handle"
         />
       ) : (
         <Handle
           type="source"
           position={Position.Bottom}
-          style={{ background: '#64748b', width: 10, height: 10, border: '2px solid #fff' }}
+          className="sdc-handle"
         />
       )}
 

@@ -1,13 +1,13 @@
 /**
  * partTracking.js — Per-SM Part Tracking table derivation.
  *
- * A state machine's Part Tracking table is auto-derived from:
+ * A state machine's Part Tracking table is auto-derived from SUBJECTS
+ * (devices) — decision nodes do NOT contribute rows. The PT comes from
+ * the device operation itself, at the state where it runs:
  *   1) The Cycle Complete node               → StationResult row (overall outcome)
- *   2) Dual-branch decision nodes             → one row per device outcome
- *   3) Vision Inspect state actions           → one row per vision job
- *   4) Analog-sensor "Check Range" actions    → one row per setpoint tested
- *      (even when the flow has no decision branch — the PT comes from the
- *       device operation itself, recorded pass/fail at the state where it runs)
+ *   2) Vision Inspect state actions          → one BOOL row per job + one REAL
+ *                                              row per numeric data-output
+ *   3) Analog-sensor "Check Range" actions   → one BOOL row per setpoint tested
  *
  * The user may append manual rows stored on the SM:
  *   sm.partTrackingOverrides.customRows[] = [{ id, fieldName, ... }]
@@ -28,65 +28,6 @@ function sanitizeTag(s) {
 
 function deviceTypeLabel(type) {
   return DEVICE_TYPES[type]?.label ?? type ?? '';
-}
-
-/**
- * Given a decision node, find the underlying device + what-is-being-tested label.
- * Handles multiple storage formats:
- *   - Vision decisions: signalSource = device name, signalName = job name
- *   - Sensor decisions: sensorRef = "deviceId:setpointName"
- *   - Other signals:    signalId = "pt_<id>" / "state_<id>" / etc.
- */
-function resolveDecisionSubject(node, devices) {
-  const d = node.data ?? {};
-
-  // Sensor path: sensorRef = "deviceId:setpointName"
-  if (d.sensorRef && typeof d.sensorRef === 'string' && d.sensorRef.includes(':')) {
-    const [deviceId, setpointName] = d.sensorRef.split(':');
-    const device = devices.find(x => x.id === deviceId);
-    if (device) {
-      return {
-        device,
-        deviceName: device.name,
-        deviceType: deviceTypeLabel(device.type),
-        testName: setpointName || d.signalName || '',
-      };
-    }
-  }
-
-  // Vision / direct device path: signalSource = device name
-  const byName = devices.find(x =>
-    x.name === d.signalSource || x.displayName === d.signalSource
-  );
-  if (byName) {
-    return {
-      device: byName,
-      deviceName: byName.name,
-      deviceType: deviceTypeLabel(byName.type),
-      testName: d.signalName || '',
-    };
-  }
-
-  // Fallback: use whatever labels the node has. Try to salvage a device name
-  // from the signalName (e.g., "Measure_Probe @ Test" → device "Measure_Probe").
-  const rawLabel = d.signalName ?? '';
-  let deviceName = d.signalSource ?? '';
-  let testName = rawLabel;
-  if (rawLabel.includes('@')) {
-    const [left, right] = rawLabel.split('@').map(s => s.trim());
-    if (devices.some(x => x.name === left)) {
-      deviceName = left;
-      testName = right;
-    }
-  }
-  const fallbackDev = devices.find(x => x.name === deviceName);
-
-  return {
-    device: fallbackDev ?? null,
-    deviceName: deviceName || 'Signal',
-    deviceType: fallbackDev ? deviceTypeLabel(fallbackDev.type) : (d.decisionType === 'vision' ? 'Vision System' : 'Signal'),
-    testName,
-  };
 }
 
 /**
@@ -125,35 +66,7 @@ export function derivePartTrackingTable(sm, stateMap) {
     enabled: overrides['StationResult']?.enabled !== false,
   });
 
-  // ── 2. Dual-branch decision nodes ─────────────────────────────────────
-  for (const node of nodes) {
-    if (node.type !== 'decisionNode') continue;
-    if (node.data?.exitCount !== 2) continue;
-
-    const { deviceName, deviceType, testName } = resolveDecisionSubject(node, devices);
-    const fieldRaw = sanitizeTag(testName) || sanitizeTag(deviceName);
-    if (!fieldRaw) continue;
-
-    rows.push({
-      id: `row_dec_${node.id}`,
-      kind: 'decision',
-      fieldNameRaw: fieldRaw,
-      subjectName: deviceName,
-      subjectType: deviceType,
-      description: node.data?.decisionType === 'vision'
-        ? 'Vision result → success or reject'
-        : 'Decision result → success or reject',
-      setAtNodeId: node.id,
-      setAtState: getState(node.id),
-      writeValue: 'Success / Reject',
-      dataType: 'bool',
-      auto: true,
-      enabled: overrides[fieldRaw]?.enabled !== false,
-      _deviceName: deviceName,
-    });
-  }
-
-  // ── 3. Vision Inspect state actions ───────────────────────────────────
+  // ── 2. Vision Inspect state actions ───────────────────────────────────
   // Emits a BOOL pass/fail row per inspect + one REAL row per numeric
   // data-output (e.g. X_Offset, PartCount) so downstream stations can read
   // them off the PartTracking UDT.
@@ -217,7 +130,7 @@ export function derivePartTrackingTable(sm, stateMap) {
     }
   }
 
-  // ── 4. Analog sensor Check Range actions ──────────────────────────────
+  // ── 3. Analog sensor Check Range actions ──────────────────────────────
   // Each AnalogSensor CheckRange action on a state node becomes a PT row.
   // This fires regardless of whether a decision branch follows — the test
   // result is captured at the state where the probe check runs.
@@ -252,7 +165,7 @@ export function derivePartTrackingTable(sm, stateMap) {
     }
   }
 
-  // ── 5. Custom rows (user-added) ───────────────────────────────────────
+  // ── 4. Custom rows (user-added) ───────────────────────────────────────
   for (const custom of (overrides.customRows ?? [])) {
     if (!custom?.fieldName) continue;
     rows.push({
