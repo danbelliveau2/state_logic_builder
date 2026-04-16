@@ -4,10 +4,19 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.3';
+export const APP_VERSION = '1.4';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.4',
+    date: '2026-04-16',
+    changes: [
+      'Moved Release Notes button to sidebar below Rev number',
+      'Enlarged Part Tracking and Signals section headers',
+      'Cleaned up toolbar — removed version clutter from top bar',
+    ],
+  },
   {
     version: '1.3',
     date: '2026-04-16',

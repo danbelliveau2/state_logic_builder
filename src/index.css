@@ -400,23 +400,35 @@ body {
   white-space: nowrap;
 }
 
-/* ── Version badge & changelog popup ────────────────────────────────────── */
-.toolbar__version-badge {
-  position: absolute;
-  right: 8px;
-  bottom: 2px;
-  font-size: 10px;
-  color: #64748b;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 1px 4px;
-  border-radius: 3px;
-  font-family: var(--font-mono, monospace);
+/* ── Sidebar version block & changelog popup ───────────────────────────── */
+.sidebar-version {
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--color-border, #334155);
+  text-align: center;
 }
-.toolbar__version-badge:hover {
+.sidebar-version__label {
+  font-size: 15px;
+  font-weight: 600;
+  color: #64748b;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+.sidebar-version__notes-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 1px solid #334155;
+  border-radius: 4px;
   color: #94a3b8;
-  background: #ffffff12;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 3px 10px;
+}
+.sidebar-version__notes-btn:hover {
+  color: #e2e8f0;
+  background: #ffffff0d;
+  border-color: #475569;
 }
 
 .changelog-backdrop {
@@ -919,8 +931,8 @@ body {
 }
 
 .device-sidebar__bottom-panel .device-sidebar__section-header {
-  padding: 4px 12px 2px;
-  font-size: 9px;
+  padding: 6px 12px 3px;
+  font-size: 11px;
 }
 
 .device-sidebar__bottom-panel .device-sidebar__empty {

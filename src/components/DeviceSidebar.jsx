@@ -9,7 +9,7 @@ import { DEVICE_TYPES, DEVICE_CATEGORIES } from '../lib/deviceTypes.js';
 import { useDiagramStore } from '../store/useDiagramStore.js';
 import { DeviceIcon } from './DeviceIcons.jsx';
 import { SignalModal } from './modals/SignalModal.jsx';
-import { APP_VERSION } from '../lib/version.js';
+import { APP_VERSION, CHANGELOG } from '../lib/version.js';
 
 // ── Part Tracking Section ──────────────────────────────────────────────────────
 
@@ -295,6 +295,50 @@ function DeviceItem({ device, smId, onReorderDragStart, onReorderDragOver, onReo
   );
 }
 
+function VersionBlock() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="sidebar-version">
+      <div className="sidebar-version__label">Rev {APP_VERSION}</div>
+      <button
+        className="sidebar-version__notes-btn"
+        onClick={() => setOpen(true)}
+        title="View release notes"
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M2 2a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V2zm2-.5a.5.5 0 00-.5.5v12a.5.5 0 00.5.5h8a.5.5 0 00.5-.5V2a.5.5 0 00-.5-.5H4z"/>
+          <path d="M5.5 4h5a.5.5 0 010 1h-5a.5.5 0 010-1zm0 3h5a.5.5 0 010 1h-5a.5.5 0 010-1zm0 3h3a.5.5 0 010 1h-3a.5.5 0 010-1z"/>
+        </svg>
+        <span>Release Notes</span>
+      </button>
+
+      {open && (
+        <div className="changelog-backdrop" onClick={() => setOpen(false)}>
+          <div className="changelog-popup" onClick={e => e.stopPropagation()}>
+            <div className="changelog-popup__header">
+              <span className="changelog-popup__title">Release Notes</span>
+              <button className="changelog-popup__close" onClick={() => setOpen(false)}>×</button>
+            </div>
+            <div className="changelog-popup__body">
+              {CHANGELOG.map(entry => (
+                <div key={entry.version} className="changelog-popup__entry">
+                  <div className="changelog-popup__version">
+                    v{entry.version}
+                    <span className="changelog-popup__date">{entry.date}</span>
+                  </div>
+                  <ul className="changelog-popup__list">
+                    {entry.changes.map((c, i) => <li key={i}>{c}</li>)}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function DeviceSidebar() {
   const store = useDiagramStore();
   const sm = store.getActiveSm();
@@ -478,18 +522,8 @@ export function DeviceSidebar() {
           <div className="device-sidebar__bottom-panel">
             <PartTrackingSection />
             <SignalsSection />
-            {/* Revision number */}
-            <div style={{
-              padding: '10px 12px',
-              fontSize: 16,
-              fontWeight: 600,
-              color: '#64748b',
-              textAlign: 'center',
-              borderTop: '1px solid var(--color-border)',
-              letterSpacing: '0.04em',
-            }}>
-              Rev {APP_VERSION}
-            </div>
+            {/* Revision number + changelog */}
+            <VersionBlock />
           </div>
         </>
       )}
