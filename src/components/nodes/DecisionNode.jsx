@@ -328,10 +328,19 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
       : (cond.group ?? '');
     const type = cond.signalType ?? 'signal';
     let exit1, exit2;
-    // Verify mode: always Pass/Fail — it's a hard confirmation gate.
+    // Verify mode: sensor uses On/Off (matching what's being verified),
+    // non-sensor uses Pass/Fail.
     if (nodeMode === 'verify') {
-      exit1 = `Pass_${name}`;
-      exit2 = `Fail_${name}`;
+      if (cond.inputType === 'range') {
+        exit1 = `InRange_${name}`;
+        exit2 = `OutOfRange_${name}`;
+      } else if (cond.signalType === 'sensor') {
+        exit1 = conditionType === 'off' ? `Off_${name}` : `On_${name}`;
+        exit2 = conditionType === 'off' ? `On_${name}` : `Off_${name}`;
+      } else {
+        exit1 = `Pass_${name}`;
+        exit2 = `Fail_${name}`;
+      }
     } else if (cond.inputType === 'range') {
       exit1 = `InRange_${name}`;
       exit2 = `OutOfRange_${name}`;
@@ -416,14 +425,14 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
       style={{
         ...style,
         ...zoomStyle,
-        width: 260,
-        background: '#1a1f2e',
-        border: '1px solid #374151',
+        width: 320,
+        background: '#fff',
+        border: '1px solid #d1d5db',
         borderRadius: 8,
-        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-        fontSize: 12,
-        color: '#e5e7eb',
-        maxHeight: 420,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+        fontSize: 14,
+        color: '#1e293b',
+        maxHeight: 520,
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
@@ -431,10 +440,10 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
       onMouseDown={e => e.stopPropagation()}
     >
       {/* Header */}
-      <div style={{ flexShrink: 0, borderBottom: '1px solid #374151' }}>
+      <div style={{ flexShrink: 0, borderBottom: '1px solid #e2e8f0' }}>
         {/* Title row */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px 4px' }}>
-          <span style={{ fontWeight: 700, fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <span style={{ fontWeight: 700, fontSize: 13, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             {showBranchConfig
               ? (signalType === 'visionJob' ? `📷 ${signalName}` : signalType === 'partTracking' ? `📋 ${signalName}` : signalType === 'sensor' ? `🔌 ${signalName}` : `⚡ ${signalName}`)
               : editingConditionIdx !== null ? '✎ Change Condition'
@@ -447,19 +456,19 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
             <button
               className="nodrag"
               onClick={() => setShowBranchConfig(false)}
-              style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 11, padding: '0 2px' }}
+              style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 13, padding: '0 2px' }}
             >{'\u2190'} Back</button>
           ) : editingConditionIdx !== null ? (
             <button
               className="nodrag"
               onClick={() => { setEditingConditionIdx(null); setShowBranchConfig(true); }}
-              style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 11, padding: '0 2px' }}
+              style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 13, padding: '0 2px' }}
             >{'\u2190'} Cancel</button>
           ) : addingCondition ? (
             <button
               className="nodrag"
               onClick={() => { setAddingCondition(false); setShowBranchConfig(true); }}
-              style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 11, padding: '0 2px' }}
+              style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 13, padding: '0 2px' }}
             >{'\u2190'} Cancel</button>
           ) : (
             <button
@@ -474,7 +483,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
           const modes = [
             { key: 'wait',   label: 'Wait',   emoji: '\u23F3', active: '#0072B5', activeBorder: '#3b82f6', tip: 'Pause step until condition is TRUE.' },
             { key: 'decide', label: 'Decide', emoji: '\u26A1', active: '#7c3aed', activeBorder: '#8b5cf6', tip: 'Read condition NOW and branch — no pause.' },
-            { key: 'verify', label: 'Verify', emoji: '\u2713', active: '#16a34a', activeBorder: '#22c55e', tip: 'Confirm condition is TRUE; if not, fault.' },
+            { key: 'verify', label: 'Verify', emoji: '\u2713', active: '#E8A317', activeBorder: '#f59e0b', tip: 'Confirm condition is TRUE; if not, fault.' },
           ];
           return (
             <div style={{ padding: '2px 8px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -487,16 +496,16 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                       className="nodrag"
                       onClick={() => setNodeMode(m.key)}
                       style={{
-                        flex: 1, padding: '5px 0', borderRadius: 5, cursor: 'pointer', fontSize: 11, fontWeight: 600,
-                        background: isActive ? m.active : '#111827',
-                        border: isActive ? `1px solid ${m.activeBorder}` : '1px solid #374151',
-                        color: isActive ? '#fff' : '#6b7280',
+                        flex: 1, padding: '7px 0', borderRadius: 5, cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                        background: isActive ? m.active : '#f1f5f9',
+                        border: isActive ? `1px solid ${m.activeBorder}` : '1px solid #d1d5db',
+                        color: isActive ? '#fff' : '#64748b',
                       }}
                     >{m.emoji} {m.label}</button>
                   );
                 })}
               </div>
-              <div style={{ fontSize: 9, color: '#6b7280', lineHeight: 1.3, padding: '0 2px' }}>
+              <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.3, padding: '0 2px' }}>
                 {modes.find(m => m.key === nodeMode)?.tip}
               </div>
             </div>
@@ -514,13 +523,13 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
               className="nodrag"
               onClick={() => toggleSection(sectionKey)}
               style={{
-                display: 'flex', alignItems: 'center', gap: 4,
-                fontSize: 9, fontWeight: 700, color, padding: '6px 10px 2px',
+                display: 'flex', alignItems: 'center', gap: 5,
+                fontSize: 12, fontWeight: 700, color, padding: '8px 12px 3px',
                 textTransform: 'uppercase', letterSpacing: '0.05em',
                 cursor: 'pointer', userSelect: 'none',
               }}
             >
-              <span style={{ fontSize: 8, width: 8, display: 'inline-block', transition: 'transform 120ms', transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>{'\u25BE'}</span>
+              <span style={{ fontSize: 10, width: 10, display: 'inline-block', transition: 'transform 120ms', transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>{'\u25BE'}</span>
               <span>{emoji} {label}</span>
             </div>
           );
@@ -539,9 +548,9 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                   onClick={() => handleVisionPick(sig)}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 6,
-                    width: '100%', background: signalId === sig.id ? '#1e3a5f' : 'none',
+                    width: '100%', background: signalId === sig.id ? '#eff6ff' : 'none',
                     border: 'none', borderLeft: signalId === sig.id ? '3px solid #f59e0b' : '3px solid transparent',
-                    color: '#e5e7eb', cursor: 'pointer', padding: '5px 10px',
+                    color: '#1e293b', cursor: 'pointer', padding: '5px 10px',
                     textAlign: 'left', fontSize: 11,
                   }}
                 >
@@ -565,9 +574,9 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                     onClick={() => handlePTPick(field)}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 6,
-                      width: '100%', background: signalId === `pt_${field.id}` ? '#78350f33' : 'none',
+                      width: '100%', background: signalId === `pt_${field.id}` ? '#fef9c3' : 'none',
                       border: 'none', borderLeft: signalId === `pt_${field.id}` ? '3px solid #fbbf24' : '3px solid transparent',
-                      color: '#e5e7eb', cursor: 'pointer', padding: '5px 10px',
+                      color: '#1e293b', cursor: 'pointer', padding: '5px 10px',
                       textAlign: 'left', fontSize: 11,
                     }}
                   >
@@ -599,9 +608,9 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                   onClick={() => handlePTPick(field)}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 6,
-                    width: '100%', background: signalId === `pt_${field.id}` ? '#14532d33' : 'none',
+                    width: '100%', background: signalId === `pt_${field.id}` ? '#f0fdf4' : 'none',
                     border: 'none', borderLeft: signalId === `pt_${field.id}` ? '3px solid #86efac' : '3px solid transparent',
-                    color: '#e5e7eb', cursor: 'pointer', padding: '5px 10px',
+                    color: '#1e293b', cursor: 'pointer', padding: '5px 10px',
                     textAlign: 'left', fontSize: 11,
                   }}
                 >
@@ -638,9 +647,9 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                 onClick={() => handleSensorPick(inp)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 6,
-                  width: '100%', background: signalId === `sensor_${inp.ref}` ? '#1e293b' : 'none',
+                  width: '100%', background: signalId === `sensor_${inp.ref}` ? '#f1f5f9' : 'none',
                   border: 'none', borderLeft: signalId === `sensor_${inp.ref}` ? `3px solid ${accentHex}` : '3px solid transparent',
-                  color: '#e5e7eb', cursor: 'pointer', padding: '4px 10px 4px 20px',
+                  color: '#1e293b', cursor: 'pointer', padding: '4px 10px 4px 20px',
                   textAlign: 'left', fontSize: 11,
                 }}
               >
@@ -727,7 +736,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                       display: 'flex', alignItems: 'center', gap: 6,
                       width: '100%', background: 'none',
                       border: 'none', borderLeft: '3px solid transparent',
-                      color: '#e5e7eb', cursor: 'pointer', padding: '5px 10px',
+                      color: '#1e293b', cursor: 'pointer', padding: '5px 10px',
                       textAlign: 'left', fontSize: 11,
                     }}
                   >
@@ -755,13 +764,19 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
         const isSensor = signalType === 'sensor';
         const isVerify = nodeMode === 'verify';
         const isRange = sensorInputType === 'range';
-        // Verify mode forces Pass/Fail semantics regardless of underlying signal.
-        const singleLabel = isVerify ? 'Pass' : isVision ? 'Pass' : 'True';
-        const dualLabel1 = isVerify ? 'Pass'
+        // For verify-sensor: labels reflect the actual ON/OFF condition.
+        // Green (pass) = what you're verifying; Red (fail) = the opposite.
+        // For verify-vision or verify-signal: generic Pass/Fail.
+        const singleLabel = isVerify
+          ? (isSensor && !isRange ? (conditionType === 'off' ? 'Off' : 'On') : 'Pass')
+          : isVision ? 'Pass' : 'True';
+        const dualLabel1 = isVerify
+          ? (isSensor ? (isRange ? 'In Range' : (conditionType === 'off' ? 'Off' : 'On')) : 'Pass')
           : isVision ? 'Pass'
           : isSensor ? (isRange ? 'In Range' : (conditionType === 'off' ? 'Off' : 'On'))
           : 'True';
-        const dualLabel2 = isVerify ? 'Fail'
+        const dualLabel2 = isVerify
+          ? (isSensor ? (isRange ? 'Out of Range' : (conditionType === 'off' ? 'On' : 'Off')) : 'Fail')
           : isVision ? 'Fail'
           : isSensor ? (isRange ? 'Out of Range' : (conditionType === 'off' ? 'On' : 'Off'))
           : 'False';
@@ -769,7 +784,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
         <div style={{ padding: '8px 10px', flex: 1, display: 'flex', flexDirection: 'column', gap: 6, overflowY: 'auto' }}>
 
           {/* ── Retry counter (available in all modes: wait, decide, verify) ── */}
-          <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 6, padding: '6px 8px', marginBottom: 2 }}>
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 8px', marginBottom: 2 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <label
                 className="nodrag"
@@ -778,19 +793,19 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
               >
                 <span style={{
                   width: 14, height: 14, borderRadius: 3, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  background: retryEnabled ? '#f59e0b' : '#1a1f2e',
-                  border: retryEnabled ? '1px solid #d97706' : '1px solid #374151',
+                  background: retryEnabled ? '#f59e0b' : '#fff',
+                  border: retryEnabled ? '1px solid #d97706' : '1px solid #d1d5db',
                   fontSize: 10, color: '#000', fontWeight: 700,
                 }}>
                   {retryEnabled ? '\u2713' : ''}
                 </span>
-                <span style={{ fontSize: 10, fontWeight: 600, color: retryEnabled ? '#f59e0b' : '#6b7280' }}>
+                <span style={{ fontSize: 10, fontWeight: 600, color: retryEnabled ? '#d97706' : '#64748b' }}>
                   Retry Counter
                 </span>
               </label>
               {retryEnabled && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ fontSize: 9, color: '#9ca3af' }}>Max:</span>
+                  <span style={{ fontSize: 9, color: '#94a3b8' }}>Max:</span>
                   <input
                     className="nodrag"
                     type="number"
@@ -799,8 +814,8 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                     value={retryMax}
                     onChange={e => setRetryMax(e.target.value)}
                     style={{
-                      width: 44, background: '#1a1f2e', border: '1px solid #374151',
-                      color: '#e5e7eb', borderRadius: 4, padding: '2px 4px', fontSize: 11,
+                      width: 44, background: '#fff', border: '1px solid #d1d5db',
+                      color: '#1e293b', borderRadius: 4, padding: '2px 4px', fontSize: 11,
                       textAlign: 'center', boxSizing: 'border-box',
                     }}
                   />
@@ -808,7 +823,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
               )}
             </div>
             {retryEnabled && (
-              <div style={{ fontSize: 8, color: '#6b7280', marginTop: 3, lineHeight: 1.3 }}>
+              <div style={{ fontSize: 8, color: '#94a3b8', marginTop: 3, lineHeight: 1.3 }}>
                 {nodeMode === 'verify'
                   ? `If verify fails, retry up to ${retryMax}x before taking the fail branch.`
                   : nodeMode === 'decide'
@@ -820,8 +835,8 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
 
           {/* ── Sensor condition config (single condition only) ─── */}
           {isSensor && conditions.length <= 1 && (
-            <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 6, padding: '6px 8px' }}>
-              <div style={{ fontSize: 9, fontWeight: 700, color: '#22d3ee', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Condition</div>
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 8px' }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: '#0891b2', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Condition</div>
 
               {/* Boolean sensor: On / Off toggle — label changes by mode */}
               {!isRange && (() => {
@@ -840,9 +855,9 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                       }}
                       style={{
                         flex: 1, padding: '5px 0', borderRadius: 4, cursor: 'pointer', fontSize: 11, fontWeight: 600,
-                        background: conditionType === 'on' ? '#16a34a' : '#1a1f2e',
-                        border: conditionType === 'on' ? '1px solid #22c55e' : '1px solid #374151',
-                        color: conditionType === 'on' ? '#fff' : '#6b7280',
+                        background: conditionType === 'on' ? '#16a34a' : '#fff',
+                        border: conditionType === 'on' ? '1px solid #22c55e' : '1px solid #d1d5db',
+                        color: conditionType === 'on' ? '#fff' : '#64748b',
                       }}
                     >{'\u2713'} {verb} ON</button>
                     <button
@@ -854,9 +869,15 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                       }}
                       style={{
                         flex: 1, padding: '5px 0', borderRadius: 4, cursor: 'pointer', fontSize: 11, fontWeight: 600,
-                        background: conditionType === 'off' ? '#dc2626' : '#1a1f2e',
-                        border: conditionType === 'off' ? '1px solid #ef4444' : '1px solid #374151',
-                        color: conditionType === 'off' ? '#fff' : '#6b7280',
+                        // In Verify mode: green when selected (you're picking what to verify, not bad/good).
+                        // In other modes: OFF stays red to signal "not the expected condition".
+                        background: conditionType === 'off'
+                          ? (nodeMode === 'verify' ? '#16a34a' : '#dc2626')
+                          : '#fff',
+                        border: conditionType === 'off'
+                          ? (nodeMode === 'verify' ? '1px solid #22c55e' : '1px solid #ef4444')
+                          : '1px solid #d1d5db',
+                        color: conditionType === 'off' ? '#fff' : '#64748b',
                       }}
                     >{'\u2717'} {verb} OFF</button>
                   </div>
@@ -904,8 +925,8 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                             setExit2Label(`OutOfRange_${signalName}_${spName}`);
                           }}
                           style={{
-                            width: '100%', background: '#1a1f2e', border: '1px solid #374151',
-                            color: '#e5e7eb', borderRadius: 4, padding: '5px 6px', fontSize: 11,
+                            width: '100%', background: '#fff', border: '1px solid #d1d5db',
+                            color: '#1e293b', borderRadius: 4, padding: '5px 6px', fontSize: 11,
                             cursor: 'pointer',
                           }}
                         >
@@ -939,23 +960,23 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
 
           {/* ── Multi-condition list ──────────────────────── */}
           {conditions.length > 0 && (
-            <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 6, padding: '6px 8px' }}>
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 9, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Conditions{conditions.length > 1 ? ` (${conditions.length})` : ''}
                 </span>
                 {conditions.length > 1 && (
                   <div style={{ display: 'flex', gap: 2 }}>
                     <button className="nodrag" onClick={() => setConditionLogic('AND')}
                       style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3, cursor: 'pointer',
-                        background: conditionLogic === 'AND' ? '#16a34a' : '#1a1f2e',
-                        border: conditionLogic === 'AND' ? '1px solid #22c55e' : '1px solid #374151',
-                        color: conditionLogic === 'AND' ? '#fff' : '#6b7280' }}>AND</button>
+                        background: conditionLogic === 'AND' ? '#16a34a' : '#fff',
+                        border: conditionLogic === 'AND' ? '1px solid #22c55e' : '1px solid #d1d5db',
+                        color: conditionLogic === 'AND' ? '#fff' : '#64748b' }}>AND</button>
                     <button className="nodrag" onClick={() => setConditionLogic('OR')}
                       style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3, cursor: 'pointer',
-                        background: conditionLogic === 'OR' ? '#2563eb' : '#1a1f2e',
-                        border: conditionLogic === 'OR' ? '1px solid #3b82f6' : '1px solid #374151',
-                        color: conditionLogic === 'OR' ? '#fff' : '#6b7280' }}>OR</button>
+                        background: conditionLogic === 'OR' ? '#2563eb' : '#fff',
+                        border: conditionLogic === 'OR' ? '1px solid #3b82f6' : '1px solid #d1d5db',
+                        color: conditionLogic === 'OR' ? '#fff' : '#64748b' }}>OR</button>
                   </div>
                 )}
               </div>
@@ -967,7 +988,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                 </div>
               )}
               {conditions.map((cond, idx) => (
-                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 0', borderTop: idx > 0 ? '1px solid #1f2937' : 'none' }}>
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 0', borderTop: idx > 0 ? '1px solid #e2e8f0' : 'none' }}>
                   {cond.inputType !== 'range' && (
                     <button className="nodrag" onClick={() => {
                       const newType = cond.conditionType === 'on' ? 'off' : 'on';
@@ -990,12 +1011,12 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                     onClick={() => { setEditingConditionIdx(idx); setShowBranchConfig(false); }}
                     style={{
                       flex: 1, display: 'flex', alignItems: 'center', gap: 4,
-                      fontSize: 10, color: '#e5e7eb',
+                      fontSize: 10, color: '#1e293b',
                       background: 'transparent', border: '1px solid transparent',
                       borderRadius: 3, padding: '2px 4px', cursor: 'pointer',
                       textAlign: 'left', overflow: 'hidden',
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#1e293b'; e.currentTarget.style.borderColor = '#475569'; }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.borderColor = '#cbd5e1'; }}
                     onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; }}
                   >
                     <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cond.label}</span>
@@ -1009,7 +1030,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
               ))}
               <button className="nodrag" onClick={() => { setAddingCondition(true); setShowBranchConfig(false); }}
                 style={{ width: '100%', marginTop: 4, padding: '4px 0', borderRadius: 4, cursor: 'pointer', fontSize: 10, fontWeight: 600,
-                  background: '#1a1f2e', border: '1px dashed #374151', color: '#6b7280' }}>
+                  background: '#fff', border: '1px dashed #cbd5e1', color: '#64748b' }}>
                 + Add Condition
               </button>
             </div>
@@ -1022,9 +1043,9 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
             style={{
               display: 'flex', alignItems: 'center', gap: 8, width: '100%',
               padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
-              background: exitCount === 1 ? '#16a34a' : '#111827',
-              border: exitCount === 1 ? '1px solid #22c55e' : '1px solid #374151',
-              color: '#e5e7eb', fontSize: 11, textAlign: 'left',
+              background: exitCount === 1 ? '#16a34a' : '#fff',
+              border: exitCount === 1 ? '1px solid #22c55e' : '1px solid #d1d5db',
+              color: exitCount === 1 ? '#fff' : '#1e293b', fontSize: 11, textAlign: 'left',
             }}
           >
             <span style={{ fontWeight: 700, fontSize: 13 }}>1</span>
@@ -1038,9 +1059,9 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
             style={{
               display: 'flex', alignItems: 'center', gap: 8, width: '100%',
               padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
-              background: exitCount === 2 ? '#1574c4' : '#111827',
-              border: exitCount === 2 ? '1px solid #3b82f6' : '1px solid #374151',
-              color: '#e5e7eb', fontSize: 11, textAlign: 'left',
+              background: exitCount === 2 ? '#1574c4' : '#fff',
+              border: exitCount === 2 ? '1px solid #3b82f6' : '1px solid #d1d5db',
+              color: exitCount === 2 ? '#fff' : '#1e293b', fontSize: 11, textAlign: 'left',
             }}
           >
             <span style={{ fontWeight: 700, fontSize: 13 }}>2</span>
@@ -1051,27 +1072,27 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
           {exitCount === 2 && (
             <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 9, color: '#6b7280', marginBottom: 2 }}>Left exit</div>
+                <div style={{ fontSize: 9, color: '#94a3b8', marginBottom: 2 }}>Left exit</div>
                 <input
                   className="nodrag"
                   value={exit1Label}
                   onChange={e => setExit1Label(e.target.value)}
                   style={{
-                    width: '100%', background: '#111827', border: '1px solid #374151',
-                    color: '#e5e7eb', borderRadius: 4, padding: '3px 6px', fontSize: 11,
+                    width: '100%', background: '#fff', border: '1px solid #d1d5db',
+                    color: '#1e293b', borderRadius: 4, padding: '3px 6px', fontSize: 11,
                     boxSizing: 'border-box',
                   }}
                 />
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 9, color: '#6b7280', marginBottom: 2 }}>Right exit</div>
+                <div style={{ fontSize: 9, color: '#94a3b8', marginBottom: 2 }}>Right exit</div>
                 <input
                   className="nodrag"
                   value={exit2Label}
                   onChange={e => setExit2Label(e.target.value)}
                   style={{
-                    width: '100%', background: '#111827', border: '1px solid #374151',
-                    color: '#e5e7eb', borderRadius: 4, padding: '3px 6px', fontSize: 11,
+                    width: '100%', background: '#fff', border: '1px solid #d1d5db',
+                    color: '#1e293b', borderRadius: 4, padding: '3px 6px', fontSize: 11,
                     boxSizing: 'border-box',
                   }}
                 />
@@ -1154,6 +1175,14 @@ export function DecisionNode({ data, selected, id }) {
     }
   }, [data.autoOpenPopup]);
 
+  // ── Live label sync: keep exit labels & connected edges in sync with current
+  //    node config (mode, conditionType, signalName). Fixes stale "Pass_X" labels
+  //    on nodes that were created before the On/Off labelling was added.
+  useEffect(() => {
+    if (!smId || !signalName || signalName === 'Select Signal...') return;
+    store.syncDecisionExitLabels(smId, id);
+  }, [smId, id, nodeMode, conditionType, signalType, signalName, sensorInputType]);
+
   // Right-click context menu state
   const [ctxMenu, setCtxMenu] = useState(null);
 
@@ -1175,8 +1204,14 @@ export function DecisionNode({ data, selected, id }) {
     signalType === 'partTracking'
     || (primaryCond?.signalType === 'partTracking' && !primaryCond?._visionLinked)
   );
-  const fillColor   = isVision ? '#E8A317' : isPT ? '#7c3aed' : '#0072B5';
-  const borderColor = isVision ? '#b87d0f' : isPT ? '#6d28d9' : '#005a91';
+  // Node color determined by MODE, not signal type.
+  //   Wait   → blue      Decide → purple      Verify → orange
+  const fillColor   = nodeMode === 'verify' ? '#E8A317'
+                    : nodeMode === 'decide' ? '#7c3aed'
+                    : '#0072B5';
+  const borderColor = nodeMode === 'verify' ? '#b87d0f'
+                    : nodeMode === 'decide' ? '#6d28d9'
+                    : '#005a91';
   const textColor   = '#ffffff';
   const mutedColor  = 'rgba(255,255,255,0.75)';
 

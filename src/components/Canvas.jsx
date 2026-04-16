@@ -543,9 +543,15 @@ export function Canvas() {
       };
     }
 
-    // Decision node
-    const sigName = sourceNode.data?.signalName ?? '';
-    const label = isPass ? `Pass_${sigName}` : `Fail_${sigName}`;
+    // Decision node — derive label from current node config (mode, conditionType, etc.)
+    const computedLabels = _computeExitLabels(sourceNode.data ?? {});
+    let label;
+    if (computedLabels) {
+      label = isPass ? computedLabels.exit1 : computedLabels.exit2;
+    } else {
+      const sigName = sourceNode.data?.signalName ?? '';
+      label = isPass ? `Pass_${sigName}` : `Fail_${sigName}`;
+    }
     return {
       conditionType: 'ready',
       label,
@@ -562,7 +568,7 @@ export function Canvas() {
     // Check if this is a decision exit edge — if so, use decision styling instead of verify data
     const decExitData = getDecisionExitData(connection.source, connection.sourceHandle);
     const edgeCond = decExitData ?? getVerifyEdgeData(sm, connection.source);
-    // Merge drawing waypoints into the edge data — mark as manual route so they persist
+    // Merge drawing waypoints into the edge data — mark as manual route so they persist.
     if (drawingWps && drawingWps.length > 0) {
       edgeCond.waypoints = drawingWps;
       edgeCond.manualRoute = true;
@@ -637,9 +643,11 @@ export function Canvas() {
         handleX = fromNode.position.x + nodeW / 2;
         handleY = fromNode.position.y + nodeH;
       }
-      const dx = Math.abs(cursorFlow.x - handleX);
-      const dy = Math.abs(cursorFlow.y - handleY);
-      const firstWp = dx > dy
+      // Determine first segment axis from the HANDLE DIRECTION, not mouse position.
+      // Side handles (exit-pass = left, exit-fail = right) always exit horizontally.
+      // Bottom handles (default, exit-single, exit-retry) always exit vertically.
+      const isSideHandle = fromHandle === 'exit-pass' || fromHandle === 'exit-fail';
+      const firstWp = isSideHandle
         ? { x: cursorFlow.x, y: handleY }   // horizontal-first → corner at (cursorX, handleY)
         : { x: handleX, y: cursorFlow.y };  // vertical-first   → corner at (handleX, cursorY)
       useDiagramStore.setState({
@@ -903,6 +911,27 @@ export function Canvas() {
     });
   }, [sm, smNodes, stateNumberMap, visionSubStepsMap, devices]);
 
+  // ── Helper: compute correct exit labels from a decision node's current config.
+  //    Used to derive live labels so edges always match the node, even if edge
+  //    data hasn't been synced yet.
+  function _computeExitLabels(nodeData) {
+    const { nodeMode, conditionType: ct, signalType: st, signalName: sn,
+            sensorInputType: sit, sensorRef } = nodeData;
+    if (!sn || sn === 'Select Signal...') return null;
+    const isSensor = st === 'sensor' || !!sensorRef;
+    const isRange = sit === 'range';
+    const isVision = st === 'visionJob';
+    let exit1, exit2;
+    if (isSensor) {
+      if (isRange) { exit1 = `InRange_${sn}`; exit2 = `OutOfRange_${sn}`; }
+      else if (ct === 'off') { exit1 = `Off_${sn}`; exit2 = `On_${sn}`; }
+      else { exit1 = `On_${sn}`; exit2 = `Off_${sn}`; }
+    } else if (isVision) { exit1 = `Pass_${sn}`; exit2 = `Fail_${sn}`; }
+    else if (st === 'state' || st === 'signal' || st === 'condition') { exit1 = `True_${sn}`; exit2 = `False_${sn}`; }
+    else { exit1 = `Pass_${sn}`; exit2 = `Fail_${sn}`; }
+    return { exit1, exit2 };
+  }
+
   // Always use RoutableEdge; show labels only on branch edges (vision/check results).
   // Edges sourced from OR targeting a decisionNode use 'straight' type for natural routing.
   const edges = useMemo(() => {
@@ -928,11 +957,28 @@ export function Canvas() {
         // Only force targetHandle='input' if targeting a decisionNode; stateNodes use default (null)
         const decTargetHandle = targetNode?.type === 'decisionNode' ? 'input' : (e.targetHandle ?? null);
         const color = isPass ? '#16a34a' : '#dc2626';
+
+        // ── Live label: always derive from the source decision node's current
+        //    config so labels stay in sync even if edge data is stale.
+        let liveLabel = e.data?.outcomeLabel ?? '';
+        if (sourceNode?.type === 'decisionNode' && e.sourceHandle !== 'exit-single') {
+          const sn = sourceNode.data ?? {};
+          const computedLabels = _computeExitLabels(sn);
+          if (computedLabels) {
+            if (e.sourceHandle === 'exit-pass')  liveLabel = computedLabels.exit1;
+            if (e.sourceHandle === 'exit-fail')  liveLabel = computedLabels.exit2;
+            // Retry branch label stays as stored
+          }
+        }
+
         return {
           ...e,
           targetHandle: decTargetHandle,
           type: 'routableEdge',
-          label: e.sourceHandle === 'exit-single' ? '' : (e.data?.outcomeLabel ?? ''),
+          // Pass live label through BOTH label prop and data.outcomeLabel so
+          // RoutableEdge's pill renderer always shows the correct text.
+          data: { ...(e.data ?? {}), outcomeLabel: liveLabel },
+          label: e.sourceHandle === 'exit-single' ? '' : liveLabel,
           labelStyle: { fill: '#fff', fontWeight: 600, fontSize: 11 },
           labelBgStyle: { fill: color, rx: 4, ry: 4 },
           labelBgPadding: [4, 8],

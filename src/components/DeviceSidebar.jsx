@@ -9,6 +9,7 @@ import { DEVICE_TYPES, DEVICE_CATEGORIES } from '../lib/deviceTypes.js';
 import { useDiagramStore } from '../store/useDiagramStore.js';
 import { DeviceIcon } from './DeviceIcons.jsx';
 import { SignalModal } from './modals/SignalModal.jsx';
+import { APP_VERSION } from '../lib/version.js';
 
 // ── Part Tracking Section ──────────────────────────────────────────────────────
 
@@ -477,6 +478,18 @@ export function DeviceSidebar() {
           <div className="device-sidebar__bottom-panel">
             <PartTrackingSection />
             <SignalsSection />
+            {/* Revision number */}
+            <div style={{
+              padding: '10px 12px',
+              fontSize: 16,
+              fontWeight: 600,
+              color: '#64748b',
+              textAlign: 'center',
+              borderTop: '1px solid var(--color-border)',
+              letterSpacing: '0.04em',
+            }}>
+              Rev {APP_VERSION}
+            </div>
           </div>
         </>
       )}

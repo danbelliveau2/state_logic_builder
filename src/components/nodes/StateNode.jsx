@@ -1421,7 +1421,7 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
             }}
             style={{ borderLeft: '3px solid #5a9a48', fontWeight: 600 }}
           >
-            <span style={{ fontSize: 14, color: '#5a9a48' }}>●</span>
+            <span style={{ fontSize: 16, color: '#5a9a48' }}>●</span>
             <span>Cycle Complete</span>
           </button>
 
@@ -1434,9 +1434,9 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
             }}
             style={{ borderLeft: '3px solid #dc2626', fontWeight: 600 }}
           >
-            <span style={{ fontSize: 14, color: '#dc2626' }}>⚠</span>
+            <span style={{ fontSize: 16, color: '#dc2626' }}>⚠</span>
             <span style={{ color: '#dc2626' }}>Fault State</span>
-            <span style={{ marginLeft: 'auto', fontSize: 9, color: '#9ca3af', fontWeight: 400 }}>Step 127</span>
+            <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9ca3af', fontWeight: 400 }}>Step 127</span>
           </button>
 
           {/* WAIT / DECISION section — collapsed by default, expand on click */}
@@ -1477,7 +1477,7 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
                 {/* Wait / Decision — immediately creates decision node with popup */}
                 <button
                   className="inline-picker__item"
-                  style={{ borderLeft: '3px solid #f59e0b', fontWeight: 700, color: '#f59e0b', fontSize: 11 }}
+                  style={{ borderLeft: '3px solid #f59e0b', fontWeight: 700, color: '#f59e0b' }}
                   onClick={() => {
                     // Create an empty decision node with autoOpenPopup so the popup opens immediately
                     handleSignalPick({
@@ -1491,8 +1491,8 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
                     });
                   }}
                 >
-                  <span style={{ fontSize: 12 }}>&#x2B23;</span>
-                  <span style={{ flex: 1, textAlign: 'left' }}>Wait / Decision</span>
+                  <span style={{ fontSize: 14 }}>&#x2B23;</span>
+                  <span style={{ flex: 1, textAlign: 'left' }}>Wait / Decision / Verify</span>
                 </button>
               </>
             );

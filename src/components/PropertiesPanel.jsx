@@ -650,21 +650,54 @@ export function PropertiesPanel() {
   const selectedNode = store.getSelectedNode();
   const selectedEdge = store.getSelectedEdge();
 
+  // Start collapsed; auto-expand when a node or edge is selected.
+  const [collapsed, setCollapsed] = useState(true);
+
+  // Auto-expand when something is selected, auto-collapse when deselected
+  const hasSelection = !!selectedNode || !!selectedEdge;
+  useEffect(() => {
+    if (hasSelection) setCollapsed(false);
+  }, [hasSelection]);
+
   if (!sm) return null;
 
   const isDecisionNode = selectedNode?.type === 'decisionNode';
   const isStateNode = selectedNode && !isDecisionNode;
 
+  const headerLabel = isDecisionNode
+    ? 'Decision Properties'
+    : isStateNode
+    ? 'State Properties'
+    : selectedEdge
+    ? 'Transition Properties'
+    : 'Program Properties';
+
+  if (collapsed) {
+    return (
+      <aside className="properties-panel properties-panel--collapsed">
+        <button
+          className="properties-panel__expand-btn"
+          onClick={() => setCollapsed(false)}
+          title="Expand properties panel"
+        >
+          <span style={{ fontSize: 10, writingMode: 'vertical-rl', textOrientation: 'mixed', letterSpacing: '0.05em' }}>
+            {headerLabel}
+          </span>
+          <span style={{ fontSize: 12, marginTop: 4 }}>‹</span>
+        </button>
+      </aside>
+    );
+  }
+
   return (
     <aside className="properties-panel">
       <div className="properties-panel__header">
-        {isDecisionNode
-          ? 'Decision Properties'
-          : isStateNode
-          ? 'State Properties'
-          : selectedEdge
-          ? 'Transition Properties'
-          : 'Program Properties'}
+        <span>{headerLabel}</span>
+        <button
+          className="properties-panel__collapse-btn"
+          onClick={() => setCollapsed(true)}
+          title="Collapse panel"
+        >›</button>
       </div>
 
       {isDecisionNode && <DecisionNodeProperties node={selectedNode} sm={sm} />}

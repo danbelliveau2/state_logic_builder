@@ -2260,6 +2260,107 @@ export const useDiagramStore = create(
         }));
       },
 
+      /**
+       * Live-sync exit labels on a decision node + its connected edges + child
+       * nodes. Called from DecisionNode's useEffect whenever the node's config
+       * (mode, conditionType, signalName, etc.) changes. Only writes if labels
+       * are actually stale. Does NOT push undo history — this is a cosmetic
+       * auto-correction, not a user action.
+       */
+      syncDecisionExitLabels(smId, nodeId) {
+        const sm = _getSmArray(get()).find(s => s.id === smId);
+        if (!sm) return;
+        const node = sm.nodes.find(n => n.id === nodeId);
+        if (!node || node.type !== 'decisionNode') return;
+
+        const d = node.data;
+        const { nodeMode, conditionType: ct, signalType: st, signalName: sn,
+                sensorInputType: sit, exit1Label, exit2Label } = d;
+        if (!sn || sn === 'Select Signal...') return;
+
+        // ── Compute correct labels based on current node config ──
+        const isSensor = st === 'sensor' || !!d.sensorRef;
+        const isRange = sit === 'range';
+        const isVision = st === 'visionJob';
+
+        let correct1, correct2;
+        if (isSensor) {
+          if (isRange) {
+            correct1 = `InRange_${sn}`;
+            correct2 = `OutOfRange_${sn}`;
+          } else if (ct === 'off') {
+            correct1 = `Off_${sn}`;
+            correct2 = `On_${sn}`;
+          } else {
+            correct1 = `On_${sn}`;
+            correct2 = `Off_${sn}`;
+          }
+        } else if (isVision) {
+          correct1 = `Pass_${sn}`;
+          correct2 = `Fail_${sn}`;
+        } else if (st === 'state' || st === 'signal' || st === 'condition') {
+          correct1 = `True_${sn}`;
+          correct2 = `False_${sn}`;
+        } else {
+          correct1 = `Pass_${sn}`;
+          correct2 = `Fail_${sn}`;
+        }
+
+        // Bail if labels already correct
+        if (exit1Label === correct1 && exit2Label === correct2) return;
+
+        // Find connected edges to determine which child nodes need label updates
+        const passEdge  = sm.edges.find(e => e.source === nodeId && e.sourceHandle === 'exit-pass');
+        const failEdge  = sm.edges.find(e => e.source === nodeId && e.sourceHandle === 'exit-fail');
+        const singleEdge = sm.edges.find(e => e.source === nodeId && e.sourceHandle === 'exit-single');
+
+        const childUpdates = new Map(); // childNodeId → newLabel
+        if (passEdge) {
+          const child = sm.nodes.find(n => n.id === passEdge.target);
+          if (child && child.data?.label === exit1Label) childUpdates.set(passEdge.target, correct1);
+        }
+        if (failEdge) {
+          const child = sm.nodes.find(n => n.id === failEdge.target);
+          if (child && child.data?.label === exit2Label) childUpdates.set(failEdge.target, correct2);
+        }
+        if (singleEdge) {
+          const child = sm.nodes.find(n => n.id === singleEdge.target);
+          if (child && child.data?.label === exit1Label) childUpdates.set(singleEdge.target, correct1);
+        }
+
+        // Atomic update — node + edges + child nodes
+        set(s => ({
+          project: _updateProject(s, sms => sms.map(sm2 => {
+            if (sm2.id !== smId) return sm2;
+            return {
+              ...sm2,
+              nodes: sm2.nodes.map(n => {
+                if (n.id === nodeId) {
+                  return { ...n, data: { ...n.data, exit1Label: correct1, exit2Label: correct2 } };
+                }
+                if (childUpdates.has(n.id)) {
+                  return { ...n, data: { ...n.data, label: childUpdates.get(n.id) } };
+                }
+                return n;
+              }),
+              edges: sm2.edges.map(e => {
+                if (e.source !== nodeId) return e;
+                if (e.sourceHandle === 'exit-pass') {
+                  return { ...e, label: correct1, data: { ...e.data, label: correct1, outcomeLabel: correct1 } };
+                }
+                if (e.sourceHandle === 'exit-fail') {
+                  return { ...e, label: correct2, data: { ...e.data, label: correct2, outcomeLabel: correct2 } };
+                }
+                if (e.sourceHandle === 'exit-single') {
+                  return { ...e, label: correct1, data: { ...e.data, label: correct1 } };
+                }
+                return e;
+              }),
+            };
+          })),
+        }));
+      },
+
       deleteNode(smId, nodeId) {
         get()._pushHistory();
         set(s => ({
