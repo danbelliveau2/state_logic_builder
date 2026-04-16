@@ -25,6 +25,7 @@ import { ManualDrawOverlay } from './edges/ManualDrawOverlay.jsx';
 import { useDiagramStore } from '../store/useDiagramStore.js';
 import { buildVerifyLabel } from '../lib/conditionBuilder.js';
 import { computeStateNumbers } from '../lib/computeStateNumbers.js';
+import { computeExitLabels, computeSegmentAxes } from '../lib/edgeRouting.js';
 
 const nodeTypes = { stateNode: StateNode, decisionNode: DecisionNode };
 const edgeTypes = { routableEdge: RoutableEdge };
@@ -159,39 +160,8 @@ function getSourceHandlePos(fromNode, handleId) {
   return { x, y };
 }
 
-/**
- * Given the source handle and the drawn waypoints, deduce which axis each
- * terminal segment travels along so RoutableEdge can clamp to the moving
- * node on the correct axis (and not destroy the user's drawn shape).
- *   'vertical'   = segment moves up/down (endpoints share X)
- *   'horizontal' = segment moves left/right (endpoints share Y)
- */
-function computeSegmentAxes(fromNode, handleId, wps) {
-  if (!fromNode || !Array.isArray(wps) || wps.length === 0) {
-    return { firstSegmentAxis: 'vertical', lastSegmentAxis: 'vertical' };
-  }
-  const handle = getSourceHandlePos(fromNode, handleId);
-  const wp0 = wps[0];
-  const dx0 = Math.abs(wp0.x - handle.x);
-  const dy0 = Math.abs(wp0.y - handle.y);
-  let firstSegmentAxis;
-  if (dx0 < 1 && dy0 >= 1)      firstSegmentAxis = 'vertical';
-  else if (dy0 < 1 && dx0 >= 1) firstSegmentAxis = 'horizontal';
-  else                          firstSegmentAxis = dy0 >= dx0 ? 'vertical' : 'horizontal';
-
-  let lastSegmentAxis;
-  if (wps.length >= 2) {
-    const wpPrev = wps[wps.length - 2];
-    const wpLast = wps[wps.length - 1];
-    // Segment prev→last is vertical if they share X; then last→target is the opposite axis.
-    if (Math.abs(wpPrev.x - wpLast.x) < 1) lastSegmentAxis = 'horizontal';
-    else                                    lastSegmentAxis = 'vertical';
-  } else {
-    // Single waypoint: last segment is the opposite axis of the first.
-    lastSegmentAxis = firstSegmentAxis === 'vertical' ? 'horizontal' : 'vertical';
-  }
-  return { firstSegmentAxis, lastSegmentAxis };
-}
+// computeSegmentAxes imported from edgeRouting.js
+// Local call sites resolve handle positions via getSourceHandlePos() first.
 
 export function Canvas() {
   const store = useDiagramStore();
@@ -544,7 +514,7 @@ export function Canvas() {
     }
 
     // Decision node — derive label from current node config (mode, conditionType, etc.)
-    const computedLabels = _computeExitLabels(sourceNode.data ?? {});
+    const computedLabels = computeExitLabels(sourceNode.data ?? {});
     let label;
     if (computedLabels) {
       label = isPass ? computedLabels.exit1 : computedLabels.exit2;
@@ -573,7 +543,10 @@ export function Canvas() {
       edgeCond.waypoints = drawingWps;
       edgeCond.manualRoute = true;
       const fromNode = (sm.nodes ?? []).find(n => n.id === connection.source);
-      const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(fromNode, connection.sourceHandle, drawingWps);
+      const toNode   = (sm.nodes ?? []).find(n => n.id === connection.target);
+      const handlePos = getSourceHandlePos(fromNode, connection.sourceHandle);
+      const tgtPos = toNode ? { x: (toNode.position?.x ?? 0) + (toNode.measured?.width ?? 240) / 2, y: toNode.position?.y ?? 0 } : null;
+      const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(handlePos, drawingWps, tgtPos);
       edgeCond.firstSegmentAxis = firstSegmentAxis;
       edgeCond.lastSegmentAxis  = lastSegmentAxis;
     }
@@ -682,7 +655,10 @@ export function Canvas() {
     if (drawingWps && drawingWps.length > 0) {
       edgeCond.waypoints = drawingWps;
       edgeCond.manualRoute = true;
-      const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(fromNode, fromHandle, drawingWps);
+      const handlePos = getSourceHandlePos(fromNode, fromHandle);
+      // Target was just created at `position` — its input handle is top-center
+      const tgtPos = { x: position.x + newW / 2, y: position.y };
+      const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(handlePos, drawingWps, tgtPos);
       edgeCond.firstSegmentAxis = firstSegmentAxis;
       edgeCond.lastSegmentAxis  = lastSegmentAxis;
     }
@@ -748,7 +724,10 @@ export function Canvas() {
       edgeCond.waypoints = wps;
       edgeCond.manualRoute = true;
       const fromNode = sm.nodes.find(n => n.id === fromNodeId);
-      const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(fromNode, fromHandle, wps);
+      const toNode   = sm.nodes.find(n => n.id === actualTarget);
+      const handlePos = getSourceHandlePos(fromNode, fromHandle);
+      const tgtPos = toNode ? { x: (toNode.position?.x ?? 0) + (toNode.measured?.width ?? 240) / 2, y: toNode.position?.y ?? 0 } : null;
+      const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(handlePos, wps, tgtPos);
       edgeCond.firstSegmentAxis = firstSegmentAxis;
       edgeCond.lastSegmentAxis  = lastSegmentAxis;
     }
@@ -911,27 +890,6 @@ export function Canvas() {
     });
   }, [sm, smNodes, stateNumberMap, visionSubStepsMap, devices]);
 
-  // ── Helper: compute correct exit labels from a decision node's current config.
-  //    Used to derive live labels so edges always match the node, even if edge
-  //    data hasn't been synced yet.
-  function _computeExitLabels(nodeData) {
-    const { nodeMode, conditionType: ct, signalType: st, signalName: sn,
-            sensorInputType: sit, sensorRef } = nodeData;
-    if (!sn || sn === 'Select Signal...') return null;
-    const isSensor = st === 'sensor' || !!sensorRef;
-    const isRange = sit === 'range';
-    const isVision = st === 'visionJob';
-    let exit1, exit2;
-    if (isSensor) {
-      if (isRange) { exit1 = `InRange_${sn}`; exit2 = `OutOfRange_${sn}`; }
-      else if (ct === 'off') { exit1 = `Off_${sn}`; exit2 = `On_${sn}`; }
-      else { exit1 = `On_${sn}`; exit2 = `Off_${sn}`; }
-    } else if (isVision) { exit1 = `Pass_${sn}`; exit2 = `Fail_${sn}`; }
-    else if (st === 'state' || st === 'signal' || st === 'condition') { exit1 = `True_${sn}`; exit2 = `False_${sn}`; }
-    else { exit1 = `Pass_${sn}`; exit2 = `Fail_${sn}`; }
-    return { exit1, exit2 };
-  }
-
   // Always use RoutableEdge; show labels only on branch edges (vision/check results).
   // Edges sourced from OR targeting a decisionNode use 'straight' type for natural routing.
   const edges = useMemo(() => {
@@ -963,7 +921,7 @@ export function Canvas() {
         let liveLabel = e.data?.outcomeLabel ?? '';
         if (sourceNode?.type === 'decisionNode' && e.sourceHandle !== 'exit-single') {
           const sn = sourceNode.data ?? {};
-          const computedLabels = _computeExitLabels(sn);
+          const computedLabels = computeExitLabels(sn);
           if (computedLabels) {
             if (e.sourceHandle === 'exit-pass')  liveLabel = computedLabels.exit1;
             if (e.sourceHandle === 'exit-fail')  liveLabel = computedLabels.exit2;

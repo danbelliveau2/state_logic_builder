@@ -7,6 +7,7 @@ import { create } from 'zustand';
 import { persist, subscribeWithSelector } from 'zustand/middleware';
 import { applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
 import * as projectApi from '../lib/projectApi.js';
+import { computeExitLabels } from '../lib/edgeRouting.js';
 
 // Tiny ID generator (avoid nanoid async import issues)
 let _id = Date.now();
@@ -2274,37 +2275,12 @@ export const useDiagramStore = create(
         if (!node || node.type !== 'decisionNode') return;
 
         const d = node.data;
-        const { nodeMode, conditionType: ct, signalType: st, signalName: sn,
-                sensorInputType: sit, exit1Label, exit2Label } = d;
-        if (!sn || sn === 'Select Signal...') return;
+        const { exit1Label, exit2Label } = d;
 
-        // ── Compute correct labels based on current node config ──
-        const isSensor = st === 'sensor' || !!d.sensorRef;
-        const isRange = sit === 'range';
-        const isVision = st === 'visionJob';
-
-        let correct1, correct2;
-        if (isSensor) {
-          if (isRange) {
-            correct1 = `InRange_${sn}`;
-            correct2 = `OutOfRange_${sn}`;
-          } else if (ct === 'off') {
-            correct1 = `Off_${sn}`;
-            correct2 = `On_${sn}`;
-          } else {
-            correct1 = `On_${sn}`;
-            correct2 = `Off_${sn}`;
-          }
-        } else if (isVision) {
-          correct1 = `Pass_${sn}`;
-          correct2 = `Fail_${sn}`;
-        } else if (st === 'state' || st === 'signal' || st === 'condition') {
-          correct1 = `True_${sn}`;
-          correct2 = `False_${sn}`;
-        } else {
-          correct1 = `Pass_${sn}`;
-          correct2 = `Fail_${sn}`;
-        }
+        // ── Compute correct labels via shared edgeRouting function ──
+        const computed = computeExitLabels(d);
+        if (!computed) return;
+        const { exit1: correct1, exit2: correct2 } = computed;
 
         // Bail if labels already correct
         if (exit1Label === correct1 && exit2Label === correct2) return;
