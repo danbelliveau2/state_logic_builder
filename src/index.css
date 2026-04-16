@@ -400,6 +400,96 @@ body {
   white-space: nowrap;
 }
 
+/* ── Version badge & changelog popup ────────────────────────────────────── */
+.toolbar__version-badge {
+  position: absolute;
+  right: 8px;
+  bottom: 2px;
+  font-size: 10px;
+  color: #64748b;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: var(--font-mono, monospace);
+}
+.toolbar__version-badge:hover {
+  color: #94a3b8;
+  background: #ffffff12;
+}
+
+.changelog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: #00000060;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.changelog-popup {
+  background: var(--color-surface, #1e293b);
+  border: 1px solid var(--color-border-dark, #334155);
+  border-radius: 8px;
+  width: 420px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px #0006;
+}
+.changelog-popup__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border-dark, #334155);
+}
+.changelog-popup__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+.changelog-popup__close {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.changelog-popup__close:hover { color: #f1f5f9; }
+
+.changelog-popup__body {
+  padding: 12px 16px;
+  overflow-y: auto;
+}
+.changelog-popup__entry {
+  margin-bottom: 14px;
+}
+.changelog-popup__entry:last-child { margin-bottom: 0; }
+
+.changelog-popup__version {
+  font-size: 13px;
+  font-weight: 700;
+  color: #60a5fa;
+}
+.changelog-popup__date {
+  font-weight: 400;
+  color: #64748b;
+  margin-left: 8px;
+  font-size: 11px;
+}
+.changelog-popup__list {
+  margin: 4px 0 0 16px;
+  padding: 0;
+  list-style: disc;
+  color: #cbd5e1;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .toolbar__actions {
   display: flex;
   align-items: center;

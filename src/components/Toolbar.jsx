@@ -8,6 +8,7 @@ import { useDiagramStore } from '../store/useDiagramStore.js';
 import { downloadL5X, downloadAllL5XAsZip, exportProjectJSON } from '../lib/l5xExporter.js';
 import { downloadControllerL5X } from '../lib/controllerL5xExporter.js';
 import { buildProgramName } from '../lib/tagNaming.js';
+import { APP_VERSION, CHANGELOG } from '../lib/version.js';
 
 // ── Reorderable list popup ──────────────────────────────────────────────────────
 function ReorderPopup({ items, labelFn, onReorder, onClose, title }) {
@@ -109,6 +110,7 @@ export function Toolbar() {
   const [recipeDropdownOpen, setRecipeDropdownOpen] = useState(false);
   const [smReorderOpen, setSmReorderOpen] = useState(false);
   const [recipeReorderOpen, setRecipeReorderOpen] = useState(false);
+  const [changelogOpen, setChangelogOpen] = useState(false);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -521,6 +523,40 @@ export function Toolbar() {
           onClose={() => setRecipeReorderOpen(false)}
           title="Reorder Recipes"
         />
+      )}
+
+      {/* Version badge */}
+      <button
+        className="toolbar__version-badge"
+        onClick={() => setChangelogOpen(true)}
+        title="View changelog"
+      >
+        v{APP_VERSION}
+      </button>
+
+      {/* Changelog popup */}
+      {changelogOpen && (
+        <div className="changelog-backdrop" onClick={() => setChangelogOpen(false)}>
+          <div className="changelog-popup" onClick={e => e.stopPropagation()}>
+            <div className="changelog-popup__header">
+              <span className="changelog-popup__title">Changelog</span>
+              <button className="changelog-popup__close" onClick={() => setChangelogOpen(false)}>×</button>
+            </div>
+            <div className="changelog-popup__body">
+              {CHANGELOG.map(entry => (
+                <div key={entry.version} className="changelog-popup__entry">
+                  <div className="changelog-popup__version">
+                    v{entry.version}
+                    <span className="changelog-popup__date">{entry.date}</span>
+                  </div>
+                  <ul className="changelog-popup__list">
+                    {entry.changes.map((c, i) => <li key={i}>{c}</li>)}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
     </header>
   );
