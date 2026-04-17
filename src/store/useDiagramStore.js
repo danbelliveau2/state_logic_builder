@@ -2548,6 +2548,14 @@ export const useDiagramStore = create(
       },
 
       // ── Part Tracking actions ─────────────────────────────────────────────
+      // Generic field updater for top-level project properties (e.g. designTheme)
+      updateProjectField(fieldName, value) {
+        get()._pushHistory();
+        set(s => ({
+          project: { ...s.project, [fieldName]: value },
+        }));
+      },
+
       addTrackingField(fieldData) {
         get()._pushHistory();
         const field = { id: uid(), name: 'NewField', dataType: 'boolean', description: '', ...fieldData };

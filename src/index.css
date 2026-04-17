@@ -5728,3 +5728,453 @@ select.standards-editor__input {
   margin-right: 4px;
   font-size: 10px;
 }
+
+/* ─── Design System Editor ─────────────────────────────────────────────── */
+
+.ds-editor {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 20px 48px;
+}
+
+.ds__intro {
+  margin-bottom: 24px;
+}
+.ds__main-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #231f20;
+  margin-bottom: 4px;
+}
+.ds__main-desc {
+  font-size: 13px;
+  color: #5a6a7e;
+  line-height: 1.5;
+}
+
+/* ── Collapsible Sections ─────────────────────────────────────────────── */
+
+.ds__section {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.ds__section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  cursor: pointer;
+  user-select: none;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  transition: background 0.15s;
+}
+.ds__section-header:hover {
+  background: #f0f2f5;
+}
+.ds__section-chevron {
+  font-size: 14px;
+  color: #8896a8;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+.ds__section-title {
+  font-weight: 700;
+  font-size: 14px;
+  color: #231f20;
+}
+.ds__section-subtitle {
+  font-size: 11px;
+  color: #8896a8;
+  margin-left: auto;
+}
+.ds__section-body {
+  padding: 16px;
+}
+
+/* ── Color Rows ───────────────────────────────────────────────────────── */
+
+.ds__color-row,
+.ds__edge-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid #f0f2f5;
+}
+.ds__color-row:last-child,
+.ds__edge-row:last-child {
+  border-bottom: none;
+}
+.ds__color-picker {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  border-radius: 4px;
+}
+.ds__color-picker::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.ds__color-picker::-webkit-color-swatch {
+  border: 1px solid rgba(0,0,0,0.15);
+  border-radius: 4px;
+}
+.ds__color-info {
+  flex: 1;
+  min-width: 0;
+}
+.ds__color-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #231f20;
+}
+.ds__color-desc {
+  font-size: 11px;
+  color: #8896a8;
+  line-height: 1.3;
+}
+.ds__color-hex {
+  font-family: Consolas, Menlo, Monaco, monospace;
+  font-size: 11px;
+  color: #5a6a7e;
+  background: #f0f2f5;
+  padding: 2px 6px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.ds__color-css {
+  font-family: Consolas, Menlo, Monaco, monospace;
+  font-size: 10px;
+  color: #8896a8;
+  background: #f8fafc;
+  padding: 2px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* ── Text Preview ─────────────────────────────────────────────────────── */
+
+.ds__text-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+}
+
+/* ── Background Preview ───────────────────────────────────────────────── */
+
+.ds__bg-preview {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+}
+.ds__bg-chip {
+  flex: 1;
+  padding: 14px 12px;
+  border-radius: 6px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #5a6a7e;
+}
+
+/* ── Decision Node Modes Gallery ──────────────────────────────────────── */
+
+.ds__decision-gallery {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.ds__decision-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 160px;
+}
+.ds__decision-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 160px;
+  height: 72px;
+  border-radius: 36px;
+  text-align: center;
+}
+.ds__decision-controls {
+  display: flex;
+  gap: 10px;
+}
+.ds__mini-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #5a6a7e;
+  font-weight: 600;
+}
+.ds__mini-label code {
+  font-family: Consolas, Menlo, Monaco, monospace;
+  font-size: 9px;
+  color: #8896a8;
+}
+
+/* ── Station Type Gallery ─────────────────────────────────────────────── */
+
+.ds__station-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.ds__station-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ds__station-badge {
+  padding: 4px 12px;
+  border-radius: 12px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+/* ── Device Icons & Node Shapes Gallery ───────────────────────────────── */
+
+.ds__device-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+}
+.ds__device-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  text-align: center;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.ds__device-card:hover {
+  border-color: #1574C4;
+  box-shadow: 0 2px 8px rgba(21,116,196,0.1);
+}
+.ds__device-icon-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+.ds__device-shape-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 54px;
+}
+.ds__device-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #231f20;
+  line-height: 1.2;
+}
+.ds__device-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.ds__device-shape-label {
+  font-size: 9px;
+  color: #8896a8;
+  font-style: italic;
+}
+
+/* ── Operation Badge Gallery ──────────────────────────────────────────── */
+
+.ds__op-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+.ds__op-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  min-width: 200px;
+}
+.ds__op-badge {
+  padding: 3px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  min-width: 90px;
+  text-align: center;
+}
+.ds__op-cat {
+  font-size: 10px;
+  color: #8896a8;
+  font-style: italic;
+}
+
+/* ── Handle Gallery ───────────────────────────────────────────────────── */
+
+.ds__handle-gallery {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ds__handle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid #f0f2f5;
+}
+.ds__handle-row:last-child {
+  border-bottom: none;
+}
+.ds__handle-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.ds__handle-dot--hover {
+  width: 18px;
+  height: 18px;
+}
+
+/* ── Typography Scale ─────────────────────────────────────────────────── */
+
+.ds__typo-info {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ds__typo-font {
+  font-size: 12px;
+  color: #5a6a7e;
+}
+.ds__typo-scale {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ds__typo-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid #f0f2f5;
+}
+.ds__typo-row:last-child {
+  border-bottom: none;
+}
+.ds__typo-meta {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+  min-width: 80px;
+}
+.ds__typo-size {
+  font-family: Consolas, Menlo, Monaco, monospace;
+  font-size: 11px;
+  color: #1574C4;
+  font-weight: 600;
+}
+.ds__typo-weight {
+  font-family: Consolas, Menlo, Monaco, monospace;
+  font-size: 10px;
+  color: #8896a8;
+}
+.ds__typo-sample {
+  color: #231f20;
+}
+
+/* ── Spacing & Layout ─────────────────────────────────────────────────── */
+
+.ds__spacing-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.ds__spacing-group {
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+}
+.ds__spacing-group-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #231f20;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.ds__spacing-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 12px;
+  color: #5a6a7e;
+}
+.ds__spacing-item:last-child {
+  border-bottom: none;
+}
+.ds__spacing-item code {
+  font-family: Consolas, Menlo, Monaco, monospace;
+  font-size: 11px;
+  color: #1574C4;
+  background: #fff;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid #e2e8f0;
+}
+.ds__radius-gallery {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.ds__radius-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.ds__shadow-chip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
