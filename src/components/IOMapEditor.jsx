@@ -28,11 +28,11 @@ function classifyTag(tag) {
 }
 
 const IO_SECTION_META = {
-  digitalInput:  { label: 'Digital Inputs',  abbr: 'DI', color: '#22c55e' },
-  digitalOutput: { label: 'Digital Outputs', abbr: 'DO', color: '#3b82f6' },
-  analogInput:   { label: 'Analog Inputs',   abbr: 'AI', color: '#a855f7' },
-  analogOutput:  { label: 'Analog Outputs',  abbr: 'AO', color: '#f59e0b' },
-  internal:      { label: 'Internal Tags',   abbr: 'INT', color: '#6b7280' },
+  digitalInput:  { label: 'Digital Inputs',  abbr: 'DI', color: '#5a9a48' },
+  digitalOutput: { label: 'Digital Outputs', abbr: 'DO', color: '#1574C4' },
+  analogInput:   { label: 'Analog Inputs',   abbr: 'AI', color: '#0072B5' },
+  analogOutput:  { label: 'Analog Outputs',  abbr: 'AO', color: '#E8A317' },
+  internal:      { label: 'Internal Tags',   abbr: 'INT', color: '#5a6a7e' },
 };
 
 const IO_ORDER = ['digitalInput', 'digitalOutput', 'analogInput', 'analogOutput', 'internal'];
@@ -40,14 +40,14 @@ const IO_ORDER = ['digitalInput', 'digitalOutput', 'analogInput', 'analogOutput'
 // Category display config — matches DEVICE_CATEGORIES keys
 // Representative device type per category — used for the icon in section headers
 const CATEGORY_META = {
-  Pneumatic: { label: 'Pneumatic Devices', color: '#1574c4', iconType: 'PneumaticLinearActuator' },
+  Pneumatic: { label: 'Pneumatic Devices', color: '#1574C4', iconType: 'PneumaticLinearActuator' },
   Servo:     { label: 'Servo Axes',        color: '#061d39', iconType: 'ServoAxis' },
-  Robot:     { label: 'Robots',            color: '#7c3aed', iconType: 'Robot' },
-  Conveyor:  { label: 'Conveyors',         color: '#0891b2', iconType: 'Conveyor' },
-  Vision:    { label: 'Vision Systems',    color: '#fa9150', iconType: 'VisionSystem' },
-  Sensor:    { label: 'Sensors',           color: '#aacee8', iconType: 'DigitalSensor' },
-  Logic:     { label: 'Timers & Parameters', color: '#9ca3af', iconType: 'Timer' },
-  Custom:    { label: 'Custom Devices',    color: '#6b7280', iconType: 'Custom' },
+  Robot:     { label: 'Robots',            color: '#1264a8', iconType: 'Robot' },
+  Conveyor:  { label: 'Conveyors',         color: '#0072B5', iconType: 'Conveyor' },
+  Vision:    { label: 'Vision Systems',    color: '#E8A317', iconType: 'VisionSystem' },
+  Sensor:    { label: 'Sensors',           color: '#5a6a7e', iconType: 'DigitalSensor' },
+  Logic:     { label: 'Timers & Parameters', color: '#8896a8', iconType: 'Timer' },
+  Custom:    { label: 'Custom Devices',    color: '#5a6a7e', iconType: 'Custom' },
 };
 
 // ── Build device list + IO map from project data ────────────────────────────
@@ -286,10 +286,10 @@ export function IOMapEditor() {
           {totalDevices > 0 && (
             <div className="io-map__grand-total">
               <span className="io-map__grand-total-label">Machine Total</span>
-              <span className="io-map__grand-total-item" style={{ color: '#22c55e' }}>{deviceList.reduce((s, d) => s + d.io.di, 0)} DI</span>
-              <span className="io-map__grand-total-item" style={{ color: '#3b82f6' }}>{deviceList.reduce((s, d) => s + d.io.do, 0)} DO</span>
-              <span className="io-map__grand-total-item" style={{ color: '#a855f7' }}>{deviceList.reduce((s, d) => s + d.io.ai, 0)} AI</span>
-              <span className="io-map__grand-total-item" style={{ color: '#f59e0b' }}>{deviceList.reduce((s, d) => s + d.io.ao, 0)} AO</span>
+              <span className="io-map__grand-total-item" style={{ color: '#5a9a48' }}>{deviceList.reduce((s, d) => s + d.io.di, 0)} DI</span>
+              <span className="io-map__grand-total-item" style={{ color: '#aacee8' }}>{deviceList.reduce((s, d) => s + d.io.do, 0)} DO</span>
+              <span className="io-map__grand-total-item" style={{ color: '#0072B5' }}>{deviceList.reduce((s, d) => s + d.io.ai, 0)} AI</span>
+              <span className="io-map__grand-total-item" style={{ color: '#E8A317' }}>{deviceList.reduce((s, d) => s + d.io.ao, 0)} AO</span>
             </div>
           )}
         </>

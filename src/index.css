@@ -4121,7 +4121,7 @@ body {
   padding: 10px 20px;
   font-size: 14px;
   font-weight: 600;
-  color: #64748b;
+  color: #5a6a7e;
   background: none;
   border: none;
   border-bottom: 3px solid transparent;
@@ -4131,7 +4131,7 @@ body {
   gap: 8px;
   margin-bottom: -2px;
 }
-.io-map__tab:hover { color: #1e293b; }
+.io-map__tab:hover { color: #231f20; }
 .io-map__tab--active {
   color: #1574C4;
   border-bottom-color: #1574C4;
@@ -4139,13 +4139,13 @@ body {
 .io-map__tab-count {
   font-size: 11px;
   font-weight: 700;
-  background: #f1f5f9;
-  color: #475569;
+  background: #f0f2f5;
+  color: #5a6a7e;
   padding: 1px 7px;
   border-radius: 10px;
 }
 .io-map__tab--active .io-map__tab-count {
-  background: #dbeafe;
+  background: rgba(21, 116, 196, 0.12);
   color: #1574C4;
 }
 
@@ -4178,14 +4178,14 @@ body {
   background: #fff;
 }
 .io-map__count-badge--total {
-  border-color: #0f172a;
-  background: #0f172a;
+  border-color: #061d39;
+  background: #061d39;
 }
 .io-map__count-badge--total .io-map__count-num {
   color: #fff !important;
 }
 .io-map__count-badge--total .io-map__count-label {
-  color: #94a3b8;
+  color: #aacee8;
 }
 .io-map__count-num {
   font-size: 20px;
@@ -4195,7 +4195,7 @@ body {
 .io-map__count-label {
   font-size: 11px;
   font-weight: 600;
-  color: #64748b;
+  color: #5a6a7e;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -4226,7 +4226,7 @@ body {
   gap: 8px;
   font-size: 14px;
   font-weight: 700;
-  color: #1e293b;
+  color: #231f20;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -4247,7 +4247,7 @@ body {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #94a3b8;
+  color: #8896a8;
   border-bottom: 2px solid #e2e8f0;
   white-space: nowrap;
 }
@@ -4257,33 +4257,33 @@ body {
 .io-map__th--station { width: 60px; }
 .io-map__th--device { min-width: 140px; }
 
-.io-map__row:hover { background: #f1f5f9; }
+.io-map__row:hover { background: #f0f2f5; }
 .io-map__td {
   padding: 5px 10px;
-  border-bottom: 1px solid #f1f5f9;
-  color: #334155;
+  border-bottom: 1px solid #f0f2f5;
+  color: #231f20;
   vertical-align: middle;
 }
 .io-map__td--num {
   text-align: center;
-  color: #94a3b8;
+  color: #8896a8;
   font-size: 11px;
 }
 .io-map__td--tag code {
   font-family: 'Consolas', 'Menlo', monospace;
   font-size: 12.5px;
-  color: #0f172a;
+  color: #061d39;
   font-weight: 600;
-  background: #f1f5f9;
+  background: #f0f2f5;
   padding: 1px 5px;
   border-radius: 3px;
 }
 .io-map__td--type {
   font-size: 11px;
-  color: #64748b;
+  color: #5a6a7e;
 }
 .io-map__td--desc {
-  color: #64748b;
+  color: #5a6a7e;
   font-size: 12px;
 }
 .io-map__station-badge {
@@ -4301,11 +4301,11 @@ body {
   text-align: center;
   font-weight: 700;
   font-size: 13px;
-  color: #1e293b;
+  color: #231f20;
   font-variant-numeric: tabular-nums;
 }
 .io-map__zero {
-  color: #cbd5e1;
+  color: #c4cdd8;
   font-weight: 400;
 }
 
@@ -4315,14 +4315,14 @@ body {
   text-align: right;
   font-size: 11px;
   font-weight: 700;
-  color: #64748b;
+  color: #5a6a7e;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   padding-right: 12px !important;
 }
 .io-map__td--totals {
   font-weight: 800;
-  color: #0f172a;
+  color: #061d39;
   border-top: 2px solid #e2e8f0;
 }
 
@@ -4333,7 +4333,7 @@ body {
   gap: 20px;
   padding: 14px 18px;
   margin-top: 8px;
-  background: #0f172a;
+  background: #061d39;
   border-radius: 8px;
   color: #fff;
 }
@@ -4342,7 +4342,7 @@ body {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #94a3b8;
+  color: #aacee8;
   margin-right: auto;
 }
 .io-map__grand-total-item {
