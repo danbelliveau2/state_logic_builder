@@ -19,6 +19,7 @@ import { useDiagramStore } from '../../store/useDiagramStore.js';
 import { buildAvailableInputs } from '../../lib/availableInputs.js';
 import { computeStateNumbers } from '../../lib/computeStateNumbers.js';
 import { useReactFlowZoomScale } from '../../lib/useReactFlowZoomScale.js';
+import { DeviceIcon } from '../DeviceIcons.jsx';
 
 // ── Inline Edit Popup ──────────────────────────────────────────────────────────
 
@@ -467,9 +468,9 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
       <div style={{ flexShrink: 0, borderBottom: '1px solid #e2e8f0' }}>
         {/* Title row */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px 4px' }}>
-          <span style={{ fontWeight: 700, fontSize: 13, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <span style={{ fontWeight: 700, fontSize: 13, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             {showBranchConfig
-              ? (signalType === 'visionJob' ? `📷 ${signalName}` : signalType === 'partTracking' ? `📋 ${signalName}` : signalType === 'sensor' ? `🔌 ${signalName}` : `⚡ ${signalName}`)
+              ? (<>{signalType === 'visionJob' ? <DeviceIcon type="VisionSystem" size={14} /> : signalType === 'sensor' ? <DeviceIcon type={sensorInputType === 'range' ? 'AnalogSensor' : 'DigitalSensor'} size={14} /> : null} {signalName}</>)
               : editingConditionIdx !== null ? '✎ Change Condition'
               : addingCondition ? '+ Add Condition'
               : nodeMode === 'decide' ? 'Decide On…'
@@ -539,8 +540,8 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
 
       {/* -- Signal picker (step 1) -- */}
       {!showBranchConfig && (() => {
-        // Collapsible section header. Entire row clickable; chevron + label.
-        const SectionHeader = ({ sectionKey, emoji, label, color = '#6b7280' }) => {
+        // Collapsible section header. Entire row clickable; chevron + icon + label.
+        const SectionHeader = ({ sectionKey, iconType, label, color = '#6b7280' }) => {
           const collapsed = !isExpanded(sectionKey);
           return (
             <div
@@ -548,13 +549,14 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
               onClick={() => toggleSection(sectionKey)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 5,
-                fontSize: 12, fontWeight: 700, color, padding: '8px 12px 3px',
+                fontSize: 11, fontWeight: 700, color, padding: '8px 12px 3px',
                 textTransform: 'uppercase', letterSpacing: '0.05em',
                 cursor: 'pointer', userSelect: 'none',
               }}
             >
-              <span style={{ fontSize: 10, width: 10, display: 'inline-block', transition: 'transform 120ms', transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>{'\u25BE'}</span>
-              <span>{emoji} {label}</span>
+              <span style={{ fontSize: 9, width: 10, display: 'inline-block', transition: 'transform 120ms', transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>{'\u25BE'}</span>
+              {iconType && <DeviceIcon type={iconType} size={14} color={color} />}
+              <span>{label}</span>
             </div>
           );
         };
@@ -564,7 +566,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
           {/* VISION section */}
           {visionSignals.length > 0 && (
             <>
-              <SectionHeader sectionKey="vision" emoji={'\uD83D\uDCF7'} label="Vision" />
+              <SectionHeader sectionKey="vision" iconType="VisionSystem" label="Vision" color="#0891b2" />
               {isExpanded('vision') && visionSignals.map(sig => (
                 <button
                   key={sig.id}
@@ -588,7 +590,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
           {/* PART RESULTS section — vision-linked PT fields from upstream stations */}
           {ptFields.some(f => f._visionLinked) && (
             <>
-              <SectionHeader sectionKey="partResults" emoji={'\u2B50'} label="Part Results (from upstream)" color="#fbbf24" />
+              <SectionHeader sectionKey="partResults" iconType="VisionSystem" label="Part Results (from upstream)" color="#fbbf24" />
               {isExpanded('partResults') && ptFields.filter(f => f._visionLinked).map(field => {
                 const isCurrentSm = field._visionSmId === smId;
                 return (
@@ -624,7 +626,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
           {/* PART TRACKING section — user-defined fields */}
           {ptFields.some(f => !f._visionLinked) && (
             <>
-              <SectionHeader sectionKey="partTracking" emoji={'\uD83D\uDCCB'} label="Part Tracking" />
+              <SectionHeader sectionKey="partTracking" iconType="Parameter" label="Part Tracking" color="#f97316" />
               {isExpanded('partTracking') && ptFields.filter(f => !f._visionLinked).map(field => (
                 <button
                   key={field.id}
@@ -692,18 +694,24 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
               <>
                 {deviceInputs.length > 0 && (
                   <>
-                    <SectionHeader sectionKey="sensors" emoji={'\uD83D\uDD0C'} label="Sensors & Devices" />
+                    <SectionHeader sectionKey="sensors" iconType="DigitalSensor" label="Sensors & Devices" color="#64748b" />
                     {isExpanded('sensors') && Object.entries(deviceGrouped).map(([groupName, items]) => {
                       const subKey = `sensors/${groupName}`;
                       const subCollapsed = !isExpanded(subKey);
+                      // Resolve device type for icon from first item's device
+                      const firstItem = items[0];
+                      const devId = firstItem?.ref?.split(':')[0];
+                      const dev = devId ? (currentSm?.devices ?? []).find(d => d.id === devId) : null;
+                      const subIconType = dev?.type ?? 'DigitalSensor';
                       return (
                         <div key={groupName}>
                           <div
                             className="nodrag"
                             onClick={() => toggleSection(subKey)}
-                            style={{ fontSize: 8, color: '#4b5563', padding: '3px 10px 1px 16px', fontWeight: 600, cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 4 }}
+                            style={{ fontSize: 10, color: '#4b5563', padding: '4px 10px 2px 18px', fontWeight: 600, cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 4 }}
                           >
-                            <span style={{ fontSize: 7, display: 'inline-block', width: 7, transform: subCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 120ms' }}>{'\u25BE'}</span>
+                            <span style={{ fontSize: 8, display: 'inline-block', width: 8, transform: subCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 120ms' }}>{'\u25BE'}</span>
+                            <DeviceIcon type={subIconType} size={12} />
                             {groupName}
                           </div>
                           {!subCollapsed && items.map(inp => renderItem(inp, '#22d3ee', '#164e63'))}
@@ -715,7 +723,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
 
                 {robotInputs.length > 0 && (
                   <>
-                    <SectionHeader sectionKey="robot" emoji={'\uD83E\uDD16'} label="Robot" color="#c4b5fd" />
+                    <SectionHeader sectionKey="robot" iconType="Robot" label="Robot" color="#7c3aed" />
                     {isExpanded('robot') && Object.entries(robotGrouped).map(([groupName, items]) => {
                       // Strip the "Robot " prefix for the sub-label — section header already says Robot
                       const subLabel = groupName.replace(/^Robot\s+/, '');
@@ -726,9 +734,10 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                           <div
                             className="nodrag"
                             onClick={() => toggleSection(subKey)}
-                            style={{ fontSize: 8, color: '#4b5563', padding: '3px 10px 1px 16px', fontWeight: 600, cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 4 }}
+                            style={{ fontSize: 10, color: '#4b5563', padding: '4px 10px 2px 18px', fontWeight: 600, cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 4 }}
                           >
-                            <span style={{ fontSize: 7, display: 'inline-block', width: 7, transform: subCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 120ms' }}>{'\u25BE'}</span>
+                            <span style={{ fontSize: 8, display: 'inline-block', width: 8, transform: subCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 120ms' }}>{'\u25BE'}</span>
+                            <DeviceIcon type="Robot" size={12} color="#7c3aed" />
                             {subLabel}
                           </div>
                           {!subCollapsed && items.map(inp => renderItem(inp, '#a78bfa', '#3b2a6b'))}
@@ -744,7 +753,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
           {/* SIGNALS section (all user signals -- position, state, condition merged) */}
           {projectSignals.length > 0 && (
             <>
-              <SectionHeader sectionKey="signals" emoji={'\u26A1'} label="Signals" />
+              <SectionHeader sectionKey="signals" label="Signals" color="#64748b" />
               {isExpanded('signals') && projectSignals.map(sig => {
                 const badge = typeBadgeMap[sig.type];
                 const cleanState = (sig.stateName ?? '').replace(/^\[\d+\]\s*[✓⌂⏳]?\s*/, '');
@@ -1505,12 +1514,10 @@ export function DecisionNode({ data, selected, id }) {
         }}
       >
         {/* Line 1: mode label */}
-        <span style={{ fontSize: 10, color: mutedColor, marginBottom: 2 }}>
-          {isVerify
-            ? (isSensor ? '🔌 ✓ Verify:' : '✓ Verify:')
-            : isSensor
-              ? (isDecide ? '🔌 Branch:' : '🔌 Wait:')
-              : isDecide ? 'Decide:' : 'Wait on:'}
+        <span style={{ fontSize: 10, color: mutedColor, marginBottom: 2, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+          {isSensor && <DeviceIcon type={sensorInputType === 'range' ? 'AnalogSensor' : 'DigitalSensor'} size={12} color="rgba(255,255,255,0.75)" />}
+          {isVisionJob && <DeviceIcon type="VisionSystem" size={12} color="rgba(255,255,255,0.75)" />}
+          {isVerify ? '✓ Verify:' : isDecide ? (isSensor ? 'Branch:' : 'Decide:') : (isSensor ? 'Wait:' : 'Wait on:')}
         </span>
         {/* Line 2: signal name — wraps to 2 lines if long */}
         <span
