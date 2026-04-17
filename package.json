@@ -1,6 +1,6 @@
 {
   "name": "sdc-state-logic-builder",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "SDC State Logic Diagram Builder - ME to L5X",
   "main": "electron/main.js",
   "scripts": {
@@ -68,7 +68,8 @@
     "publish": {
       "provider": "github",
       "owner": "danbelliveau2",
-      "repo": "state_logic_builder"
+      "repo": "state_logic_builder",
+      "releaseType": "release"
     },
     "directories": {
       "output": "release"
