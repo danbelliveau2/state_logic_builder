@@ -489,15 +489,23 @@ body {
 }
 .changelog-popup__date {
   font-weight: 400;
-  color: #64748b;
+  color: #475569;
   margin-left: 8px;
   font-size: 11px;
+}
+.changelog-popup__author {
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: #475569;
+  margin: 2px 0 5px 0;
+  font-style: italic;
 }
 .changelog-popup__list {
   margin: 4px 0 0 16px;
   padding: 0;
   list-style: disc;
-  color: #cbd5e1;
+  color: #1e293b;
   font-size: 12px;
   line-height: 1.6;
 }

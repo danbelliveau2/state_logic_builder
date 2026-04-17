@@ -11,6 +11,8 @@ export const CHANGELOG = [
   {
     version: '1.5',
     date: '2026-04-16',
+    time: '14:30',
+    author: 'Dan Belliveau',
     changes: [
       'IO Map tab on Project Setup: Device List + IO Map sub-tabs',
       'Device List groups by category with DI/DO/AI/AO counts',
@@ -23,6 +25,8 @@ export const CHANGELOG = [
   {
     version: '1.4',
     date: '2026-04-16',
+    time: '10:15',
+    author: 'Dan Belliveau',
     changes: [
       'Moved Release Notes button to sidebar below Rev number',
       'Enlarged Part Tracking and Signals section headers',
@@ -32,6 +36,8 @@ export const CHANGELOG = [
   {
     version: '1.3',
     date: '2026-04-16',
+    time: '08:45',
+    author: 'Dan Belliveau',
     changes: [
       'Refactored all edge routing into edgeRouting.js module',
       'Fixed edge shape preservation when dragging connected nodes',
@@ -43,6 +49,8 @@ export const CHANGELOG = [
   {
     version: '1.2',
     date: '2026-04-15',
+    time: '16:00',
+    author: 'Dan Belliveau',
     changes: [
       'Decision node modes: live exit labels, sensor/signal/vision branching',
       'Proximity handles on decision nodes',
@@ -53,6 +61,8 @@ export const CHANGELOG = [
   {
     version: '1.1',
     date: '2026-04-14',
+    time: '11:20',
+    author: 'Dan Belliveau',
     changes: [
       'CompactLogix Motion (ERM) processor support',
       'L5X export fixes for program-scoped BOOL tags',
@@ -63,6 +73,8 @@ export const CHANGELOG = [
   {
     version: '1.0',
     date: '2026-04-12',
+    time: '09:00',
+    author: 'Dan Belliveau',
     changes: [
       'Initial release: state machine editor with L5X export',
       'Node alignment tools, start conditions, index sync',
