@@ -6,11 +6,13 @@
 import { useState } from 'react';
 import { MachineConfigEditor } from './MachineConfigEditor.jsx';
 import { StandardsProfileEditor } from './StandardsProfileEditor.jsx';
+import { IOMapEditor } from './IOMapEditor.jsx';
 import { useDiagramStore } from '../store/useDiagramStore.js';
 
 const TABS = [
   { id: 'machine', label: 'Machine Configuration' },
   { id: 'standards', label: 'Standards Profile' },
+  { id: 'iomap', label: 'IO Map' },
 ];
 
 export function ProjectSetup() {
@@ -42,6 +44,7 @@ export function ProjectSetup() {
       <div className="project-setup__content">
         {activeTab === 'machine' && <MachineConfigEditor />}
         {activeTab === 'standards' && <StandardsProfileEditor />}
+        {activeTab === 'iomap' && <IOMapEditor />}
       </div>
     </div>
   );
