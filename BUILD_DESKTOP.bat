@@ -1,50 +1,49 @@
 @echo off
-title SDC State Logic Builder - Desktop Build
-set APP_DIR=C:\SDC-StateLogic
+title SDC State Logic Builder - Local Dev Build
+set APP_DIR=%CD%
 
 echo.
 echo  ============================================================
-echo   SDC State Logic Builder - Build Desktop App
+echo   SDC State Logic Builder - Local Dev Build (ZIP)
 echo  ============================================================
 echo.
-echo  This creates a standalone .exe your team can run without
-echo  needing Node.js, npm, or any technical setup.
+echo  NOTE: This creates a LOCAL test build only.
 echo.
-echo  Output: %APP_DIR%\release\SDC-State-Logic-Builder.exe
+echo  To release a new version to the team:
+echo    1. Update "version" in package.json
+echo    2. git commit + git push to main
+echo    GitHub Actions will build the installer automatically.
 echo.
-
-cd /d "%APP_DIR%"
 
 if not exist "node_modules\" (
   echo  Installing dependencies...
   call npm install
-  if errorlevel 1 ( echo ERROR: npm install failed & pause & exit /b 1 )
+  if errorlevel 1 ( echo. & echo ERROR: npm install failed & pause & exit /b 1 )
   echo.
 )
 
 echo  Step 1: Building React app...
 call npm run build
-if errorlevel 1 ( echo ERROR: Build failed & pause & exit /b 1 )
+if errorlevel 1 ( echo. & echo ERROR: Vite build failed & pause & exit /b 1 )
 echo  Build complete.
 echo.
 
-echo  Step 2: Packaging as desktop app...
-call npx electron-builder --win portable
-if errorlevel 1 ( echo ERROR: Packaging failed & pause & exit /b 1 )
+echo  Step 2: Packaging (zip - no installer needed locally)...
+call npx electron-builder --win zip --publish never
+if errorlevel 1 ( echo. & echo ERROR: Electron packaging failed & pause & exit /b 1 )
+
+echo.
+echo  Step 3: Creating portable ZIP...
+for /f "tokens=*" %%v in ('node -p "require('./package.json').version"') do set VERSION=%%v
+powershell -Command "Compress-Archive -Path 'release\win-unpacked\*' -DestinationPath 'release\SDC-State-Logic-Builder-%VERSION%-local.zip' -Force"
 
 echo.
 echo  ============================================================
-echo   DONE!
+echo   LOCAL BUILD COMPLETE
 echo  ============================================================
 echo.
-echo  Your app is at: %APP_DIR%\release\SDC-State-Logic-Builder.exe
+echo  Test build:  %APP_DIR%\release\SDC-State-Logic-Builder-%VERSION%-local.zip
 echo.
-echo  To share with your team:
-echo    Copy SDC-State-Logic-Builder.exe to their desktop.
-echo    Double-click to run - no install needed!
-echo.
-echo  NOTE: Each person's projects are saved on THEIR OWN computer.
-echo        For shared projects, use BUILD_AND_RUN.bat on a server
-echo        and have everyone connect via the network URL.
+echo  Extract and run "SDC State Logic Builder.exe" to test locally.
 echo.
 pause

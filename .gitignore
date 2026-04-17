@@ -27,3 +27,6 @@ Thumbs.db
 # Electron build artifacts
 release/
 dist-electron/
+
+# Claude Code local settings (machine-specific)
+.claude/settings.local.json

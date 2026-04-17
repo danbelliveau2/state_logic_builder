@@ -1,0 +1,74 @@
+name: Build & Release
+
+# Triggers when package.json version is bumped on main.
+# To release a new version:
+#   1. Update "version" in package.json (e.g. "1.0.0" → "1.1.0")
+#   2. git commit -m "chore: bump version to 1.1.0"
+#   3. git push origin main
+# GitHub Actions will build the installer and publish a GitHub Release.
+# All installed copies of the app will auto-update within 4 hours.
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  check-version:
+    name: Check if version changed
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+      should_release: ${{ steps.check.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Get current version
+        id: get_version
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Check if version changed vs previous commit
+        id: check
+        run: |
+          PREV=$(git show HEAD~1:package.json 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).version" 2>/dev/null || echo "none")
+          CURR="${{ steps.get_version.outputs.version }}"
+          echo "Previous: $PREV  Current: $CURR"
+          if [ "$PREV" != "$CURR" ]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          fi
+
+  build-and-release:
+    name: Build installer & publish release
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build React app
+        run: npm run build
+
+      - name: Package & publish Electron installer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --win nsis --publish always
+
+      - name: Upload installer as workflow artifact (backup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-v${{ needs.check-version.outputs.version }}
+          path: release/SDC-State-Logic-Builder-Setup-*.exe
+          retention-days: 90

@@ -9,10 +9,12 @@
     "preview": "vite preview",
     "serve": "node server.js",
     "electron:dev": "electron .",
-    "electron:build": "electron-builder --win portable"
+    "electron:build": "electron-builder --win portable",
+    "electron:installer": "electron-builder --win nsis"
   },
   "dependencies": {
     "@xyflow/react": "^12.3.0",
+    "electron-updater": "^6.8.3",
     "nanoid": "^5.0.7",
     "pdf-parse": "^2.4.5",
     "react": "^18.3.1",
@@ -30,7 +32,6 @@
     "productName": "SDC State Logic Builder",
     "files": [
       "electron/**/*",
-      "server.js",
       "package.json"
     ],
     "extraResources": [
@@ -41,21 +42,33 @@
       {
         "from": "server.js",
         "to": "server.js"
+      },
+      {
+        "from": "public/icon.ico",
+        "to": "icon.ico"
       }
     ],
     "win": {
+      "icon": "public/icon.ico",
       "target": [
         {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
+          "target": "nsis",
+          "arch": ["x64"]
         }
-      ],
-      "icon": "electron/icon.ico"
+      ]
     },
-    "portable": {
-      "artifactName": "SDC-State-Logic-Builder.exe"
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "SDC State Logic Builder",
+      "artifactName": "SDC-State-Logic-Builder-Setup-${version}.exe"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "danbelliveau2",
+      "repo": "state_logic_builder"
     },
     "directories": {
       "output": "release"
