@@ -4,10 +4,22 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.4';
+export const APP_VERSION = '1.5';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.5',
+    date: '2026-04-16',
+    changes: [
+      'IO Map tab on Project Setup: Device List + IO Map sub-tabs',
+      'Device List groups by category with DI/DO/AI/AO counts',
+      'Vision Systems split into own category in IO Map',
+      'Part Tracking toggle in decision node popup (Wait/Decide/Verify)',
+      'Auto-create PT fields from decision nodes on Done',
+      'PT badge shown on decision nodes when enabled',
+    ],
+  },
   {
     version: '1.4',
     date: '2026-04-16',

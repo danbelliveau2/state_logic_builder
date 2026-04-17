@@ -78,6 +78,13 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
   const [sensorTag, setSensorTag] = useState(data.sensorTag ?? '');
   const [sensorInputType, setSensorInputType] = useState(data.sensorInputType ?? 'bool'); // 'bool' | 'range'
 
+  // Part tracking: optionally set a PT field on pass/fail branches
+  const [ptEnabled, setPtEnabled] = useState(data.ptEnabled ?? false);
+  const [ptFieldId, setPtFieldId] = useState(data.ptFieldId ?? null);
+  const [ptFieldName, setPtFieldName] = useState(data.ptFieldName ?? '');
+  const [ptPassValue, setPtPassValue] = useState(data.ptPassValue ?? 'SUCCESS');
+  const [ptFailValue, setPtFailValue] = useState(data.ptFailValue ?? 'FAILURE');
+
   // Retry counter config (only meaningful for 'wait' mode)
   const [retryEnabled, setRetryEnabled] = useState(data.retryEnabled ?? false);
   const [retryMax, setRetryMax] = useState(data.retryMax ?? 3);
@@ -390,10 +397,27 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
       // Retry counter (available for wait, decide, and verify modes)
       retryEnabled,
       retryMax: retryEnabled ? Number(retryMax) || 3 : undefined,
+      // Part tracking
+      ptEnabled,
+      ptFieldId: ptEnabled ? ptFieldId : undefined,
+      ptFieldName: ptEnabled ? ptFieldName : undefined,
+      ptPassValue: ptEnabled ? ptPassValue : undefined,
+      ptFailValue: ptEnabled ? ptFailValue : undefined,
       // Multi-condition
       conditions: conditions.length > 0 ? conditions : undefined,
       conditionLogic: conditions.length > 1 ? conditionLogic : undefined,
     };
+    // Auto-create PT field if user typed a new name (no existing field selected)
+    if (ptEnabled && ptFieldName && !ptFieldId) {
+      // Check if a field with this name already exists
+      const existing = ptFields.find(f => f.name === ptFieldName);
+      if (existing) {
+        updatedData.ptFieldId = existing.id;
+      } else {
+        const newId = store.addTrackingField({ name: ptFieldName, dataType: 'boolean', description: `Auto-created from decision node: ${finalSignalName}` });
+        updatedData.ptFieldId = newId;
+      }
+    }
     store.updateNodeData(smId, nodeId, updatedData);
     if (exitCount === 2) {
       store.addDecisionBranches(smId, nodeId, finalExit1Label, finalExit2Label);
@@ -1036,6 +1060,104 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
             </div>
           )}
 
+          {/* ── Part Tracking toggle ── */}
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <label
+                className="nodrag"
+                style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', flex: 1 }}
+                onClick={() => {
+                  const next = !ptEnabled;
+                  setPtEnabled(next);
+                  // Auto-populate field name from signal name when first enabled
+                  if (next && !ptFieldName) {
+                    const autoName = signalName?.replace(/\s+/g, '_') ?? 'Result';
+                    setPtFieldName(autoName);
+                  }
+                }}
+              >
+                <span style={{
+                  width: 14, height: 14, borderRadius: 3, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  background: ptEnabled ? '#16a34a' : '#fff',
+                  border: ptEnabled ? '1px solid #22c55e' : '1px solid #d1d5db',
+                  fontSize: 10, color: '#000', fontWeight: 700,
+                }}>
+                  {ptEnabled ? '\u2713' : ''}
+                </span>
+                <span style={{ fontSize: 10, fontWeight: 600, color: ptEnabled ? '#16a34a' : '#64748b' }}>
+                  📊 Part Tracking
+                </span>
+              </label>
+            </div>
+            {ptEnabled && (
+              <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {/* Field picker: existing fields or custom name */}
+                <div style={{ fontSize: 9, color: '#94a3b8', lineHeight: 1.3 }}>
+                  Pick an existing field or name a new one.
+                </div>
+                {ptFields.length > 0 && (
+                  <select
+                    className="nodrag"
+                    value={ptFieldId ?? ''}
+                    onChange={e => {
+                      const fid = e.target.value;
+                      if (fid === '__new__') {
+                        setPtFieldId(null);
+                        const autoName = signalName?.replace(/\s+/g, '_') ?? 'Result';
+                        setPtFieldName(autoName);
+                        return;
+                      }
+                      const f = ptFields.find(f => f.id === fid);
+                      if (f) { setPtFieldId(f.id); setPtFieldName(f.name); }
+                    }}
+                    style={{
+                      width: '100%', background: '#fff', border: '1px solid #d1d5db',
+                      color: '#1e293b', borderRadius: 4, padding: '4px 6px', fontSize: 11, cursor: 'pointer',
+                    }}
+                  >
+                    <option value="" disabled>Select field…</option>
+                    {ptFields.map(f => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                    <option value="__new__">+ New field…</option>
+                  </select>
+                )}
+                {(!ptFieldId || ptFields.length === 0) && (
+                  <input
+                    className="nodrag"
+                    value={ptFieldName}
+                    onChange={e => { setPtFieldName(e.target.value); setPtFieldId(null); }}
+                    placeholder="Field name"
+                    style={{
+                      width: '100%', background: '#fff', border: '1px solid #d1d5db',
+                      color: '#1e293b', borderRadius: 4, padding: '4px 6px', fontSize: 11,
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                )}
+                {/* Pass/Fail values */}
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 8, color: '#16a34a', fontWeight: 700, marginBottom: 1 }}>✓ Pass writes</div>
+                    <select className="nodrag" value={ptPassValue} onChange={e => setPtPassValue(e.target.value)}
+                      style={{ width: '100%', fontSize: 10, padding: '2px 4px', borderRadius: 3, border: '1px solid #d1d5db', background: '#fff', color: '#1e293b', cursor: 'pointer' }}>
+                      <option value="SUCCESS">SUCCESS</option>
+                      <option value="FAILURE">FAILURE</option>
+                    </select>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 8, color: '#dc2626', fontWeight: 700, marginBottom: 1 }}>✗ Fail writes</div>
+                    <select className="nodrag" value={ptFailValue} onChange={e => setPtFailValue(e.target.value)}
+                      style={{ width: '100%', fontSize: 10, padding: '2px 4px', borderRadius: 3, border: '1px solid #d1d5db', background: '#fff', color: '#1e293b', cursor: 'pointer' }}>
+                      <option value="FAILURE">FAILURE</option>
+                      <option value="SUCCESS">SUCCESS</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* 1 branch -- single exit */}
           <button
             className="nodrag"
@@ -1424,6 +1546,18 @@ export function DecisionNode({ data, selected, id }) {
             letterSpacing: '0.03em',
           }}>
             {'\u21BB'} Retry x{retryMax}
+          </span>
+        )}
+        {/* Part Tracking badge */}
+        {data.ptEnabled && data.ptFieldName && (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 3,
+            fontSize: 9, fontWeight: 700,
+            background: 'rgba(0,0,0,0.3)', color: '#86efac',
+            padding: '1px 6px', borderRadius: 8, marginTop: 3,
+            letterSpacing: '0.03em',
+          }}>
+            📊 PT: {data.ptFieldName}
           </span>
         )}
       </div>
