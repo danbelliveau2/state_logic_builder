@@ -4,10 +4,22 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.5';
+export const APP_VERSION = '1.6';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.6',
+    date: '2026-04-17',
+    changes: [
+      'In-app Design System editor tab on Project Setup',
+      'Visual reference for all colors, shapes, icons, typography, spacing',
+      'Editable color swatches persist to project.designTheme',
+      'Live SVG previews of node shapes and device icons',
+      'SDC color palette applied to IO Map',
+      'Consistent DeviceIcon SVG components throughout decision popup',
+    ],
+  },
   {
     version: '1.5',
     date: '2026-04-16',
