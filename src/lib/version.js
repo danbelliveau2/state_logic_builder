@@ -4,10 +4,23 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.6';
+export const APP_VERSION = '1.7';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.7',
+    date: '2026-04-17',
+    changes: [
+      'Network tab on IO Map: EtherNet/IP device topology + backplane layout',
+      'Auto-discovers servo, vision, robot, conveyor devices from state machines',
+      'IP addressing follows SDC standard: subnet + decade offsets per device type',
+      'Editable module names, catalog numbers, IP addresses, RPI rates',
+      'Chassis visual: slot layout with DI/DO/AI/AO/Safety module types',
+      'IP Address Summary view for quick reference',
+      'Add manual EtherNet/IP modules and backplane modules',
+    ],
+  },
   {
     version: '1.6',
     date: '2026-04-17',

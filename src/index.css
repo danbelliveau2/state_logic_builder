@@ -5737,6 +5737,331 @@ select.standards-editor__input {
   font-size: 10px;
 }
 
+/* ─── Network Tab (IO Map) ─────────────────────────────────────────────── */
+
+.net__config-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.net__config-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.net__config-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #5a6a7e;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.net__config-input {
+  padding: 5px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: Consolas, Menlo, Monaco, monospace;
+  color: #231f20;
+  background: #fff;
+  width: 140px;
+}
+.net__config-input:focus {
+  outline: none;
+  border-color: #1574C4;
+  box-shadow: 0 0 0 2px rgba(21,116,196,0.15);
+}
+.net__config-input--narrow {
+  width: 60px;
+}
+.net__ip-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+.net__ip-legend-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: #5a6a7e;
+  text-transform: uppercase;
+}
+.net__ip-range-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  border: 1px solid;
+  font-size: 10px;
+  color: #5a6a7e;
+  background: #fff;
+}
+
+/* ── Inline editing ───────────────────────────────────────────────────── */
+
+.net__row--editing {
+  background: #f0f7ff !important;
+}
+.net__inline-input {
+  padding: 3px 6px;
+  border: 1px solid #1574C4;
+  border-radius: 3px;
+  font-size: 11px;
+  font-family: Consolas, Menlo, Monaco, monospace;
+  color: #231f20;
+  background: #fff;
+  width: 100%;
+  box-sizing: border-box;
+}
+.net__inline-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(21,116,196,0.15);
+}
+.net__inline-input--ip {
+  width: 110px;
+}
+.net__inline-input--narrow {
+  width: 50px;
+  text-align: center;
+}
+.net__inline-select {
+  padding: 3px 4px;
+  border: 1px solid #1574C4;
+  border-radius: 3px;
+  font-size: 11px;
+  color: #231f20;
+  background: #fff;
+  width: 100%;
+}
+.net__module-name {
+  font-size: 11px;
+  color: #231f20;
+  font-weight: 600;
+}
+.net__ip {
+  font-family: Consolas, Menlo, Monaco, monospace;
+  font-size: 12px;
+  color: #1574C4;
+  font-weight: 600;
+}
+.net__catalog {
+  font-family: Consolas, Menlo, Monaco, monospace;
+  font-size: 11px;
+  color: #5a6a7e;
+}
+.net__type-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+}
+
+/* ── Action buttons ───────────────────────────────────────────────────── */
+
+.net__add-btn {
+  margin-left: auto;
+  padding: 3px 10px;
+  border: 1px solid #1574C4;
+  border-radius: 4px;
+  background: #fff;
+  color: #1574C4;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.net__add-btn:hover {
+  background: #1574C4;
+  color: #fff;
+}
+.net__edit-btn,
+.net__delete-btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: background 0.15s;
+}
+.net__edit-btn {
+  color: #1574C4;
+}
+.net__edit-btn:hover {
+  background: rgba(21,116,196,0.1);
+}
+.net__delete-btn {
+  color: #b83c3c;
+}
+.net__delete-btn:hover {
+  background: rgba(184,60,60,0.1);
+}
+
+/* ── Chassis visual ───────────────────────────────────────────────────── */
+
+.net__chassis-visual {
+  display: flex;
+  gap: 4px;
+  padding: 12px 16px;
+  overflow-x: auto;
+}
+.net__chassis-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 56px;
+  padding: 8px 6px 6px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-top: 3px solid #8896a8;
+  border-radius: 4px;
+  text-align: center;
+}
+.net__chassis-slot--controller {
+  border-top-color: #061d39;
+  background: #f0f7ff;
+}
+.net__chassis-slot-num {
+  font-size: 10px;
+  font-weight: 700;
+  color: #8896a8;
+}
+.net__chassis-slot-label {
+  font-size: 11px;
+  font-weight: 700;
+}
+.net__chassis-slot-cat {
+  font-size: 8px;
+  color: #8896a8;
+  max-width: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Add form ─────────────────────────────────────────────────────────── */
+
+.net__add-form {
+  padding: 12px 16px;
+  background: #f0f7ff;
+  border-top: 1px solid #e2e8f0;
+}
+.net__add-form-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1574C4;
+  margin-bottom: 8px;
+}
+.net__add-form-fields {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.net__add-input {
+  padding: 5px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #231f20;
+  background: #fff;
+  min-width: 120px;
+}
+.net__add-input:focus {
+  outline: none;
+  border-color: #1574C4;
+  box-shadow: 0 0 0 2px rgba(21,116,196,0.15);
+}
+.net__add-input--narrow {
+  min-width: 60px;
+  width: 60px;
+  text-align: center;
+}
+.net__add-form-actions {
+  display: flex;
+  gap: 8px;
+}
+.net__add-form-btn {
+  padding: 5px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #fff;
+  color: #5a6a7e;
+  transition: all 0.15s;
+}
+.net__add-form-btn:hover {
+  background: #f0f2f5;
+}
+.net__add-form-btn--save {
+  background: #1574C4;
+  color: #fff;
+  border-color: #1574C4;
+}
+.net__add-form-btn--save:hover {
+  background: #1264a8;
+}
+.net__add-form-btn--save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── IP Summary ───────────────────────────────────────────────────────── */
+
+.net__ip-summary {
+  padding: 8px 0;
+}
+.net__ip-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 16px;
+  border-bottom: 1px solid #f0f2f5;
+  font-size: 12px;
+}
+.net__ip-row:last-child {
+  border-bottom: none;
+}
+.net__ip-row--header {
+  background: #f8fafc;
+  font-weight: 700;
+}
+.net__ip-addr {
+  font-family: Consolas, Menlo, Monaco, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1574C4;
+  min-width: 120px;
+}
+.net__ip-name {
+  min-width: 160px;
+  color: #231f20;
+}
+.net__ip-type-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
 /* ─── Design System Editor ─────────────────────────────────────────────── */
 
 .ds-editor {

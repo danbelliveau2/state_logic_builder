@@ -86,6 +86,26 @@ const defaultMachineConfig = {
   // station type: assembly, verify, label, robot, conveyor, test, custom
 };
 
+// ─── Default Network Config ─────────────────────────────────────────────────
+const defaultNetworkConfig = {
+  subnet: '10.1.60',                   // Base subnet — 10.1.{machine}.x
+  controllerIp: '10.1.60.10',          // PLC IP
+  controllerSlot: 0,                   // Controller slot in backplane
+  // IP offset ranges by device type (SDC standard: decades grouping)
+  ipRanges: {
+    servoDrive:  { start: 20, prefix: 'sd' },
+    ioLink:      { start: 30, prefix: 'iol' },
+    camera:      { start: 40, prefix: 'cam' },
+    robot:       { start: 50, prefix: 'r' },
+    vfd:         { start: 60, prefix: 'fd' },
+    hmi:         { start: 70, prefix: 'hmi' },
+    safety:      { start: 80, prefix: 'sf' },
+    generic:     { start: 90, prefix: 'gd' },
+  },
+  modules: [],                         // [{ id, name, catalogNumber, ipAddress, bus, slot, parentModule, ... }]
+  chassis: [],                         // [{ id, slot, name, catalogNumber, type }]  — backplane modules
+};
+
 const defaultProject = {
   name: 'New Project',
   stateMachines: [],
@@ -96,6 +116,7 @@ const defaultProject = {
   sequenceVariants: [],   // [{ id, name, stateMachines: [...] }]  — named alternative sequences
   standardsProfile: defaultStandardsProfile,
   machineConfig: defaultMachineConfig,
+  networkConfig: defaultNetworkConfig,
 };
 
 // ─── Recipe-aware SM helpers ─────────────────────────────────────────────────
@@ -2544,6 +2565,104 @@ export const useDiagramStore = create(
               devices.splice(insertIdx, 0, moved);
               return { ...sm, devices };
             })),
+        }));
+      },
+
+      // ── Network Config actions ────────────────────────────────────────────
+
+      updateNetworkConfig(updates) {
+        get()._pushHistory();
+        set(s => ({
+          project: {
+            ...s.project,
+            networkConfig: { ...s.project.networkConfig, ...updates },
+          },
+        }));
+      },
+
+      addNetworkModule(moduleData) {
+        get()._pushHistory();
+        const mod = { id: uid(), name: '', catalogNumber: '', ipAddress: '', bus: 'ethernet', slot: null, parentModule: 'Local', deviceType: '', station: '', description: '', rpiUs: 10000, ...moduleData };
+        set(s => ({
+          project: {
+            ...s.project,
+            networkConfig: {
+              ...s.project.networkConfig,
+              modules: [...(s.project.networkConfig?.modules ?? []), mod],
+            },
+          },
+        }));
+        return mod.id;
+      },
+
+      updateNetworkModule(modId, updates) {
+        get()._pushHistory();
+        set(s => ({
+          project: {
+            ...s.project,
+            networkConfig: {
+              ...s.project.networkConfig,
+              modules: (s.project.networkConfig?.modules ?? []).map(m =>
+                m.id === modId ? { ...m, ...updates } : m
+              ),
+            },
+          },
+        }));
+      },
+
+      deleteNetworkModule(modId) {
+        get()._pushHistory();
+        set(s => ({
+          project: {
+            ...s.project,
+            networkConfig: {
+              ...s.project.networkConfig,
+              modules: (s.project.networkConfig?.modules ?? []).filter(m => m.id !== modId),
+            },
+          },
+        }));
+      },
+
+      addChassisModule(slotData) {
+        get()._pushHistory();
+        const slot = { id: uid(), slot: 0, name: '', catalogNumber: '', type: 'DI', description: '', ...slotData };
+        set(s => ({
+          project: {
+            ...s.project,
+            networkConfig: {
+              ...s.project.networkConfig,
+              chassis: [...(s.project.networkConfig?.chassis ?? []), slot],
+            },
+          },
+        }));
+        return slot.id;
+      },
+
+      updateChassisModule(slotId, updates) {
+        get()._pushHistory();
+        set(s => ({
+          project: {
+            ...s.project,
+            networkConfig: {
+              ...s.project.networkConfig,
+              chassis: (s.project.networkConfig?.chassis ?? []).map(c =>
+                c.id === slotId ? { ...c, ...updates } : c
+              ),
+            },
+          },
+        }));
+      },
+
+      deleteChassisModule(slotId) {
+        get()._pushHistory();
+        set(s => ({
+          project: {
+            ...s.project,
+            networkConfig: {
+              ...s.project.networkConfig,
+              chassis: (s.project.networkConfig?.chassis ?? []).filter(c => c.id !== slotId),
+            },
+          },
         }));
       },
 
