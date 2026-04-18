@@ -2,7 +2,7 @@
 
 > Visual state machine editor that converts ME flowchart diagrams into Allen-Bradley L5X PLC code.
 
-Built by the SDC Automation engineering team to eliminate manual PLC state logic authoring. Draw your state machine, configure devices and signals, and export production-ready L5X directly into Studio 5000.
+Built by **Dan Belliveau** to eliminate manual PLC state logic authoring. Draw your state machine, configure devices and signals, and export production-ready L5X directly into Studio 5000.
 
 ---
 
