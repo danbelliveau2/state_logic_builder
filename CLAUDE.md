@@ -263,12 +263,13 @@ Edges created via onConnect or ConnectMenu pre-compute waypoints via `computeAut
 
 ### 5.6 Edge Branch Labels (RoutableEdge.jsx)
 Decision exit edges show a small colored pill label near the source handle:
-- **Pass**: green pill, text shortened to first part before `_` (e.g., `"On_Magnet"` → `"On"`)
-- **Fail**: red pill, same shortening
+- **Pass**: green pill, short label (e.g., `"On"`, `"Pass"`, `"True"`)
+- **Fail**: red pill, short label (e.g., `"Off"`, `"Fail"`, `"False"`)
 - **Retry-Fail**: amber pill, always shows `"Retry-Fail"`
 - **Single-exit** (`exit-single`): **no label** — wait nodes with one exit don't need labels
 - Pills are always rendered **horizontal**, positioned 36px along the first segment
 - Text color: white for pass/fail, black for retry
+- **Exit labels never include the signal/device name** — the node itself shows the device, labels are just `"On"`, `"Off"`, `"Pass"`, `"Fail"`, `"True"`, `"False"`, `"InRange"`, `"OutOfRange"`
 
 ### 5.7 ConnectMenu (ConnectMenu.jsx)
 - Opens when user short-clicks a node handle (detected by `HandleClickZone` DOM listener)
@@ -284,9 +285,9 @@ Decision exit edges show a small colored pill label near the source handle:
 
 ### 6.1 Node Modes
 DecisionNode has three modes (`data.nodeMode`):
-- **`wait`** — Wait for a signal/condition to become true, then proceed
-- **`verify`** — Verify a sensor is On or Off, branch on result
-- **`decide`** — General decision branching (future)
+- **`wait`** — Wait for a signal/condition to become true, then proceed (blue)
+- **`verify`** — Verify a sensor is On or Off; if wrong, fault/fail (orange). Shows bold colored "Verify On/Off" pill inside node.
+- **`decide`** — Branch: sensor On goes one way, Off goes the other (purple). **No On/Off pill** — both paths are equal, not an assertion of expected state. The branch labels on the edges ("On" / "Off") indicate which path is which.
 
 ### 6.2 Display Layout
 ```
@@ -299,6 +300,7 @@ Link_Orient                 ← small muted below (signalName = job/signal name)
 - `signalName` = job name or signal name → **always the smaller subtitle**
 - This is intentionally OPPOSITE of what you might assume from variable names
 - **Verify mode**: header says just `"Verify"` (no icons, no checkmark). Below the signal name, a bold colored pill shows `"Verify On"` (green `#16a34a`) or `"Verify Off"` (red `#dc2626`) based on `data.conditionType`
+- **Decide mode**: header says `"Branch:"`. **NO On/Off pill** — decide is a fork, not an assertion. Both paths are equal.
 - **Verify header**: NO icons, NO symbols — just the word "Verify"
 
 ### 6.3 Popup Behavior
@@ -457,6 +459,8 @@ These are mistakes made previously that must NOT be repeated:
 | 24 | Modified StateNode ActionRow for verify On/Off instead of DecisionNode | Verify On/Off pill goes INSIDE the DecisionNode, not on StateNode action rows |
 | 25 | `enforceNodeClearance` only ran on manual routes | Must run on ALL edges (both auto-route and manual) |
 | 26 | `enforceNodeClearance` checked all nodes including source/target | Must skip source/target nodes to preserve perpendicular handle stubs |
+| 27 | Exit labels included signal name (e.g., `On_Magnet_Presence`) | Labels should be just `On`, `Off`, `Pass`, `Fail` — device name is already on the node |
+| 28 | Showed bold On/Off pill inside decide nodes | Decide is a fork (both paths equal) — only VERIFY nodes get the On/Off pill since they assert an expected condition |
 
 ---
 
@@ -562,4 +566,4 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:5173
 
 ---
 
-*Last updated: 2026-04-18 — Updated with ConnectMenu, edge routing fixes, verify mode, branch labels.*
+*Last updated: 2026-04-18 — Updated with ConnectMenu, edge routing fixes, verify/decide mode distinctions, short branch labels.*
