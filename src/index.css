@@ -64,6 +64,102 @@ body {
   overflow: hidden;
 }
 
+/* ─── Project Tab Bar ──────────────────────────────────────────────────── */
+
+.project-tabs {
+  display: flex;
+  align-items: stretch;
+  background: #061d39;
+  border-bottom: 1px solid #0a2a50;
+  min-height: 32px;
+  padding: 0 4px;
+  gap: 0;
+  flex-shrink: 0;
+  user-select: none;
+}
+.project-tabs__list {
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+.project-tabs__list::-webkit-scrollbar {
+  height: 0;
+}
+.project-tabs__tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 14px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: #8896a8;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  max-width: 200px;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  position: relative;
+}
+.project-tabs__tab:hover {
+  color: #aacee8;
+  background: rgba(255,255,255,0.05);
+}
+.project-tabs__tab--active {
+  color: #ffffff;
+  background: rgba(21,116,196,0.15);
+  border-bottom-color: #1574C4;
+  font-weight: 600;
+}
+.project-tabs__tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.project-tabs__tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: none;
+  color: #5a6a7e;
+  font-size: 10px;
+  cursor: pointer;
+  border-radius: 3px;
+  flex-shrink: 0;
+  padding: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.project-tabs__tab-close:hover {
+  background: rgba(255,255,255,0.15);
+  color: #ef4444;
+}
+.project-tabs__add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  border: none;
+  background: none;
+  color: #5a6a7e;
+  font-size: 18px;
+  font-weight: 300;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+  border-radius: 4px;
+  margin: 2px 4px;
+}
+.project-tabs__add:hover {
+  color: #aacee8;
+  background: rgba(255,255,255,0.08);
+}
+
 .app-body {
   display: flex;
   flex: 1;

@@ -5,6 +5,7 @@
 
 import { useEffect, Component } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
+import { ProjectTabBar } from './components/ProjectTabBar.jsx';
 import { Toolbar } from './components/Toolbar.jsx';
 import { DeviceSidebar } from './components/DeviceSidebar.jsx';
 import { Canvas } from './components/Canvas.jsx';
@@ -107,6 +108,7 @@ export function App() {
     <ErrorBoundary>
       <ReactFlowProvider>
         <div className="app-layout">
+          <ProjectTabBar />
           <Toolbar />
           {activeView === 'projectSetup' ? (
             <ProjectSetup />

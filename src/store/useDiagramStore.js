@@ -201,6 +201,10 @@ export const useDiagramStore = create(
       currentFilename: null,   // filename of the active project on the server
       serverAvailable: false,  // true when the project API server is detected
 
+      // ── Project Tabs ────────────────────────────────────────────────────
+      openTabs: [],            // [{ id, filename, name, snapshot: { project, activeSmId, activeRecipeId } }]
+      activeTabId: null,       // id of the currently active tab
+
       // ── Recipe state ──────────────────────────────────────────────────────
       activeRecipeId: null,
       showRecipeManager: false,
@@ -3449,6 +3453,14 @@ export const useDiagramStore = create(
         const { currentFilename, project, serverAvailable, activeSmId } = get();
         if (!serverAvailable) return;
 
+        // If already open in a tab, just switch to that tab
+        const existingTab = get().openTabs.find(t => t.filename === filename);
+        if (existingTab) {
+          await get().switchTab(existingTab.id);
+          set({ showProjectManager: false });
+          return;
+        }
+
         // Save current project before switching (preserves last-active SM)
         if (currentFilename) {
           try {
@@ -3475,6 +3487,7 @@ export const useDiagramStore = create(
             selectedEdgeId: null,
             showProjectManager: false,
           });
+          get()._ensureCurrentTab();
         } catch (err) {
           alert(`Failed to load project: ${err.message}`);
         }
@@ -3528,6 +3541,7 @@ export const useDiagramStore = create(
             showProjectManager: false,
             showNewSmModal: true,    // Auto-open "New SM" modal so user isn't on a blank canvas
           });
+          get()._ensureCurrentTab();
         } catch (err) {
           alert(`Failed to create project: ${err.message}`);
         }
@@ -3704,8 +3718,186 @@ export const useDiagramStore = create(
           if (mcType === 'indexing' || mcType === 'linear') {
             get().autoGenerateIndexerSM();
           }
+
+          // Ensure project has a tab
+          get()._ensureCurrentTab();
         } catch (err) {
           console.error('Project initialization failed:', err);
+        }
+      },
+
+      // ── Project Tabs ────────────────────────────────────────────────────────
+
+      /** Ensure the current project is represented as a tab. Called after load/switch. */
+      _ensureCurrentTab() {
+        const { currentFilename, project, activeSmId, activeRecipeId, openTabs, activeTabId } = get();
+        if (!currentFilename) return;
+        const existing = openTabs.find(t => t.filename === currentFilename);
+        if (existing) {
+          // Update name and make active
+          set({
+            openTabs: openTabs.map(t => t.filename === currentFilename
+              ? { ...t, name: project.name || currentFilename }
+              : t),
+            activeTabId: existing.id,
+          });
+        } else {
+          // Create new tab
+          const tabId = `tab_${(_id++).toString(36)}`;
+          set({
+            openTabs: [...openTabs, {
+              id: tabId,
+              filename: currentFilename,
+              name: project.name || currentFilename,
+              snapshot: null, // active tab doesn't need a snapshot
+            }],
+            activeTabId: tabId,
+          });
+        }
+      },
+
+      /** Switch to another open tab. Saves current state as snapshot, loads target. */
+      async switchTab(tabId) {
+        const { openTabs, activeTabId, project, activeSmId, activeRecipeId, currentFilename, serverAvailable } = get();
+        if (tabId === activeTabId) return;
+        const targetTab = openTabs.find(t => t.id === tabId);
+        if (!targetTab) return;
+
+        // Save current project to server before switching
+        if (serverAvailable && currentFilename) {
+          try {
+            const dataToSave = { ...project, _lastActiveSmId: activeSmId };
+            await projectApi.saveProject(currentFilename, dataToSave);
+          } catch (err) {
+            console.error('Save before tab switch failed:', err);
+          }
+        }
+
+        // Save current state as snapshot on the current tab
+        const updatedTabs = openTabs.map(t => {
+          if (t.id === activeTabId) {
+            return { ...t, snapshot: { project, activeSmId, activeRecipeId, currentFilename } };
+          }
+          return t;
+        });
+
+        // Load target tab
+        if (targetTab.snapshot) {
+          // Restore from snapshot
+          const snap = targetTab.snapshot;
+          set({
+            openTabs: updatedTabs.map(t => t.id === tabId ? { ...t, snapshot: null } : t),
+            activeTabId: tabId,
+            project: snap.project,
+            activeSmId: snap.activeSmId,
+            activeRecipeId: snap.activeRecipeId ?? null,
+            currentFilename: snap.currentFilename,
+            selectedNodeId: null,
+            selectedEdgeId: null,
+            _past: [],
+            _future: [],
+          });
+        } else if (serverAvailable && targetTab.filename) {
+          // Load from server (tab was opened but not yet loaded)
+          try {
+            const loaded = await projectApi.loadProject(targetTab.filename);
+            const restoredSmId = loaded._lastActiveSmId;
+            const validSmId = (loaded.stateMachines ?? []).some(sm => sm.id === restoredSmId)
+              ? restoredSmId
+              : loaded.stateMachines?.[0]?.id ?? null;
+            set({
+              openTabs: updatedTabs,
+              activeTabId: tabId,
+              project: loaded,
+              activeSmId: validSmId,
+              activeRecipeId: null,
+              currentFilename: targetTab.filename,
+              selectedNodeId: null,
+              selectedEdgeId: null,
+              _past: [],
+              _future: [],
+            });
+          } catch (err) {
+            alert(`Failed to load project tab: ${err.message}`);
+          }
+        }
+      },
+
+      /** Close a tab. If it's the active tab, switch to adjacent. */
+      closeTab(tabId) {
+        const { openTabs, activeTabId } = get();
+        if (openTabs.length <= 1) return; // Don't close the last tab
+        const idx = openTabs.findIndex(t => t.id === tabId);
+        if (idx < 0) return;
+        const newTabs = openTabs.filter(t => t.id !== tabId);
+        if (tabId === activeTabId) {
+          // Switch to adjacent tab
+          const nextIdx = Math.min(idx, newTabs.length - 1);
+          get().switchTab(newTabs[nextIdx].id);
+          set({ openTabs: newTabs });
+        } else {
+          set({ openTabs: newTabs });
+        }
+      },
+
+      /** Open a project file in a new tab (or switch to it if already open). */
+      async openInNewTab(filename) {
+        const { openTabs, serverAvailable } = get();
+        if (!serverAvailable) return;
+
+        // Already open? Just switch to it
+        const existing = openTabs.find(t => t.filename === filename);
+        if (existing) {
+          await get().switchTab(existing.id);
+          return;
+        }
+
+        // Load the project to get its name
+        try {
+          const loaded = await projectApi.loadProject(filename);
+          const tabId = `tab_${(_id++).toString(36)}`;
+          const restoredSmId = loaded._lastActiveSmId;
+          const validSmId = (loaded.stateMachines ?? []).some(sm => sm.id === restoredSmId)
+            ? restoredSmId
+            : loaded.stateMachines?.[0]?.id ?? null;
+
+          // Save current project to current tab as snapshot first
+          const { project, activeSmId, activeRecipeId, currentFilename, activeTabId } = get();
+          if (currentFilename && serverAvailable) {
+            try {
+              const dataToSave = { ...project, _lastActiveSmId: activeSmId };
+              await projectApi.saveProject(currentFilename, dataToSave);
+            } catch (err) {
+              console.error('Save before new tab failed:', err);
+            }
+          }
+
+          const updatedTabs = get().openTabs.map(t => {
+            if (t.id === activeTabId) {
+              return { ...t, snapshot: { project, activeSmId, activeRecipeId, currentFilename } };
+            }
+            return t;
+          });
+
+          set({
+            openTabs: [...updatedTabs, {
+              id: tabId,
+              filename,
+              name: loaded.name || filename,
+              snapshot: null,
+            }],
+            activeTabId: tabId,
+            project: loaded,
+            activeSmId: validSmId,
+            activeRecipeId: null,
+            currentFilename: filename,
+            selectedNodeId: null,
+            selectedEdgeId: null,
+            _past: [],
+            _future: [],
+          });
+        } catch (err) {
+          alert(`Failed to open project: ${err.message}`);
         }
       },
     }),
@@ -3717,6 +3909,8 @@ export const useDiagramStore = create(
         activeSmId: state.activeSmId,
         activeRecipeId: state.activeRecipeId,
         currentFilename: state.currentFilename,
+        openTabs: state.openTabs,
+        activeTabId: state.activeTabId,
       }),
       // Migration: strip legacy _autoVision params on rehydrate, add new fields
       onRehydrateStorage: () => (state) => {

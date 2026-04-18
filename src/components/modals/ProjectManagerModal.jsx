@@ -57,6 +57,12 @@ export function ProjectManagerModal() {
     // switchProject closes modal
   }
 
+  async function handleOpenInNewTab(e, filename) {
+    e.stopPropagation();
+    await store.openInNewTab(filename);
+    store.closeProjectManager();
+  }
+
   async function handleDelete(filename, name) {
     if (!confirm(`Delete project "${name}"?\nThis will permanently remove the file from the server.`)) return;
     await store.deleteProjectFile(filename);
@@ -192,6 +198,17 @@ export function ProjectManagerModal() {
 
                   {/* Actions */}
                   <div style={{ display: 'flex', gap: 4, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                    {!isActive && (
+                      <button
+                        title="Open in new tab"
+                        onClick={(e) => handleOpenInNewTab(e, p.filename)}
+                        style={{
+                          background: 'none', border: '1px solid #1574C4', borderRadius: 4,
+                          padding: '3px 6px', cursor: 'pointer', fontSize: 11,
+                          color: '#1574C4', fontWeight: 600,
+                        }}
+                      >+ Tab</button>
+                    )}
                     <button
                       title="Rename"
                       onClick={(e) => handleRenameStart(e, p.filename, p.name)}
