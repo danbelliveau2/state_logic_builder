@@ -15,21 +15,33 @@ let mainWindow;
 
 // ── Auto-updater configuration ──────────────────────────────────────────────
 
-autoUpdater.autoDownload = true;       // download in background automatically
-autoUpdater.autoInstallOnAppQuit = true; // install when the user closes the app
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+
+function sendStatus(msg) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-status', msg);
+  }
+}
 
 function setupAutoUpdater() {
+  autoUpdater.on('checking-for-update', () => sendStatus('checking'));
+
   autoUpdater.on('update-available', (info) => {
+    sendStatus('downloading');
     dialog.showMessageBox(mainWindow, {
       type: 'info',
       title: 'Update Available',
-      message: `Version ${info.version} is available and downloading in the background.`,
-      detail: 'The update will be installed automatically when you close the app.',
+      message: `Version ${info.version} is downloading in the background.`,
+      detail: 'It will install automatically when you close the app.',
       buttons: ['OK'],
     });
   });
 
+  autoUpdater.on('update-not-available', () => sendStatus('up-to-date'));
+
   autoUpdater.on('update-downloaded', () => {
+    sendStatus('ready');
     dialog.showMessageBox(mainWindow, {
       type: 'info',
       title: 'Update Ready',
@@ -42,22 +54,33 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on('error', (err) => {
-    // Silently log — don't bother the user with update errors
+    sendStatus('error');
     console.error('[updater] error:', err.message);
   });
 
-  // Check immediately, then every 4 hours
+  // Check immediately on startup, then every 15 minutes
   autoUpdater.checkForUpdates().catch(() => {});
-  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 4 * 60 * 60 * 1000);
+  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 15 * 60 * 1000);
 }
+
+// Manual "Check for Updates" triggered from the renderer via the button
+ipcMain.handle('check-for-updates', async () => {
+  if (!app.isPackaged) {
+    sendStatus('dev-mode');
+    return;
+  }
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch (err) {
+    sendStatus('error');
+  }
+});
 
 // ── App startup ──────────────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
   const isPackaged = app.isPackaged;
 
-  // In packaged mode, extraResources places server.js at resources/server.js
-  // and the built React app at resources/dist/
   const serverScript = isPackaged
     ? path.join(process.resourcesPath, 'server.js')
     : path.join(__dirname, '..', 'server.js');
@@ -66,15 +89,12 @@ app.whenReady().then(async () => {
     ? path.join(process.resourcesPath, 'dist')
     : path.join(__dirname, '..', 'dist');
 
-  // Store projects in user data so they survive app updates
   const dataDir = path.join(app.getPath('userData'), 'projects');
   fs.mkdirSync(dataDir, { recursive: true });
 
-  // Start the HTTP server in-process — no spawn, no child process
   const { startServer } = require(serverScript);
   const server = startServer({ port: PORT, dataDir, distDir });
 
-  // Wait until the server is actually listening before opening the window
   await new Promise((resolve, reject) => {
     server.once('listening', resolve);
     server.once('error', reject);
@@ -83,6 +103,8 @@ app.whenReady().then(async () => {
   const iconPath = isPackaged
     ? path.join(process.resourcesPath, 'icon.ico')
     : path.join(__dirname, '..', 'public', 'icon.ico');
+
+  const preloadPath = path.join(__dirname, 'preload.js');
 
   mainWindow = new BrowserWindow({
     width: 1600,
@@ -94,6 +116,7 @@ app.whenReady().then(async () => {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: preloadPath,
     },
     backgroundColor: '#1a1f2e',
     show: false,
@@ -104,8 +127,6 @@ app.whenReady().then(async () => {
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     mainWindow.maximize();
-
-    // Only check for updates in the packaged app, not during development
     if (isPackaged) setupAutoUpdater();
   });
 

@@ -295,8 +295,31 @@ function DeviceItem({ device, smId, onReorderDragStart, onReorderDragOver, onReo
   );
 }
 
+const UPDATE_LABELS = {
+  checking:   'Checking...',
+  downloading:'Downloading...',
+  ready:      'Restart to Update',
+  'up-to-date': 'Up to date!',
+  'dev-mode': 'Dev mode',
+  error:      'Check failed',
+};
+
 function VersionBlock() {
   const [open, setOpen] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState(null);
+  const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
+
+  useState(() => {
+    if (!isElectron) return;
+    const cleanup = window.electronAPI.onUpdateStatus(setUpdateStatus);
+    return cleanup;
+  });
+
+  function handleCheckUpdate() {
+    setUpdateStatus('checking');
+    window.electronAPI.checkForUpdates();
+  }
+
   return (
     <div className="sidebar-version">
       <div className="sidebar-version__label">Rev {APP_VERSION}</div>
@@ -311,6 +334,21 @@ function VersionBlock() {
         </svg>
         <span>Release Notes</span>
       </button>
+
+      {isElectron && (
+        <button
+          className={`sidebar-version__update-btn ${updateStatus || ''}`}
+          onClick={handleCheckUpdate}
+          disabled={updateStatus === 'checking' || updateStatus === 'downloading'}
+          title="Check for app updates"
+        >
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+            <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+          </svg>
+          <span>{updateStatus ? UPDATE_LABELS[updateStatus] ?? 'Check for Updates' : 'Check for Updates'}</span>
+        </button>
+      )}
 
       {open && (
         <div className="changelog-backdrop" onClick={() => setOpen(false)}>

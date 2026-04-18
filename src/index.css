@@ -430,6 +430,47 @@ body {
   background: #ffffff0d;
   border-color: #475569;
 }
+.sidebar-version__update-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  color: #94a3b8;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 3px 10px;
+  margin-top: 4px;
+  width: 100%;
+  justify-content: center;
+}
+.sidebar-version__update-btn:hover:not(:disabled) {
+  color: #e2e8f0;
+  background: #ffffff0d;
+  border-color: #475569;
+}
+.sidebar-version__update-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.sidebar-version__update-btn.up-to-date {
+  color: #22c55e;
+  border-color: #166534;
+}
+.sidebar-version__update-btn.ready {
+  color: #f59e0b;
+  border-color: #92400e;
+  animation: pulse 1.5s infinite;
+}
+.sidebar-version__update-btn.error {
+  color: #ef4444;
+  border-color: #7f1d1d;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
+}
 
 .changelog-backdrop {
   position: fixed;
