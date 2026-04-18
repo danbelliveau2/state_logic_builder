@@ -20,6 +20,8 @@ import { useReactFlowZoomScale } from '../../lib/useReactFlowZoomScale.js';
 import { ENTRY_RULES, getEntryRuleMeta, resolveEntryRule, isEntryRuleOverridden } from '../../lib/entryRules.js';
 import { START_CONDITIONS, getStartConditionMeta, resolveIndexSync, isIndexSyncOverridden } from '../../lib/indexSync.js';
 import { PartTrackingPill } from '../PartTrackingPanel.jsx';
+import { PtBadge } from './PtBadge.jsx';
+import { ConnectMenu, HandleClickZone } from '../ConnectMenu.jsx';
 
 // Tiny local ID generator (mirrors store uid — not exported from store)
 let _localId = Date.now();
@@ -3267,6 +3269,16 @@ export function StateNode({ data, selected, id }) {
         </div>
       )}
 
+      {/* PT/Signal Badge — always visible when content exists, add-badge on select */}
+      {sm && !isInitial && !isComplete && !isFault && (
+        <PtBadge nodeId={id} smId={sm.id} annotations={data.ptAnnotations ?? []} selected={selected} />
+      )}
+
+      {/* Connect Menu — direction arrows when handle clicked */}
+      {sm && !isComplete && !isFault && (
+        <ConnectMenu nodeId={id} nodeType="stateNode" smId={sm.id} />
+      )}
+
       {/* Source handles: vision side exits OR default bottom handle */}
       {showVisionSideHandles ? (
         <>
@@ -3295,6 +3307,15 @@ export function StateNode({ data, selected, id }) {
           type="source"
           position={Position.Bottom}
           className="sdc-handle"
+        />
+      )}
+
+      {/* Click detection on bottom handle to open ConnectMenu */}
+      {sm && !isComplete && !isFault && (
+        <HandleClickZone
+          nodeId={id}
+          handleSelector=".sdc-handle.react-flow__handle-bottom"
+          handleId={null}
         />
       )}
 

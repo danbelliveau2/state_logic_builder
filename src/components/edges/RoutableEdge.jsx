@@ -29,6 +29,7 @@ import {
   pointsToSvg,
   computeAutoRoute,
   adjustTerminalRuns,
+  enforceNodeClearance,
   canDragSegment,
   applySegmentDrag,
   cleanWaypoints,
@@ -60,12 +61,16 @@ export function RoutableEdge({
   const tgt = { x: targetX, y: targetY };
 
   // ── Determine waypoints ─────────────────────────────────────────────────
+  const nodes = getNodes();
   let routeWps;
   if (isManual) {
     routeWps = adjustTerminalRuns(storedWaypoints, src, tgt, sourceHandle);
   } else {
-    routeWps = computeAutoRoute(src, tgt, data, getNodes());
+    routeWps = computeAutoRoute(src, tgt, data, nodes, sourceHandle);
   }
+
+  // Push any segment that runs too close to a node away with clearance
+  routeWps = enforceNodeClearance(routeWps, src, tgt, nodes);
 
   // Build the full orthogonal point sequence
   const fullPts  = buildFullPath(src, routeWps, tgt);
@@ -146,37 +151,42 @@ export function RoutableEdge({
         style={{ pointerEvents: 'none' }}
       />
 
-      {/* Decision exit label pill */}
-      {data?.isDecisionExit && data?.outcomeLabel && (() => {
+      {/* Decision exit label pill — placed near the source handle (skip single-exit) */}
+      {data?.isDecisionExit && data?.outcomeLabel && sourceHandle !== 'exit-single' && segments.length > 0 && (() => {
         const isPass    = data.exitColor === 'pass';
-        const isSingle  = data.exitColor === 'single';
         const isRetry   = data.exitColor === 'retry';
-        const bgColor   = isRetry ? '#f59e0b' : isSingle ? '#6b7280' : isPass ? '#16a34a' : '#dc2626';
-        const labelText = data.outcomeLabel;
+        const bgColor   = isRetry ? '#f59e0b' : isPass ? '#16a34a' : '#dc2626';
+        // Shorten label: "On_Magnet_Presence" → "On", "Retry_Fail_X" → "Retry-Fail"
+        const rawLabel  = data.outcomeLabel;
+        const labelText = isRetry ? 'Retry-Fail'
+          : rawLabel.includes('_') ? rawLabel.split('_')[0] : rawLabel;
         const charW     = 6.5;
-        const pillW     = Math.max(80, labelText.length * charW + 20);
+        const pillW     = Math.max(36, labelText.length * charW + 16);
+        const pillH     = 18;
         const textColor = isRetry ? '#000' : 'white';
 
-        // Find the longest segment for label placement
-        const bestSeg = findLabelSegment(segments);
-
-        if (bestSeg.isH) {
-          // Horizontal label
-          return (
-            <g style={{ pointerEvents: 'none' }}>
-              <rect x={bestSeg.mid.x - pillW / 2} y={bestSeg.mid.y - 10} width={pillW} height={20} rx={10} fill={bgColor} opacity={0.9} />
-              <text x={bestSeg.mid.x} y={bestSeg.mid.y} textAnchor="middle" dominantBaseline="central" fill={textColor} fontSize={11} fontWeight="600" style={{ userSelect: 'none' }}>{labelText}</text>
-            </g>
-          );
+        // Place on the first segment, offset from source handle (pill edge clears handle)
+        const seg = segments[0];
+        const H_OFFSET = 36;
+        const V_OFFSET = 20 + pillH / 2; // clear handle + half pill height
+        let lx, ly;
+        if (seg.isH) {
+          const dir = seg.b.x > seg.a.x ? 1 : -1;
+          lx = seg.a.x + dir * H_OFFSET;
+          ly = seg.a.y;
         } else {
-          // Vertical label (rotated)
-          return (
-            <g style={{ pointerEvents: 'none' }}>
-              <rect x={bestSeg.mid.x - 10} y={bestSeg.mid.y - pillW / 2} width={20} height={pillW} rx={10} fill={bgColor} opacity={0.9} />
-              <text x={bestSeg.mid.x} y={bestSeg.mid.y} textAnchor="middle" dominantBaseline="central" fill={textColor} fontSize={11} fontWeight="600" transform={`rotate(-90, ${bestSeg.mid.x}, ${bestSeg.mid.y})`} style={{ userSelect: 'none' }}>{labelText}</text>
-            </g>
-          );
+          const dir = seg.b.y > seg.a.y ? 1 : -1;
+          lx = seg.a.x;
+          ly = seg.a.y + dir * V_OFFSET;
         }
+
+        // Always render horizontal pill
+        return (
+          <g style={{ pointerEvents: 'none' }}>
+            <rect x={lx - pillW / 2} y={ly - pillH / 2} width={pillW} height={pillH} rx={9} fill={bgColor} opacity={0.9} />
+            <text x={lx} y={ly} textAnchor="middle" dominantBaseline="central" fill={textColor} fontSize={10} fontWeight="600" style={{ userSelect: 'none' }}>{labelText}</text>
+          </g>
+        );
       })()}
 
       {/* Outcome label for branching edges (CheckResults + VisionInspect) */}

@@ -133,9 +133,18 @@ export function computeBackwardWaypoints(src, tgt, allNodes) {
   if (!isFinite(leftBound))  leftBound  = Math.min(src.x, tgt.x);
   if (!isFinite(rightBound)) rightBound = Math.max(src.x, tgt.x) + NODE_WIDTH;
 
-  const centerX = (leftBound + rightBound) / 2;
-  const goRight = src.x > centerX;
-  const sideX   = goRight ? rightBound + PAD : leftBound - PAD;
+  // Route in the direction the user drew: target left of source → go left
+  const dx = tgt.x - src.x;
+  let goRight;
+  if (Math.abs(dx) > 20) {
+    goRight = dx > 0;  // follow the horizontal direction of the connection
+  } else {
+    // Nearly aligned — pick the side with more room
+    const spaceLeft  = src.x - leftBound;
+    const spaceRight = rightBound - src.x;
+    goRight = spaceRight > spaceLeft;
+  }
+  const sideX = goRight ? rightBound + PAD : leftBound - PAD;
 
   return [
     { x: src.x, y: src.y + DROP },
@@ -153,29 +162,57 @@ export function computeBackwardWaypoints(src, tgt, allNodes) {
  * @param {Object} tgt — target handle {x, y}
  * @param {Object} edgeData — edge.data (isDecisionExit, exitColor, etc.)
  * @param {Array} allNodes — all React Flow node objects (needed for backward U-route)
+ * @param {string} sourceHandle — source handle id ('exit-pass', 'exit-fail', 'exit-single', etc.)
  */
-export function computeAutoRoute(src, tgt, edgeData, allNodes) {
+export function computeAutoRoute(src, tgt, edgeData, allNodes, sourceHandle) {
   const isBackward     = tgt.y < src.y - 30;
   const isSideways     = Math.abs(src.x - tgt.x) > 10;
   const isDecisionExit = edgeData?.isDecisionExit === true;
+  // Only true side handles (exit-pass / exit-fail) get L-bend routing.
+  // Bottom handles (exit-single, exit-retry, null) route like normal edges.
   const isSideHandleExit = isDecisionExit
-    && (edgeData?.exitColor === 'pass' || edgeData?.exitColor === 'fail');
+    && (sourceHandle === 'exit-pass' || sourceHandle === 'exit-fail');
 
-  // Side-handle decision exits (pass/fail): ALWAYS L-bend starting horizontal,
-  // even when the target is above (backward). The auto-route recomputes fresh
-  // every render so the shape tracks the node perfectly on drag.
+  // Side-handle decision exits (pass/fail): route depends on target position.
+  //   Forward (target below): simple L-bend → horizontal out, vertical down
+  //   Backward (target above): U-bend → horizontal out (handle direction),
+  //     vertical up past target, horizontal across, vertical down into target
   if (isSideHandleExit) {
+    const isPassHandle = edgeData?.exitColor === 'pass';  // pass = left handle
+    if (isBackward) {
+      // U-bend from side handle going backward (target is above)
+      // Route outward from the handle side, then up, across, and down
+      const DROP  = 40;
+      const PAD   = 60;
+      // Determine which side to route around based on handle direction
+      // Pass (left handle) → go left; Fail (right handle) → go right
+      let sideX;
+      if (isPassHandle) {
+        // Go left — find left boundary of diagram
+        let leftBound = Infinity;
+        for (const n of allNodes) { leftBound = Math.min(leftBound, n.position?.x ?? 0); }
+        if (!isFinite(leftBound)) leftBound = Math.min(src.x, tgt.x);
+        sideX = leftBound - PAD;
+      } else {
+        // Go right — find right boundary of diagram
+        let rightBound = -Infinity;
+        for (const n of allNodes) { rightBound = Math.max(rightBound, (n.position?.x ?? 0) + NODE_WIDTH); }
+        if (!isFinite(rightBound)) rightBound = Math.max(src.x, tgt.x) + NODE_WIDTH;
+        sideX = rightBound + PAD;
+      }
+      return [
+        { x: sideX, y: src.y },          // horizontal out to side
+        { x: sideX, y: tgt.y - DROP },    // vertical up past target
+        { x: tgt.x, y: tgt.y - DROP },    // horizontal across to target X
+      ];
+    }
+    // Forward side-handle exit: simple L-bend
     return [{ x: tgt.x, y: src.y }];
   }
 
   // Backward edges: U-bend wrapping around diagram edge
   if (isBackward) {
     return computeBackwardWaypoints(src, tgt, allNodes);
-  }
-
-  // Non-side-handle decision exit with offset: L-bend
-  if (isDecisionExit && edgeData?.exitColor !== 'retry' && isSideways) {
-    return [{ x: tgt.x, y: src.y }];
   }
 
   // Forward offset: Z-bend (down to midpoint, over, down)
@@ -225,7 +262,7 @@ export function adjustTerminalRuns(waypoints, src, tgt, sourceHandle) {
   const orig = waypoints; // untouched reference for comparisons
   const isSideHandle = sourceHandle === 'exit-pass' || sourceHandle === 'exit-fail';
 
-  // ── Source end: shift first run ──
+  // ── Source end ──
   if (isSideHandle) {
     // Side handle → horizontal first segment → shift Y of first horizontal run
     const origY = orig[0].y;
@@ -241,6 +278,22 @@ export function adjustTerminalRuns(waypoints, src, tgt, sourceHandle) {
       if (i === 0 || Math.abs(orig[i].x - origX) < 2) {
         wps[i] = { ...wps[i], x: src.x };
       } else break;
+    }
+    // Also track Y of the first horizontal run (source departure).
+    // For a U-route: wp[0]=(srcX, srcY+D), wp[1]=(sideX, srcY+D)
+    // When source moves, these Y values should track src.y + offset.
+    if (wps.length >= 2) {
+      const origDepY = orig[0].y;
+      const origSrcY = origDepY; // first wp Y was originally relative to source
+      const deltaY = src.y - (orig.length >= 2 ? orig[0].y - (orig[0].y - src.y) : src.y);
+      // Simpler: compute original offset from source, apply to new source Y
+      // Original offset = orig[0].y - originalSrcY. But we don't have originalSrcY.
+      // Instead: shift all wps sharing the same Y as wp[0] by how much wp[0] moved.
+      const yShift = wps[0].y - orig[0].y; // how much wp[0] already moved (0 for bottom handle)
+      if (Math.abs(yShift) < 1) {
+        // Bottom handle: wp[0].x was shifted but Y didn't change yet.
+        // Nothing to do — Y is fine for bottom handle source departure.
+      }
     }
   }
 
@@ -261,6 +314,75 @@ export function adjustTerminalRuns(waypoints, src, tgt, sourceHandle) {
   }
 
   return wps;
+}
+
+// ── Node Clearance ──────────────────────────────────────────────────────────
+
+/**
+ * Push waypoint segments away from nodes they pass too close to.
+ * Skips source/target nodes to preserve perpendicular handle stubs.
+ * Runs on ALL edges — both manual-route and auto-route.
+ */
+export function enforceNodeClearance(wps, src, tgt, allNodes) {
+  if (!allNodes || !wps || wps.length < 2) return wps;
+
+  const PAD = 25;
+  const result = wps.map(wp => ({ ...wp }));
+
+  // Skip the edge's own source/target nodes — stubs must stay perpendicular
+  const skipIds = new Set();
+  for (const node of allNodes) {
+    const nx = node.position?.x ?? 0;
+    const ny = node.position?.y ?? 0;
+    const nw = node.measured?.width ?? node.width ?? NODE_WIDTH;
+    const nh = node.measured?.height ?? node.height ?? 80;
+    const containsSrc = src.x >= nx && src.x <= nx + nw && src.y >= ny - 5 && src.y <= ny + nh + 5;
+    const containsTgt = tgt.x >= nx && tgt.x <= nx + nw && tgt.y >= ny - 5 && tgt.y <= ny + nh + 5;
+    if (containsSrc || containsTgt) skipIds.add(node.id);
+  }
+  const checkNodes = allNodes.filter(n => !skipIds.has(n.id));
+
+  for (let i = 0; i < result.length - 1; i++) {
+    const a = result[i], b = result[i + 1];
+    const isVert = Math.abs(a.x - b.x) <= 2;
+    const isHoriz = Math.abs(a.y - b.y) <= 2;
+    if (!isVert && !isHoriz) continue;
+
+    for (const node of checkNodes) {
+      const nx = node.position?.x ?? 0;
+      const ny = node.position?.y ?? 0;
+      const nw = node.measured?.width ?? node.width ?? NODE_WIDTH;
+      const nh = node.measured?.height ?? node.height ?? 80;
+
+      if (isVert) {
+        const segX = a.x;
+        const segMinY = Math.min(a.y, b.y);
+        const segMaxY = Math.max(a.y, b.y);
+        if (segMaxY < ny || segMinY > ny + nh) continue;
+        if (segX > nx - PAD && segX < nx + nw + PAD) {
+          const distLeft = segX - nx;
+          const distRight = (nx + nw) - segX;
+          const newX = distLeft < distRight ? nx - PAD : nx + nw + PAD;
+          result[i] = { ...result[i], x: newX };
+          result[i + 1] = { ...result[i + 1], x: newX };
+        }
+      } else {
+        const segY = a.y;
+        const segMinX = Math.min(a.x, b.x);
+        const segMaxX = Math.max(a.x, b.x);
+        if (segMaxX < nx || segMinX > nx + nw) continue;
+        if (segY > ny - PAD && segY < ny + nh + PAD) {
+          const distTop = segY - ny;
+          const distBot = (ny + nh) - segY;
+          const newY = distTop < distBot ? ny - PAD : ny + nh + PAD;
+          result[i] = { ...result[i], y: newY };
+          result[i + 1] = { ...result[i + 1], y: newY };
+        }
+      }
+    }
+  }
+
+  return result;
 }
 
 // ── Segment Drag ─────────────────────────────────────────────────────────────

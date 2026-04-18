@@ -231,6 +231,9 @@ export const useDiagramStore = create(
       _drawingWaypoints: [],       // waypoints placed by clicking during connection
       _drawingSource: null,        // { nodeId, handleId } — source of manual draw connection
       _drawPathMode: false,        // toolbar toggle: treat handle-drag as shift-drag (manual path)
+      _connectPreset: null,        // { sourceNodeId, sourceHandle, routeType, smId } — connect menu state
+      _connectMenuNodeId: null,    // nodeId whose handle was clicked → show ConnectMenu
+      _connectMenuHandleId: null,  // handleId that was clicked to open ConnectMenu
 
       // ── Computed helpers ──────────────────────────────────────────────────
       getActiveSm() {
@@ -2722,6 +2725,23 @@ export const useDiagramStore = create(
         }));
       },
 
+      /** Update Part Tracking annotations on a node. */
+      updateNodePtAnnotations(smId, nodeId, annotations) {
+        get()._pushHistory();
+        set(s => ({
+          project: _updateProject(s, sms => sms.map(sm => {
+            if (sm.id !== smId) return sm;
+            return {
+              ...sm,
+              nodes: (sm.nodes ?? []).map(n => {
+                if (n.id !== nodeId) return n;
+                return { ...n, data: { ...n.data, ptAnnotations: annotations } };
+              }),
+            };
+          })),
+        }));
+      },
+
       reorderTrackingFields(fromIdx, toIdx) {
         get()._pushHistory();
         set(s => {
@@ -3899,6 +3919,53 @@ export const useDiagramStore = create(
         } catch (err) {
           alert(`Failed to open project: ${err.message}`);
         }
+      },
+
+      /** Open a project from raw JSON data in a new tab (file picker flow). */
+      openProjectFromFile(projectData, originalFileName) {
+        const { openTabs, activeTabId, project, activeSmId, activeRecipeId, currentFilename, serverAvailable } = get();
+
+        // Snapshot the current tab
+        const updatedTabs = openTabs.map(t => {
+          if (t.id === activeTabId) {
+            return { ...t, snapshot: { project, activeSmId, activeRecipeId, currentFilename } };
+          }
+          return t;
+        });
+
+        // If openTabs is empty, create a tab for the current project first
+        let baseTabs = updatedTabs;
+        if (baseTabs.length === 0 && project) {
+          const curTabId = `tab_${(_id++).toString(36)}`;
+          baseTabs = [{
+            id: curTabId,
+            filename: currentFilename,
+            name: project.name || currentFilename || 'Current Project',
+            snapshot: { project, activeSmId, activeRecipeId, currentFilename },
+          }];
+        }
+
+        const tabId = `tab_${(_id++).toString(36)}`;
+        const filename = originalFileName?.replace(/\.json$/i, '') || projectData.name || 'Imported';
+        const validSmId = projectData.stateMachines?.[0]?.id ?? null;
+
+        set({
+          openTabs: [...baseTabs, {
+            id: tabId,
+            filename,
+            name: projectData.name || filename,
+            snapshot: null,
+          }],
+          activeTabId: tabId,
+          project: projectData,
+          activeSmId: validSmId,
+          activeRecipeId: null,
+          currentFilename: filename,
+          selectedNodeId: null,
+          selectedEdgeId: null,
+          _past: [],
+          _future: [],
+        });
       },
     }),
     {

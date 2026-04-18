@@ -25,7 +25,8 @@ import { ManualDrawOverlay } from './edges/ManualDrawOverlay.jsx';
 import { useDiagramStore } from '../store/useDiagramStore.js';
 import { buildVerifyLabel } from '../lib/conditionBuilder.js';
 import { computeStateNumbers } from '../lib/computeStateNumbers.js';
-import { computeExitLabels, computeSegmentAxes } from '../lib/edgeRouting.js';
+import { computeExitLabels, computeSegmentAxes, computeAutoRoute } from '../lib/edgeRouting.js';
+import { computePresetWaypoints } from './ConnectMenu.jsx';
 
 const nodeTypes = { stateNode: StateNode, decisionNode: DecisionNode };
 const edgeTypes = { routableEdge: RoutableEdge };
@@ -240,9 +241,19 @@ export function Canvas() {
           return;
         }
       }
-      // Escape: cancel manual draw mode
+      // Escape: cancel connect menu, connect preset, or manual draw mode
       if (e.key === 'Escape') {
-        const { _isDrawingConnection, _drawingSource } = useDiagramStore.getState();
+        const { _isDrawingConnection, _drawingSource, _connectPreset, _connectMenuNodeId } = useDiagramStore.getState();
+        if (_connectMenuNodeId) {
+          e.preventDefault();
+          useDiagramStore.setState({ _connectMenuNodeId: null, _connectMenuHandleId: null, _connectPreset: null });
+          return;
+        }
+        if (_connectPreset) {
+          e.preventDefault();
+          useDiagramStore.setState({ _connectPreset: null });
+          return;
+        }
         if (_isDrawingConnection && _drawingSource) {
           e.preventDefault();
           useDiagramStore.setState({ _isDrawingConnection: false, _drawingWaypoints: [], _drawingSource: null });
@@ -539,16 +550,29 @@ export function Canvas() {
     const decExitData = getDecisionExitData(connection.source, connection.sourceHandle);
     const edgeCond = decExitData ?? getVerifyEdgeData(sm, connection.source);
     // Merge drawing waypoints into the edge data — mark as manual route so they persist.
+    const fromNode = (sm.nodes ?? []).find(n => n.id === connection.source);
+    const toNode   = (sm.nodes ?? []).find(n => n.id === connection.target);
     if (drawingWps && drawingWps.length > 0) {
       edgeCond.waypoints = drawingWps;
       edgeCond.manualRoute = true;
-      const fromNode = (sm.nodes ?? []).find(n => n.id === connection.source);
-      const toNode   = (sm.nodes ?? []).find(n => n.id === connection.target);
       const handlePos = getSourceHandlePos(fromNode, connection.sourceHandle);
       const tgtPos = toNode ? { x: (toNode.position?.x ?? 0) + (toNode.measured?.width ?? 240) / 2, y: toNode.position?.y ?? 0 } : null;
       const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(handlePos, drawingWps, tgtPos);
       edgeCond.firstSegmentAxis = firstSegmentAxis;
       edgeCond.lastSegmentAxis  = lastSegmentAxis;
+    } else if (fromNode && toNode) {
+      // No drawing waypoints — pre-compute and LOCK IN the route so
+      // computeAutoRoute never runs and overrides the shape later.
+      const handlePos = getSourceHandlePos(fromNode, connection.sourceHandle);
+      const tgtPos = { x: (toNode.position?.x ?? 0) + (toNode.measured?.width ?? 240) / 2, y: toNode.position?.y ?? 0 };
+      const autoWps = computeAutoRoute(handlePos, tgtPos, edgeCond, sm.nodes ?? [], connection.sourceHandle);
+      if (autoWps && autoWps.length > 0) {
+        edgeCond.waypoints = autoWps;
+        edgeCond.manualRoute = true;
+        const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(handlePos, autoWps, tgtPos);
+        edgeCond.firstSegmentAxis = firstSegmentAxis;
+        edgeCond.lastSegmentAxis  = lastSegmentAxis;
+      }
     }
     const edgeId = store.addEdge(sm.id, connection, edgeCond);
     // Don't open transition modal for decision exit edges — they're auto-configured
@@ -720,16 +744,29 @@ export function Canvas() {
 
     // Include waypoints as manual route and record segment axes so the
     // drawn shape is preserved when endpoint nodes move.
+    const fromNode = sm.nodes.find(n => n.id === fromNodeId);
+    const toNode   = sm.nodes.find(n => n.id === actualTarget);
     if (wps.length > 0) {
       edgeCond.waypoints = wps;
       edgeCond.manualRoute = true;
-      const fromNode = sm.nodes.find(n => n.id === fromNodeId);
-      const toNode   = sm.nodes.find(n => n.id === actualTarget);
       const handlePos = getSourceHandlePos(fromNode, fromHandle);
       const tgtPos = toNode ? { x: (toNode.position?.x ?? 0) + (toNode.measured?.width ?? 240) / 2, y: toNode.position?.y ?? 0 } : null;
       const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(handlePos, wps, tgtPos);
       edgeCond.firstSegmentAxis = firstSegmentAxis;
       edgeCond.lastSegmentAxis  = lastSegmentAxis;
+    } else if (fromNode && toNode) {
+      // No drawing waypoints — pre-compute and lock in the route so
+      // computeAutoRoute never overrides the shape on re-render.
+      const handlePos = getSourceHandlePos(fromNode, fromHandle);
+      const tgtPos = { x: (toNode.position?.x ?? 0) + (toNode.measured?.width ?? 240) / 2, y: toNode.position?.y ?? 0 };
+      const autoWps = computeAutoRoute(handlePos, tgtPos, edgeCond, sm.nodes ?? [], fromHandle);
+      if (autoWps && autoWps.length > 0) {
+        edgeCond.waypoints = autoWps;
+        edgeCond.manualRoute = true;
+        const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(handlePos, autoWps, tgtPos);
+        edgeCond.firstSegmentAxis = firstSegmentAxis;
+        edgeCond.lastSegmentAxis  = lastSegmentAxis;
+      }
     }
 
     const edgeId = store.addEdge(
@@ -757,7 +794,80 @@ export function Canvas() {
   finalizeDrawRef.current = finalizeManualDraw;
 
   // ── Click handlers ────────────────────────────────────────────────────────
+
+  /**
+   * Complete a Connect Menu preset connection.
+   * Called when _connectPreset is active and user clicks a target node.
+   */
+  const finalizePresetConnect = useCallback((targetNodeId) => {
+    const preset = useDiagramStore.getState()._connectPreset;
+    if (!preset || !sm) return;
+
+    const { sourceNodeId, sourceHandle, routeType } = preset;
+    if (targetNodeId === sourceNodeId) return; // can't connect to self
+
+    const fromNode = sm.nodes.find(n => n.id === sourceNodeId);
+    const toNode = sm.nodes.find(n => n.id === targetNodeId);
+    if (!fromNode || !toNode) return;
+
+    // Compute source and target handle positions
+    const srcPos = getSourceHandlePos(fromNode, sourceHandle);
+    const tgtNodeW = toNode.measured?.width ?? toNode.width ?? 240;
+    const tgtPos = { x: toNode.position.x + tgtNodeW / 2, y: toNode.position.y };
+
+    // Get waypoints from the preset
+    const allNodes = sm.nodes;
+    const { waypoints, manualRoute } = computePresetWaypoints(
+      routeType, srcPos, tgtPos, sourceHandle, allNodes
+    );
+
+    // Build edge data
+    const decExitData = getDecisionExitData(sourceNodeId, sourceHandle);
+    const edgeCond = decExitData ?? getVerifyEdgeData(sm, sourceNodeId);
+
+    if (waypoints.length > 0) {
+      edgeCond.waypoints = waypoints;
+      edgeCond.manualRoute = manualRoute;
+      const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(srcPos, waypoints, tgtPos);
+      edgeCond.firstSegmentAxis = firstSegmentAxis;
+      edgeCond.lastSegmentAxis = lastSegmentAxis;
+    }
+
+    // Determine target handle
+    const tgtHandle = toNode.type === 'decisionNode' ? 'input' : null;
+
+    const edgeId = store.addEdge(
+      sm.id,
+      {
+        source: sourceNodeId,
+        sourceHandle: sourceHandle,
+        target: targetNodeId,
+        targetHandle: tgtHandle,
+      },
+      edgeCond
+    );
+
+    // Clear all connect menu state
+    useDiagramStore.setState({ _connectPreset: null, _connectMenuNodeId: null, _connectMenuHandleId: null });
+    store.clearSelection();
+
+    // Open transition modal for non-decision edges
+    if (!decExitData && edgeId) {
+      store.setSelectedEdge(edgeId);
+      store.openTransitionModal(edgeId);
+    }
+  }, [sm, store, getDecisionExitData]);
+
   const onNodeClick = useCallback((event, node) => {
+    // If Connect Menu preset is active, complete the connection
+    const preset = useDiagramStore.getState()._connectPreset;
+    if (preset) {
+      if (node.id !== preset.sourceNodeId) {
+        finalizePresetConnect(node.id);
+        return;
+      }
+    }
+
     // If we're in manual draw mode, clicking a node completes the connection to it
     const isDrawing = useDiagramStore.getState()._isDrawingConnection;
     const drawSource = useDiagramStore.getState()._drawingSource;
@@ -769,9 +879,16 @@ export function Canvas() {
       }
     }
     store.setSelectedNode(node.id);
-  }, [store, finalizeManualDraw]);
+  }, [store, finalizeManualDraw, finalizePresetConnect]);
 
   const onEdgeClick = useCallback((event, edge) => {
+    // If Connect Menu preset is active, connect to the edge's target node
+    const preset = useDiagramStore.getState()._connectPreset;
+    if (preset && edge.target && edge.target !== preset.sourceNodeId) {
+      finalizePresetConnect(edge.target);
+      return;
+    }
+
     // If we're in manual draw mode, clicking an existing edge terminates
     // the connection into that edge's target node. This gives the user a
     // bigger hit target — the incoming "branch" of a node counts as the node.
@@ -782,7 +899,7 @@ export function Canvas() {
       return;
     }
     store.setSelectedEdge(edge.id);
-  }, [store, finalizeManualDraw]);
+  }, [store, finalizeManualDraw, finalizePresetConnect]);
 
   const onEdgeDoubleClick = useCallback((event, edge) => {
     store.setSelectedEdge(edge.id);
@@ -790,6 +907,13 @@ export function Canvas() {
   }, [store]);
 
   const onPaneClick = useCallback((event) => {
+    // Close connect menu / preset on pane click
+    const { _connectPreset, _connectMenuNodeId } = useDiagramStore.getState();
+    if (_connectMenuNodeId || _connectPreset) {
+      useDiagramStore.setState({ _connectMenuNodeId: null, _connectMenuHandleId: null, _connectPreset: null });
+      return;
+    }
+
     // If we're in drawing-connection mode (handle drag), add an ortho-snapped waypoint
     const isDrawing = useDiagramStore.getState()._isDrawingConnection;
     if (isDrawing) {

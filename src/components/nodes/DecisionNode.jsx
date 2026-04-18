@@ -20,6 +20,8 @@ import { buildAvailableInputs } from '../../lib/availableInputs.js';
 import { computeStateNumbers } from '../../lib/computeStateNumbers.js';
 import { useReactFlowZoomScale } from '../../lib/useReactFlowZoomScale.js';
 import { DeviceIcon } from '../DeviceIcons.jsx';
+import { PtBadge } from './PtBadge.jsx';
+import { ConnectMenu, HandleClickZone } from '../ConnectMenu.jsx';
 
 // ── Inline Edit Popup ──────────────────────────────────────────────────────────
 
@@ -1515,9 +1517,9 @@ export function DecisionNode({ data, selected, id }) {
       >
         {/* Line 1: mode label */}
         <span style={{ fontSize: 10, color: mutedColor, marginBottom: 2, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-          {isSensor && <DeviceIcon type={sensorInputType === 'range' ? 'AnalogSensor' : 'DigitalSensor'} size={12} color="rgba(255,255,255,0.75)" />}
-          {isVisionJob && <DeviceIcon type="VisionSystem" size={12} color="rgba(255,255,255,0.75)" />}
-          {isVerify ? '✓ Verify:' : isDecide ? (isSensor ? 'Branch:' : 'Decide:') : (isSensor ? 'Wait:' : 'Wait on:')}
+          {!isVerify && isSensor && <DeviceIcon type={sensorInputType === 'range' ? 'AnalogSensor' : 'DigitalSensor'} size={12} color="rgba(255,255,255,0.75)" />}
+          {!isVerify && isVisionJob && <DeviceIcon type="VisionSystem" size={12} color="rgba(255,255,255,0.75)" />}
+          {isVerify ? 'Verify' : isDecide ? (isSensor ? 'Branch:' : 'Decide:') : (isSensor ? 'Wait:' : 'Wait on:')}
         </span>
         {/* Line 2: signal name — wraps to 2 lines if long */}
         <span
@@ -1537,12 +1539,23 @@ export function DecisionNode({ data, selected, id }) {
         >
           {displayName}
         </span>
-        {/* Line 3: source name (only if different from signal name) */}
-        {sourceLabel && (
+        {/* Line 3: source label — verify ON/OFF gets a bold colored pill */}
+        {sourceLabel && isVerify && isSensor && sensorInputType !== 'range' ? (
+          <span style={{
+            display: 'inline-block',
+            fontSize: 10, fontWeight: 800, letterSpacing: '.5px',
+            padding: '2px 10px',
+            borderRadius: 8,
+            color: '#fff',
+            background: conditionType === 'off' ? '#dc2626' : '#16a34a',
+            marginTop: 3,
+            textShadow: '0 1px 1px rgba(0,0,0,0.3)',
+          }}>Verify {conditionType === 'off' ? 'Off' : 'On'}</span>
+        ) : sourceLabel ? (
           <span style={{ fontSize: 10, color: mutedColor, lineHeight: 1.2, marginTop: 2 }}>
             {sourceLabel}
           </span>
-        )}
+        ) : null}
         {/* Retry badge — shows in any mode when retry is enabled */}
         {retryEnabled && (
           <span style={{
@@ -1580,6 +1593,12 @@ export function DecisionNode({ data, selected, id }) {
           style={popupPos}
         />
       )}
+
+      {/* PT/Signal Badge — always visible when content exists */}
+      <PtBadge nodeId={id} smId={smId} annotations={data.ptAnnotations ?? []} selected={selected} />
+
+      {/* Connect Menu — direction arrows when handle clicked */}
+      <ConnectMenu nodeId={id} nodeType="decisionNode" exitCount={exitCount} signalName={signalName} smId={smId} />
 
       {/* Handles */}
       <Handle
@@ -1626,6 +1645,20 @@ export function DecisionNode({ data, selected, id }) {
           className="sdc-handle sdc-handle--retry"
           isConnectable
         />
+      )}
+
+      {/* Click detection on handles to open ConnectMenu */}
+      {(exitCount === 1 || !signalName || signalName === 'Select Signal...') && (
+        <HandleClickZone nodeId={id} handleSelector=".sdc-handle.react-flow__handle-bottom" handleId="exit-single" />
+      )}
+      {exitCount === 2 && signalName && signalName !== 'Select Signal...' && (
+        <>
+          <HandleClickZone nodeId={id} handleSelector=".sdc-handle--pass" handleId="exit-pass" />
+          <HandleClickZone nodeId={id} handleSelector=".sdc-handle--fail" handleId="exit-fail" />
+          {retryEnabled && (
+            <HandleClickZone nodeId={id} handleSelector=".sdc-handle--retry" handleId="exit-retry" />
+          )}
+        </>
       )}
 
       {/* Right-click context menu via portal */}
