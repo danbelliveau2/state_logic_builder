@@ -552,15 +552,15 @@ export function computeExitLabels(nodeData) {
 
   let exit1, exit2;
   if (isSensor) {
-    if (isRange) { exit1 = `InRange_${sn}`; exit2 = `OutOfRange_${sn}`; }
-    else if (ct === 'off') { exit1 = `Off_${sn}`; exit2 = `On_${sn}`; }
-    else { exit1 = `On_${sn}`; exit2 = `Off_${sn}`; }
+    if (isRange) { exit1 = 'InRange'; exit2 = 'OutOfRange'; }
+    else if (ct === 'off') { exit1 = 'Off'; exit2 = 'On'; }
+    else { exit1 = 'On'; exit2 = 'Off'; }
   } else if (isVision) {
-    exit1 = `Pass_${sn}`; exit2 = `Fail_${sn}`;
+    exit1 = 'Pass'; exit2 = 'Fail';
   } else if (st === 'state' || st === 'signal' || st === 'condition') {
-    exit1 = `True_${sn}`; exit2 = `False_${sn}`;
+    exit1 = 'True'; exit2 = 'False';
   } else {
-    exit1 = `Pass_${sn}`; exit2 = `Fail_${sn}`;
+    exit1 = 'Pass'; exit2 = 'Fail';
   }
 
   return { exit1, exit2 };

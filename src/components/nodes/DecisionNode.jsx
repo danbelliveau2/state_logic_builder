@@ -157,8 +157,8 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     setSignalSmName(sig.signalSmName ?? null);
     setSignalType('visionJob');
     setDecisionType('signal');
-    setExit1Label(`Pass_${jobName}`);
-    setExit2Label(`Fail_${jobName}`);
+    setExit1Label('Pass');
+    setExit2Label('Fail');
     setExitCount(2);
     // nodeMode stays whatever the user chose at the top of the popup
     setConditions([newCond]);
@@ -192,8 +192,8 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     setSignalSmName(sig.smName ?? null);
     setSignalType(sig.type ?? 'signal');
     setDecisionType('signal');
-    setExit1Label(`True_${name}`);
-    setExit2Label(`False_${name}`);
+    setExit1Label('True');
+    setExit2Label('False');
     setExitCount(1);
     // nodeMode stays whatever the user chose at the top of the popup
     setConditions([newCond]);
@@ -242,8 +242,8 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     setSignalSmName(isVisionLinked ? (field._visionSmName ?? null) : null);
     setSignalType(isVisionLinked ? 'partResult' : 'partTracking');
     setDecisionType('signal');
-    setExit1Label(`Pass_${field.name}`);
-    setExit2Label(`Fail_${field.name}`);
+    setExit1Label('Pass');
+    setExit2Label('Fail');
     setExitCount(2);
     // nodeMode stays whatever the user chose at the top of the popup.
     // If the user hadn't changed it from the default 'wait', switch to 'decide'
@@ -286,12 +286,12 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     let e1, e2;
     if (inp.inputType === 'range') {
       setConditionType('range');
-      e1 = `InRange_${shortName}`;
-      e2 = `OutOfRange_${shortName}`;
+      e1 = 'InRange';
+      e2 = 'OutOfRange';
     } else {
       setConditionType('on');
-      e1 = `On_${shortName}`;
-      e2 = `Off_${shortName}`;
+      e1 = 'On';
+      e2 = 'Off';
     }
     setExit1Label(e1);
     setExit2Label(e2);
@@ -342,27 +342,27 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     // non-sensor uses Pass/Fail.
     if (nodeMode === 'verify') {
       if (cond.inputType === 'range') {
-        exit1 = `InRange_${name}`;
-        exit2 = `OutOfRange_${name}`;
+        exit1 = 'InRange';
+        exit2 = 'OutOfRange';
       } else if (cond.signalType === 'sensor') {
-        exit1 = conditionType === 'off' ? `Off_${name}` : `On_${name}`;
-        exit2 = conditionType === 'off' ? `On_${name}` : `Off_${name}`;
+        exit1 = conditionType === 'off' ? 'Off' : 'On';
+        exit2 = conditionType === 'off' ? 'On' : 'Off';
       } else {
-        exit1 = `Pass_${name}`;
-        exit2 = `Fail_${name}`;
+        exit1 = 'Pass';
+        exit2 = 'Fail';
       }
     } else if (cond.inputType === 'range') {
-      exit1 = `InRange_${name}`;
-      exit2 = `OutOfRange_${name}`;
+      exit1 = 'InRange';
+      exit2 = 'OutOfRange';
     } else if (cond.signalType === 'sensor') {
-      exit1 = `On_${name}`;
-      exit2 = `Off_${name}`;
+      exit1 = 'On';
+      exit2 = 'Off';
     } else if (cond.signalType === 'state' || cond.signalType === 'signal' || cond.signalType === 'condition') {
-      exit1 = `True_${name}`;
-      exit2 = `False_${name}`;
+      exit1 = 'True';
+      exit2 = 'False';
     } else {
-      exit1 = `Pass_${name}`;
-      exit2 = `Fail_${name}`;
+      exit1 = 'Pass';
+      exit2 = 'Fail';
     }
     return { name, source, type, exit1, exit2 };
   }
@@ -885,8 +885,8 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                       className="nodrag"
                       onClick={() => {
                         setConditionType('on');
-                        setExit1Label(`On_${signalName}`);
-                        setExit2Label(`Off_${signalName}`);
+                        setExit1Label('On');
+                        setExit2Label('Off');
                       }}
                       style={{
                         flex: 1, padding: '5px 0', borderRadius: 4, cursor: 'pointer', fontSize: 11, fontWeight: 600,
@@ -899,8 +899,8 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                       className="nodrag"
                       onClick={() => {
                         setConditionType('off');
-                        setExit1Label(`Off_${signalName}`);
-                        setExit2Label(`On_${signalName}`);
+                        setExit1Label('Off');
+                        setExit2Label('On');
                       }}
                       style={{
                         flex: 1, padding: '5px 0', borderRadius: 4, cursor: 'pointer', fontSize: 11, fontWeight: 600,
@@ -956,8 +956,8 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                               setSensorInputType('bool');
                             }
                             setConditionType('on');
-                            setExit1Label(`InRange_${signalName}_${spName}`);
-                            setExit2Label(`OutOfRange_${signalName}_${spName}`);
+                            setExit1Label('InRange');
+                            setExit2Label('OutOfRange');
                           }}
                           style={{
                             width: '100%', background: '#fff', border: '1px solid #d1d5db',
@@ -1172,7 +1172,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
           {/* 1 branch -- single exit */}
           <button
             className="nodrag"
-            onClick={() => { setExitCount(1); setExit1Label(`${singleLabel}_${signalName}`); }}
+            onClick={() => { setExitCount(1); setExit1Label(singleLabel); }}
             style={{
               display: 'flex', alignItems: 'center', gap: 8, width: '100%',
               padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
@@ -1188,7 +1188,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
           {/* 2 branches -- dual exit */}
           <button
             className="nodrag"
-            onClick={() => { setExitCount(2); setExit1Label(`${dualLabel1}_${signalName}`); setExit2Label(`${dualLabel2}_${signalName}`); }}
+            onClick={() => { setExitCount(2); setExit1Label(dualLabel1); setExit2Label(dualLabel2); }}
             style={{
               display: 'flex', alignItems: 'center', gap: 8, width: '100%',
               padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
@@ -1539,7 +1539,7 @@ export function DecisionNode({ data, selected, id }) {
         >
           {displayName}
         </span>
-        {/* Line 3: source label — verify ON/OFF gets a bold colored pill */}
+        {/* Line 3: source label — verify mode gets bold colored ON/OFF pill (decide doesn't — both paths are equal) */}
         {sourceLabel && isVerify && isSensor && sensorInputType !== 'range' ? (
           <span style={{
             display: 'inline-block',
