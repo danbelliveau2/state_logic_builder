@@ -1,6 +1,6 @@
 {
   "name": "sdc-state-logic-builder",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "SDC State Logic Diagram Builder - ME to L5X",
   "main": "electron/main.js",
   "scripts": {
