@@ -24,12 +24,15 @@ src/
     useDiagramStore.js        — Zustand store (all state + actions)
   components/
     Canvas.jsx                — React Flow canvas, edge rendering/mapping, onConnect
+    ConnectMenu.jsx           — Click-handle connect menu + preset waypoint computation
+    ProjectTabBar.jsx         — Multi-project tab bar (open/switch/close projects)
     Sidebar.jsx               — Left panel: SM list, devices, signals
     Toolbar.jsx               — Top bar: project controls, export
     PropertiesPanel.jsx       — Right panel: context-sensitive node/edge props
     nodes/
       StateNode.jsx           — State/action node (rounded rect, polygon shapes)
       DecisionNode.jsx        — Wait/Decision node (pill shape, orange)
+      PtBadge.jsx             — Part tracking badge overlay for nodes
     edges/
       RoutableEdge.jsx        — Custom draggable orthogonal edge with waypoints
     modals/
@@ -42,6 +45,9 @@ src/
       SmOutputModal.jsx           — Legacy (superseded by SignalModal)
   lib/
     l5xExporter.js            — L5X XML generator
+    edgeRouting.js            — Edge path computation (auto-route, manual adjust, clearance)
+    computeStateNumbers.js    — DFS state number assignment
+    conditionBuilder.js       — Verify label builder for edges
     deviceTypes.js            — Device type definitions
     tagNaming.js              — SDC tag naming conventions
 ```
@@ -191,9 +197,12 @@ These standards are derived from the SDC PLC Software Standardization Guide and 
                  |'partPresent'|'servoComplete'|'analogInRange',
     label: string,
     waypoints: [{ x, y }, ...],    // Stored orthogonal bend points
-    isDecisionExit: boolean,       // True for pass/fail/single exit edges
-    exitColor: 'pass' | 'fail',
-    outcomeLabel: string,          // Label shown on decision exit
+    manualRoute: boolean,          // True if waypoints are user-drawn/preset (shape is sacred)
+    isDecisionExit: boolean,       // True for pass/fail/single/retry exit edges
+    exitColor: 'pass' | 'fail' | 'retry' | 'single',
+    outcomeLabel: string,          // Label shown on decision exit pill
+    firstSegmentAxis: 'horizontal' | 'vertical',  // Axis of first segment when drawn
+    lastSegmentAxis: 'horizontal' | 'vertical',   // Axis of last segment when drawn
     conditions: VerifyCondition[], // For verify-input edges
     deviceId: string,
     outcomeId: string,
@@ -210,7 +219,11 @@ These standards are derived from the SDC PLC Software Standardization Guide and 
 | StateNode (normal) | `null` (no id prop on Handle) | `null` |
 | StateNode (vision, 2-node) | `null` | `'exit-pass'`, `'exit-fail'` |
 | StateNode (vision, 1-node) | `null` | `'exit-single'` |
-| DecisionNode | `'input'` | `'exit-single'`, `'exit-pass'`, `'exit-fail'` |
+| DecisionNode | `'input'` | `'exit-single'`, `'exit-pass'`, `'exit-fail'`, `'exit-retry'` |
+
+**Handle position types:**
+- **Side handles** (`exit-pass`, `exit-fail`): exit horizontally from left/right of node → L-bend routing
+- **Bottom handles** (`exit-single`, `exit-retry`, `null`): exit vertically from bottom → Z-bend routing (same as StateNode)
 
 - When mapping edges in Canvas.jsx, always check: if target is DecisionNode → `targetHandle = 'input'`; if target is StateNode → `targetHandle = null`
 - **Never force `targetHandle = 'input'` on edges targeting StateNodes** — this was a past bug causing invisible edges
@@ -221,36 +234,74 @@ These standards are derived from the SDC PLC Software Standardization Guide and 
 - Selected edge: `stroke: '#0072B5'`, `strokeWidth: 3`
 - All edges: `type: 'routableEdge'` — **never use `smoothstep` or `straight`**
 
-### 5.4 Edge Routing Behavior
-- **Forward edges** (targetY > sourceY): straight down; auto-materialized as straight line
-- **Sideways decision exits**: horizontal from side handle → corner → vertical drop to target
-- **Backward edges** (targetY < sourceY - 30): U-route via `computeBackwardWaypoints()`
-  - Routes around left or right based on diagram center X
-  - 4-point U-shape with 60px side padding, 40px drop offsets
-- **Decision exit backward**: Must NOT use isDecisionExit horizontal routing — falls through to standard backward U-route. Use `&& !isBackward` guard.
-- **Label position on backward edges**: Must be on the **outer vertical segment** (the side of the U), NOT the inner segment between nodes
+### 5.4 Edge Routing Behavior (`computeAutoRoute` in edgeRouting.js)
+
+`computeAutoRoute(src, tgt, edgeData, allNodes, sourceHandle)` — takes actual source handle ID.
+
+**Priority order (first match wins):**
+1. **Side-handle exit** (`exit-pass`/`exit-fail` only): L-bend (horizontal out, vertical to target); backward → U-bend via handle direction
+2. **Backward edges** (targetY < sourceY - 30): U-route via `computeBackwardWaypoints()` — 4-point U-shape, 60px side padding, 40px drop offsets
+3. **Forward offset** (nodes not aligned): Z-bend (down to midY, over, down)
+4. **Aligned**: straight line (no waypoints)
+
+**Critical: side-handle detection uses `sourceHandle` ID, NOT `exitColor`.**
+- `exit-single` has `exitColor: 'pass'` but is a BOTTOM handle → must route as Z-bend, not L-bend
+- Previous bug: `exitColor === 'pass'` falsely triggered L-bend routing for bottom-handle exits
+
+**Node clearance:** `enforceNodeClearance(wps, src, tgt, allNodes)` runs on ALL edges (auto + manual). Pushes waypoint segments 25px away from any node they pass too close to. Skips source/target nodes to preserve perpendicular handle stubs.
+
+**Label position on backward edges**: Must be on the **outer vertical segment** (the side of the U), NOT the inner segment between nodes
 
 ### 5.5 onConnect Handler (Canvas.jsx)
 When a new edge is drawn manually FROM a decision node handle, auto-apply correct styling:
 - `exit-fail` → red color, `isDecisionExit: true`, `exitColor: 'fail'`
 - `exit-pass` or `exit-single` → green color, `isDecisionExit: true`, `exitColor: 'pass'`
+- `exit-retry` → amber color, `isDecisionExit: true`, `exitColor: 'retry'`
 This ensures manually-redrawn branches retain their correct labels/colors.
+
+Edges created via onConnect or ConnectMenu pre-compute waypoints via `computeAutoRoute` and store them as `manualRoute: true` so the shape is locked in and auto-route doesn't recalculate on re-render.
+
+### 5.6 Edge Branch Labels (RoutableEdge.jsx)
+Decision exit edges show a small colored pill label near the source handle:
+- **Pass**: green pill, text shortened to first part before `_` (e.g., `"On_Magnet"` → `"On"`)
+- **Fail**: red pill, same shortening
+- **Retry-Fail**: amber pill, always shows `"Retry-Fail"`
+- **Single-exit** (`exit-single`): **no label** — wait nodes with one exit don't need labels
+- Pills are always rendered **horizontal**, positioned 36px along the first segment
+- Text color: white for pass/fail, black for retry
+
+### 5.7 ConnectMenu (ConnectMenu.jsx)
+- Opens when user short-clicks a node handle (detected by `HandleClickZone` DOM listener)
+- Tracks which handle was clicked via `store._connectMenuHandleId`
+- Shows list of existing nodes to connect to, plus "New Action Node" / "New Wait Node"
+- Uses `computePresetWaypoints()` to generate proper orthogonal waypoints for the connection
+- All edges created through ConnectMenu use the actual clicked handle, not hardcoded values
+- Escape key or clicking elsewhere dismisses the menu
 
 ---
 
 ## 6. DECISION NODE (DecisionNode.jsx)
 
-### 6.1 Display Layout
+### 6.1 Node Modes
+DecisionNode has three modes (`data.nodeMode`):
+- **`wait`** — Wait for a signal/condition to become true, then proceed
+- **`verify`** — Verify a sensor is On or Off, branch on result
+- **`decide`** — General decision branching (future)
+
+### 6.2 Display Layout
 ```
-Wait on:                    ← small muted text
+Wait on:                    ← small muted header (or just "Verify" for verify mode)
 StamperVision               ← BIG BOLD (signalSource = device/SM name)
 Link_Orient                 ← small muted below (signalName = job/signal name)
+[Verify On]                 ← bold colored pill (verify mode only, green=On / red=Off)
 ```
 - `signalSource` = device name or SM name → **always the big bold text**
 - `signalName` = job name or signal name → **always the smaller subtitle**
 - This is intentionally OPPOSITE of what you might assume from variable names
+- **Verify mode**: header says just `"Verify"` (no icons, no checkmark). Below the signal name, a bold colored pill shows `"Verify On"` (green `#16a34a`) or `"Verify Off"` (red `#dc2626`) based on `data.conditionType`
+- **Verify header**: NO icons, NO symbols — just the word "Verify"
 
-### 6.2 Popup Behavior
+### 6.3 Popup Behavior
 - Popup opens ONLY when clicking the **inner content/text area** — NOT the node border
 - Clicking the border selects the node (for Delete key)
 - `handleClick` must call `store.setSelectedNode(id)` explicitly (stopPropagation prevents RF from doing it)
@@ -258,7 +309,7 @@ Link_Orient                 ← small muted below (signalName = job/signal name)
 - Popup positioned to the **RIGHT** of the node (`left: rect.right + 8px`)
 - Click-outside handler dismisses popup — Done button needs `e.stopPropagation()` AND `onMouseDown={(e) => e.stopPropagation()}`
 
-### 6.3 Popup Flow
+### 6.4 Popup Flow
 **Step 1 — Pick signal:**
 - Vision section: auto-generated from all SMs' VisionSystem devices + their jobs
 - Signals section: flat list of all `project.signals[]` (position, state, condition — no separate categories)
@@ -270,7 +321,7 @@ Link_Orient                 ← small muted below (signalName = job/signal name)
 - Custom label inputs shown for dual-branch mode
 - Done → calls `addDecisionSingleBranch()` or `addDecisionBranches()` in store
 
-### 6.4 Branch Node Creation
+### 6.5 Branch Node Creation
 - **`addDecisionSingleBranch(smId, nodeId, exitLabel)`**: Creates 1 StateNode below + 1 green edge from `exit-single`
 - **`addDecisionBranches(smId, nodeId, exit1Label, exit2Label)`**: Creates pass node (left) + fail node (right) + green/red edges
 - Both have duplicate guard: if `existingOut.length > 0` → return early
@@ -332,6 +383,12 @@ updateFoo(id, val) {
 - Delete key handling in Canvas: checks `selectedNodeId` / `selectedEdgeId`
 - Nodes with no actions ARE selectable and deletable — selection is purely by click, not by content
 
+### 8.4 ConnectMenu State
+- `_connectMenuNodeId` — node ID whose handle was clicked (null when menu closed)
+- `_connectMenuHandleId` — actual handle ID clicked ('exit-pass', 'exit-fail', 'exit-single', 'exit-retry', or null)
+- `_connectPreset` — preset connection data (source node, handle, route type, target position)
+- All three must be cleared together (Escape key, pane click, or finalize)
+
 ---
 
 ## 9. CANVAS.JSX KEY PATTERNS
@@ -349,15 +406,19 @@ const { stateMap, visionSubStepsMap } = computeStateNumbers(smNodes, smEdges);
 
 ### 9.2 Edge Render Mapping
 ```js
-// Decision exit edges get colored styling + routableEdge type
-const isDecisionExit = e.data?.isDecisionExit === true;
+// Decision exit edges (colored) — exit-single is treated as plain/gray
+const isDecisionExit = e.data?.isDecisionExit === true && e.sourceHandle !== 'exit-single';
 if (isDecisionExit) {
+  const isPass = e.data?.exitColor === 'pass';
   const color = isPass ? '#16a34a' : '#dc2626';
-  return { ...e, type: 'routableEdge', style: { stroke: color }, ... };
+  // Live label derived from source node config (stays in sync on rename)
+  return { ...e, type: 'routableEdge', style: { stroke: color }, data: { ...e.data, outcomeLabel: liveLabel }, ... };
 }
-// All other edges also use routableEdge
+// All other edges (including exit-single) use routableEdge, plain gray
 return { ...e, type: 'routableEdge', targetHandle, ... };
 ```
+- `exit-single` edges excluded from colored styling — they render as plain gray edges
+- Live labels computed from source decision node's current config via `computeExitLabels()`
 
 ### 9.3 Snap to Vertical
 - Threshold: **25px** — nodes within 25px horizontal of each other snap to same X
@@ -387,6 +448,15 @@ These are mistakes made previously that must NOT be repeated:
 | 15 | Pass-only (single exit) branch showed no label on edge | Single exit must show `Pass_{name}` label, same as dual-branch pass |
 | 16 | Dragging a decision node changed the shape of connected branches | Moving the decision node should only lengthen/shorten the horizontal segment of the branch — shape should not change |
 | 17 | Backward edge routing broke after adding decision exit routing | The `isDecisionExit && isSideways` condition must check `!isBackward` first |
+| 18 | `computeAutoRoute` used `exitColor` to detect side handles | Use actual `sourceHandle` ID — `exit-single` has `exitColor: 'pass'` but is a bottom handle |
+| 19 | Exit-single edges got L-bend instead of Z-bend | Bottom handles (`exit-single`, `exit-retry`) must route identically to regular StateNode edges |
+| 20 | ConnectMenu hardcoded `sourceHandle` to `'exit-pass'` for side handles | Track actual clicked handle via `store._connectMenuHandleId` and use it |
+| 21 | Added icons/symbols to Verify mode header | Verify header must say just "Verify" — no icons, no checkmark, no symbols |
+| 22 | Made branch labels full signal name (`On_Magnet_Presence`) | Shorten to first part before `_` (just "On", "Off", "Pass", "Fail") |
+| 23 | Showed label on single-exit wait branches | `exit-single` edges should have NO branch label |
+| 24 | Modified StateNode ActionRow for verify On/Off instead of DecisionNode | Verify On/Off pill goes INSIDE the DecisionNode, not on StateNode action rows |
+| 25 | `enforceNodeClearance` only ran on manual routes | Must run on ALL edges (both auto-route and manual) |
+| 26 | `enforceNodeClearance` checked all nodes including source/target | Must skip source/target nodes to preserve perpendicular handle stubs |
 
 ---
 
@@ -395,10 +465,9 @@ These are mistakes made previously that must NOT be repeated:
 ### 11.1 Active Bugs
 | Bug | Location | Description |
 |-----|----------|-------------|
-| Branch shape on node move | RoutableEdge.jsx | Moving a decision node distorts branch shape instead of just lengthening horizontal segment |
 | Popup viewport overflow | DecisionNode.jsx | Popup positioned `rect.right + 8` — no check for right-edge overflow; popup disappears off-screen on far-right nodes |
 | Label midpoint on manual waypoints | RoutableEdge.jsx | After user manually moves edge waypoints, label may not stay at true midpoint of vertical segment |
-| Delete on empty StateNode | Canvas.jsx | Clicking an empty state node (no actions) may not set selection properly due to event handling differences |
+| Existing bad waypoints from exit-single bug | stored edges | Edges created before the exit-single routing fix may have stale L-bend waypoints stored as `manualRoute: true` — need to delete and re-draw |
 
 ### 11.2 Incomplete Features
 | Feature | Status | Notes |
@@ -445,6 +514,12 @@ These are mistakes made previously that must NOT be repeated:
 | DFS left-to-right edge sort | Ensures consistent step numbering when pass branch goes left, fail goes right |
 | Decision node text: device=big, job=small | Device (StamperVision) is the primary identifier; job (Link_Orient) is a parameter of it |
 | `autoOpenPopup` flag on new decision nodes | Created from StateNode "+" menu — should immediately prompt configuration |
+| `sourceHandle` param in `computeAutoRoute` | `exitColor` can't distinguish side vs bottom handles (exit-single has exitColor='pass'); actual handle ID is authoritative |
+| Pre-compute waypoints on edge creation | Edges store waypoints as `manualRoute: true` at creation so auto-route never recalculates and changes the shape |
+| `enforceNodeClearance` as post-processing step | Runs after both auto-route and manual-route; skips source/target nodes; pushes segments 25px from other nodes |
+| HandleClickZone for ConnectMenu | DOM-level mousedown/mouseup listener detects short clicks (<200ms, <5px) on handles vs drags; stores clicked handle ID |
+| Shortened branch labels | Full `"On_Magnet_Presence"` is too long for small pills; first part before `_` is sufficient since the verify node already shows the signal name |
+| No label on single-exit wait | Single-exit waits have only one path — label adds no information |
 
 ---
 
@@ -487,4 +562,4 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:5173
 
 ---
 
-*Last updated: 2026-03-15 — Generated from full codebase audit and conversation history.*
+*Last updated: 2026-04-18 — Updated with ConnectMenu, edge routing fixes, verify mode, branch labels.*
