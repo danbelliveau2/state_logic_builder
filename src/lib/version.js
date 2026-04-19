@@ -4,10 +4,23 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.9';
+export const APP_VERSION = '1.10';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.10',
+    date: '2026-04-19',
+    changes: [
+      'Wait node redesign: device name (bold) + DI[2] / On / SignalName all on one row',
+      'Live signal linking: Robot signal names update instantly when renamed in robot builder',
+      'Correct DI/DO label for robot signals (robot perspective, not PLC tag prefix)',
+      'Device name uses displayName (human-readable) not PLC tag name',
+      'Cross-SM device lookup: searches all SMs for robot devices',
+      'Wait mode popup defaults to Single exit (1); Decide defaults to Branch (2)',
+      'Switching mode tabs resets exit count appropriately',
+    ],
+  },
   {
     version: '1.9',
     date: '2026-04-19',
