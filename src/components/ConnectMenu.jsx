@@ -1,21 +1,43 @@
 /**
- * ConnectMenu — Route direction picker on selected nodes.
+ * ConnectMenu — Route direction picker, shown on handle hover.
  *
  * Two sections:
  *   NEW NODE (1 click — creates node + edge immediately):
- *     ↓  Down        — new node below, straight edge
  *     ↙  Down-Left   — new node below-left
+ *     ↓  Down        — new node below, straight edge
  *     ↘  Down-Right  — new node below-right
  *
- *   CONNECT (2 clicks — loop to existing node):
- *     ↰  Loop Left   — pick target, U-bend going left
- *     ↱  Loop Right  — pick target, U-bend going right
- *     Route shape adapts: bottom handle starts vertical, side handle starts horizontal.
+ *   CONNECT (click to activate, then click target node):
+ *     ↓  Down        — connect forward (routing adapts to target position)
+ *     ↰  Loop Left   — backward U-bend going left
+ *     ↱  Loop Right  — backward U-bend going right
+ *
+ * Popup opens on hover over the handle dot, stays open while hovering the popup.
+ * Closes automatically when mouse leaves both handle and popup (400ms delay).
  */
 
 import { useRef, useEffect } from 'react';
 import { useDiagramStore } from '../store/useDiagramStore.js';
 import { NODE_WIDTH } from '../lib/edgeRouting.js';
+
+// ── Shared hover timers (module-level, one menu open at a time) ───────────────
+
+let _openTimer  = null;
+let _closeTimer = null;
+
+function _startCloseTimer() {
+  clearTimeout(_closeTimer);
+  _closeTimer = setTimeout(() => {
+    _closeTimer = null;
+    if (useDiagramStore.getState()._connectPreset) return;
+    useDiagramStore.setState({ _connectMenuNodeId: null, _connectMenuHandleId: null });
+  }, 400);
+}
+
+function _cancelClose() {
+  clearTimeout(_closeTimer);
+  _closeTimer = null;
+}
 
 // ── Preset waypoint computation ───────────────────────────────────────────────
 
@@ -41,7 +63,6 @@ export function computePresetWaypoints(preset, src, tgt, handleId, allNodes) {
     case 'loopLeft': {
       const sideX = leftBound - PAD;
       if (isSideHandle) {
-        // Side handle: horizontal out left → vertical to target → horizontal in
         return {
           waypoints: [
             { x: sideX, y: src.y },
@@ -51,7 +72,6 @@ export function computePresetWaypoints(preset, src, tgt, handleId, allNodes) {
           manualRoute: true,
         };
       }
-      // Bottom handle: vertical down → horizontal left → vertical up → horizontal in → vertical down
       return {
         waypoints: [
           { x: src.x, y: src.y + DROP },
@@ -86,10 +106,8 @@ export function computePresetWaypoints(preset, src, tgt, handleId, allNodes) {
       };
     }
 
-    // ── Forward connections (target is below source) ──────────────────
     case 'connectDown': {
       if (isSideHandle) {
-        // Side handle → horizontal out, then L-bend down to target
         return {
           waypoints: [
             { x: tgt.x, y: src.y },
@@ -97,14 +115,12 @@ export function computePresetWaypoints(preset, src, tgt, handleId, allNodes) {
           manualRoute: true,
         };
       }
-      // Bottom handle: straight down — no waypoints needed
       return { waypoints: [], manualRoute: false };
     }
 
     case 'connectDownLeft': {
       const midY = (src.y + tgt.y) / 2;
       if (isSideHandle) {
-        // Side handle: horizontal out left → vertical down to target
         return {
           waypoints: [
             { x: tgt.x, y: src.y },
@@ -112,7 +128,6 @@ export function computePresetWaypoints(preset, src, tgt, handleId, allNodes) {
           manualRoute: true,
         };
       }
-      // Bottom handle: Z-bend — down to midpoint, left, down into target
       return {
         waypoints: [
           { x: src.x, y: midY },
@@ -125,7 +140,6 @@ export function computePresetWaypoints(preset, src, tgt, handleId, allNodes) {
     case 'connectDownRight': {
       const midY = (src.y + tgt.y) / 2;
       if (isSideHandle) {
-        // Side handle: horizontal out right → vertical down to target
         return {
           waypoints: [
             { x: tgt.x, y: src.y },
@@ -133,7 +147,6 @@ export function computePresetWaypoints(preset, src, tgt, handleId, allNodes) {
           manualRoute: true,
         };
       }
-      // Bottom handle: Z-bend — down to midpoint, right, down into target
       return {
         waypoints: [
           { x: src.x, y: midY },
@@ -148,13 +161,14 @@ export function computePresetWaypoints(preset, src, tgt, handleId, allNodes) {
   }
 }
 
-// ── Handle Click Zone — detects clicks on handles WITHOUT blocking drag ───────
+// ── Handle Hover Zone — detects hover on handles WITHOUT blocking drag ─────────
 
 /**
- * Attaches mousedown/mouseup listeners directly to a handle DOM element.
- * - Short click (< 5 px movement, < 300 ms) → toggles ConnectMenu
+ * Attaches mouseenter/mouseleave listeners directly to a handle DOM element.
+ * - Hover (300 ms dwell) → opens ConnectMenu
+ * - Mouse leaves handle → starts 400 ms close timer
+ * - Mouse enters popup → cancels close timer (ConnectMenu calls _cancelClose)
  * - Drag → React Flow's native connection system works untouched
- * - Hover → native CSS :hover on .sdc-handle works (no overlay blocking it)
  *
  * Renders only a hidden <span> used as a DOM anchor to find the parent node.
  */
@@ -168,36 +182,29 @@ export function HandleClickZone({ nodeId, handleSelector, handleId }) {
     const handle = nodeEl.querySelector(sel);
     if (!handle) return;
 
-    let downPos = null;
-    let downTime = 0;
-
-    function onDown(e) {
-      downPos = { x: e.clientX, y: e.clientY };
-      downTime = Date.now();
-    }
-
-    function onUp(e) {
-      if (!downPos) return;
-      const moved = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y);
-      const elapsed = Date.now() - downTime;
-      downPos = null;
-      // Short click, not drag → toggle ConnectMenu
-      if (moved < 5 && elapsed < 300) {
-        const current = useDiagramStore.getState()._connectMenuNodeId;
-        const opening = current !== nodeId;
+    function onEnter() {
+      _cancelClose();
+      clearTimeout(_openTimer);
+      _openTimer = setTimeout(() => {
+        _openTimer = null;
         useDiagramStore.setState({
-          _connectMenuNodeId: opening ? nodeId : null,
-          // Remember WHICH handle was clicked so ConnectMenu uses the right source
-          _connectMenuHandleId: opening ? (handleId ?? null) : null,
+          _connectMenuNodeId: nodeId,
+          _connectMenuHandleId: handleId ?? null,
         });
-      }
+      }, 300);
     }
 
-    handle.addEventListener('mousedown', onDown);
-    window.addEventListener('mouseup', onUp);
+    function onLeave() {
+      clearTimeout(_openTimer);
+      _openTimer = null;
+      _startCloseTimer();
+    }
+
+    handle.addEventListener('mouseenter', onEnter);
+    handle.addEventListener('mouseleave', onLeave);
     return () => {
-      handle.removeEventListener('mousedown', onDown);
-      window.removeEventListener('mouseup', onUp);
+      handle.removeEventListener('mouseenter', onEnter);
+      handle.removeEventListener('mouseleave', onLeave);
     };
   }, [nodeId, handleSelector, handleId]);
 
@@ -206,14 +213,9 @@ export function HandleClickZone({ nodeId, handleSelector, handleId }) {
 
 // ── Collision-free placement ─────────────────────────────────────────────────
 
-/**
- * If the desired position overlaps an existing node, shift straight down
- * (keeping the same X) until clear.  Simple and predictable — the node
- * always stays close to where you asked for it.
- */
 function findClearPosition(desired, allNodes, newW, sourceNodeId) {
-  const PAD  = 20;   // min gap between nodes
-  const newH = 100;  // height estimate for an empty node
+  const PAD  = 20;
+  const newH = 100;
 
   function collides(pos) {
     for (const n of allNodes) {
@@ -234,7 +236,6 @@ function findClearPosition(desired, allNodes, newW, sourceNodeId) {
 
   if (!collides(desired)) return desired;
 
-  // Just shift down until clear — keep X exactly where user asked
   for (let dy = 40; dy <= 800; dy += 40) {
     const c = { x: desired.x, y: desired.y + dy };
     if (!collides(c)) return c;
@@ -243,11 +244,20 @@ function findClearPosition(desired, allNodes, newW, sourceNodeId) {
   return desired;
 }
 
+// ── Popup positioning ─────────────────────────────────────────────────────────
+// top: calc(100% + 8px) places popup 8px below the node's bottom edge.
+const POPUP_STYLE = {
+  position: 'absolute',
+  top: 'calc(100% + 8px)',
+  left: '50%',
+  transform: 'translateX(-50%)',
+};
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function ConnectMenu({ nodeId, nodeType, exitCount, signalName, smId }) {
   const connectPreset = useDiagramStore(s => s._connectPreset);
-  const showForNode = useDiagramStore(s => s._connectMenuNodeId);
+  const showForNode   = useDiagramStore(s => s._connectMenuNodeId);
   const clickedHandleId = useDiagramStore(s => s._connectMenuHandleId);
   const isPickingTarget = connectPreset?.sourceNodeId === nodeId;
   const isVisible = showForNode === nodeId || isPickingTarget;
@@ -255,19 +265,11 @@ export function ConnectMenu({ nodeId, nodeType, exitCount, signalName, smId }) {
   if (!nodeId || !smId) return null;
   if (!isVisible) return null;
 
-  const isDecision = nodeType === 'decisionNode';
-  const hasSideHandles = isDecision
-    && exitCount === 2
-    && signalName
-    && signalName !== 'Select Signal...';
-
-  // Use the handle the user actually clicked — don't override with a different one
   const sourceHandle = clickedHandleId ?? null;
 
   // ── Actions ──────────────────────────────────────────────────────────
 
   function handleNewNode(direction) {
-    // Calculate position offset based on direction
     const offsets = {
       down:      { x: 0,   y: 150 },
       downLeft:  { x: -80, y: 150 },
@@ -290,16 +292,11 @@ export function ConnectMenu({ nodeId, nodeType, exitCount, signalName, smId }) {
       y: fromNode.position.y + (fromNode.measured?.height ?? fromNode.height ?? 80) + offset.y,
     };
 
-    // Nudge down if the spot overlaps an existing node
     const position = findClearPosition(desired, sm.nodes, newW, nodeId);
-
 
     store._pushHistory();
     const newNodeId = store.addNode(smId, { position });
     if (!newNodeId) return;
-
-    // Build edge data — use the handle the user actually clicked
-    let edgeCond = { conditionType: 'ready', label: 'Ready' };
 
     store.addEdge(
       smId,
@@ -309,7 +306,7 @@ export function ConnectMenu({ nodeId, nodeType, exitCount, signalName, smId }) {
         target: newNodeId,
         targetHandle: null,
       },
-      edgeCond
+      { conditionType: 'ready', label: 'Ready' }
     );
 
     store.setOpenPickerOnNode(newNodeId);
@@ -337,12 +334,7 @@ export function ConnectMenu({ nodeId, nodeType, exitCount, signalName, smId }) {
     return (
       <div
         className="connect-menu-popup"
-        style={{
-          position: 'absolute',
-          left: '50%',
-          bottom: -80,
-          transform: 'translateX(-50%)',
-        }}
+        style={POPUP_STYLE}
         onMouseDown={e => e.stopPropagation()}
       >
         <span className="connect-menu__picking-label">Click target node</span>
@@ -361,16 +353,13 @@ export function ConnectMenu({ nodeId, nodeType, exitCount, signalName, smId }) {
   return (
     <div
       className="connect-menu-popup"
-      style={{
-        position: 'absolute',
-        left: '50%',
-        bottom: -80,
-        transform: 'translateX(-50%)',
-      }}
+      style={POPUP_STYLE}
+      onMouseEnter={_cancelClose}
+      onMouseLeave={_startCloseTimer}
       onMouseDown={e => e.stopPropagation()}
       onClick={e => e.stopPropagation()}
     >
-      {/* New Node section — all SVG for consistent line weight */}
+      {/* New Node section */}
       <div className="connect-menu__section">
         <div className="connect-menu__section-label">New Node</div>
         <div className="connect-menu__row">
@@ -407,25 +396,14 @@ export function ConnectMenu({ nodeId, nodeType, exitCount, signalName, smId }) {
         </div>
       </div>
 
-      {/* Connect to existing node — pick direction, then click target */}
+      {/* Connect to existing node — straight down, loop left, loop right */}
       <div className="connect-menu__section">
         <div className="connect-menu__section-label">Connect</div>
         <div className="connect-menu__row">
-          {/* Down-left */}
+          {/* Straight down (routing adapts to any target position) */}
           <button
             className="connect-menu__btn"
-            title="Connect to node below-left"
-            onClick={() => handleLoop('connectDownLeft', sourceHandle)}
-          >
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="13" y1="5" x2="5" y2="13" />
-              <polyline points="5,7 5,13 11,13" />
-            </svg>
-          </button>
-          {/* Straight down */}
-          <button
-            className="connect-menu__btn"
-            title="Connect to node below"
+            title="Connect to existing node"
             onClick={() => handleLoop('connectDown', sourceHandle)}
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -433,19 +411,6 @@ export function ConnectMenu({ nodeId, nodeType, exitCount, signalName, smId }) {
               <polyline points="5,11 9,15 13,11" />
             </svg>
           </button>
-          {/* Down-right */}
-          <button
-            className="connect-menu__btn"
-            title="Connect to node below-right"
-            onClick={() => handleLoop('connectDownRight', sourceHandle)}
-          >
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="5" y1="5" x2="13" y2="13" />
-              <polyline points="7,13 13,13 13,7" />
-            </svg>
-          </button>
-        </div>
-        <div className="connect-menu__row">
           {/* Loop left (backward) */}
           <button
             className="connect-menu__btn"

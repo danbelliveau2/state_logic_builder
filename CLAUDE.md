@@ -290,18 +290,41 @@ DecisionNode has three modes (`data.nodeMode`):
 - **`decide`** — Branch: sensor On goes one way, Off goes the other (purple). **No On/Off pill** — both paths are equal, not an assertion of expected state. The branch labels on the edges ("On" / "Off") indicate which path is which.
 
 ### 6.2 Display Layout
+
+**Wait / Decide (sensor node):**
 ```
-Wait on:                    ← small muted header (or just "Verify" for verify mode)
-StamperVision               ← BIG BOLD (signalSource = device/SM name)
-Link_Orient                 ← small muted below (signalName = job/signal name)
-[Verify On]                 ← bold colored pill (verify mode only, green=On / red=Off)
+Wait                             ← small muted header ("Branch" for decide)
+Magnet_Load_Robot                ← BIG BOLD — liveDevice.displayName (live from store)
+DI[2]  [On]  - MagnetPick        ← one inline row: IO prefix, colored pill, condition name
 ```
-- `signalSource` = device name or SM name → **always the big bold text**
-- `signalName` = job name or signal name → **always the smaller subtitle**
-- This is intentionally OPPOSITE of what you might assume from variable names
-- **Verify mode**: header says just `"Verify"` (no icons, no checkmark). Below the signal name, a bold colored pill shows `"Verify On"` (green `#16a34a`) or `"Verify Off"` (red `#dc2626`) based on `data.conditionType`
-- **Decide mode**: header says `"Branch:"`. **NO On/Off pill** — decide is a fork, not an assertion. Both paths are equal.
-- **Verify header**: NO icons, NO symbols — just the word "Verify"
+
+**Verify (sensor node):**
+```
+Verify                           ← small muted header
+Magnet_Load_Robot                ← BIG BOLD — live device name
+[Verify On]                      ← bold colored pill on its own line (green=On / red=Off)
+```
+
+**Vision / State signal (any mode):**
+```
+Wait                             ← small muted header
+StamperVision                    ← BIG BOLD (signalSource = device/SM name)
+Link_Orient                      ← neutral pill below (signalName = job/signal name)
+```
+
+**Live-linking rules (sensor nodes):**
+- Device name: `liveDevice.displayName ?? liveDevice.name` — searched across ALL SMs via `allSMs.flatMap()`
+- Condition name: for Robot signals, `liveDevice.signals.find(s => s.id === refSignalId).name` — stays linked after signal rename
+- IO type: for Robot signals, use `liveSignal.group` (`'DI'`/`'DO'`) from robot perspective — NOT PLC tag prefix
+- Falls back to `conditions[0].group` string (`"Robot DI"` → `"DI"`) when live signal not found
+- `conditions[0].ref` format for robots: `"deviceId:signalId"` — signalId is stable UUID
+
+**Exit count defaults:**
+- Wait mode: always opens with `exitCount = 1` (Single exit selected)
+- Decide mode: always opens with `exitCount = 2` (Branch selected)
+- Switching tabs resets accordingly
+- Unconfigured nodes (no signalName stored): always start at 1 for wait, 2 for decide
+- Previously configured nodes: preserve stored `exitCount`
 
 ### 6.3 Popup Behavior
 - Popup opens ONLY when clicking the **inner content/text area** — NOT the node border
@@ -461,6 +484,11 @@ These are mistakes made previously that must NOT be repeated:
 | 26 | `enforceNodeClearance` checked all nodes including source/target | Must skip source/target nodes to preserve perpendicular handle stubs |
 | 27 | Exit labels included signal name (e.g., `On_Magnet_Presence`) | Labels should be just `On`, `Off`, `Pass`, `Fail` — device name is already on the node |
 | 28 | Showed bold On/Off pill inside decide nodes | Decide is a fork (both paths equal) — only VERIFY nodes get the On/Off pill since they assert an expected condition |
+| 29 | Used `liveDevice.name` (PLC tag name) for device display label | Use `liveDevice.displayName ?? liveDevice.name` — displayName is the human-readable version |
+| 30 | Derived IO type from PLC tag prefix (`q_` → "DO") for Robot signals | Use `liveSignal.group` ('DI'/'DO') which is the robot's perspective — a PLC `q_` output is DI to the robot |
+| 31 | Searched only `smDevices` (current SM) for live device lookup | Must search `allSMs.flatMap(m => m.devices)` — robot may be in a different SM |
+| 32 | Wait mode popup defaulted to exitCount=2 (Branch) | Wait mode always opens with exitCount=1 (Single exit); Decide opens with 2 |
+| 33 | Wait/decide sensor nodes: On/Off pill on separate line below condition | For wait/decide: condition row is `DI[2] [On] - MagnetPick` all inline; verify keeps pill on its own line |
 
 ---
 
@@ -566,4 +594,4 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:5173
 
 ---
 
-*Last updated: 2026-04-18 — Updated with ConnectMenu, edge routing fixes, verify/decide mode distinctions, short branch labels.*
+*Last updated: 2026-04-19 — Rev 1.10: Wait node display overhaul — live-linked device/condition names, inline DI[n] pill, correct DI/DO labels for robot signals, single-exit default for wait mode.*

@@ -69,7 +69,11 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
   const [signalType, setSignalType] = useState(data.signalType ?? null);
   const [signalSmName, setSignalSmName] = useState(data.signalSmName ?? null);
   const [decisionType, setDecisionType] = useState(data.decisionType ?? 'signal');
-  const [exitCount, setExitCount] = useState(data.exitCount ?? 2);
+  const [exitCount, setExitCount] = useState(() => {
+    const isConfigured = data.signalName && data.signalName !== 'Select Signal...';
+    if (data.exitCount != null && isConfigured) return data.exitCount;
+    return data.nodeMode === 'decide' ? 2 : 1;
+  });
   const [exit1Label, setExit1Label] = useState(data.exit1Label ?? 'Pass');
   const [exit2Label, setExit2Label] = useState(data.exit2Label ?? 'Fail');
   const [nodeMode, setNodeMode] = useState(data.nodeMode ?? 'wait');  // 'wait' | 'decide' | 'verify'
@@ -164,7 +168,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     setDecisionType('signal');
     setExit1Label('Pass');
     setExit2Label('Fail');
-    setExitCount(2);
+    setExitCount(nodeMode === 'decide' ? 2 : 1);
     // nodeMode stays whatever the user chose at the top of the popup
     setConditions([newCond]);
     setShowBranchConfig(true);
@@ -199,7 +203,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     setDecisionType('signal');
     setExit1Label('True');
     setExit2Label('False');
-    setExitCount(1);
+    setExitCount(nodeMode === 'decide' ? 2 : 1);
     // nodeMode stays whatever the user chose at the top of the popup
     setConditions([newCond]);
     setShowBranchConfig(true);
@@ -284,7 +288,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     setSignalSmName(null);
     setSignalType('sensor');
     setDecisionType('signal');
-    setExitCount(2);
+    setExitCount(nodeMode === 'decide' ? 2 : 1);
     setSensorRef(inp.ref);
     setSensorTag(inp.tag);
     setSensorInputType(inp.inputType ?? 'bool');
@@ -508,8 +512,9 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                       className="nodrag"
                       onClick={() => {
                         setNodeMode(m.key);
-                        // Decide always branches — force exitCount to 2 if currently 1
+                        // Decide always branches; Wait defaults to single exit
                         if (m.key === 'decide' && exitCount === 1) setExitCount(2);
+                        if (m.key === 'wait' && exitCount === 2) setExitCount(1);
                       }}
                       style={{
                         flex: 1, padding: '7px 0', borderRadius: 5, cursor: 'pointer', fontSize: 13, fontWeight: 600,
@@ -1454,6 +1459,10 @@ export function DecisionNode({ data, selected, id }) {
   const isSensor = signalType === 'sensor' || !!sensorRef;
   const isVerify = nodeMode === 'verify';
   const isDecide = !isVerify && (nodeMode === 'decide' || exitCount === 2);
+  // IO type from tag prefix: i_ = DI, q_ = DO
+  const ioType = isSensor && sensorInputType !== 'range'
+    ? (sensorTag?.startsWith('q_') ? 'DO' : sensorTag?.startsWith('i_') ? 'DI' : null)
+    : null;
 
   // Display text
   const isVisionJob = signalType === 'visionJob';
@@ -1464,6 +1473,52 @@ export function DecisionNode({ data, selected, id }) {
   // Multi-condition data
   const multiConditions = data.conditions ?? [];
   const multiLogic = data.conditionLogic ?? 'AND';
+
+  // For sensor nodes: split "Device Condition [N]" into parts.
+  // Priority: use conditions[0].group as device; fallback to token heuristic ([N] is always last).
+  let conditionDisplayName = displayName;
+  let axisCount = null;
+  let deviceDisplayLabel = null;
+  if (isSensor) {
+    const pc = multiConditions[0] ?? null;
+    const rawLabel = (pc?.label || displayName || '').trim();
+    const group = (pc?.group || signalSource || '').trim();
+
+    let condPart = rawLabel;
+    let devicePart = null;
+
+    if (group && rawLabel.startsWith(group)) {
+      // Known device prefix — strip it
+      condPart = rawLabel.slice(group.length).trim();
+      devicePart = group;
+    } else {
+      // Token heuristic: "Device Condition [N]" — last token is [N], second-to-last is condition
+      const tokens = rawLabel.split(' ');
+      const last = tokens[tokens.length - 1];
+      if (last && /^\[\d+\]$/.test(last)) {
+        axisCount = last.match(/\[(\d+)\]/)[1];
+        condPart = tokens[tokens.length - 2] ?? '';
+        devicePart = tokens.slice(0, -2).join(' ') || null;
+      }
+    }
+
+    // Extract [N] from condPart if not already found via token heuristic
+    if (!axisCount) {
+      const axisMatch = condPart.match(/\[(\d+)\]$/);
+      if (axisMatch) {
+        axisCount = axisMatch[1];
+        condPart = condPart.replace(/\s*\[\d+\]$/, '').trim();
+      }
+    }
+
+    if (condPart && condPart !== rawLabel) {
+      conditionDisplayName = condPart;
+      deviceDisplayLabel = devicePart || null;
+    }
+  }
+
+  // Live device lookup — stays linked after device renames
+  const smDevices = useDiagramStore(s => s.project?.stateMachines?.find(m => m.id === smId)?.devices ?? []);
 
   // Dynamically resolve state signal step numbers from the referenced SM
   const allSMs = useDiagramStore(s => s.project?.stateMachines ?? []);
@@ -1493,10 +1548,55 @@ export function DecisionNode({ data, selected, id }) {
       } else if (refNode.data?.label) stateName = refNode.data.label;
     }
     const smName = refSm.displayName ?? refSm.name ?? '';
-    return `${smName} \u2192 [${stepNum}] ${stateName}`;
+    return `${smName ? smName + ' \u2192 ' : ''}Step ${stepNum}: ${stateName}`;
   }, [data.signalId, projectSignals, allSMs]);
 
-  // Build subtitle: for sensors show condition info, for vision show job name, else source
+  // Resolve live device + condition name from conditions[0].ref
+  // ref formats: "deviceId:signalId" (Robot), "deviceId:ext/ret/sensor/etc" (pneumatics/digital),
+  //              "deviceId:positionName" (ServoAxis), "deviceId:signalId:cross:smId" (cross-SM Robot)
+  const primaryRef = multiConditions[0]?.ref || sensorRef || '';
+  const colonIdx = primaryRef.indexOf(':');
+  const refDeviceId = colonIdx >= 0 ? primaryRef.slice(0, colonIdx) : (primaryRef || null);
+  const refSuffix = colonIdx >= 0 ? primaryRef.slice(colonIdx + 1) : null;
+  // Search all SMs — device may be in a different SM (cross-SM robot signal)
+  const liveDevice = (isSensor && refDeviceId)
+    ? (smDevices.find(d => d.id === refDeviceId) ?? allSMs.flatMap(m => m.devices ?? []).find(d => d.id === refDeviceId) ?? null)
+    : null;
+  const liveDeviceName = liveDevice?.displayName ?? liveDevice?.name ?? null;
+
+  // For Robot signals the suffix is the signal's stable UUID — look up live name + number
+  const refSignalId = refSuffix?.split(':')[0] ?? null;
+  const liveSignal = (liveDevice?.type === 'Robot' && refSignalId)
+    ? (liveDevice.signals?.find(s => s.id === refSignalId) ?? null)
+    : null;
+  const liveConditionName = liveSignal?.name ?? null;
+  const liveAxisCount = liveSignal?.number != null ? String(liveSignal.number) : null;
+
+  // IO type for display: Robot signals use the signal's group (robot's perspective: DI/DO),
+  // not the PLC tag prefix (q_ would wrongly show "DO" for Robot DI signals).
+  // Fallback: use stored condition group (e.g. "Robot DI" → "DI").
+  let effectiveIoType = ioType;
+  if (liveSignal?.group === 'DI' || liveSignal?.group === 'DO') {
+    effectiveIoType = liveSignal.group;
+  } else if (isSensor && !liveSignal) {
+    const storedGroup = multiConditions[0]?.group || '';
+    if (storedGroup.includes(' DI') || storedGroup === 'Robot DI') effectiveIoType = 'DI';
+    else if (storedGroup.includes(' DO') || storedGroup === 'Robot DO') effectiveIoType = 'DO';
+  }
+
+  // Subject line (big bold) — device name, live from store
+  const subjectLine = liveDeviceName ?? deviceDisplayLabel ?? (isSensor ? (signalSource || displayName) : displayName);
+
+  // Condition subtitle: "DI[2] - ConditionName" (only for wait/decide sensor nodes)
+  // Prefer live-resolved name (Robot signals stay linked after rename)
+  const condName = liveConditionName || conditionDisplayName || '';
+  const effectiveAxisCount = liveAxisCount || axisCount;
+  // conditionPrefix + condName rendered separately so pill can go between them
+  const conditionPrefix = (effectiveIoType ?? '') + (effectiveAxisCount ? `[${effectiveAxisCount}]` : '');
+  const showConditionRow = isSensor && !isVerify && sensorInputType !== 'range'
+    && (conditionPrefix || (condName && condName !== subjectLine));
+
+  // Pill label for sensor On/Off state
   let sourceLabel;
   if (multiConditions.length > 1) {
     sourceLabel = `${multiConditions.length} conditions (${multiLogic})`;
@@ -1506,16 +1606,11 @@ export function DecisionNode({ data, selected, id }) {
       const maxStr = rangeMax !== undefined && rangeMax !== '' ? rangeMax : '?';
       sourceLabel = `Range: ${minStr} – ${maxStr}`;
     } else {
-      // Wait = "On" / "Off"; Decide = "Check: On/Off"; Verify = "Verify: On/Off"
-      const state = conditionType === 'off' ? 'OFF' : 'ON';
-      sourceLabel = isVerify ? `Verify: ${state}`
-                  : isDecide ? `Check: ${state}`
-                  : state;
+      sourceLabel = conditionType === 'off' ? 'Off' : 'On';
     }
   } else if (isVisionJob) {
     sourceLabel = signalName && signalName !== displayName ? signalName : null;
   } else {
-    // Use dynamically resolved label for state signals, fall back to stored value
     sourceLabel = resolvedSourceLabel ?? signalSource ?? signalSmName ?? null;
   }
 
@@ -1617,15 +1712,13 @@ export function DecisionNode({ data, selected, id }) {
           pointerEvents: 'auto',
         }}
       >
-        {/* Line 1: mode label */}
-        <span style={{ fontSize: 10, color: mutedColor, marginBottom: 2, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-          {!isVerify && isSensor && <DeviceIcon type={sensorInputType === 'range' ? 'AnalogSensor' : 'DigitalSensor'} size={12} color="rgba(255,255,255,0.75)" />}
-          {!isVerify && isVisionJob && <DeviceIcon type="VisionSystem" size={12} color="rgba(255,255,255,0.75)" />}
-          {isVerify ? 'Verify' : isDecide ? (isSensor ? 'Branch:' : 'Decide:') : (isSensor ? 'Wait:' : 'Wait on:')}
+        {/* Line 1: mode name only */}
+        <span style={{ fontSize: 10, color: mutedColor, marginBottom: 2 }}>
+          {isVerify ? 'Verify' : isDecide ? 'Branch' : 'Wait'}
         </span>
-        {/* Line 2: signal name — wraps to 2 lines if long */}
+        {/* Line 2: device/subject — big bold, live name from store */}
         <span
-          title={displayName}
+          title={subjectLine}
           style={{
             fontSize: 14,
             fontWeight: 700,
@@ -1639,25 +1732,48 @@ export function DecisionNode({ data, selected, id }) {
             overflow: 'hidden',
           }}
         >
-          {displayName}
+          {subjectLine}
         </span>
-        {/* Line 3: source label — verify mode gets bold colored ON/OFF pill (decide doesn't — both paths are equal) */}
-        {sourceLabel && isVerify && isSensor && sensorInputType !== 'range' ? (
+        {/* Line 3: DI[2] [On] - MagnetPick all on one row (wait/decide sensor only) */}
+        {showConditionRow && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
+            {conditionPrefix && (
+              <span style={{ fontSize: 9, color: mutedColor, lineHeight: 1.3 }}>{conditionPrefix}</span>
+            )}
+            <span style={{
+              display: 'inline-block',
+              fontSize: 10, fontWeight: 800, letterSpacing: '.5px',
+              padding: '1px 8px', borderRadius: 8, color: '#fff',
+              background: conditionType === 'off' ? '#dc2626' : '#16a34a',
+              textShadow: '0 1px 1px rgba(0,0,0,0.3)', flexShrink: 0,
+            }}>{conditionType === 'off' ? 'Off' : 'On'}</span>
+            {condName && condName !== subjectLine && (
+              <span style={{ fontSize: 9, color: mutedColor, lineHeight: 1.3 }}>- {condName}</span>
+            )}
+          </div>
+        )}
+        {/* Verify mode On/Off pill (separate line, bold) */}
+        {isVerify && isSensor && sensorInputType !== 'range' && (
           <span style={{
             display: 'inline-block',
             fontSize: 10, fontWeight: 800, letterSpacing: '.5px',
-            padding: '2px 10px',
-            borderRadius: 8,
-            color: '#fff',
+            padding: '2px 10px', borderRadius: 8, color: '#fff',
             background: conditionType === 'off' ? '#dc2626' : '#16a34a',
-            marginTop: 3,
-            textShadow: '0 1px 1px rgba(0,0,0,0.3)',
-          }}>Verify {conditionType === 'off' ? 'Off' : 'On'}</span>
-        ) : sourceLabel ? (
-          <span style={{ fontSize: 10, color: mutedColor, lineHeight: 1.2, marginTop: 2 }}>
-            {sourceLabel}
-          </span>
-        ) : null}
+            marginTop: 3, textShadow: '0 1px 1px rgba(0,0,0,0.3)',
+          }}>{`Verify ${conditionType === 'off' ? 'Off' : 'On'}`}</span>
+        )}
+        {/* Non-sensor neutral pill (vision, state signals, multi-condition) */}
+        {!isSensor && sourceLabel && (
+          <span style={{
+            display: 'inline-block', fontSize: 9, fontWeight: 600,
+            padding: '2px 8px', borderRadius: 8,
+            color: 'rgba(255,255,255,0.9)',
+            background: 'rgba(255,255,255,0.15)',
+            border: '1px solid rgba(255,255,255,0.25)',
+            marginTop: 3, maxWidth: '100%',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{sourceLabel}</span>
+        )}
         {/* Retry badge — shows in any mode when retry is enabled */}
         {retryEnabled && (
           <span style={{
