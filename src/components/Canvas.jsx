@@ -26,6 +26,7 @@ import { useDiagramStore } from '../store/useDiagramStore.js';
 import { buildVerifyLabel } from '../lib/conditionBuilder.js';
 import { computeStateNumbers } from '../lib/computeStateNumbers.js';
 import { computeExitLabels, computeSegmentAxes, computeAutoRoute } from '../lib/edgeRouting.js';
+import { OUTCOME_COLORS } from '../lib/outcomeColors.js';
 import { computePresetWaypoints } from './ConnectMenu.jsx';
 
 const nodeTypes = { stateNode: StateNode, decisionNode: DecisionNode };
@@ -503,6 +504,23 @@ export function Canvas() {
         outcomeLabel: label,
         isDecisionExit: true,
         exitColor: 'retry',
+      };
+    }
+
+    // Multi-outcome exits (exit-0, exit-1, exit-2, ...)
+    const multiMatch = handle.match(/^exit-(\d+)$/);
+    if (multiMatch) {
+      const idx = parseInt(multiMatch[1], 10);
+      const labels = sourceNode.data?.outcomeLabels ?? [];
+      const label = labels[idx] ?? `Option ${idx + 1}`;
+      const color = OUTCOME_COLORS[idx % OUTCOME_COLORS.length];
+      return {
+        conditionType: 'ready',
+        label,
+        outcomeLabel: label,
+        isDecisionExit: true,
+        exitColor: 'multi',
+        outcomeIndex: idx,
       };
     }
 
@@ -1032,24 +1050,39 @@ export function Canvas() {
         targetHandle = 'input';
       }
 
-      // Decision exit edges (pass/fail): colored label — exit-single is plain gray
+      // Decision exit edges (pass/fail/multi): colored label — exit-single is plain gray
       const isDecisionExit = e.data?.isDecisionExit === true && e.sourceHandle !== 'exit-single';
       if (isDecisionExit) {
         const isPass = e.data?.exitColor === 'pass';
+        const isMulti = e.data?.exitColor === 'multi';
         // Only force targetHandle='input' if targeting a decisionNode; stateNodes use default (null)
         const decTargetHandle = targetNode?.type === 'decisionNode' ? 'input' : (e.targetHandle ?? null);
-        const color = isPass ? '#16a34a' : '#dc2626';
+
+        // Color: multi-outcome uses OUTCOME_COLORS palette, otherwise pass=green fail=red
+        let color;
+        if (isMulti) {
+          const idx = e.data?.outcomeIndex ?? 0;
+          color = OUTCOME_COLORS[idx % OUTCOME_COLORS.length];
+        } else {
+          color = isPass ? '#16a34a' : '#dc2626';
+        }
 
         // ── Live label: always derive from the source decision node's current
         //    config so labels stay in sync even if edge data is stale.
         let liveLabel = e.data?.outcomeLabel ?? '';
         if (sourceNode?.type === 'decisionNode' && e.sourceHandle !== 'exit-single') {
           const sn = sourceNode.data ?? {};
-          const computedLabels = computeExitLabels(sn);
-          if (computedLabels) {
-            if (e.sourceHandle === 'exit-pass')  liveLabel = computedLabels.exit1;
-            if (e.sourceHandle === 'exit-fail')  liveLabel = computedLabels.exit2;
-            // Retry branch label stays as stored
+          // Multi-outcome: live label from stored outcomeLabels array
+          if (isMulti && sn.outcomeLabels) {
+            const idx = e.data?.outcomeIndex ?? 0;
+            if (idx < sn.outcomeLabels.length) liveLabel = sn.outcomeLabels[idx];
+          } else {
+            const computedLabels = computeExitLabels(sn);
+            if (computedLabels) {
+              if (e.sourceHandle === 'exit-pass')  liveLabel = computedLabels.exit1;
+              if (e.sourceHandle === 'exit-fail')  liveLabel = computedLabels.exit2;
+              // Retry branch label stays as stored
+            }
           }
         }
 

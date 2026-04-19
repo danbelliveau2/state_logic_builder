@@ -1618,6 +1618,7 @@ body {
 .sdc-handle--pass  { --sdc-handle-color: #5a9a48; }
 .sdc-handle--fail  { --sdc-handle-color: #ef4444; }
 .sdc-handle--retry { --sdc-handle-color: #f59e0b; }
+.sdc-handle--multi { --sdc-handle-color: #7c3aed; }
 
 /* ── Anchor fixes: pull each handle so its outer edge aligns with node edge ── */
 /* Bottom: default is `bottom:0; transform: translate(-50%, 50%)` — shifts handle

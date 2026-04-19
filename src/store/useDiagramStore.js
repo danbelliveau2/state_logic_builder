@@ -8,6 +8,7 @@ import { persist, subscribeWithSelector } from 'zustand/middleware';
 import { applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
 import * as projectApi from '../lib/projectApi.js';
 import { computeExitLabels } from '../lib/edgeRouting.js';
+import { OUTCOME_COLORS } from '../lib/outcomeColors.js';
 
 // Tiny ID generator (avoid nanoid async import issues)
 let _id = Date.now();
@@ -2124,6 +2125,110 @@ export const useDiagramStore = create(
                 edges: [...sm.edges, retryEdge],
               }
             )),
+        }));
+      },
+
+      /** Add N outcome branches (bottom exits) for multi-outcome decide nodes */
+      addDecisionMultiBranch(smId, nodeId, outcomeLabels) {
+        get()._pushHistory();
+        const sm = _getSmArray(get()).find(s => s.id === smId);
+        if (!sm) return;
+        const decisionNode = sm.nodes.find(n => n.id === nodeId);
+        if (!decisionNode) return;
+
+        const n = outcomeLabels.length;
+
+        // If branches already exist for this node, update labels
+        const existingOut = sm.edges.filter(e => e.source === nodeId && /^exit-\d+$/.test(e.sourceHandle));
+        if (existingOut.length > 0) {
+          set(s => ({
+            project: _updateProject(s, sms => sms.map(sm2 => {
+              if (sm2.id !== smId) return sm2;
+              const updatedEdges = sm2.edges.map(e => {
+                if (e.source !== nodeId) return e;
+                const match = e.sourceHandle?.match(/^exit-(\d+)$/);
+                if (!match) return e;
+                const idx = parseInt(match[1], 10);
+                if (idx < outcomeLabels.length) {
+                  const label = outcomeLabels[idx];
+                  return { ...e, label, data: { ...e.data, label, outcomeLabel: label } };
+                }
+                return e;
+              });
+              return { ...sm2, edges: updatedEdges };
+            })),
+          }));
+          return;
+        }
+
+        // Also remove any existing 2-exit branches (pass/fail/single) before creating multi
+        const oldExitEdges = sm.edges.filter(e => e.source === nodeId);
+        const oldExitTargets = new Set(oldExitEdges.map(e => e.target));
+
+        // Create N new nodes fanned out below the decision node
+        const decX = decisionNode.position.x;
+        const decY = decisionNode.position.y;
+        const nodeW = Math.max(240, n * 70);
+        const spacing = nodeW / n;
+        const startX = decX - (nodeW / 2) + (spacing / 2);
+
+        const newNodes = [];
+        const newEdges = [];
+        for (let i = 0; i < n; i++) {
+          const nid = uid();
+          const eid = uid();
+          const label = outcomeLabels[i];
+          const color = OUTCOME_COLORS[i % OUTCOME_COLORS.length];
+
+          newNodes.push({
+            id: nid,
+            type: 'stateNode',
+            position: { x: startX + i * spacing - 120, y: decY + 240 },
+            data: { label, actions: [], isInitial: false, stepNumber: sm.nodes.length + i },
+          });
+
+          newEdges.push({
+            id: eid,
+            source: nodeId,
+            sourceHandle: `exit-${i}`,
+            target: nid,
+            targetHandle: null,
+            type: 'routableEdge',
+            animated: false,
+            style: { stroke: color, strokeWidth: 2 },
+            markerEnd: { type: 'ArrowClosed', color },
+            label,
+            labelStyle: { fill: '#fff', fontWeight: 600, fontSize: 11 },
+            labelBgStyle: { fill: color, rx: 4, ry: 4 },
+            labelBgPadding: [4, 8],
+            data: {
+              conditionType: 'ready',
+              label,
+              outcomeLabel: label,
+              isDecisionExit: true,
+              exitColor: 'multi',
+              outcomeIndex: i,
+            },
+          });
+        }
+
+        set(s => ({
+          project: _updateProject(s, sms => sms.map(sm2 => {
+            if (sm2.id !== smId) return sm2;
+            // Remove old exit edges and their orphaned target nodes
+            const cleanEdges = sm2.edges.filter(e => !(e.source === nodeId && oldExitEdges.find(o => o.id === e.id)));
+            // Only remove target nodes that have no other incoming edges
+            const cleanNodes = sm2.nodes.filter(n => {
+              if (!oldExitTargets.has(n.id)) return true;
+              // Keep if another edge still targets this node
+              return cleanEdges.some(e => e.target === n.id);
+            });
+            return {
+              ...sm2,
+              nodes: [...cleanNodes, ...newNodes],
+              edges: [...cleanEdges, ...newEdges],
+            };
+          })),
         }));
       },
 

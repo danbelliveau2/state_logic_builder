@@ -22,6 +22,7 @@ import { useReactFlowZoomScale } from '../../lib/useReactFlowZoomScale.js';
 import { DeviceIcon } from '../DeviceIcons.jsx';
 import { PtBadge } from './PtBadge.jsx';
 import { ConnectMenu, HandleClickZone } from '../ConnectMenu.jsx';
+import { OUTCOME_COLORS } from '../../lib/outcomeColors.js';
 
 // ── Inline Edit Popup ──────────────────────────────────────────────────────────
 
@@ -73,6 +74,9 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
   const [exit2Label, setExit2Label] = useState(data.exit2Label ?? 'Fail');
   const [nodeMode, setNodeMode] = useState(data.nodeMode ?? 'wait');  // 'wait' | 'decide' | 'verify'
 
+  // Multi-outcome labels for decide mode (exitCount > 2)
+  const [outcomeLabels, setOutcomeLabels] = useState(data.outcomeLabels ?? ['Option A', 'Option B', 'Option C']);
+
   // Condition config for sensor branching
   const [conditionType, setConditionType] = useState(data.conditionType ?? 'on');  // 'on' | 'off' | 'range'
   const [rangeMin, setRangeMin] = useState(data.rangeMin ?? '');
@@ -93,7 +97,8 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
   const [retryMax, setRetryMax] = useState(data.retryMax ?? 3);
 
   // After picking any signal/vision, show branch config step
-  const [showBranchConfig, setShowBranchConfig] = useState(!!data.signalId);
+  // Always start on the branch config builder — no separate signal picker step
+  const [showBranchConfig, setShowBranchConfig] = useState(true);
 
   // Expanded-section tracking — keyed by section name. Default: all collapsed.
   // A key is present (true) only when the user has opened that section.
@@ -297,33 +302,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     setExit2Label(e2);
     setConditions([newCond]);
 
-    // ── Auto-commit ONLY when mode is 'decide' — wait/verify should stop on
-    //    branch config so the user can review timers/retries/etc.
-    if (nodeMode === 'decide') {
-      const autoData = {
-        signalId: `sensor_${inp.ref}`,
-        signalName: shortName,
-        signalSource: inp.group,
-        signalSmName: null,
-        signalType: 'sensor',
-        decisionType: 'signal',
-        exitCount: 2,
-        exit1Label: e1,
-        exit2Label: e2,
-        nodeMode: 'decide',
-        conditionType: inp.inputType === 'range' ? 'range' : 'on',
-        sensorRef: inp.ref,
-        sensorTag: inp.tag,
-        sensorInputType: inp.inputType ?? 'bool',
-        conditions: [newCond],
-      };
-      store.updateNodeData(smId, nodeId, autoData);
-      store.addDecisionBranches(smId, nodeId, e1, e2);
-      onClose();
-      return;
-    }
-
-    // Wait / Verify: fall through to branch config so user can confirm
+    // All modes go to branch config so user can review retries, labels, multi-outcome, etc.
     setShowBranchConfig(true);
   }
 
@@ -421,8 +400,14 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
         updatedData.ptFieldId = newId;
       }
     }
+    // Include outcome labels for multi-outcome mode
+    if (exitCount > 2) {
+      updatedData.outcomeLabels = outcomeLabels.slice(0, exitCount);
+    }
     store.updateNodeData(smId, nodeId, updatedData);
-    if (exitCount === 2) {
+    if (exitCount > 2) {
+      store.addDecisionMultiBranch(smId, nodeId, outcomeLabels.slice(0, exitCount));
+    } else if (exitCount === 2) {
       store.addDecisionBranches(smId, nodeId, finalExit1Label, finalExit2Label);
     } else if (exitCount === 1) {
       store.addDecisionSingleBranch(smId, nodeId, finalExit1Label);
@@ -521,7 +506,11 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                     <button
                       key={m.key}
                       className="nodrag"
-                      onClick={() => setNodeMode(m.key)}
+                      onClick={() => {
+                        setNodeMode(m.key);
+                        // Decide always branches — force exitCount to 2 if currently 1
+                        if (m.key === 'decide' && exitCount === 1) setExitCount(2);
+                      }}
                       style={{
                         flex: 1, padding: '7px 0', borderRadius: 5, cursor: 'pointer', fontSize: 13, fontWeight: 600,
                         background: isActive ? m.active : '#f1f5f9',
@@ -993,13 +982,12 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
             </div>
           )}
 
-          {/* ── Multi-condition list ──────────────────────── */}
-          {conditions.length > 0 && (
-            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Conditions{conditions.length > 1 ? ` (${conditions.length})` : ''}
-                </span>
+          {/* ── Signal / Condition picker (always visible) ──────────────────────── */}
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {conditions.length === 0 ? 'Signal / Condition' : `Conditions${conditions.length > 1 ? ` (${conditions.length})` : ''}`}
+              </span>
                 {conditions.length > 1 && (
                   <div style={{ display: 'flex', gap: 2 }}>
                     <button className="nodrag" onClick={() => setConditionLogic('AND')}
@@ -1063,13 +1051,29 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                   )}
                 </div>
               ))}
-              <button className="nodrag" onClick={() => { setAddingCondition(true); setShowBranchConfig(false); }}
-                style={{ width: '100%', marginTop: 4, padding: '4px 0', borderRadius: 4, cursor: 'pointer', fontSize: 10, fontWeight: 600,
-                  background: '#fff', border: '1px dashed #cbd5e1', color: '#64748b' }}>
-                + Add Condition
-              </button>
+              {conditions.length === 0 ? (
+                <>
+                  <button className="nodrag" onClick={() => { setAddingCondition(true); setShowBranchConfig(false); }}
+                    style={{
+                      width: '100%', padding: '10px 8px', borderRadius: 6, cursor: 'pointer',
+                      fontSize: 12, fontWeight: 700, color: '#fff',
+                      background: '#0072B5', border: '1px solid #005a91',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    }}>
+                    + Pick Signal / Sensor / Condition
+                  </button>
+                  <div style={{ fontSize: 9, color: '#94a3b8', marginTop: 4, textAlign: 'center', lineHeight: 1.3 }}>
+                    Choose what this node will {nodeMode === 'verify' ? 'verify' : nodeMode === 'decide' ? 'branch on' : 'wait for'}.
+                  </div>
+                </>
+              ) : (
+                <button className="nodrag" onClick={() => { setAddingCondition(true); setShowBranchConfig(false); }}
+                  style={{ width: '100%', marginTop: 4, padding: '4px 0', borderRadius: 4, cursor: 'pointer', fontSize: 10, fontWeight: 600,
+                    background: '#fff', border: '1px dashed #cbd5e1', color: '#64748b' }}>
+                  + Add Condition
+                </button>
+              )}
             </div>
-          )}
 
           {/* ── Part Tracking toggle ── */}
           <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 8px' }}>
@@ -1169,21 +1173,23 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
             )}
           </div>
 
-          {/* 1 branch -- single exit */}
-          <button
-            className="nodrag"
-            onClick={() => { setExitCount(1); setExit1Label(singleLabel); }}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-              padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
-              background: exitCount === 1 ? '#16a34a' : '#fff',
-              border: exitCount === 1 ? '1px solid #22c55e' : '1px solid #d1d5db',
-              color: exitCount === 1 ? '#fff' : '#1e293b', fontSize: 11, textAlign: 'left',
-            }}
-          >
-            <span style={{ fontWeight: 700, fontSize: 13 }}>1</span>
-            <span style={{ flex: 1 }}>Single exit — <b>{singleLabel}</b></span>
-          </button>
+          {/* 1 branch -- single exit (wait & verify only — decide always branches) */}
+          {nodeMode !== 'decide' && (
+            <button
+              className="nodrag"
+              onClick={() => { setExitCount(1); setExit1Label(singleLabel); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
+                background: exitCount === 1 ? '#16a34a' : '#fff',
+                border: exitCount === 1 ? '1px solid #22c55e' : '1px solid #d1d5db',
+                color: exitCount === 1 ? '#fff' : '#1e293b', fontSize: 11, textAlign: 'left',
+              }}
+            >
+              <span style={{ fontWeight: 700, fontSize: 13 }}>1</span>
+              <span style={{ flex: 1 }}>Single exit — <b>{singleLabel}</b></span>
+            </button>
+          )}
 
           {/* 2 branches -- dual exit */}
           <button
@@ -1200,6 +1206,33 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
             <span style={{ fontWeight: 700, fontSize: 13 }}>2</span>
             <span style={{ flex: 1 }}>Branch <b>{dualLabel1} / {dualLabel2}</b></span>
           </button>
+
+          {/* Multiple outcomes — decide mode only */}
+          {nodeMode === 'decide' && (
+            <button
+              className="nodrag"
+              onClick={() => {
+                const count = exitCount > 2 ? exitCount : 3;
+                setExitCount(count);
+                // Ensure outcomeLabels has enough entries
+                setOutcomeLabels(prev => {
+                  const labels = [...prev];
+                  while (labels.length < count) labels.push(`Option ${String.fromCharCode(65 + labels.length)}`);
+                  return labels;
+                });
+              }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
+                background: exitCount > 2 ? '#7c3aed' : '#fff',
+                border: exitCount > 2 ? '1px solid #8b5cf6' : '1px solid #d1d5db',
+                color: exitCount > 2 ? '#fff' : '#1e293b', fontSize: 11, textAlign: 'left',
+              }}
+            >
+              <span style={{ fontWeight: 700, fontSize: 13 }}>N</span>
+              <span style={{ flex: 1 }}>Multiple outcomes</span>
+            </button>
+          )}
 
           {/* Custom labels (only when 2-branch selected) */}
           {exitCount === 2 && (
@@ -1233,17 +1266,86 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
             </div>
           )}
 
-          {/* Done button */}
+          {/* Multi-outcome editor (exitCount > 2) */}
+          {exitCount > 2 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 2 }}>
+              {/* Count stepper */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                <span style={{ fontSize: 10, color: '#64748b', fontWeight: 600 }}>Outcomes:</span>
+                <button
+                  className="nodrag"
+                  onClick={() => {
+                    if (exitCount > 3) setExitCount(exitCount - 1);
+                  }}
+                  style={{
+                    width: 24, height: 24, borderRadius: 4, cursor: exitCount > 3 ? 'pointer' : 'not-allowed',
+                    background: exitCount > 3 ? '#f1f5f9' : '#f8fafc', border: '1px solid #d1d5db',
+                    color: exitCount > 3 ? '#1e293b' : '#cbd5e1', fontSize: 14, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >{'\u2212'}</button>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', minWidth: 20, textAlign: 'center' }}>{exitCount}</span>
+                <button
+                  className="nodrag"
+                  onClick={() => {
+                    const next = exitCount + 1;
+                    setExitCount(next);
+                    setOutcomeLabels(prev => {
+                      const labels = [...prev];
+                      while (labels.length < next) labels.push(`Option ${String.fromCharCode(65 + labels.length)}`);
+                      return labels;
+                    });
+                  }}
+                  style={{
+                    width: 24, height: 24, borderRadius: 4, cursor: 'pointer',
+                    background: '#f1f5f9', border: '1px solid #d1d5db',
+                    color: '#1e293b', fontSize: 14, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >+</button>
+              </div>
+              {/* Label inputs */}
+              {outcomeLabels.slice(0, exitCount).map((label, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{
+                    width: 18, height: 18, borderRadius: 9, fontSize: 9, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#fff', background: OUTCOME_COLORS[i % OUTCOME_COLORS.length],
+                    flexShrink: 0,
+                  }}>{i + 1}</span>
+                  <input
+                    className="nodrag"
+                    value={label}
+                    onChange={e => {
+                      const updated = [...outcomeLabels];
+                      updated[i] = e.target.value;
+                      setOutcomeLabels(updated);
+                    }}
+                    style={{
+                      flex: 1, background: '#fff', border: '1px solid #d1d5db',
+                      color: '#1e293b', borderRadius: 4, padding: '3px 6px', fontSize: 11,
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Done button — disabled until a signal/condition is picked */}
           <button
             className="nodrag"
-            onClick={(e) => { e.stopPropagation(); e.preventDefault(); handleDone(); }}
+            disabled={conditions.length === 0}
+            onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (conditions.length > 0) handleDone(); }}
             onMouseDown={(e) => e.stopPropagation()}
             style={{
               width: '100%', padding: '7px 0', fontSize: 12, fontWeight: 700,
-              background: '#1574c4', color: '#fff', border: 'none', borderRadius: 5,
-              cursor: 'pointer', letterSpacing: '0.03em', marginTop: 4,
+              background: conditions.length === 0 ? '#cbd5e1' : '#1574c4',
+              color: '#fff', border: 'none', borderRadius: 5,
+              cursor: conditions.length === 0 ? 'not-allowed' : 'pointer',
+              letterSpacing: '0.03em', marginTop: 4,
             }}
-          >Done</button>
+          >{conditions.length === 0 ? 'Pick a signal first' : 'Done'}</button>
         </div>
         );
       })()}
@@ -1452,8 +1554,8 @@ export function DecisionNode({ data, selected, id }) {
     <div
       ref={nodeRef}
       style={{
-        // Same shape as StateNode
-        width: NODE_WIDTH,
+        // Same shape as StateNode — wider for multi-outcome
+        width: exitCount > 2 ? Math.max(NODE_WIDTH, exitCount * 70) : NODE_WIDTH,
         position: 'relative',
         cursor: 'pointer',
         background: fillColor,
@@ -1609,7 +1711,7 @@ export function DecisionNode({ data, selected, id }) {
       />
 
       {/* Bottom handle for single-exit or unconfigured nodes */}
-      {(exitCount === 1 || !signalName || signalName === 'Select Signal...') && (
+      {(exitCount === 1 || !signalName || signalName === 'Select Signal...') && exitCount <= 2 && (
         <Handle
           type="source"
           position={Position.Bottom}
@@ -1647,8 +1749,27 @@ export function DecisionNode({ data, selected, id }) {
         />
       )}
 
+      {/* Multi-outcome bottom handles (exitCount > 2) — evenly spaced */}
+      {exitCount > 2 && signalName && signalName !== 'Select Signal...' && (
+        <>
+          {Array.from({ length: exitCount }, (_, i) => {
+            const pct = ((i + 1) / (exitCount + 1)) * 100;
+            return (
+              <Handle
+                key={`exit-${i}`}
+                type="source"
+                position={Position.Bottom}
+                id={`exit-${i}`}
+                className="sdc-handle sdc-handle--multi"
+                style={{ left: `${pct}%` }}
+              />
+            );
+          })}
+        </>
+      )}
+
       {/* Click detection on handles to open ConnectMenu */}
-      {(exitCount === 1 || !signalName || signalName === 'Select Signal...') && (
+      {(exitCount === 1 || !signalName || signalName === 'Select Signal...') && exitCount <= 2 && (
         <HandleClickZone nodeId={id} handleSelector=".sdc-handle.react-flow__handle-bottom" handleId="exit-single" />
       )}
       {exitCount === 2 && signalName && signalName !== 'Select Signal...' && (
@@ -1658,6 +1779,13 @@ export function DecisionNode({ data, selected, id }) {
           {retryEnabled && (
             <HandleClickZone nodeId={id} handleSelector=".sdc-handle--retry" handleId="exit-retry" />
           )}
+        </>
+      )}
+      {exitCount > 2 && signalName && signalName !== 'Select Signal...' && (
+        <>
+          {Array.from({ length: exitCount }, (_, i) => (
+            <HandleClickZone key={`hcz-${i}`} nodeId={id} handleSelector={`.sdc-handle--multi[data-handleid='exit-${i}']`} handleId={`exit-${i}`} />
+          ))}
         </>
       )}
 

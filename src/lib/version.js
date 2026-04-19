@@ -4,10 +4,26 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.8';
+export const APP_VERSION = '1.9';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.9',
+    date: '2026-04-19',
+    changes: [
+      'Decision popup opens directly to the builder — no separate signal picker page',
+      'Signal / Condition panel always visible in builder with "+ Pick Signal" CTA',
+      'Done button disabled until a signal/condition is picked (prevents half-configured nodes)',
+      'Multi-outcome decide nodes: dynamic handles for 3+ outcomes with color-coded labels',
+      'Decide mode: single-exit option hidden (decide always branches 2+)',
+      'Shortened exit labels to just On/Off/Pass/Fail/True/False — device name already on node',
+      'Bold colored On/Off pill restricted to verify mode (decide is a fork, both paths equal)',
+      'Fixed wait/decision exit-single edges: now Z-bend like regular state nodes (was L-bend)',
+      'ConnectMenu tracks actual clicked handle ID instead of hardcoding exit-pass',
+      'enforceNodeClearance runs on ALL edges (auto + manual) to push segments 25px off nodes',
+    ],
+  },
   {
     version: '1.8',
     date: '2026-04-18',

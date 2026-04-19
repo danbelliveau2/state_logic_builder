@@ -155,7 +155,9 @@ export function RoutableEdge({
       {data?.isDecisionExit && data?.outcomeLabel && sourceHandle !== 'exit-single' && segments.length > 0 && (() => {
         const isPass    = data.exitColor === 'pass';
         const isRetry   = data.exitColor === 'retry';
-        const bgColor   = isRetry ? '#f59e0b' : isPass ? '#16a34a' : '#dc2626';
+        const isMulti   = data.exitColor === 'multi';
+        const bgColor   = isMulti ? (OUTCOME_COLORS[(data.outcomeIndex ?? 0) % OUTCOME_COLORS.length])
+                        : isRetry ? '#f59e0b' : isPass ? '#16a34a' : '#dc2626';
         // Shorten label: "On_Magnet_Presence" → "On", "Retry_Fail_X" → "Retry-Fail"
         const rawLabel  = data.outcomeLabel;
         const labelText = isRetry ? 'Retry-Fail'
