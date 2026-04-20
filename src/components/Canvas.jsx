@@ -1190,7 +1190,7 @@ export function Canvas() {
     <div className="canvas-wrapper" ref={reactFlowWrapper}>
       {/* SM title header on canvas */}
       {sm && (
-        <div className="canvas-sm-title">
+        <div className={`canvas-sm-title${recoveryMode ? ' canvas-sm-title--recovery' : ''}`}>
           <span className="canvas-sm-title__number">S{String(sm.stationNumber ?? 0).padStart(2, '0')}</span>
           <span className="canvas-sm-title__name">{sm.name || 'Untitled'}</span>
           {/* Normal / Recovery toggle */}
