@@ -6,6 +6,10 @@ export function StandardsView() {
   const store = useDiagramStore();
   const [templates, setTemplates] = useState(() => getStandards());
   const [search, setSearch] = useState('');
+  const [newFormOpen, setNewFormOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newCategory, setNewCategory] = useState('');
+  const [newDesc, setNewDesc] = useState('');
 
   function refresh() {
     setTemplates(getStandards());
@@ -41,17 +45,21 @@ export function StandardsView() {
     refresh();
   }
 
-  function handleNewStandard() {
+  function handleCreateNew() {
+    const name = newName.trim();
+    if (!name) return;
+    const smName = name.replace(/[^A-Za-z0-9_]/g, '_');
     const smId = crypto.randomUUID();
     const projectData = {
       id: crypto.randomUUID(),
-      name: 'New Standard',
+      name,
       stateMachines: [{
         id: smId,
-        name: 'New_Standard',
-        displayName: 'New Standard',
+        name: smName,
+        displayName: name,
         stationNumber: 1,
-        description: '',
+        description: newDesc.trim(),
+        category: newCategory.trim(),
         nodes: [],
         edges: [],
         devices: [],
@@ -61,8 +69,12 @@ export function StandardsView() {
       partTracking: { fields: [] },
       recipes: [],
     };
-    store.openProjectFromFile(projectData, 'New Standard');
+    store.openProjectFromFile(projectData, name);
     store.setActiveView('canvas');
+    setNewFormOpen(false);
+    setNewName('');
+    setNewCategory('');
+    setNewDesc('');
   }
 
   const filtered = templates.filter(t =>
@@ -76,21 +88,71 @@ export function StandardsView() {
     <div className="standards-view">
       <div className="standards-view__header">
         <h2 className="standards-view__title">Standards Library</h2>
-        <button className="standards-view__new-btn" onClick={handleNewStandard}>
-          + New Standard
-        </button>
         <input
           className="standards-view__search"
           placeholder="Search by name, category, or description…"
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
+        <button className="standards-view__new-btn" onClick={() => setNewFormOpen(v => !v)}>
+          + New Standard
+        </button>
       </div>
+
+      {newFormOpen && (
+        <div className="standards-view__new-form">
+          <div className="standards-view__new-form-title">Create a New Standard</div>
+          <div className="standards-view__new-form-row">
+            <label>
+              <span>Name *</span>
+              <input
+                autoFocus
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                placeholder="e.g. Vision Station"
+                onKeyDown={e => { if (e.key === 'Enter' && newName.trim()) handleCreateNew(); }}
+              />
+            </label>
+            <label>
+              <span>Category</span>
+              <input
+                value={newCategory}
+                onChange={e => setNewCategory(e.target.value)}
+                placeholder="e.g. Vision, PnP, Check"
+              />
+            </label>
+          </div>
+          <label className="standards-view__new-form-desc">
+            <span>Description</span>
+            <textarea
+              rows={2}
+              value={newDesc}
+              onChange={e => setNewDesc(e.target.value)}
+              placeholder="Short summary of what this standard does"
+            />
+          </label>
+          <div className="standards-view__new-form-btns">
+            <button
+              className="standards-view__new-form-create"
+              disabled={!newName.trim()}
+              onClick={handleCreateNew}
+            >
+              Create &amp; Open
+            </button>
+            <button
+              className="standards-view__new-form-cancel"
+              onClick={() => { setNewFormOpen(false); setNewName(''); setNewCategory(''); setNewDesc(''); }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {filtered.length === 0 ? (
         <div className="standards-view__empty">
           {templates.length === 0
-            ? 'No standards saved yet. Click ★ on any state machine to add it here.'
+            ? 'No standards saved yet. Click "+ New Standard" above to create one, or click ★ on any state machine to save it here.'
             : 'No results match your search.'}
         </div>
       ) : (
