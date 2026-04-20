@@ -11,6 +11,8 @@ export const CHANGELOG = [
   {
     version: '1.11',
     date: '2026-04-19',
+    time: '18:00',
+    author: 'Dan Belliveau',
     changes: [
       'Recovery sequences per SM: states 100-124 (+3 intervals), fault = 127',
       'Normal/Recovery toggle in canvas header — red button for recovery mode',
@@ -23,6 +25,8 @@ export const CHANGELOG = [
   {
     version: '1.10',
     date: '2026-04-19',
+    time: '14:00',
+    author: 'Dan Belliveau',
     changes: [
       'Wait node redesign: device name (bold) + DI[2] / On / SignalName all on one row',
       'Live signal linking: Robot signal names update instantly when renamed in robot builder',
@@ -36,6 +40,8 @@ export const CHANGELOG = [
   {
     version: '1.9',
     date: '2026-04-19',
+    time: '10:00',
+    author: 'Dan Belliveau',
     changes: [
       'Decision popup opens directly to the builder — no separate signal picker page',
       'Signal / Condition panel always visible in builder with "+ Pick Signal" CTA',
@@ -52,6 +58,8 @@ export const CHANGELOG = [
   {
     version: '1.8',
     date: '2026-04-18',
+    time: '16:30',
+    author: 'Dan Belliveau',
     changes: [
       'Multi-project tabs: open multiple projects simultaneously',
       'Dark navy tab bar above toolbar with project names',
@@ -66,6 +74,8 @@ export const CHANGELOG = [
   {
     version: '1.7',
     date: '2026-04-17',
+    time: '15:00',
+    author: 'Dan Belliveau',
     changes: [
       'Network tab on IO Map: EtherNet/IP device topology + backplane layout',
       'Editable module names, catalog numbers, IP addresses, RPI rates',
@@ -77,6 +87,8 @@ export const CHANGELOG = [
   {
     version: '1.6',
     date: '2026-04-17',
+    time: '09:30',
+    author: 'Dan Belliveau',
     changes: [
       'In-app Design System editor tab on Project Setup',
       'Visual reference for all colors, shapes, icons, typography, spacing',
