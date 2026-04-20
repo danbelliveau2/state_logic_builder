@@ -4,10 +4,33 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.11';
+export const APP_VERSION = '1.13';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.13',
+    date: '2026-04-20',
+    changes: [
+      'Standards Library: global template bank persisted in localStorage',
+      '★ button on SM header saves the current SM (nodes, edges, devices) to the library',
+      'Standards tab in tab bar — pinned, always visible, opens the library view',
+      'Library view: searchable list with name, category, description',
+      'Open any standard as a new project tab (fully functional, exportable to L5X)',
+    ],
+  },
+  {
+    version: '1.12',
+    date: '2026-04-19',
+    changes: [
+      'L5X export: R05_Recovery routine generated from recovery sequence nodes',
+      'R00_Main now includes JSR(R05_Recovery,0) between R03 and R20',
+      'Recovery entry: State 127 (fault) auto-transitions to first recovery state',
+      'Recovery transitions use same verify conditions as R02 (sensor/timer gating)',
+      'Final recovery node transitions to State 2 (Auto Idle) on completion',
+      'Empty recovery sequence: R05 emits NOP — manual FaultReset path preserved',
+    ],
+  },
   {
     version: '1.11',
     date: '2026-04-19',

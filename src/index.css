@@ -1129,26 +1129,43 @@ body {
   z-index: 5;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   pointer-events: auto;
   user-select: none;
-  padding: 6px 18px;
-  background: rgba(255,255,255,0.75);
-  border: 1px solid rgba(21,116,196,0.2);
-  border-radius: 6px;
+  padding: 5px 10px;
+  background: rgba(255,255,255,0.85);
+  border: 1px solid rgba(21,116,196,0.18);
+  border-radius: 999px;
   backdrop-filter: blur(4px);
+  box-shadow: 0 1px 6px rgba(0,0,0,0.08);
+}
+.canvas-sm-title__number {
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+  background: #1574C4;
+  padding: 2px 9px;
+  border-radius: 999px;
+  letter-spacing: 0.4px;
+}
+.canvas-sm-title__name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e3a5f;
+  letter-spacing: 0.2px;
+  padding: 0 4px;
 }
 .canvas-mode-toggle {
   display: flex;
-  border-radius: 4px;
+  border-radius: 999px;
   overflow: hidden;
   border: 1px solid #d1d5db;
-  margin-left: 4px;
+  margin-left: 2px;
 }
 .canvas-mode-btn {
   font-size: 11px;
   font-weight: 600;
-  padding: 3px 10px;
+  padding: 3px 11px;
   background: #f3f4f6;
   color: #6b7280;
   border: none;
@@ -1165,24 +1182,209 @@ body {
 .canvas-recovery-seq-select {
   font-size: 11px;
   border: 1px solid #d1d5db;
-  border-radius: 4px;
-  padding: 2px 6px;
+  border-radius: 999px;
+  padding: 2px 8px;
   background: #fff;
   color: #374151;
   cursor: pointer;
 }
-.canvas-sm-title__number {
-  font-size: 15px;
-  font-weight: 800;
-  color: #1574C4;
-  letter-spacing: 0.5px;
+
+/* ── Star button (Save to Standards) ─────────────────────────────────────── */
+
+.canvas-star-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: #9ca3af;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color 0.15s;
+  margin-left: 2px;
 }
-.canvas-sm-title__name {
-  font-size: 15px;
-  font-weight: 600;
+.canvas-star-btn:hover { color: #f59e0b; }
+
+.canvas-star-form {
+  position: absolute;
+  top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 280px;
+}
+.canvas-star-form__title {
+  font-size: 13px;
+  font-weight: 700;
   color: #1e3a5f;
-  letter-spacing: 0.3px;
+  margin-bottom: 2px;
 }
+.canvas-star-form__input {
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  outline: none;
+  color: #374151;
+  font-family: inherit;
+  resize: none;
+}
+.canvas-star-form__input:focus { border-color: #1574C4; }
+.canvas-star-form__textarea { resize: vertical; }
+.canvas-star-form__btns {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+.canvas-star-form__save {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 14px;
+  background: #1574C4;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.canvas-star-form__save:disabled { background: #93c5fd; cursor: not-allowed; }
+.canvas-star-form__cancel {
+  font-size: 12px;
+  padding: 5px 12px;
+  background: #f3f4f6;
+  color: #6b7280;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+/* ── Standards tab pill ───────────────────────────────────────────────────── */
+
+.project-tabs__tab--standards {
+  opacity: 0.75;
+  font-style: normal;
+}
+.project-tabs__tab--standards:hover { opacity: 1; }
+.project-tabs__tab--standards.project-tabs__tab--active {
+  opacity: 1;
+  background: #1e3a5f;
+}
+
+/* ── Standards view ───────────────────────────────────────────────────────── */
+
+.standards-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg, #f8fafc);
+  overflow: hidden;
+}
+.standards-view__header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 32px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
+}
+.standards-view__title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e3a5f;
+  margin: 0;
+  white-space: nowrap;
+}
+.standards-view__search {
+  flex: 1;
+  max-width: 360px;
+  font-size: 13px;
+  padding: 7px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  outline: none;
+  color: #374151;
+  font-family: inherit;
+}
+.standards-view__search:focus { border-color: #1574C4; }
+.standards-view__empty {
+  padding: 60px 32px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 14px;
+}
+.standards-view__list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Standards card ───────────────────────────────────────────────────────── */
+
+.standards-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 14px 18px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.standards-card:hover {
+  border-color: #1574C4;
+  box-shadow: 0 2px 8px rgba(21,116,196,0.08);
+}
+.standards-card__body { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.standards-card__category {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #1574C4;
+}
+.standards-card__name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e3a5f;
+}
+.standards-card__desc {
+  font-size: 12px;
+  color: #6b7280;
+}
+.standards-card__actions { display: flex; gap: 8px; align-items: center; }
+.standards-card__open {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 14px;
+  background: #1574C4;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.standards-card__open:hover { background: #1260a8; }
+.standards-card__delete {
+  font-size: 12px;
+  padding: 5px 9px;
+  background: none;
+  color: #9ca3af;
+  border: 1px solid #e5e7eb;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.standards-card__delete:hover { color: #dc2626; border-color: #dc2626; }
 
 .canvas-empty {
   flex: 1;

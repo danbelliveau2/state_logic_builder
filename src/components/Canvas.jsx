@@ -24,6 +24,7 @@ import { DrawingConnectionLine } from './edges/DrawingConnectionLine.jsx';
 import { ManualDrawOverlay } from './edges/ManualDrawOverlay.jsx';
 import { useDiagramStore } from '../store/useDiagramStore.js';
 import { buildVerifyLabel } from '../lib/conditionBuilder.js';
+import { saveStandard } from '../lib/standardsLibrary.js';
 import { computeStateNumbers } from '../lib/computeStateNumbers.js';
 import { computeExitLabels, computeSegmentAxes, computeAutoRoute } from '../lib/edgeRouting.js';
 import { OUTCOME_COLORS } from '../lib/outcomeColors.js';
@@ -173,6 +174,10 @@ export function Canvas() {
   const [selectMode, setSelectMode] = useState(false);
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [activeRecoverySeqId, setActiveRecoverySeqId] = useState(null);
+  const [starFormOpen, setStarFormOpen] = useState(false);
+  const [starName, setStarName] = useState('');
+  const [starDesc, setStarDesc] = useState('');
+  const [starCategory, setStarCategory] = useState('');
   // Computed early so callbacks below can reference without TDZ
   const activeRecoverySeq = recoveryMode
     ? (sm?.recoverySeqs ?? []).find(r => r.id === activeRecoverySeqId) ?? (sm?.recoverySeqs ?? [])[0] ?? null
@@ -1211,6 +1216,62 @@ export function Canvas() {
               ))}
             </select>
           )}
+          {/* Save to Standards */}
+          <button
+            className="canvas-star-btn"
+            title="Save to Standards Library"
+            onClick={() => {
+              setStarName(sm.name || '');
+              setStarDesc('');
+              setStarCategory('');
+              setStarFormOpen(v => !v);
+            }}
+          >★</button>
+        </div>
+      )}
+      {/* Star save form — floats below the header */}
+      {starFormOpen && sm && (
+        <div className="canvas-star-form">
+          <div className="canvas-star-form__title">Save to Standards Library</div>
+          <input
+            className="canvas-star-form__input"
+            placeholder="Name"
+            value={starName}
+            onChange={e => setStarName(e.target.value)}
+          />
+          <input
+            className="canvas-star-form__input"
+            placeholder="Category (optional)"
+            value={starCategory}
+            onChange={e => setStarCategory(e.target.value)}
+          />
+          <textarea
+            className="canvas-star-form__input canvas-star-form__textarea"
+            placeholder="Description (optional)"
+            value={starDesc}
+            onChange={e => setStarDesc(e.target.value)}
+            rows={2}
+          />
+          <div className="canvas-star-form__btns">
+            <button
+              className="canvas-star-form__save"
+              disabled={!starName.trim()}
+              onClick={() => {
+                saveStandard({
+                  name: starName.trim(),
+                  description: starDesc.trim(),
+                  category: starCategory.trim(),
+                  nodes: sm.nodes ?? [],
+                  edges: sm.edges ?? [],
+                  devices: sm.devices ?? [],
+                });
+                setStarFormOpen(false);
+              }}
+            >Save</button>
+            <button className="canvas-star-form__cancel" onClick={() => setStarFormOpen(false)}>
+              Cancel
+            </button>
+          </div>
         </div>
       )}
       <ManualDrawOverlay />

@@ -245,6 +245,24 @@ function buildStepMap(orderedNodes, devices) {
   return map;
 }
 
+/** Recovery step map: states start at 100, increment by 3 */
+function buildRecoveryStepMap(orderedNodes, devices) {
+  const map = {};
+  let currentStep = 100 - STEP_INCREMENT; // first node gets 100
+
+  for (const n of orderedNodes) {
+    currentStep += STEP_INCREMENT;
+    map[n.id] = currentStep;
+    const hasVisionInspect = (n.data?.actions ?? []).some(a => {
+      const dev = (devices ?? []).find(d => d.id === a.deviceId);
+      return dev?.type === 'VisionSystem' && (a.operation === 'Inspect' || a.operation === 'VisionInspect');
+    });
+    if (hasVisionInspect) currentStep += STEP_INCREMENT * 3;
+  }
+
+  return map;
+}
+
 /** Get the vision sub-step numbers for a node, or null if not a vision node */
 function getVisionSubSteps(node, devices, stepMap) {
   const baseStep = stepMap[node.id];
@@ -1237,7 +1255,8 @@ function generateR00Main() {
     buildRung(0, 'Subroutine Calls', 'JSR(R01_Inputs,0);'),
     buildRung(1, null, 'JSR(R02_StateTransitions,0);'),
     buildRung(2, null, 'JSR(R03_StateLogic,0);'),
-    buildRung(3, null, 'JSR(R20_Alarms,0);'),
+    buildRung(3, null, 'JSR(R05_Recovery,0);'),
+    buildRung(4, null, 'JSR(R20_Alarms,0);'),
   ];
 
   return `
@@ -3902,6 +3921,64 @@ ${cdata('Manages a single robot sequence request through the AAMAIN command hand
 </AddOnInstructionDefinition>`;
 }
 
+// ── R05_Recovery ──────────────────────────────────────────────────────────────
+//
+// Executes the recovery sequence (states 100–121) when a fault occurs.
+// Entry: State 127 (fault) → State 100 (first recovery action).
+// Transitions through recovery nodes with verify conditions, then returns
+// to State 2 (Auto Idle) when the last recovery action completes.
+// R05 runs after R02 in R00_Main, so its MOVE wins over R02's 127→2 rung.
+
+function generateR05Recovery(sm, allSMs = [], trackingFields = []) {
+  const rungs = [];
+  let rungNum = 0;
+  const devices = sm.devices ?? [];
+
+  const recSeq = (sm.recoverySeqs ?? [])[0];
+  const recNodes = recSeq?.nodes ?? [];
+  const recEdges = recSeq?.edges ?? [];
+
+  if (recNodes.length === 0) {
+    rungs.push(buildRung(rungNum++, 'No recovery sequence configured — manual FaultReset returns to State 2', 'NOP();'));
+    return `
+<Routine Name="R05_Recovery" Type="RLL">
+<RLLContent>${rungs.join('')}
+</RLLContent>
+</Routine>`;
+  }
+
+  const orderedRecNodes = orderNodes(recNodes, recEdges);
+  const recStepMap = buildRecoveryStepMap(orderedRecNodes, devices);
+  const firstStep = recStepMap[orderedRecNodes[0].id];
+
+  rungs.push(
+    buildRung(rungNum++, `Recovery Entry: Fault (127) → State ${firstStep}`,
+      `XIC(Status.State[127])MOVE(${firstStep},Control.StateReg);`)
+  );
+
+  for (let i = 0; i < orderedRecNodes.length; i++) {
+    const srcNode = orderedRecNodes[i];
+    const srcStep = recStepMap[srcNode.id];
+    const isLast = i === orderedRecNodes.length - 1;
+    const tgtStep = isLast ? 2 : recStepMap[orderedRecNodes[i + 1].id];
+
+    const conditions = buildVerifyConditions(srcNode, devices, allSMs, trackingFields);
+    const label = srcNode.data?.label ?? `Recovery ${i + 1}`;
+    const destDesc = isLast ? 'State 2 (Auto Idle — recovery complete)' : `State ${tgtStep}`;
+
+    rungs.push(
+      buildRung(rungNum++, `${label} → ${destDesc}`,
+        `XIC(Status.State[${srcStep}])${conditions}MOVE(${tgtStep},Control.StateReg);`)
+    );
+  }
+
+  return `
+<Routine Name="R05_Recovery" Type="RLL">
+<RLLContent>${rungs.join('')}
+</RLLContent>
+</Routine>`;
+}
+
 // ── Program XML export (no Controller wrapper) ──────────────────────────────
 
 export function exportProgramXml(sm, allSMs = [], trackingFields = [], machineConfig = null) {
@@ -3919,6 +3996,7 @@ export function exportProgramXml(sm, allSMs = [], trackingFields = [], machineCo
   const r01 = generateR01Inputs(sm);
   const r02 = generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs, effectiveTrackingFields, machineConfig);
   const r03 = generateR03StateLogic(sm, orderedNodes, stepMap, allSMs, effectiveTrackingFields);
+  const r05 = generateR05Recovery(sm, allSMs, effectiveTrackingFields);
   const r20 = generateR20Alarms(sm, orderedNodes, stepMap);
 
   const stationDesc = `S${String(sm.stationNumber ?? 0).padStart(2, '0')} ${sm.description ?? sm.name ?? ''}`;
@@ -3935,6 +4013,7 @@ ${r00}
 ${r01}
 ${r02}
 ${r03}
+${r05}
 ${r20}
 </Routines>
 </Program>`;
