@@ -4,10 +4,24 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.13';
+export const APP_VERSION = '1.14';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.14',
+    date: '2026-04-20',
+    changes: [
+      'SM title bar redesigned: bigger rounded pill with blue S01 badge',
+      'Recovery mode turns the whole title bar red (bg, S01 badge, name text)',
+      '+ New Standard button (rounded pill) in Standards Library header',
+      'Inline naming form: Name / Category / Description before creating',
+      'Create & Open launches a blank named SM in a new tab — then ★ to save',
+      'Removed duplicate Standards button from toolbar — only top tab remains',
+      'Tabs now select, not toggle: clicking ★ Standards always goes to Standards',
+      'Clicking a project tab while on Standards returns you to the canvas',
+    ],
+  },
   {
     version: '1.13',
     date: '2026-04-20',
