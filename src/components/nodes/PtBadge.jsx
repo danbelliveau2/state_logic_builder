@@ -114,9 +114,9 @@ export function PtBadge({ nodeId, smId, annotations = [], selected = false }) {
           ...annotations.map(a => `PT: ${a.fieldName} → ${a.value}`),
         ].join('\n')}
       >
-        {hasSignals && !hasPt && <span className="pt-badge__label">S</span>}
+        {hasSignals && !hasPt && <span className="pt-badge__label">⚑</span>}
         {hasPt && !hasSignals && <span className="pt-badge__label">PT</span>}
-        {hasPt && hasSignals && <span className="pt-badge__label">S</span>}
+        {hasPt && hasSignals && <span className="pt-badge__label">⚑</span>}
       </div>
 
       {/* Info popup — read-only */}

@@ -4,10 +4,18 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.14';
+export const APP_VERSION = '1.15';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.15',
+    date: '2026-04-20',
+    changes: [
+      'Replaced "S" signal badge with flag icon (⚑) on wait/decision nodes',
+      'Avoids letter conflict with PLC "Set" / "State" conventions',
+    ],
+  },
   {
     version: '1.14',
     date: '2026-04-20',
