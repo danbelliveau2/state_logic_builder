@@ -24,6 +24,7 @@ import { DrawingConnectionLine } from './edges/DrawingConnectionLine.jsx';
 import { ManualDrawOverlay } from './edges/ManualDrawOverlay.jsx';
 import { useDiagramStore } from '../store/useDiagramStore.js';
 import { buildVerifyLabel } from '../lib/conditionBuilder.js';
+import { saveStandard } from '../lib/standardsLibrary.js';
 import { computeStateNumbers } from '../lib/computeStateNumbers.js';
 import { computeExitLabels, computeSegmentAxes, computeAutoRoute } from '../lib/edgeRouting.js';
 import { OUTCOME_COLORS } from '../lib/outcomeColors.js';
@@ -171,6 +172,17 @@ export function Canvas() {
   const reactFlowWrapper = useRef(null);
   const { screenToFlowPosition, setCenter, getViewport, setViewport, fitView, getNodes } = useReactFlow();
   const [selectMode, setSelectMode] = useState(false);
+  const [recoveryMode, setRecoveryMode] = useState(false);
+  const [activeRecoverySeqId, setActiveRecoverySeqId] = useState(null);
+  const [starFormOpen, setStarFormOpen] = useState(false);
+  const [starName, setStarName] = useState('');
+  const [starDesc, setStarDesc] = useState('');
+  const [starCategory, setStarCategory] = useState('');
+  // Computed early so callbacks below can reference without TDZ
+  const activeRecoverySeq = recoveryMode
+    ? (sm?.recoverySeqs ?? []).find(r => r.id === activeRecoverySeqId) ?? (sm?.recoverySeqs ?? [])[0] ?? null
+    : null;
+  const activeSeqId = activeRecoverySeq?.id ?? null;
   const prevSmIdRef = useRef(null);
   // Timestamp of the most recent onConnectEnd — used to suppress the pane-click
   // that React Flow fires on the SAME mouseup as the drag-release. Without this
@@ -178,7 +190,7 @@ export function Canvas() {
   // onConnectEnd, one at the click position from onPaneClick).
   const lastConnectEndAt = useRef(0);
 
-  // ── Straighten selected nodes (align centers to median center X) ────────────
+  // ── Straighten selected nodes (align centers to median center X) ─────────────
   const straightenSelected = useCallback(() => {
     if (!sm) return;
     const selected = getNodes().filter(n => n.selected);
@@ -217,8 +229,28 @@ export function Canvas() {
       setTimeout(() => fitView({ padding: 0.2, duration: 250, maxZoom: 1 }), 50);
     }
 
+    // Reset recovery mode when switching SMs
+    if (currentSmId && currentSmId !== prevSmId) {
+      setRecoveryMode(false);
+      setActiveRecoverySeqId(null);
+      useDiagramStore.setState({ _activeRecoverySeqId: null });
+    }
+
     prevSmIdRef.current = currentSmId;
   }, [sm?.id]);
+
+  // Sync recovery seq ID into store so RoutableEdge's updateEdgeWaypoints routes correctly
+  useEffect(() => {
+    useDiagramStore.setState({ _activeRecoverySeqId: recoveryMode ? activeRecoverySeqId : null });
+  }, [recoveryMode, activeRecoverySeqId]);
+
+  // Auto-select first recovery seq when entering recovery mode
+  useEffect(() => {
+    if (recoveryMode && sm && !activeRecoverySeqId) {
+      const firstSeq = (sm.recoverySeqs ?? [])[0];
+      if (firstSeq) setActiveRecoverySeqId(firstSeq.id);
+    }
+  }, [recoveryMode, sm, activeRecoverySeqId]);
 
   // Save viewport on every pan/zoom change
   const onMoveEnd = useCallback((_event, viewport) => {
@@ -287,11 +319,19 @@ export function Canvas() {
         const tag = document.activeElement?.tagName;
         const isEditing = tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable;
         if (!isEditing) {
-          const { activeSmId, selectedNodeId, selectedEdgeId } = useDiagramStore.getState();
+          const { activeSmId, selectedNodeId, selectedEdgeId, _activeRecoverySeqId } = useDiagramStore.getState();
           if (activeSmId && selectedNodeId) {
-            useDiagramStore.getState().deleteNode(activeSmId, selectedNodeId);
+            if (_activeRecoverySeqId) {
+              useDiagramStore.getState().deleteRecoveryNode(activeSmId, _activeRecoverySeqId, selectedNodeId);
+            } else {
+              useDiagramStore.getState().deleteNode(activeSmId, selectedNodeId);
+            }
           } else if (activeSmId && selectedEdgeId) {
-            useDiagramStore.getState().deleteEdge(activeSmId, selectedEdgeId);
+            if (_activeRecoverySeqId) {
+              useDiagramStore.getState().deleteRecoveryEdge(activeSmId, _activeRecoverySeqId, selectedEdgeId);
+            } else {
+              useDiagramStore.getState().deleteEdge(activeSmId, selectedEdgeId);
+            }
           }
         }
       }
@@ -389,55 +429,58 @@ export function Canvas() {
     if (!sm) return null;
 
     const prevSelectedId = useDiagramStore.getState().selectedNodeId;
-    const smNodes = sm.nodes ?? [];
+    const curSeqId = useDiagramStore.getState()._activeRecoverySeqId;
+    const isRecovery = recoveryMode && !!curSeqId;
+    const activeSeq = isRecovery
+      ? (sm.recoverySeqs ?? []).find(r => r.id === curSeqId) ?? null
+      : null;
+    const currentNodes = isRecovery ? (activeSeq?.nodes ?? []) : (sm.nodes ?? []);
+    const currentEdges = isRecovery ? (activeSeq?.edges ?? []) : (sm.edges ?? []);
 
     // Determine which node we'll connect from
     const connectFromId =
       prevSelectedId ??
-      (smNodes.length > 0 ? smNodes[smNodes.length - 1].id : null);
+      (currentNodes.length > 0 ? currentNodes[currentNodes.length - 1].id : null);
 
     // Default position: straight below source node (center-aligned); branch → offset right
     if (!opts.position && connectFromId) {
-      const sourceNode = smNodes.find(n => n.id === connectFromId);
+      const sourceNode = currentNodes.find(n => n.id === connectFromId);
       if (sourceNode) {
-        const existingOutEdges = (sm.edges ?? []).filter(e => e.source === connectFromId);
-        // Center-align: compute source center, then offset new node so its center matches
+        const existingOutEdges = currentEdges.filter(e => e.source === connectFromId);
         const srcW = sourceNode.measured?.width ?? sourceNode.width ?? 240;
-        const newW = 240; // default new node width before render
+        const newW = 240;
         const centerAlignedX = sourceNode.position.x + (srcW - newW) / 2;
         if (existingOutEdges.length > 0) {
-          // Branch: offset to the right
-          opts = { ...opts, position: {
-            x: sourceNode.position.x + 300,
-            y: sourceNode.position.y + 200,
-          }};
+          opts = { ...opts, position: { x: sourceNode.position.x + 300, y: sourceNode.position.y + 200 } };
         } else {
-          // Straight below source — center-aligned
-          opts = { ...opts, position: {
-            x: centerAlignedX,
-            y: sourceNode.position.y + 200,
-          }};
+          opts = { ...opts, position: { x: centerAlignedX, y: sourceNode.position.y + 200 } };
         }
       }
     }
 
-    const newNodeId = store.addNode(sm.id, opts);
+    const newNodeId = isRecovery
+      ? store.addRecoveryNode(sm.id, curSeqId, opts)
+      : store.addNode(sm.id, opts);
     if (!newNodeId) return null;
 
     // Auto-connect from source node
     if (connectFromId && connectFromId !== newNodeId) {
-      const edgeCond = getVerifyEdgeData(sm, connectFromId);
-      store.addEdge(
-        sm.id,
-        { source: connectFromId, sourceHandle: null, target: newNodeId, targetHandle: null },
-        edgeCond
-      );
+      const edgeCond = getVerifyEdgeData(isRecovery ? { ...sm, nodes: currentNodes, edges: currentEdges } : sm, connectFromId);
+      if (isRecovery) {
+        store.addRecoveryEdge(sm.id, curSeqId,
+          { source: connectFromId, sourceHandle: null, target: newNodeId, targetHandle: null },
+          edgeCond
+        );
+      } else {
+        store.addEdge(sm.id,
+          { source: connectFromId, sourceHandle: null, target: newNodeId, targetHandle: null },
+          edgeCond
+        );
+      }
     }
 
-    // Signal the new node to auto-open its inline action picker
     store.setOpenPickerOnNode(newNodeId);
 
-    // Scroll viewport to show the new node
     const finalOpts = opts;
     if (finalOpts.position) {
       setTimeout(() => {
@@ -446,18 +489,26 @@ export function Canvas() {
     }
 
     return newNodeId;
-  }, [sm, store, setCenter, getViewport]);
+  }, [sm, store, setCenter, getViewport, recoveryMode]);
 
   // ── Node / Edge change handlers ────────────────────────────────────────────
   const onNodesChange = useCallback((changes) => {
     if (!sm) return;
-    store.onNodesChange(sm.id, changes);
-  }, [sm, store]);
+    if (recoveryMode && activeSeqId) {
+      store.onRecoveryNodesChange(sm.id, activeSeqId, changes);
+    } else {
+      store.onNodesChange(sm.id, changes);
+    }
+  }, [sm, store, recoveryMode, activeSeqId]);
 
   const onEdgesChange = useCallback((changes) => {
     if (!sm) return;
-    store.onEdgesChange(sm.id, changes);
-  }, [sm, store]);
+    if (recoveryMode && activeSeqId) {
+      store.onRecoveryEdgesChange(sm.id, activeSeqId, changes);
+    } else {
+      store.onEdgesChange(sm.id, changes);
+    }
+  }, [sm, store, recoveryMode, activeSeqId]);
 
   // ── Connection handlers ────────────────────────────────────────────────────
 
@@ -562,14 +613,18 @@ export function Canvas() {
 
   const onConnect = useCallback((connection) => {
     if (!sm) return;
+    const curSeqId = useDiagramStore.getState()._activeRecoverySeqId;
+    const isRecovery = recoveryMode && !!curSeqId;
+    const activeSeq = isRecovery ? (sm.recoverySeqs ?? []).find(r => r.id === curSeqId) : null;
+    const currentNodes = isRecovery ? (activeSeq?.nodes ?? []) : (sm.nodes ?? []);
     // Grab any waypoints placed during the click-to-draw connection
     const drawingWps = useDiagramStore.getState()._drawingWaypoints;
     // Check if this is a decision exit edge — if so, use decision styling instead of verify data
     const decExitData = getDecisionExitData(connection.source, connection.sourceHandle);
-    const edgeCond = decExitData ?? getVerifyEdgeData(sm, connection.source);
-    // Merge drawing waypoints into the edge data — mark as manual route so they persist.
-    const fromNode = (sm.nodes ?? []).find(n => n.id === connection.source);
-    const toNode   = (sm.nodes ?? []).find(n => n.id === connection.target);
+    const smForVerify = isRecovery ? { ...sm, nodes: currentNodes, edges: activeSeq?.edges ?? [] } : sm;
+    const edgeCond = decExitData ?? getVerifyEdgeData(smForVerify, connection.source);
+    const fromNode = currentNodes.find(n => n.id === connection.source);
+    const toNode   = currentNodes.find(n => n.id === connection.target);
     if (drawingWps && drawingWps.length > 0) {
       edgeCond.waypoints = drawingWps;
       edgeCond.manualRoute = true;
@@ -579,11 +634,9 @@ export function Canvas() {
       edgeCond.firstSegmentAxis = firstSegmentAxis;
       edgeCond.lastSegmentAxis  = lastSegmentAxis;
     } else if (fromNode && toNode) {
-      // No drawing waypoints — pre-compute and LOCK IN the route so
-      // computeAutoRoute never runs and overrides the shape later.
       const handlePos = getSourceHandlePos(fromNode, connection.sourceHandle);
       const tgtPos = { x: (toNode.position?.x ?? 0) + (toNode.measured?.width ?? 240) / 2, y: toNode.position?.y ?? 0 };
-      const autoWps = computeAutoRoute(handlePos, tgtPos, edgeCond, sm.nodes ?? [], connection.sourceHandle);
+      const autoWps = computeAutoRoute(handlePos, tgtPos, edgeCond, currentNodes, connection.sourceHandle);
       if (autoWps && autoWps.length > 0) {
         edgeCond.waypoints = autoWps;
         edgeCond.manualRoute = true;
@@ -592,15 +645,15 @@ export function Canvas() {
         edgeCond.lastSegmentAxis  = lastSegmentAxis;
       }
     }
-    const edgeId = store.addEdge(sm.id, connection, edgeCond);
-    // Don't open transition modal for decision exit edges — they're auto-configured
+    const edgeId = isRecovery
+      ? store.addRecoveryEdge(sm.id, curSeqId, connection, edgeCond)
+      : store.addEdge(sm.id, connection, edgeCond);
     if (!decExitData) {
       store.setSelectedEdge(edgeId);
       store.openTransitionModal(edgeId);
     }
-    // Clear drawing state
     useDiagramStore.setState({ _isDrawingConnection: false, _drawingWaypoints: [], _drawingSource: null });
-  }, [sm, store, getDecisionExitData]);
+  }, [sm, store, getDecisionExitData, recoveryMode]);
 
   /**
    * Drag a source handle to empty canvas space → create new node + auto-connect.
@@ -679,8 +732,12 @@ export function Canvas() {
     // ── Normal mode: create a new node and connect immediately ────────────
     useDiagramStore.setState({ _isDrawingConnection: false, _drawingWaypoints: [], _drawingSource: null });
 
-    const existingOutEdges = (sm.edges ?? []).filter(e => e.source === fromNode.id);
-    // Center-align new node on source when dropping straight down
+    const curSeqId2 = useDiagramStore.getState()._activeRecoverySeqId;
+    const isRecovery2 = !!curSeqId2;
+    const activeSeq2 = isRecovery2 ? (sm.recoverySeqs ?? []).find(r => r.id === curSeqId2) : null;
+    const currentEdges2 = isRecovery2 ? (activeSeq2?.edges ?? []) : (sm.edges ?? []);
+
+    const existingOutEdges = currentEdges2.filter(e => e.source === fromNode.id);
     const srcW = fromNode.measured?.width ?? fromNode.width ?? 240;
     const newW = 240;
     const centerAlignedX = fromNode.position.x + (srcW - newW) / 2;
@@ -689,31 +746,35 @@ export function Canvas() {
       y: cursorFlow.y,
     };
 
-    const newNodeId = store.addNode(sm.id, { position });
+    const newNodeId = isRecovery2
+      ? store.addRecoveryNode(sm.id, curSeqId2, { position })
+      : store.addNode(sm.id, { position });
     if (!newNodeId) return;
 
     const decExitData = getDecisionExitData(fromNode.id, fromHandle);
-    const edgeCond = decExitData ?? getVerifyEdgeData(sm, fromNode.id);
+    const currentNodes2 = isRecovery2 ? (activeSeq2?.nodes ?? []) : (sm.nodes ?? []);
+    const smForVerify2 = isRecovery2 ? { ...sm, nodes: currentNodes2, edges: currentEdges2 } : sm;
+    const edgeCond = decExitData ?? getVerifyEdgeData(smForVerify2, fromNode.id);
     if (drawingWps && drawingWps.length > 0) {
       edgeCond.waypoints = drawingWps;
       edgeCond.manualRoute = true;
       const handlePos = getSourceHandlePos(fromNode, fromHandle);
-      // Target was just created at `position` — its input handle is top-center
       const tgtPos = { x: position.x + newW / 2, y: position.y };
       const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(handlePos, drawingWps, tgtPos);
       edgeCond.firstSegmentAxis = firstSegmentAxis;
       edgeCond.lastSegmentAxis  = lastSegmentAxis;
     }
-    store.addEdge(
-      sm.id,
-      {
-        source: fromNode.id,
-        sourceHandle: fromHandle,
-        target: newNodeId,
-        targetHandle: null,
-      },
-      edgeCond
-    );
+    if (isRecovery2) {
+      store.addRecoveryEdge(sm.id, curSeqId2,
+        { source: fromNode.id, sourceHandle: fromHandle, target: newNodeId, targetHandle: null },
+        edgeCond
+      );
+    } else {
+      store.addEdge(sm.id,
+        { source: fromNode.id, sourceHandle: fromHandle, target: newNodeId, targetHandle: null },
+        edgeCond
+      );
+    }
 
     store.setOpenPickerOnNode(newNodeId);
   }, [sm, store, screenToFlowPosition, getDecisionExitData]);
@@ -733,37 +794,41 @@ export function Canvas() {
     const fromHandle = _drawingSource.handleId;
     const wps = _drawingWaypoints ?? [];
 
+    const curSeqId3 = useDiagramStore.getState()._activeRecoverySeqId;
+    const isRecovery3 = !!curSeqId3;
+    const activeSeq3 = isRecovery3 ? (sm.recoverySeqs ?? []).find(r => r.id === curSeqId3) : null;
+    const currentNodes3 = isRecovery3 ? (activeSeq3?.nodes ?? []) : (sm.nodes ?? []);
+    const currentEdges3 = isRecovery3 ? (activeSeq3?.edges ?? []) : (sm.edges ?? []);
+
     let actualTarget = targetNodeId;
 
-    // If no target node specified, create a new node at the last waypoint position
     if (!actualTarget && wps.length > 0) {
       const lastWp = wps[wps.length - 1];
-      const fromNode = sm.nodes.find(n => n.id === fromNodeId);
-      const existingOutEdges = (sm.edges ?? []).filter(e => e.source === fromNodeId);
+      const fromNode = currentNodes3.find(n => n.id === fromNodeId);
+      const existingOutEdges = currentEdges3.filter(e => e.source === fromNodeId);
       const position = {
         x: existingOutEdges.length > 0 ? lastWp.x : (fromNode?.position?.x ?? lastWp.x),
         y: lastWp.y,
       };
-      actualTarget = store.addNode(sm.id, { position });
+      actualTarget = isRecovery3
+        ? store.addRecoveryNode(sm.id, curSeqId3, { position })
+        : store.addNode(sm.id, { position });
       if (!actualTarget) {
         useDiagramStore.setState({ _isDrawingConnection: false, _drawingWaypoints: [], _drawingSource: null });
         return;
       }
       store.setOpenPickerOnNode(actualTarget);
     } else if (!actualTarget) {
-      // No waypoints and no target — just cancel
       useDiagramStore.setState({ _isDrawingConnection: false, _drawingWaypoints: [], _drawingSource: null });
       return;
     }
 
-    // Build edge data
     const decExitData = getDecisionExitData(fromNodeId, fromHandle);
-    const edgeCond = decExitData ?? getVerifyEdgeData(sm, fromNodeId);
+    const smForVerify3 = isRecovery3 ? { ...sm, nodes: currentNodes3, edges: currentEdges3 } : sm;
+    const edgeCond = decExitData ?? getVerifyEdgeData(smForVerify3, fromNodeId);
 
-    // Include waypoints as manual route and record segment axes so the
-    // drawn shape is preserved when endpoint nodes move.
-    const fromNode = sm.nodes.find(n => n.id === fromNodeId);
-    const toNode   = sm.nodes.find(n => n.id === actualTarget);
+    const fromNode = currentNodes3.find(n => n.id === fromNodeId);
+    const toNode   = currentNodes3.find(n => n.id === actualTarget);
     if (wps.length > 0) {
       edgeCond.waypoints = wps;
       edgeCond.manualRoute = true;
@@ -773,11 +838,9 @@ export function Canvas() {
       edgeCond.firstSegmentAxis = firstSegmentAxis;
       edgeCond.lastSegmentAxis  = lastSegmentAxis;
     } else if (fromNode && toNode) {
-      // No drawing waypoints — pre-compute and lock in the route so
-      // computeAutoRoute never overrides the shape on re-render.
       const handlePos = getSourceHandlePos(fromNode, fromHandle);
       const tgtPos = { x: (toNode.position?.x ?? 0) + (toNode.measured?.width ?? 240) / 2, y: toNode.position?.y ?? 0 };
-      const autoWps = computeAutoRoute(handlePos, tgtPos, edgeCond, sm.nodes ?? [], fromHandle);
+      const autoWps = computeAutoRoute(handlePos, tgtPos, edgeCond, currentNodes3, fromHandle);
       if (autoWps && autoWps.length > 0) {
         edgeCond.waypoints = autoWps;
         edgeCond.manualRoute = true;
@@ -787,24 +850,21 @@ export function Canvas() {
       }
     }
 
-    const edgeId = store.addEdge(
-      sm.id,
-      {
-        source: fromNodeId,
-        sourceHandle: fromHandle,
-        target: actualTarget,
-        targetHandle: null,
-      },
-      edgeCond
-    );
+    const edgeId = isRecovery3
+      ? store.addRecoveryEdge(sm.id, curSeqId3,
+          { source: fromNodeId, sourceHandle: fromHandle, target: actualTarget, targetHandle: null },
+          edgeCond
+        )
+      : store.addEdge(sm.id,
+          { source: fromNodeId, sourceHandle: fromHandle, target: actualTarget, targetHandle: null },
+          edgeCond
+        );
 
-    // Open transition modal for non-decision edges
     if (!decExitData && edgeId) {
       store.setSelectedEdge(edgeId);
       store.openTransitionModal(edgeId);
     }
 
-    // Clear drawing state
     useDiagramStore.setState({ _isDrawingConnection: false, _drawingWaypoints: [], _drawingSource: null });
   }, [sm, store, getDecisionExitData]);
 
@@ -824,24 +884,26 @@ export function Canvas() {
     const { sourceNodeId, sourceHandle, routeType } = preset;
     if (targetNodeId === sourceNodeId) return; // can't connect to self
 
-    const fromNode = sm.nodes.find(n => n.id === sourceNodeId);
-    const toNode = sm.nodes.find(n => n.id === targetNodeId);
+    const curSeqId4 = useDiagramStore.getState()._activeRecoverySeqId;
+    const isRecovery4 = !!curSeqId4;
+    const activeSeq4 = isRecovery4 ? (sm.recoverySeqs ?? []).find(r => r.id === curSeqId4) : null;
+    const currentNodes4 = isRecovery4 ? (activeSeq4?.nodes ?? []) : (sm.nodes ?? []);
+
+    const fromNode = currentNodes4.find(n => n.id === sourceNodeId);
+    const toNode = currentNodes4.find(n => n.id === targetNodeId);
     if (!fromNode || !toNode) return;
 
-    // Compute source and target handle positions
     const srcPos = getSourceHandlePos(fromNode, sourceHandle);
     const tgtNodeW = toNode.measured?.width ?? toNode.width ?? 240;
     const tgtPos = { x: toNode.position.x + tgtNodeW / 2, y: toNode.position.y };
 
-    // Get waypoints from the preset
-    const allNodes = sm.nodes;
     const { waypoints, manualRoute } = computePresetWaypoints(
-      routeType, srcPos, tgtPos, sourceHandle, allNodes
+      routeType, srcPos, tgtPos, sourceHandle, currentNodes4
     );
 
-    // Build edge data
     const decExitData = getDecisionExitData(sourceNodeId, sourceHandle);
-    const edgeCond = decExitData ?? getVerifyEdgeData(sm, sourceNodeId);
+    const smForVerify4 = isRecovery4 ? { ...sm, nodes: currentNodes4, edges: activeSeq4?.edges ?? [] } : sm;
+    const edgeCond = decExitData ?? getVerifyEdgeData(smForVerify4, sourceNodeId);
 
     if (waypoints.length > 0) {
       edgeCond.waypoints = waypoints;
@@ -851,25 +913,21 @@ export function Canvas() {
       edgeCond.lastSegmentAxis = lastSegmentAxis;
     }
 
-    // Determine target handle
     const tgtHandle = toNode.type === 'decisionNode' ? 'input' : null;
 
-    const edgeId = store.addEdge(
-      sm.id,
-      {
-        source: sourceNodeId,
-        sourceHandle: sourceHandle,
-        target: targetNodeId,
-        targetHandle: tgtHandle,
-      },
-      edgeCond
-    );
+    const edgeId = isRecovery4
+      ? store.addRecoveryEdge(sm.id, curSeqId4,
+          { source: sourceNodeId, sourceHandle, target: targetNodeId, targetHandle: tgtHandle },
+          edgeCond
+        )
+      : store.addEdge(sm.id,
+          { source: sourceNodeId, sourceHandle, target: targetNodeId, targetHandle: tgtHandle },
+          edgeCond
+        );
 
-    // Clear all connect menu state
     useDiagramStore.setState({ _connectPreset: null, _connectMenuNodeId: null, _connectMenuHandleId: null });
     store.clearSelection();
 
-    // Open transition modal for non-decision edges
     if (!decExitData && edgeId) {
       store.setSelectedEdge(edgeId);
       store.openTransitionModal(edgeId);
@@ -988,11 +1046,11 @@ export function Canvas() {
   // Compute state numbers and inject into node data
   // (hooks must always run — React forbids hooks after an early return)
   const devices = sm?.devices ?? [];
-  const smEdges = sm?.edges ?? [];
-  const smNodes = sm?.nodes ?? [];
+  const smEdges = recoveryMode ? (activeRecoverySeq?.edges ?? []) : (sm?.edges ?? []);
+  const smNodes = recoveryMode ? (activeRecoverySeq?.nodes ?? []) : (sm?.nodes ?? []);
   const { stateMap: stateNumberMap, visionSubStepsMap } = useMemo(
-    () => sm ? computeStateNumbers(smNodes, smEdges, devices) : { stateMap: new Map(), visionSubStepsMap: new Map() },
-    [sm, smNodes, smEdges, devices]
+    () => sm ? computeStateNumbers(smNodes, smEdges, devices, recoveryMode ? { startAt: 100 } : {}) : { stateMap: new Map(), visionSubStepsMap: new Map() },
+    [sm, smNodes, smEdges, devices, recoveryMode]
   );
 
   const nodes = useMemo(() => {
@@ -1135,6 +1193,85 @@ export function Canvas() {
         <div className="canvas-sm-title">
           <span className="canvas-sm-title__number">S{String(sm.stationNumber ?? 0).padStart(2, '0')}</span>
           <span className="canvas-sm-title__name">{sm.name || 'Untitled'}</span>
+          {/* Normal / Recovery toggle */}
+          <div className="canvas-mode-toggle">
+            <button
+              className={`canvas-mode-btn${!recoveryMode ? ' canvas-mode-btn--active' : ''}`}
+              onClick={() => setRecoveryMode(false)}
+            >Normal</button>
+            <button
+              className={`canvas-mode-btn${recoveryMode ? ' canvas-mode-btn--active canvas-mode-btn--recovery' : ''}`}
+              onClick={() => setRecoveryMode(true)}
+            >Recovery</button>
+          </div>
+          {/* Recovery variant selector */}
+          {recoveryMode && (sm.recoverySeqs ?? []).length > 1 && (
+            <select
+              className="canvas-recovery-seq-select"
+              value={activeRecoverySeqId ?? ''}
+              onChange={e => setActiveRecoverySeqId(e.target.value)}
+            >
+              {(sm.recoverySeqs ?? []).map(r => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
+          )}
+          {/* Save to Standards */}
+          <button
+            className="canvas-star-btn"
+            title="Save to Standards Library"
+            onClick={() => {
+              setStarName(sm.name || '');
+              setStarDesc('');
+              setStarCategory('');
+              setStarFormOpen(v => !v);
+            }}
+          >★</button>
+        </div>
+      )}
+      {/* Star save form — floats below the header */}
+      {starFormOpen && sm && (
+        <div className="canvas-star-form">
+          <div className="canvas-star-form__title">Save to Standards Library</div>
+          <input
+            className="canvas-star-form__input"
+            placeholder="Name"
+            value={starName}
+            onChange={e => setStarName(e.target.value)}
+          />
+          <input
+            className="canvas-star-form__input"
+            placeholder="Category (optional)"
+            value={starCategory}
+            onChange={e => setStarCategory(e.target.value)}
+          />
+          <textarea
+            className="canvas-star-form__input canvas-star-form__textarea"
+            placeholder="Description (optional)"
+            value={starDesc}
+            onChange={e => setStarDesc(e.target.value)}
+            rows={2}
+          />
+          <div className="canvas-star-form__btns">
+            <button
+              className="canvas-star-form__save"
+              disabled={!starName.trim()}
+              onClick={() => {
+                saveStandard({
+                  name: starName.trim(),
+                  description: starDesc.trim(),
+                  category: starCategory.trim(),
+                  nodes: sm.nodes ?? [],
+                  edges: sm.edges ?? [],
+                  devices: sm.devices ?? [],
+                });
+                setStarFormOpen(false);
+              }}
+            >Save</button>
+            <button className="canvas-star-form__cancel" onClick={() => setStarFormOpen(false)}>
+              Cancel
+            </button>
+          </div>
         </div>
       )}
       <ManualDrawOverlay />
@@ -1213,7 +1350,11 @@ export function Canvas() {
             <button
               className="btn btn--circle btn--ghost canvas-renumber-btn"
               onClick={() => {
-                if (sm) store.onNodesChange(sm.id, []);
+                if (sm) {
+                  const curSeqId = useDiagramStore.getState()._activeRecoverySeqId;
+                  if (curSeqId) store.onRecoveryNodesChange(sm.id, curSeqId, []);
+                  else store.onNodesChange(sm.id, []);
+                }
               }}
               title="Renumber states (follows edge connections)"
             >

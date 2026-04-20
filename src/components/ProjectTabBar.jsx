@@ -15,6 +15,8 @@ export function ProjectTabBar() {
   const currentFilename = useDiagramStore(s => s.currentFilename);
   const switchTab = useDiagramStore(s => s.switchTab);
   const closeTab = useDiagramStore(s => s.closeTab);
+  const activeView = useDiagramStore(s => s.activeView);
+  const setActiveView = useDiagramStore(s => s.setActiveView);
   const fileInputRef = useRef(null);
 
   // Build effective tab list — if openTabs is empty, synthesize one from current project
@@ -53,6 +55,14 @@ export function ProjectTabBar() {
   return (
     <div className="project-tabs">
       <div className="project-tabs__list">
+        {/* Standards — pinned global tab */}
+        <div
+          className={`project-tabs__tab project-tabs__tab--standards${activeView === 'standards' ? ' project-tabs__tab--active' : ''}`}
+          onClick={() => setActiveView(activeView === 'standards' ? 'canvas' : 'standards')}
+          title="Standards Library"
+        >
+          <span className="project-tabs__tab-name">★ Standards</span>
+        </div>
         {tabs.map(tab => {
           const isActive = tab.id === effectiveActiveId;
           const displayName = isActive
