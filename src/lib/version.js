@@ -11,6 +11,8 @@ export const CHANGELOG = [
   {
     version: '1.14',
     date: '2026-04-20',
+    time: '11:00',
+    author: 'Dan Belliveau',
     changes: [
       'SM title bar redesigned: bigger rounded pill with blue S01 badge',
       'Recovery mode turns the whole title bar red (bg, S01 badge, name text)',
@@ -25,6 +27,8 @@ export const CHANGELOG = [
   {
     version: '1.13',
     date: '2026-04-20',
+    time: '09:00',
+    author: 'Dan Belliveau',
     changes: [
       'Standards Library: global template bank persisted in localStorage',
       '★ button on SM header saves the current SM (nodes, edges, devices) to the library',
@@ -36,6 +40,8 @@ export const CHANGELOG = [
   {
     version: '1.12',
     date: '2026-04-19',
+    time: '21:00',
+    author: 'Dan Belliveau',
     changes: [
       'L5X export: R05_Recovery routine generated from recovery sequence nodes',
       'R00_Main now includes JSR(R05_Recovery,0) between R03 and R20',
