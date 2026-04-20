@@ -41,6 +41,30 @@ export function StandardsView() {
     refresh();
   }
 
+  function handleNewStandard() {
+    const smId = crypto.randomUUID();
+    const projectData = {
+      id: crypto.randomUUID(),
+      name: 'New Standard',
+      stateMachines: [{
+        id: smId,
+        name: 'New_Standard',
+        displayName: 'New Standard',
+        stationNumber: 1,
+        description: '',
+        nodes: [],
+        edges: [],
+        devices: [],
+        recoverySeqs: [{ id: crypto.randomUUID(), name: 'Default', nodes: [], edges: [] }],
+      }],
+      signals: [],
+      partTracking: { fields: [] },
+      recipes: [],
+    };
+    store.openProjectFromFile(projectData, 'New Standard');
+    store.setActiveView('canvas');
+  }
+
   const filtered = templates.filter(t =>
     !search ||
     t.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -52,6 +76,9 @@ export function StandardsView() {
     <div className="standards-view">
       <div className="standards-view__header">
         <h2 className="standards-view__title">Standards Library</h2>
+        <button className="standards-view__new-btn" onClick={handleNewStandard}>
+          + New Standard
+        </button>
         <input
           className="standards-view__search"
           placeholder="Search by name, category, or description…"

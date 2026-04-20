@@ -1325,6 +1325,19 @@ body {
   font-family: inherit;
 }
 .standards-view__search:focus { border-color: #1574C4; }
+.standards-view__new-btn {
+  padding: 7px 16px;
+  background: #1574C4;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  margin-left: auto;
+}
+.standards-view__new-btn:hover { background: #1260a8; }
 .standards-view__empty {
   padding: 60px 32px;
   text-align: center;
