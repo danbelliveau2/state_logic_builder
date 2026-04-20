@@ -4,10 +4,47 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.9';
+export const APP_VERSION = '1.12';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.12',
+    date: '2026-04-19',
+    changes: [
+      'L5X export: R05_Recovery routine generated from recovery sequence nodes',
+      'R00_Main now includes JSR(R05_Recovery,0) between R03 and R20',
+      'Recovery entry: State 127 (fault) auto-transitions to first recovery state',
+      'Recovery transitions use same verify conditions as R02 (sensor/timer gating)',
+      'Final recovery node transitions to State 2 (Auto Idle) on completion',
+      'Empty recovery sequence: R05 emits NOP — manual FaultReset path preserved',
+    ],
+  },
+  {
+    version: '1.11',
+    date: '2026-04-19',
+    changes: [
+      'Recovery sequences per SM: states 100-124 (+3 intervals), fault = 127',
+      'Normal/Recovery toggle in canvas header — red button for recovery mode',
+      'Recovery mode canvas is fully functional: add/edit/delete nodes & edges',
+      'Recovery variant support: multiple named sequences per SM (recipe-ready)',
+      'computeStateNumbers accepts startAt option (100 for recovery, 1 for normal)',
+      'Store actions: addRecoverySeq, addRecoveryNode, addRecoveryEdge, and matching delete/update',
+    ],
+  },
+  {
+    version: '1.10',
+    date: '2026-04-19',
+    changes: [
+      'Wait node redesign: device name (bold) + DI[2] / On / SignalName all on one row',
+      'Live signal linking: Robot signal names update instantly when renamed in robot builder',
+      'Correct DI/DO label for robot signals (robot perspective, not PLC tag prefix)',
+      'Device name uses displayName (human-readable) not PLC tag name',
+      'Cross-SM device lookup: searches all SMs for robot devices',
+      'Wait mode popup defaults to Single exit (1); Decide defaults to Branch (2)',
+      'Switching mode tabs resets exit count appropriately',
+    ],
+  },
   {
     version: '1.9',
     date: '2026-04-19',
