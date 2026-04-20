@@ -258,13 +258,6 @@ export function Toolbar() {
       >
         ⚙ Setup
       </button>
-      <button
-        className={`btn btn--ghost toolbar__setup-btn${store.activeView === 'standards' ? ' toolbar__setup-btn--active' : ''}`}
-        onClick={() => store.setActiveView(store.activeView === 'standards' ? 'canvas' : 'standards')}
-        title="Standards Library"
-      >
-        ★ Standards
-      </button>
       <div className="toolbar__divider" />
 
       {/* SM dropdown selector */}

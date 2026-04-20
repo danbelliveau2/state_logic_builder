@@ -58,7 +58,7 @@ export function ProjectTabBar() {
         {/* Standards — pinned global tab */}
         <div
           className={`project-tabs__tab project-tabs__tab--standards${activeView === 'standards' ? ' project-tabs__tab--active' : ''}`}
-          onClick={() => setActiveView(activeView === 'standards' ? 'canvas' : 'standards')}
+          onClick={() => setActiveView('standards')}
           title="Standards Library"
         >
           <span className="project-tabs__tab-name">★ Standards</span>
@@ -71,8 +71,11 @@ export function ProjectTabBar() {
           return (
             <div
               key={tab.id}
-              className={`project-tabs__tab${isActive ? ' project-tabs__tab--active' : ''}`}
-              onClick={() => { if (tab.id !== '_current') switchTab(tab.id); }}
+              className={`project-tabs__tab${isActive && activeView !== 'standards' ? ' project-tabs__tab--active' : ''}`}
+              onClick={() => {
+                if (activeView === 'standards') setActiveView('canvas');
+                if (tab.id !== '_current') switchTab(tab.id);
+              }}
               title={tab.filename || displayName}
             >
               <span className="project-tabs__tab-name">
