@@ -235,6 +235,7 @@ export const useDiagramStore = create(
       _connectPreset: null,        // { sourceNodeId, sourceHandle, routeType, smId } — connect menu state
       _connectMenuNodeId: null,    // nodeId whose handle was clicked → show ConnectMenu
       _connectMenuHandleId: null,  // handleId that was clicked to open ConnectMenu
+      _activeRecoverySeqId: null,  // non-null when canvas is in recovery mode
 
       // ── Computed helpers ──────────────────────────────────────────────────
       getActiveSm() {
@@ -373,6 +374,8 @@ export const useDiagramStore = create(
           if (!sm.partTrackingOverrides) sm.partTrackingOverrides = {};
           // Keep smOutputs on SM for backward compat rendering but also ensure it exists
           if (!sm.smOutputs) sm.smOutputs = [];
+          // Ensure recoverySeqs exists for older projects
+          if (!sm.recoverySeqs) sm.recoverySeqs = [{ id: `rseq_${sm.id}`, name: 'Default', nodes: [], edges: [] }];
           // Migration: convert old latch-pattern (triggerNodeId/clearNodeId/autoClear) to new OTE model (activeNodeId)
           sm.smOutputs = sm.smOutputs.map(o => {
             if ('triggerNodeId' in o || 'clearNodeId' in o || 'autoClear' in o) {
@@ -517,6 +520,7 @@ export const useDiagramStore = create(
           nodes: [],
           edges: [],
           smOutputs: [],
+          recoverySeqs: [{ id: uid(), name: 'Default', nodes: [], edges: [] }],
         };
         set(s => ({
           project: { ...s.project, stateMachines: [...s.project.stateMachines, sm] },
@@ -2568,6 +2572,11 @@ export const useDiagramStore = create(
 
       /** Persist the waypoints array for a routable edge (called on every drag tick). */
       updateEdgeWaypoints(smId, edgeId, waypoints, manualRoute = false) {
+        const seqId = get()._activeRecoverySeqId;
+        if (seqId) {
+          get().updateRecoveryEdgeWaypoints(smId, seqId, edgeId, waypoints, manualRoute);
+          return;
+        }
         set(s => ({
           project: _updateProject(s, sms => sms.map(sm =>
               sm.id !== smId ? sm : {
@@ -2592,6 +2601,210 @@ export const useDiagramStore = create(
                 : sm
             )),
           selectedEdgeId: null,
+        }));
+      },
+
+      // ── Recovery Sequence actions ─────────────────────────────────────────
+      /** Add a new named recovery sequence variant to an SM. */
+      addRecoverySeq(smId, name = 'New Sequence') {
+        get()._pushHistory();
+        const seqId = uid();
+        set(s => ({
+          project: _updateProject(s, sms => sms.map(sm =>
+            sm.id === smId
+              ? { ...sm, recoverySeqs: [...(sm.recoverySeqs ?? []), { id: seqId, name, nodes: [], edges: [] }] }
+              : sm
+          )),
+        }));
+        return seqId;
+      },
+
+      deleteRecoverySeq(smId, seqId) {
+        get()._pushHistory();
+        set(s => ({
+          project: _updateProject(s, sms => sms.map(sm =>
+            sm.id === smId
+              ? { ...sm, recoverySeqs: (sm.recoverySeqs ?? []).filter(r => r.id !== seqId) }
+              : sm
+          )),
+        }));
+      },
+
+      renameRecoverySeq(smId, seqId, name) {
+        set(s => ({
+          project: _updateProject(s, sms => sms.map(sm =>
+            sm.id === smId
+              ? { ...sm, recoverySeqs: (sm.recoverySeqs ?? []).map(r => r.id === seqId ? { ...r, name } : r) }
+              : sm
+          )),
+        }));
+      },
+
+      onRecoveryNodesChange(smId, seqId, changes) {
+        if (changes.some(c => c.type === 'remove')) get()._pushHistory();
+        set(s => ({
+          project: _updateProject(s, sms => sms.map(sm =>
+            sm.id === smId
+              ? { ...sm, recoverySeqs: (sm.recoverySeqs ?? []).map(r =>
+                  r.id === seqId ? { ...r, nodes: applyNodeChanges(changes, r.nodes) } : r
+                )}
+              : sm
+          )),
+        }));
+      },
+
+      onRecoveryEdgesChange(smId, seqId, changes) {
+        if (changes.some(c => c.type === 'remove')) get()._pushHistory();
+        set(s => ({
+          project: _updateProject(s, sms => sms.map(sm =>
+            sm.id === smId
+              ? { ...sm, recoverySeqs: (sm.recoverySeqs ?? []).map(r =>
+                  r.id === seqId ? { ...r, edges: applyEdgeChanges(changes, r.edges) } : r
+                )}
+              : sm
+          )),
+        }));
+      },
+
+      addRecoveryNode(smId, seqId, options = {}) {
+        get()._pushHistory();
+        const sm = _getSmArray(get()).find(s => s.id === smId);
+        if (!sm) return null;
+        const seq = (sm.recoverySeqs ?? []).find(r => r.id === seqId);
+        if (!seq) return null;
+        const stepNum = seq.nodes.length;
+        const id = uid();
+        const node = {
+          id,
+          type: 'stateNode',
+          position: options.position ?? { x: 300, y: 80 + stepNum * 200 },
+          data: {
+            stepNumber: stepNum,
+            label: options.label ?? (stepNum === 0 ? 'Start Recovery' : `Recovery Step ${stepNum}`),
+            actions: [],
+            isInitial: stepNum === 0,
+          },
+        };
+        set(s => ({
+          project: _updateProject(s, sms => sms.map(sm2 =>
+            sm2.id === smId
+              ? { ...sm2, recoverySeqs: (sm2.recoverySeqs ?? []).map(r =>
+                  r.id === seqId ? { ...r, nodes: [...r.nodes, node] } : r
+                )}
+              : sm2
+          )),
+          selectedNodeId: id,
+          selectedEdgeId: null,
+        }));
+        return id;
+      },
+
+      addRecoveryEdge(smId, seqId, connection, conditionData) {
+        get()._pushHistory();
+        const id = uid();
+        const label = conditionData?.label ?? 'Ready';
+        const isDecExit = conditionData?.isDecisionExit === true;
+        const isPass = conditionData?.exitColor === 'pass';
+        const isRetry = conditionData?.exitColor === 'retry';
+        const decColor = isRetry ? '#f59e0b' : isPass ? '#16a34a' : '#dc2626';
+        const edge = {
+          id,
+          source: connection.source,
+          sourceHandle: connection.sourceHandle ?? null,
+          target: connection.target,
+          targetHandle: connection.targetHandle ?? null,
+          type: 'routableEdge',
+          animated: false,
+          style: { stroke: isDecExit ? decColor : '#6b7280', strokeWidth: 2 },
+          markerEnd: { type: 'ArrowClosed', color: isDecExit ? decColor : '#6b7280' },
+          label,
+          labelStyle: isDecExit
+            ? { fill: isRetry ? '#000' : '#fff', fontWeight: 600, fontSize: 11 }
+            : { fill: '#374151', fontWeight: 500, fontSize: 9, fontFamily: 'Consolas, Menlo, Monaco, monospace', whiteSpace: 'pre-line', textAlign: 'left', lineHeight: '1.3' },
+          labelBgStyle: isDecExit
+            ? { fill: decColor, rx: 4, ry: 4 }
+            : { fill: '#f9fafb', fillOpacity: 0.95 },
+          ...(isDecExit ? { labelBgPadding: [4, 8] } : {}),
+          data: conditionData ?? { conditionType: 'ready', label: 'Ready' },
+        };
+        set(s => ({
+          project: _updateProject(s, sms => sms.map(sm =>
+            sm.id === smId
+              ? { ...sm, recoverySeqs: (sm.recoverySeqs ?? []).map(r =>
+                  r.id === seqId ? { ...r, edges: [...r.edges, edge] } : r
+                )}
+              : sm
+          )),
+        }));
+        return id;
+      },
+
+      deleteRecoveryNode(smId, seqId, nodeId) {
+        get()._pushHistory();
+        set(s => ({
+          project: _updateProject(s, sms => sms.map(sm =>
+            sm.id === smId
+              ? { ...sm, recoverySeqs: (sm.recoverySeqs ?? []).map(r =>
+                  r.id === seqId
+                    ? { ...r, nodes: r.nodes.filter(n => n.id !== nodeId), edges: r.edges.filter(e => e.source !== nodeId && e.target !== nodeId) }
+                    : r
+                )}
+              : sm
+          )),
+          selectedNodeId: null,
+        }));
+      },
+
+      deleteRecoveryEdge(smId, seqId, edgeId) {
+        get()._pushHistory();
+        set(s => ({
+          project: _updateProject(s, sms => sms.map(sm =>
+            sm.id === smId
+              ? { ...sm, recoverySeqs: (sm.recoverySeqs ?? []).map(r =>
+                  r.id === seqId ? { ...r, edges: r.edges.filter(e => e.id !== edgeId) } : r
+                )}
+              : sm
+          )),
+          selectedEdgeId: null,
+        }));
+      },
+
+      updateRecoveryEdgeWaypoints(smId, seqId, edgeId, waypoints, manualRoute = false) {
+        set(s => ({
+          project: _updateProject(s, sms => sms.map(sm =>
+            sm.id !== smId ? sm : {
+              ...sm,
+              recoverySeqs: (sm.recoverySeqs ?? []).map(r =>
+                r.id !== seqId ? r : {
+                  ...r,
+                  edges: r.edges.map(e =>
+                    e.id !== edgeId ? e : {
+                      ...e,
+                      data: { ...e.data, waypoints, ...(manualRoute ? { manualRoute: true } : {}) },
+                    }
+                  ),
+                }
+              ),
+            }
+          )),
+        }));
+      },
+
+      updateRecoveryNodeData(smId, seqId, nodeId, dataUpdater) {
+        set(s => ({
+          project: _updateProject(s, sms => sms.map(sm =>
+            sm.id !== smId ? sm : {
+              ...sm,
+              recoverySeqs: (sm.recoverySeqs ?? []).map(r =>
+                r.id !== seqId ? r : {
+                  ...r,
+                  nodes: r.nodes.map(n =>
+                    n.id !== nodeId ? n : { ...n, data: typeof dataUpdater === 'function' ? dataUpdater(n.data) : { ...n.data, ...dataUpdater } }
+                  ),
+                }
+              ),
+            }
+          )),
         }));
       },
 

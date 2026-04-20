@@ -4,10 +4,22 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.10';
+export const APP_VERSION = '1.11';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.11',
+    date: '2026-04-19',
+    changes: [
+      'Recovery sequences per SM: states 100-124 (+3 intervals), fault = 127',
+      'Normal/Recovery toggle in canvas header — red button for recovery mode',
+      'Recovery mode canvas is fully functional: add/edit/delete nodes & edges',
+      'Recovery variant support: multiple named sequences per SM (recipe-ready)',
+      'computeStateNumbers accepts startAt option (100 for recovery, 1 for normal)',
+      'Store actions: addRecoverySeq, addRecoveryNode, addRecoveryEdge, and matching delete/update',
+    ],
+  },
   {
     version: '1.10',
     date: '2026-04-19',

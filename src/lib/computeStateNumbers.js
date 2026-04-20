@@ -8,9 +8,10 @@
  * Returns { stateMap: Map<nodeId, number>, visionSubStepsMap: Map<nodeId, number[]> }
  */
 
-export function computeStateNumbers(nodes, edges, devices) {
+export function computeStateNumbers(nodes, edges, devices, options = {}) {
   if (!nodes || nodes.length === 0) return { stateMap: new Map(), visionSubStepsMap: new Map() };
 
+  const startAt = options.startAt ?? 1;
   const stateMap = new Map();
   const visionSubStepsMap = new Map();
 
@@ -19,7 +20,7 @@ export function computeStateNumbers(nodes, edges, devices) {
   if (!initial) {
     // Fallback: just number by Y position
     const sorted = [...nodes].sort((a, b) => a.position.y - b.position.y);
-    let step = 1;
+    let step = startAt;
     for (const n of sorted) {
       stateMap.set(n.id, step);
       step += 3;
@@ -58,15 +59,15 @@ export function computeStateNumbers(nodes, edges, devices) {
   ordered.push(...unreached);
 
   // Assign state numbers (fault nodes are always 127 — skip in sequence)
-  let currentStep = -2;
+  let currentStep = startAt - 3;
   for (const n of ordered) {
     if (n.data?.isFault) {
       stateMap.set(n.id, 127);
       continue;
     }
     if (n.data?.isInitial) {
-      stateMap.set(n.id, 1);
-      currentStep = 1;
+      stateMap.set(n.id, startAt);
+      currentStep = startAt;
       continue;
     }
 
