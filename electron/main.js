@@ -29,28 +29,22 @@ function setupAutoUpdater() {
 
   autoUpdater.on('update-available', (info) => {
     sendStatus('downloading');
-    dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'Update Available',
-      message: `Version ${info.version} is downloading in the background.`,
-      detail: 'It will install automatically when you close the app.',
-      buttons: ['OK'],
-    });
+    console.log(`[updater] Update ${info.version} found — downloading silently`);
   });
 
   autoUpdater.on('update-not-available', () => sendStatus('up-to-date'));
 
-  autoUpdater.on('update-downloaded', () => {
-    sendStatus('ready');
-    dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'Update Ready',
-      message: 'A new version has been downloaded.',
-      detail: 'Restart the app now to apply the update, or it will install automatically on next close.',
-      buttons: ['Restart Now', 'Later'],
-    }).then(({ response }) => {
-      if (response === 0) autoUpdater.quitAndInstall();
-    });
+  autoUpdater.on('update-downloaded', (info) => {
+    // Send countdown status to sidebar so user sees what's happening
+    sendStatus('restarting');
+    console.log(`[updater] Update ${info.version} ready — restarting in 5 seconds`);
+
+    // Give user 5 seconds to see the notification, then restart automatically
+    setTimeout(() => {
+      // isSilent=true (no UAC prompt for per-user install)
+      // isForceRunAfter=true (relaunch app after install)
+      autoUpdater.quitAndInstall(true, true);
+    }, 5000);
   });
 
   autoUpdater.on('error', (err) => {
@@ -58,9 +52,9 @@ function setupAutoUpdater() {
     console.error('[updater] error:', err.message);
   });
 
-  // Check immediately on startup, then every 15 minutes
+  // Check immediately on startup, then every 2 minutes
   autoUpdater.checkForUpdates().catch(() => {});
-  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 15 * 60 * 1000);
+  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 2 * 60 * 1000);
 }
 
 // Manual "Check for Updates" triggered from the renderer via the button

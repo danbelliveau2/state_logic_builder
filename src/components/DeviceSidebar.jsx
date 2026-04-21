@@ -296,12 +296,13 @@ function DeviceItem({ device, smId, onReorderDragStart, onReorderDragOver, onReo
 }
 
 const UPDATE_LABELS = {
-  checking:   'Checking...',
-  downloading:'Downloading...',
-  ready:      'Restart to Update',
+  checking:     'Checking...',
+  downloading:  'Downloading update...',
+  restarting:   'Restarting in 5s...',
+  ready:        'Restart to Update',
   'up-to-date': 'Up to date!',
-  'dev-mode': 'Dev mode',
-  error:      'Check failed',
+  'dev-mode':   'Dev mode',
+  error:        'Check failed',
 };
 
 function VersionBlock() {
