@@ -84,6 +84,22 @@ ipcMain.handle('save-file-direct', async (_, { filePath, content }) => {
   }
 });
 
+// Native open-file dialog — returns file content AND the actual disk path
+// so the renderer can cache it and Save can overwrite directly next time.
+ipcMain.handle('open-file', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    filters: [{ name: 'JSON File', extensions: ['json'] }],
+    properties: ['openFile'],
+  });
+  if (canceled || filePaths.length === 0) return { success: false };
+  try {
+    const content = fs.readFileSync(filePaths[0], 'utf8');
+    return { success: true, filePath: filePaths[0], content };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 // Manual "Check for Updates" triggered from the renderer via the button
 ipcMain.handle('check-for-updates', async () => {
   if (!app.isPackaged) {

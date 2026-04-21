@@ -16,4 +16,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveFile: (fileName, content) => ipcRenderer.invoke('save-file', { fileName, content }),
   // Direct overwrite to a known path — no dialog, no "replace?" prompt
   saveFileDirect: (filePath, content) => ipcRenderer.invoke('save-file-direct', { filePath, content }),
+  // Native open dialog — returns { success, filePath, content }
+  openFile: () => ipcRenderer.invoke('open-file'),
 });

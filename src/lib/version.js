@@ -4,19 +4,19 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.16.3';
+export const APP_VERSION = '1.16.4';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
   {
-    version: '1.16.3',
+    version: '1.16.4',
     date: '2026-04-21',
-    time: '11:00',
+    time: '11:15',
     author: 'Abhi Kamuju',
     changes: [
-      'Save remembers file location — subsequent saves overwrite directly with no dialog or "replace?" prompt',
-      'First save per project still opens the folder picker once to choose location',
-      'If the file is moved or deleted, picker re-opens automatically to choose a new location',
+      'Load button uses native Electron dialog — remembers the opened file path',
+      'Save now writes directly back to the opened file with no dialog and no "replace?" prompt',
+      'Completely silent save: open file once, then Ctrl+S or Save button just overwrites instantly',
     ],
   },
   {

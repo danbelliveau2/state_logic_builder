@@ -203,6 +203,25 @@ export function Toolbar() {
   }, [handleSaveProject]);
 
   function handleLoadProject() {
+    // Electron: use native open dialog to get the real file path,
+    // then cache it so Save can overwrite directly with no prompts.
+    if (window.electronAPI?.openFile) {
+      window.electronAPI.openFile().then(result => {
+        if (!result.success) return;
+        try {
+          const loaded = JSON.parse(result.content);
+          if (!loaded.stateMachines) throw new Error('Invalid project file');
+          store.importProject(loaded);
+          // Cache file path keyed by project ID so Save writes back to same location
+          const key = `savePath_${loaded.id ?? loaded.name}`;
+          localStorage.setItem(key, result.filePath);
+        } catch (err) {
+          alert(`Failed to load project: ${err.message}`);
+        }
+      });
+      return;
+    }
+    // Browser fallback — FileReader (no path access, dialog still shown on Save)
     fileInputRef.current?.click();
   }
 
