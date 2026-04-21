@@ -10,6 +10,7 @@ name: Build & Release
 on:
   push:
     branches: [main]
+  workflow_dispatch:  # allows manual trigger from GitHub Actions UI
 
 permissions:
   contents: write
@@ -58,7 +59,7 @@ jobs:
   build-and-release:
     name: Build installer & publish release
     needs: check-version
-    if: needs.check-version.outputs.should_release == 'true'
+    if: needs.check-version.outputs.should_release == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
 
     steps:
