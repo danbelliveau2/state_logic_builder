@@ -4195,7 +4195,7 @@ function crc32(data) {
 
 export async function exportProjectJSON(project) {
   const json = JSON.stringify(project, null, 2);
-  const fileName = `${project.name ?? 'project'}_backup.json`;
+  const fileName = `${project.name ?? 'project'}.json`;
 
   // Modern File System Access API — opens native Save dialog,
   // remembers the last used folder automatically between saves.
