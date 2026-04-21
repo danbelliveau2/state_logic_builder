@@ -4,10 +4,23 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.15';
+export const APP_VERSION = '1.16';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.16',
+    date: '2026-04-21',
+    time: '09:00',
+    author: 'Abhi Kamuju',
+    changes: [
+      'Desktop app: silent auto-update — downloads in background and restarts automatically',
+      'No more update dialogs; app checks every 2 minutes and installs with a 5-second countdown',
+      'Save dialog remembers last folder used (no more Downloads default)',
+      'Toolbar buttons moved below canvas — no longer overlap diagram nodes',
+      'Firewall rule documented for server-app1 port 3131 (Windows Server)',
+    ],
+  },
   {
     version: '1.15',
     date: '2026-04-20',
