@@ -4,10 +4,21 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.16.1';
+export const APP_VERSION = '1.16.2';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.16.2',
+    date: '2026-04-21',
+    time: '10:45',
+    author: 'Abhi Kamuju',
+    changes: [
+      'Fix: JSON save now writes correct file contents in desktop app (was saving 0 KB)',
+      'Desktop app uses native Electron save dialog instead of browser File System Access API',
+      'Browser (server-app1) continues to use showSaveFilePicker as before',
+    ],
+  },
   {
     version: '1.16.1',
     date: '2026-04-21',

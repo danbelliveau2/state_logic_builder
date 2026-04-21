@@ -57,6 +57,21 @@ function setupAutoUpdater() {
   setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 2 * 60 * 1000);
 }
 
+// Native save-file dialog — avoids showSaveFilePicker createWritable() bug in Electron
+ipcMain.handle('save-file', async (_, { fileName, content }) => {
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: fileName,
+    filters: [{ name: 'JSON File', extensions: ['json'] }],
+  });
+  if (canceled || !filePath) return { success: false };
+  try {
+    fs.writeFileSync(filePath, content, 'utf8');
+    return { success: true, filePath };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 // Manual "Check for Updates" triggered from the renderer via the button
 ipcMain.handle('check-for-updates', async () => {
   if (!app.isPackaged) {

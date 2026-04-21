@@ -4197,8 +4197,14 @@ export async function exportProjectJSON(project) {
   const json = JSON.stringify(project, null, 2);
   const fileName = `${project.name ?? 'project'}.json`;
 
-  // Modern File System Access API — opens native Save dialog,
-  // remembers the last used folder automatically between saves.
+  // Electron desktop app: use native dialog via IPC (avoids showSaveFilePicker
+  // createWritable() bug where the file is created but written as 0 KB).
+  if (window.electronAPI?.saveFile) {
+    await window.electronAPI.saveFile(fileName, json);
+    return;
+  }
+
+  // Browser: use File System Access API — remembers last folder between saves.
   if (window.showSaveFilePicker) {
     try {
       const handle = await window.showSaveFilePicker({

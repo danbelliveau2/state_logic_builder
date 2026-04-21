@@ -12,4 +12,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Return cleanup function
     return () => ipcRenderer.removeListener('update-status', handler);
   },
+  // Native save dialog — avoids showSaveFilePicker createWritable() bug in Electron
+  saveFile: (fileName, content) => ipcRenderer.invoke('save-file', { fileName, content }),
 });
