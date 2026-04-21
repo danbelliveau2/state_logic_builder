@@ -1334,8 +1334,23 @@ export function Canvas() {
           </div>
         )}
 
-        {/* Floating buttons — add state + renumber + draw path */}
-        <div className="canvas-add-btn">
+      </ReactFlow>
+      {/* Machine watermark — sits on top of React Flow pane, pointer-events: none so you can still click through */}
+      <div style={{
+        position: 'absolute',
+        inset: 0,
+        backgroundImage: 'url(/bg-machine.jpg)',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'center center',
+        backgroundSize: 'cover',
+        opacity: 0.25,
+        pointerEvents: 'none',
+        zIndex: 1,
+      }} />
+
+      {/* Canvas bottom toolbar — outside ReactFlow so it never overlaps diagram nodes */}
+      <div className="canvas-bottom-bar">
+        <div className="canvas-bottom-bar__tools">
           <div className="canvas-tool">
             <button
               className="btn btn--circle btn--primary"
@@ -1367,13 +1382,11 @@ export function Canvas() {
             <span className="canvas-tool__label">Draw Path</span>
           </div>
         </div>
-
-        {/* Bottom toolbar — Select + Straighten */}
-        <div className="canvas-select-toggle">
+        <div className="canvas-bottom-bar__actions">
           <button
             className={`btn btn--sm canvas-select-btn${selectMode ? ' canvas-select-btn--active' : ''}`}
             onClick={() => setSelectMode(m => !m)}
-            title={selectMode ? 'Selection mode ON — drag to select nodes. Click to exit.' : 'Click to enter selection mode (drag to select multiple nodes)'}
+            title={selectMode ? 'Selection mode ON — drag to select nodes. Click to exit.' : 'Click to enter selection mode'}
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <rect x="1" y="1" width="14" height="14" strokeDasharray="3 2" rx="1" />
@@ -1396,19 +1409,7 @@ export function Canvas() {
             <span>Straighten</span>
           </button>
         </div>
-      </ReactFlow>
-      {/* Machine watermark — sits on top of React Flow pane, pointer-events: none so you can still click through */}
-      <div style={{
-        position: 'absolute',
-        inset: 0,
-        backgroundImage: 'url(/bg-machine.jpg)',
-        backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'center center',
-        backgroundSize: 'cover',
-        opacity: 0.25,
-        pointerEvents: 'none',
-        zIndex: 1,
-      }} />
+      </div>
     </div>
   );
 }

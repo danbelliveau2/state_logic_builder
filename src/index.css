@@ -1114,9 +1114,15 @@ body {
 /* ─── Canvas ────────────────────────────────────────────────────────────── */
 .canvas-wrapper {
   flex: 1;
+  display: flex;
+  flex-direction: column;
   position: relative;
   overflow: hidden;
   background: #edf1f5;
+}
+
+.canvas-wrapper .react-flow {
+  flex: 1;
 }
 
 
@@ -1558,14 +1564,7 @@ body {
 }
 
 .canvas-add-btn {
-  position: absolute;
-  bottom: 70px;
-  left: 50%;
-  transform: translate(-50%);
-  z-index: 10;
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
+  display: none; /* replaced by canvas-bottom-bar */
 }
 
 .canvas-tool {
@@ -1602,11 +1601,29 @@ body {
 }
 
 .canvas-select-toggle {
-  position: absolute;
-  bottom: 16px;
-  left: 50%;
-  transform: translate(-50%);
-  z-index: 5;
+  display: none; /* replaced by canvas-bottom-bar */
+}
+
+/* ── Canvas bottom toolbar (outside ReactFlow — never overlaps diagram) ── */
+.canvas-bottom-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 8px 16px;
+  background: var(--color-surface, #f8fafc);
+  border-top: 1px solid var(--color-border, #e2e8f0);
+  z-index: 20;
+}
+
+.canvas-bottom-bar__tools {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.canvas-bottom-bar__actions {
   display: flex;
   gap: 6px;
   align-items: center;

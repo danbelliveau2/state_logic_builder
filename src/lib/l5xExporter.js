@@ -4193,13 +4193,34 @@ function crc32(data) {
   return (crc ^ 0xFFFFFFFF) >>> 0;
 }
 
-export function exportProjectJSON(project) {
+export async function exportProjectJSON(project) {
   const json = JSON.stringify(project, null, 2);
+  const fileName = `${project.name ?? 'project'}_backup.json`;
+
+  // Modern File System Access API — opens native Save dialog,
+  // remembers the last used folder automatically between saves.
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: fileName,
+        types: [{ description: 'JSON File', accept: { 'application/json': ['.json'] } }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(json);
+      await writable.close();
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return; // user cancelled — do nothing
+      // Any other error: fall through to legacy download below
+    }
+  }
+
+  // Fallback for browsers without showSaveFilePicker
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${project.name ?? 'project'}_backup.json`;
+  a.download = fileName;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
