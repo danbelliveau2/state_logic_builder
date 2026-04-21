@@ -168,6 +168,66 @@ app.whenReady().then(async () => {
   });
 
   mainWindow.setMenuBarVisibility(false);
+
+  // ── Unsaved-changes guard (Word/Excel behaviour) ─────────────────────────
+  let forceClose = false;
+  mainWindow.on('close', async (e) => {
+    if (forceClose) return; // already confirmed — let it close
+
+    // Read unsaved state + project data from renderer in one call
+    let state;
+    try {
+      state = JSON.parse(await mainWindow.webContents.executeJavaScript(`
+        (() => {
+          const p = window.__currentProject__;
+          const cacheKey = p ? ('savePath_' + (p.id || p.name)) : null;
+          return JSON.stringify({
+            hasUnsaved:  window.__unsavedChanges__ || false,
+            projectName: p ? (p.name || 'project') : 'project',
+            savePath:    cacheKey ? localStorage.getItem(cacheKey) : null,
+            projectJson: (window.__unsavedChanges__ && p) ? JSON.stringify(p) : null,
+          });
+        })()
+      `));
+    } catch (_) {
+      return; // renderer not ready — allow close
+    }
+
+    if (!state.hasUnsaved) return; // nothing unsaved — close normally
+
+    e.preventDefault(); // block close until user decides
+
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type:      'question',
+      buttons:   ['Save', "Don't Save", 'Cancel'],
+      defaultId: 0,
+      cancelId:  2,
+      title:     'Unsaved Changes',
+      message:   `Do you want to save changes to "${state.projectName}"?`,
+      detail:    'Your changes will be lost if you close without saving.',
+    });
+
+    if (response === 2) return; // Cancel — keep app open
+
+    if (response === 0 && state.projectJson) {
+      // Save — write directly if path known, else ask once
+      let savePath = state.savePath;
+      if (!savePath) {
+        const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+          defaultPath: `${state.projectName}.json`,
+          filters: [{ name: 'JSON File', extensions: ['json'] }],
+        });
+        if (canceled) return; // user cancelled save dialog — keep app open
+        savePath = filePath;
+      }
+      try { fs.writeFileSync(savePath, state.projectJson, 'utf8'); } catch (_) {}
+    }
+
+    // "Don't Save" or save completed — close for real
+    forceClose = true;
+    mainWindow.close();
+  });
+
   mainWindow.on('closed', () => { mainWindow = null; });
 });
 

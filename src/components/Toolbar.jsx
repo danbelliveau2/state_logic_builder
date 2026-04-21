@@ -175,6 +175,11 @@ export function Toolbar() {
     projectRef.current = project;
   }, [project]);
 
+  // Keep window globals in sync so Electron's close handler can read them
+  // without needing an async IPC round-trip at close time.
+  useEffect(() => { window.__unsavedChanges__ = hasUnsavedChanges; }, [hasUnsavedChanges]);
+  useEffect(() => { window.__currentProject__ = project; }, [project]);
+
   const handleSaveProject = useCallback(async () => {
     // Always download JSON file so the user has a local copy
     exportProjectJSON(project);

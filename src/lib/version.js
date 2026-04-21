@@ -4,10 +4,22 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.16.4';
+export const APP_VERSION = '1.16.5';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.16.5',
+    date: '2026-04-21',
+    time: '11:30',
+    author: 'Abhi Kamuju',
+    changes: [
+      'Unsaved-changes guard on app close — matches Word/Excel behaviour',
+      'Closing with unsaved work shows: Save / Don\'t Save / Cancel',
+      'Save option writes to known file path instantly (no extra dialogs)',
+      'Cancel returns to app; Don\'t Save closes immediately',
+    ],
+  },
   {
     version: '1.16.4',
     date: '2026-04-21',
