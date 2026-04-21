@@ -4,10 +4,20 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.16';
+export const APP_VERSION = '1.16.1';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.16.1',
+    date: '2026-04-21',
+    time: '10:30',
+    author: 'Abhi Kamuju',
+    changes: [
+      'Fix: version display now correctly shows Rev 1.16.1 (1.16.0 built before version.js was synced)',
+      'Save dialog no longer appends _backup to filename — overwrites existing file directly',
+    ],
+  },
   {
     version: '1.16',
     date: '2026-04-21',
@@ -18,7 +28,6 @@ export const CHANGELOG = [
       'No more update dialogs; app checks every 2 minutes and installs with a 5-second countdown',
       'Save dialog remembers last folder used (no more Downloads default)',
       'Toolbar buttons moved below canvas — no longer overlap diagram nodes',
-      'Firewall rule documented for server-app1 port 3131 (Windows Server)',
     ],
   },
   {
