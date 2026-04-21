@@ -14,4 +14,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   // Native save dialog — avoids showSaveFilePicker createWritable() bug in Electron
   saveFile: (fileName, content) => ipcRenderer.invoke('save-file', { fileName, content }),
+  // Direct overwrite to a known path — no dialog, no "replace?" prompt
+  saveFileDirect: (filePath, content) => ipcRenderer.invoke('save-file-direct', { filePath, content }),
 });

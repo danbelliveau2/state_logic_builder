@@ -4199,8 +4199,25 @@ export async function exportProjectJSON(project) {
 
   // Electron desktop app: use native dialog via IPC (avoids showSaveFilePicker
   // createWritable() bug where the file is created but written as 0 KB).
+  // After the first save we cache the chosen path in localStorage so subsequent
+  // saves write directly — no dialog, no "replace?" prompt.
   if (window.electronAPI?.saveFile) {
-    await window.electronAPI.saveFile(fileName, json);
+    const cacheKey = `savePath_${project.id ?? project.name}`;
+    const cachedPath = localStorage.getItem(cacheKey);
+
+    if (cachedPath) {
+      // Known path — overwrite directly, no dialog
+      const result = await window.electronAPI.saveFileDirect(cachedPath, json);
+      if (result.success) return;
+      // If direct write failed (e.g. file moved), fall through to show dialog again
+      localStorage.removeItem(cacheKey);
+    }
+
+    // First save or path no longer valid — show dialog once, cache the result
+    const result = await window.electronAPI.saveFile(fileName, json);
+    if (result.success && result.filePath) {
+      localStorage.setItem(cacheKey, result.filePath);
+    }
     return;
   }
 

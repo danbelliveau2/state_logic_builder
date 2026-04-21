@@ -57,7 +57,8 @@ function setupAutoUpdater() {
   setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 2 * 60 * 1000);
 }
 
-// Native save-file dialog — avoids showSaveFilePicker createWritable() bug in Electron
+// Native save-file dialog — avoids showSaveFilePicker createWritable() bug in Electron.
+// Returns the chosen filePath so the renderer can cache it for direct saves next time.
 ipcMain.handle('save-file', async (_, { fileName, content }) => {
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
     defaultPath: fileName,
@@ -67,6 +68,17 @@ ipcMain.handle('save-file', async (_, { fileName, content }) => {
   try {
     fs.writeFileSync(filePath, content, 'utf8');
     return { success: true, filePath };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// Direct overwrite — no dialog, no "replace?" prompt.
+// Called on subsequent saves once the renderer has cached the file path.
+ipcMain.handle('save-file-direct', async (_, { filePath, content }) => {
+  try {
+    fs.writeFileSync(filePath, content, 'utf8');
+    return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
   }
