@@ -71,18 +71,11 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Sync package.json version from APP_VERSION
-        run: |
-          $semver = "${{ needs.check-version.outputs.semver }}"
-          $pkg = Get-Content package.json -Raw | ConvertFrom-Json
-          $old = $pkg.version
-          $pkg.version = $semver
-          $pkg | ConvertTo-Json -Depth 10 | Set-Content package.json -Encoding UTF8
-          Write-Host "package.json: $old -> $semver"
-        shell: pwsh
-
       - name: Install dependencies
-        run: npm ci
+        run: npm install
+
+      - name: Sync package.json version from APP_VERSION
+        run: npm version ${{ needs.check-version.outputs.semver }} --no-git-tag-version --allow-same-version
 
       - name: Build React app
         run: npm run build
