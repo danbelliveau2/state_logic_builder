@@ -2,7 +2,7 @@ name: Build & Release
 
 # Triggers on every push to main.
 # To release a new version, Dan only needs to:
-#   1. Update APP_VERSION in src/lib/version.js  (e.g. '1.14' → '1.15')
+#   1. Update APP_VERSION in src/lib/version.js  (e.g. '1.14' -> '1.15')
 #   2. git commit & push
 # GitHub Actions syncs package.json, builds the installer, and publishes the release.
 # All installed copies auto-update within 15 minutes.
@@ -30,14 +30,7 @@ jobs:
       - name: Extract APP_VERSION from version.js
         id: extract
         run: |
-          VERSION=$(node -e "
-            const fs = require('fs');
-            const content = fs.readFileSync('src/lib/version.js', 'utf8');
-            const match = content.match(/APP_VERSION\s*=\s*['\"]([^'\"]+)['\"]/);
-            if (!match) { console.error('APP_VERSION not found'); process.exit(1); }
-            console.log(match[1]);
-          ")
-          # Convert to semver: "1.15" → "1.15.0", "1.15.2" stays "1.15.2"
+          VERSION=$(node -e "const fs=require('fs');const c=fs.readFileSync('src/lib/version.js','utf8');const m=c.match(/APP_VERSION\s*=\s*['\"]([^'\"]+)['\"]/) ;if(!m){process.exit(1);}console.log(m[1]);")
           PARTS=$(echo "$VERSION" | tr -cd '.' | wc -c)
           if [ "$PARTS" -lt 2 ]; then
             SEMVER="${VERSION}.0.0"
@@ -48,22 +41,14 @@ jobs:
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "semver=$SEMVER" >> $GITHUB_OUTPUT
-          echo "APP_VERSION=$VERSION  →  semver=$SEMVER"
+          echo "APP_VERSION=$VERSION  semver=$SEMVER"
 
       - name: Check if APP_VERSION changed vs previous commit
         id: check
         run: |
-          PREV=$(git show HEAD~1:src/lib/version.js 2>/dev/null | node -e "
-            const fs = require('fs');
-            let content = '';
-            process.stdin.on('data', d => content += d);
-            process.stdin.on('end', () => {
-              const match = content.match(/APP_VERSION\s*=\s*['\"]([^'\"]+)['\"]/);
-              console.log(match ? match[1] : 'none');
-            });
-          " || echo "none")
+          PREV=$(git show HEAD~1:src/lib/version.js 2>/dev/null | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{const m=d.match(/APP_VERSION\s*=\s*['\"]([^'\"]+)['\"]/) ;console.log(m?m[1]:'none');})" || echo "none")
           CURR="${{ steps.extract.outputs.version }}"
-          echo "Previous APP_VERSION: $PREV  →  Current: $CURR"
+          echo "Previous: $PREV  Current: $CURR"
           if [ "$PREV" != "$CURR" ]; then
             echo "should_release=true" >> $GITHUB_OUTPUT
           else
@@ -86,17 +71,14 @@ jobs:
           cache: 'npm'
 
       - name: Sync package.json version from APP_VERSION
-        shell: bash
         run: |
-          SEMVER="${{ needs.check-version.outputs.semver }}"
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            const old = pkg.version;
-            pkg.version = '$SEMVER';
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-            console.log('package.json: ' + old + ' → $SEMVER');
-          "
+          $semver = "${{ needs.check-version.outputs.semver }}"
+          $pkg = Get-Content package.json -Raw | ConvertFrom-Json
+          $old = $pkg.version
+          $pkg.version = $semver
+          $pkg | ConvertTo-Json -Depth 10 | Set-Content package.json -Encoding UTF8
+          Write-Host "package.json: $old -> $semver"
+        shell: pwsh
 
       - name: Install dependencies
         run: npm ci
