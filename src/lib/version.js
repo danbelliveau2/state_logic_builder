@@ -4,10 +4,24 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.23.1';
+export const APP_VERSION = '1.24';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.24',
+    date: '2026-04-22',
+    time: '17:15',
+    author: 'Dan Belliveau',
+    changes: [
+      'Wait node subtitle now names the SPECIFIC tag that advances the step (e.g. "q_MagnetLoadRobotMagnetPickClear = ON") instead of the owning device ("Magnet_Load_Robot = ON") — you were waiting on the robot\'s output bit, not the robot itself.',
+      'Subtitle prefers the exact PLC tag when available, falls back to the signal name with the source prefix stripped ("Magnet_Load_Robot MagnetPickClear [3]" → "MagnetPickClear [3]"). Honors Wait Off so OFF waits no longer mis-label as ON.',
+      'Single-exit wait edges now render plain gray like any other sequential state-to-state edge — they were rendering green as if they were a pass branch. A wait with one exit isn\'t a decision; every state needs a condition to advance, this is no different.',
+      'Existing project data: Canvas render-layer strip of stale colored-branch styling on `exit-single` edges — no data migration needed.',
+      'New single-exit edges created by addDecisionSingleBranch + ClampServoIndex template + onConnect now persist as plain sequential edges (no `isDecisionExit`/`exitColor` flag, no hardcoded green stroke).',
+      'Decision node icon now uses the actual device type (Robot / Stamper / ServoAxis / VisionSystem / …) instead of the generic DigitalSensor/AnalogSensor fallback. Robot signals were being masked because they flow through the sensor pick path — `liveDevice?.type` now wins over `isSensor`.',
+    ],
+  },
   {
     version: '1.23.1',
     date: '2026-04-22',

@@ -651,18 +651,11 @@ export function Canvas() {
 
     const handle = sourceHandle;
 
-    // Single-exit: green pass styling for decision nodes, plain for vision
+    // Single-exit wait: SEQUENTIAL edge, not a pass-branch. Don't flag it as
+    // a decision exit — that caused downstream coloring to paint it green.
+    // It's just the wait's only path forward; it renders gray like any other
+    // state-to-state edge.
     if (handle === 'exit-single') {
-      if (isDecision) {
-        const sigName = sourceNode.data?.signalName ?? '';
-        return {
-          conditionType: 'ready',
-          label: sourceNode.data?.exit1Label || `Ready`,
-          outcomeLabel: sourceNode.data?.exit1Label || `Ready`,
-          isDecisionExit: true,
-          exitColor: 'pass',
-        };
-      }
       return { conditionType: isVisionExit ? 'visionResult' : 'ready' };
     }
 
@@ -1281,13 +1274,31 @@ export function Canvas() {
         };
       }
 
-      // All other edges (including loop-backs TO decision nodes) use routableEdge
-      return {
+      // All other edges (including loop-backs TO decision nodes) use routableEdge.
+      //
+      // Single-exit wait edges (sourceHandle='exit-single') are SEQUENTIAL — they
+      // connect a wait's only outgoing path to the next state. Older data (and the
+      // store's create path at the time) baked green pass-branch styling onto
+      // them, which is wrong: a wait with one exit isn't a decision. Strip that
+      // styling here so they render like any state-to-state edge (RF default gray).
+      // This covers existing project files without needing a data migration.
+      const isExitSingle = e.sourceHandle === 'exit-single';
+      const base = {
         ...e,
         targetHandle,
         type: 'routableEdge',
         label: isBranch ? (e.data?.outcomeLabel ?? e.data?.label ?? '') : '',
       };
+      if (isExitSingle) {
+        // Force gray sequential look, discard any stale colored-branch styling.
+        base.style = undefined;
+        base.markerEnd = undefined;
+        base.labelStyle = undefined;
+        base.labelBgStyle = undefined;
+        base.labelBgPadding = undefined;
+        base.label = '';
+      }
+      return base;
     });
   }, [sm, smEdges, smNodes]);
 

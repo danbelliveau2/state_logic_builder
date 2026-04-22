@@ -1815,11 +1815,16 @@ export function DecisionNode({ data, selected, id }) {
         }}
       >
         {(() => {
-          // Icon type from device/signal category
+          // Icon type from device/signal category. Priority: specific device
+          // type (Robot, Stamper, ServoAxis, …) wins over the generic
+          // DigitalSensor/AnalogSensor fallback — a wait on a Robot signal
+          // is still a *Robot*, not a faceless sensor. Robot signals go
+          // through handleSensorPick so `isSensor` is true, which previously
+          // masked the Robot icon; checking `liveDevice?.type` first fixes it.
           let iconType = null;
           if (isVisionJob) iconType = 'VisionSystem';
-          else if (isSensor) iconType = sensorInputType === 'range' ? 'AnalogSensor' : 'DigitalSensor';
           else if (liveDevice?.type) iconType = liveDevice.type;
+          else if (isSensor) iconType = sensorInputType === 'range' ? 'AnalogSensor' : 'DigitalSensor';
 
           // Operation badge: mode + sensor polarity drives label + color
           const isOn = conditionType !== 'off';
@@ -1849,9 +1854,28 @@ export function DecisionNode({ data, selected, id }) {
 
           // Advance-when detail line (under the row).
           //   Verify: on/off is already in the op badge AND on the branch edges — no second row.
-          //   Wait:   show "{Subject} = ON/OFF" as the condition that advances this state.
+          //   Wait:   name the SPECIFIC signal/tag that advances the step. The big-bold subject
+          //           above is the *source* (device / SM / Robot) — the subtitle must name the
+          //           actual bit you're waiting on, e.g. "q_MagnetLoadRobotMagnetPickClear = ON"
+          //           — NOT "Magnet_Load_Robot = ON" (that reads as "wait for the robot",
+          //           which is meaningless — you wait for an output bit of the robot).
           //   Decide: show the signal/source being branched on.
           //   Vision: show the job name when it differs from the subject.
+          //
+          // Helper: strip the source prefix from a signal name so we don't show it
+          // twice ("Magnet_Load_Robot MagnetPickClear [3]" → "MagnetPickClear [3]").
+          const stripSourcePrefix = (name) => {
+            if (!name) return name;
+            let out = name;
+            const candidates = [signalSource, subjectLine, deviceDisplayLabel, liveDeviceName].filter(Boolean);
+            for (const pfx of candidates) {
+              if (out.startsWith(pfx + ' ') || out.startsWith(pfx + '\u2192') || out.startsWith(pfx + ' \u2192')) {
+                out = out.slice(pfx.length).replace(/^\s*\u2192?\s*/, '').trim();
+              }
+            }
+            return out || name;
+          };
+
           let verifyText = null;
           if (isVerify) {
             verifyText = null; // branch labels + op badge already communicate the condition
@@ -1860,8 +1884,15 @@ export function DecisionNode({ data, selected, id }) {
             const maxStr = rangeMax !== undefined && rangeMax !== '' ? rangeMax : '?';
             verifyText = `Range: ${minStr} – ${maxStr}`;
           } else if (isSensor) {
-            // Wait on/off sensor: "Subject = ON" / "Subject = OFF"
-            verifyText = `${subjectLine} = ${isOn ? 'ON' : 'OFF'}`;
+            // Wait on/off sensor: name the exact TAG (preferred) or the specific
+            // condition/signal name — never just the device. The condition to
+            // advance is the bit, not its owner.
+            const tag = multiConditions[0]?.tag || sensorTag;
+            const detail = tag
+              || (condName && condName !== subjectLine ? condName : null)
+              || stripSourcePrefix(signalName)
+              || subjectLine;
+            verifyText = `${detail} = ${isOn ? 'ON' : 'OFF'}`;
           } else if (isVisionJob && signalName && signalName !== subjectLine) {
             verifyText = `Job: ${signalName}`;
           } else if (isDecide) {
@@ -1871,11 +1902,14 @@ export function DecisionNode({ data, selected, id }) {
             verifyText = resolvedSourceLabel || (signalName && signalName !== subjectLine ? signalName : null);
           } else if (resolvedSourceLabel) {
             verifyText = resolvedSourceLabel;
-          } else if (sourceLabel) {
-            verifyText = sourceLabel;
           } else if (signalName && signalName !== subjectLine) {
-            // Fallback for wait-signal nodes (state/condition/position)
-            verifyText = `${subjectLine} = ON`;
+            // Wait on a signal (state / condition / position / SM output) — show
+            // the SPECIFIC signal that advances, stripped of any redundant source
+            // prefix. Honor conditionType so OFF waits don't mislabel as ON.
+            const detail = stripSourcePrefix(signalName);
+            verifyText = `${detail} = ${isOn ? 'ON' : 'OFF'}`;
+          } else if (sourceLabel && !isSensor) {
+            verifyText = sourceLabel;
           }
 
           // Inner card tinted to match the outer node color (softer than pure white).

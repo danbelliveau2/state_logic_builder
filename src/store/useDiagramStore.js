@@ -658,7 +658,7 @@ export const useDiagramStore = create(
         });
 
         // 4. Create edges (no loop-back — state engine handles that)
-        // Decision → Index (single exit, green "Ready")
+        // Decision → Index: single-exit wait is sequential, render gray (no pass-green).
         sm.edges.push({
           id: uid(),
           source: decisionNodeId,
@@ -667,13 +667,7 @@ export const useDiagramStore = create(
           targetHandle: null,
           type: 'routableEdge',
           animated: false,
-          style: { stroke: '#16a34a', strokeWidth: 2 },
-          markerEnd: { type: 'ArrowClosed', color: '#16a34a' },
-          label: 'Ready',
-          labelStyle: { fill: '#fff', fontWeight: 600, fontSize: 11 },
-          labelBgStyle: { fill: '#16a34a', rx: 4, ry: 4 },
-          labelBgPadding: [4, 8],
-          data: { conditionType: 'ready', label: 'Ready', isDecisionExit: true, exitColor: 'pass', outcomeLabel: 'Ready' },
+          data: { conditionType: 'ready' },
         });
 
         // Index → Cycle Complete (servo at target)
@@ -2093,6 +2087,9 @@ export const useDiagramStore = create(
           data: { label: exitLabel, actions: [], isInitial: false, stepNumber: sm.nodes.length },
         };
 
+        // Single-exit wait is SEQUENTIAL — no branch, no pass/fail. Render gray
+        // like any other state-to-state edge (RoutableEdge defaults). Don't mark
+        // it as a decision exit; that was the source of the green-pass styling.
         const edge = {
           id: edgeId,
           source: nodeId,
@@ -2101,14 +2098,8 @@ export const useDiagramStore = create(
           targetHandle: null,
           type: 'routableEdge',
           animated: false,
-          style: { stroke: '#16a34a', strokeWidth: 2 },
-          markerEnd: { type: 'ArrowClosed', color: '#16a34a' },
-          label: exitLabel,
-          labelStyle: { fill: '#fff', fontWeight: 600, fontSize: 11 },
-          labelBgStyle: { fill: '#16a34a', rx: 4, ry: 4 },
-          labelBgPadding: [4, 8],
-          // No outcomeLabel on single-exit — the wait condition is the node itself, no branch label needed
-          data: { conditionType: 'ready', label: exitLabel, isDecisionExit: true, exitColor: 'pass' },
+          // No outcomeLabel on single-exit — the wait condition is the node itself.
+          data: { conditionType: 'ready' },
         };
 
         set(s => ({
