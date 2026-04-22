@@ -4,10 +4,26 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.21';
+export const APP_VERSION = '1.22';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.22',
+    date: '2026-04-22',
+    time: '16:30',
+    author: 'Dan Belliveau',
+    changes: [
+      'Decision node: "Branch" badge renamed to "Decide" (only on actual decide-mode nodes, not wait nodes with 2 exits)',
+      'Wait node branching rule: a single-condition wait can\'t branch — if the condition isn\'t met, the state just doesn\'t advance. "2 branches" button hidden when wait + ≤1 condition',
+      'Decide-mode advance-when text now uses LIVE state numbers ("Magnet_PNP has reached State 4") instead of baked "→ Step 3" — never goes stale on renumber',
+      'State-signal resolver falls back to matching by state name when the signal lacks a stored node-id (older signals)',
+      'addDecisionSingleBranch cleans up excess edges when collapsing a multi-exit node to single-exit — orphaned empty child nodes removed',
+      'Mode switcher: switching to wait collapses multi-exit to single when ≤1 condition; verify always collapses to single',
+      'Standards library: ships with a seed file (public/standards-seed.json) that auto-imports on first run if localStorage is empty',
+      'Standards library: Export / Import JSON buttons in the Standards header — back up or share your library as a file',
+    ],
+  },
   {
     version: '1.21',
     date: '2026-04-22',

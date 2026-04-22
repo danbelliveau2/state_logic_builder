@@ -2023,25 +2023,60 @@ export const useDiagramStore = create(
         const decisionNode = sm.nodes.find(n => n.id === nodeId);
         if (!decisionNode) return;
 
-        // If the single exit already exists, update its label (and matching child node label) instead of creating a duplicate
+        // If the single exit already exists, update its label (and matching child node label) instead of creating a duplicate.
+        // If MULTIPLE edges exist (migrating from an invalid wait+multi-exit state), keep one
+        // and drop the rest — otherwise the node would display 2 exits even though its data
+        // says exitCount=1. Preference: keep exit-single if present, else exit-pass, else first.
         const existingOut = sm.edges.filter(e => e.source === nodeId);
         if (existingOut.length > 0) {
-          const singleEdge = existingOut.find(e => e.sourceHandle === 'exit-single') ?? existingOut[0];
+          const keepEdge = existingOut.find(e => e.sourceHandle === 'exit-single')
+                        ?? existingOut.find(e => e.sourceHandle === 'exit-pass')
+                        ?? existingOut[0];
+          const dropEdgeIds = new Set(existingOut.filter(e => e.id !== keepEdge.id).map(e => e.id));
+          // Also drop orphaned downstream nodes that were created *by* those edges
+          // and have no other incoming edges / no user-authored actions. Keeping the
+          // target node is safer when the user has added content to it.
+          const droppedTargetIds = new Set(
+            existingOut.filter(e => dropEdgeIds.has(e.id)).map(e => e.target)
+          );
+          const dropNodeIds = new Set();
+          for (const tId of droppedTargetIds) {
+            const targetNode = sm.nodes.find(n => n.id === tId);
+            if (!targetNode) continue;
+            const hasOtherIn = sm.edges.some(e => e.target === tId && !dropEdgeIds.has(e.id));
+            const hasOutgoing = sm.edges.some(e => e.source === tId);
+            const hasActions = (targetNode.data?.actions ?? []).length > 0;
+            if (!hasOtherIn && !hasOutgoing && !hasActions) dropNodeIds.add(tId);
+          }
           set(s => ({
             project: _updateProject(s, sms => sms.map(sm2 => {
               if (sm2.id !== smId) return sm2;
-              const updatedEdges = sm2.edges.map(e => {
-                if (e.id === singleEdge.id) {
-                  return { ...e, label: exitLabel, data: { ...e.data, label: exitLabel } };
-                }
-                return e;
-              });
-              const updatedNodes = sm2.nodes.map(n => {
-                if (singleEdge && n.id === singleEdge.target && n.data?.label === singleEdge.label) {
-                  return { ...n, data: { ...n.data, label: exitLabel } };
-                }
-                return n;
-              });
+              const updatedEdges = sm2.edges
+                .filter(e => !dropEdgeIds.has(e.id))
+                .map(e => {
+                  if (e.id === keepEdge.id) {
+                    // Normalize the kept edge to the canonical single-exit shape so
+                    // the node renders a single bottom handle, not a side handle.
+                    return {
+                      ...e,
+                      sourceHandle: 'exit-single',
+                      label: exitLabel,
+                      style: { ...(e.style ?? {}), stroke: '#16a34a' },
+                      markerEnd: { type: 'ArrowClosed', color: '#16a34a' },
+                      labelBgStyle: { ...(e.labelBgStyle ?? {}), fill: '#16a34a', rx: 4, ry: 4 },
+                      data: { ...(e.data ?? {}), label: exitLabel, isDecisionExit: true, exitColor: 'pass' },
+                    };
+                  }
+                  return e;
+                });
+              const updatedNodes = sm2.nodes
+                .filter(n => !dropNodeIds.has(n.id))
+                .map(n => {
+                  if (n.id === keepEdge.target && n.data?.label === keepEdge.label) {
+                    return { ...n, data: { ...n.data, label: exitLabel } };
+                  }
+                  return n;
+                });
               return { ...sm2, edges: updatedEdges, nodes: updatedNodes };
             })),
           }));

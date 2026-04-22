@@ -18,6 +18,7 @@ import { ActionModal } from './components/modals/ActionModal.jsx';
 import { ProjectManagerModal } from './components/modals/ProjectManagerModal.jsx';
 import { RecipeManagerModal } from './components/modals/RecipeManagerModal.jsx';
 import { useDiagramStore } from './store/useDiagramStore.js';
+import { seedStandardsIfEmpty } from './lib/standardsLibrary.js';
 
 // ── Error Boundary ─────────────────────────────────────────────────────────
 // Catches React render crashes and shows an error instead of a blank page.
@@ -103,6 +104,9 @@ export function App() {
   useEffect(() => {
     store.deduplicateAutoVisionParams();   // one-time cleanup of duplicate vision params
     store.initializeProjects();
+    // One-time seed of the standards library from the bundled JSON file.
+    // No-ops if the user already has entries or has been seeded before.
+    seedStandardsIfEmpty();
   }, []);
 
   return (

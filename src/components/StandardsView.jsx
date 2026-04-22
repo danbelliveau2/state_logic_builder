@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useDiagramStore } from '../store/useDiagramStore.js';
-import { getStandards, deleteStandard, saveStandard, duplicateStandard, renameStandard } from '../lib/standardsLibrary.js';
+import {
+  getStandards, deleteStandard, saveStandard, duplicateStandard, renameStandard,
+  exportStandardsLibrary, importStandardsLibrary,
+} from '../lib/standardsLibrary.js';
 
 export function StandardsView() {
   const store = useDiagramStore();
@@ -13,6 +16,8 @@ export function StandardsView() {
   // Inline-rename state: which card's name is being edited + the draft text
   const [renamingId, setRenamingId] = useState(null);
   const [renameDraft, setRenameDraft] = useState('');
+  // Hidden file input used by the Import button
+  const importInputRef = useRef(null);
 
   function refresh() {
     setTemplates(getStandards());
@@ -72,6 +77,31 @@ export function StandardsView() {
   function cancelRename() {
     setRenamingId(null);
     setRenameDraft('');
+  }
+
+  function handleExport() {
+    const count = exportStandardsLibrary();
+    if (count === 0) {
+      window.alert('Library is empty — nothing to export.');
+    }
+  }
+
+  async function handleImportFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const mode = window.confirm(
+      'OK = MERGE (add imported entries, skip duplicates).\n' +
+      'Cancel = REPLACE (wipe current library and install the imported one).'
+    ) ? 'merge' : 'replace';
+    const result = await importStandardsLibrary(file, mode);
+    // Reset the input so the same file can be re-picked later
+    e.target.value = '';
+    if (!result) {
+      window.alert('Import failed — file is not a valid standards library JSON.');
+      return;
+    }
+    refresh();
+    window.alert(`Import complete. Library now has ${result.total} standards.`);
   }
 
   function handleCreateNew() {
@@ -172,6 +202,27 @@ export function StandardsView() {
         <button className="standards-view__new-btn" onClick={() => setNewFormOpen(v => !v)}>
           + New Standard
         </button>
+        <button
+          className="standards-view__io-btn"
+          onClick={handleExport}
+          title="Download the entire library as JSON (drop-in seed for public/standards-seed.json)"
+        >
+          Export
+        </button>
+        <button
+          className="standards-view__io-btn"
+          onClick={() => importInputRef.current?.click()}
+          title="Load a library JSON — merge with or replace current entries"
+        >
+          Import
+        </button>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept="application/json,.json"
+          style={{ display: 'none' }}
+          onChange={handleImportFile}
+        />
       </div>
 
       {newFormOpen && (

@@ -103,3 +103,86 @@ export function renameStandard(id, newName) {
   if (!id || !newName?.trim()) return false;
   return updateStandard(id, { name: newName.trim() });
 }
+
+/** Key used to remember whether we've already tried to seed this browser.
+ *  Prevents re-importing the seed file every reload (which would overwrite
+ *  the user's local edits with whatever shipped with the app). */
+const SEED_FLAG_KEY = 'sdc_standards_library_seeded';
+
+/** On first launch in a fresh browser, pull `/standards-seed.json` shipped
+ *  with the app (served out of `public/`) and stuff its entries into
+ *  localStorage. Idempotent — once seeded, never runs again for this origin
+ *  unless the user clears storage. Safe to call unconditionally on app mount.
+ *
+ *  Strategy:
+ *    - If SEED_FLAG_KEY is already set → skip (user has seen the seed once).
+ *    - If localStorage already has standards → mark seeded, skip.
+ *    - Else fetch /standards-seed.json and write whatever we get.
+ *  Any network / parse error silently no-ops; the app just starts empty.
+ */
+export async function seedStandardsIfEmpty() {
+  try {
+    if (localStorage.getItem(SEED_FLAG_KEY)) return; // already processed
+    const existing = localStorage.getItem(STORAGE_KEY);
+    if (existing && JSON.parse(existing).length > 0) {
+      localStorage.setItem(SEED_FLAG_KEY, '1');
+      return;
+    }
+    const res = await fetch('/standards-seed.json', { cache: 'no-cache' });
+    if (!res.ok) { localStorage.setItem(SEED_FLAG_KEY, '1'); return; }
+    const seed = await res.json();
+    if (Array.isArray(seed) && seed.length > 0) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
+    }
+    localStorage.setItem(SEED_FLAG_KEY, '1');
+  } catch {
+    // Fetch failed (offline, no seed file, etc.) — leave storage alone.
+    // Don't set the flag so a future reload gets another chance.
+  }
+}
+
+/** Export the full library as a JSON Blob download. Called by the Export
+ *  button in StandardsView. The resulting file is drop-in compatible with
+ *  `public/standards-seed.json` — commit it to ship a default library. */
+export function exportStandardsLibrary() {
+  const standards = getStandards();
+  const json = JSON.stringify(standards, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  a.download = `standards-library-${ts}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  return standards.length;
+}
+
+/** Import a JSON library from a File object (e.g. from <input type="file">).
+ *  Mode:
+ *    - 'replace' — wipes the current library and installs the imported one
+ *    - 'merge'   — appends imported entries, skipping any with duplicate ids
+ *  Returns { added, total } counts, or null on parse error. */
+export async function importStandardsLibrary(file, mode = 'merge') {
+  if (!file) return null;
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    if (!Array.isArray(parsed)) return null;
+    let merged;
+    if (mode === 'replace') {
+      merged = parsed;
+    } else {
+      const existing = getStandards();
+      const seen = new Set(existing.map(s => s.id));
+      const added = parsed.filter(s => s?.id && !seen.has(s.id));
+      merged = [...existing, ...added];
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+    return { added: merged.length - (mode === 'replace' ? 0 : getStandards().length - merged.length), total: merged.length };
+  } catch {
+    return null;
+  }
+}

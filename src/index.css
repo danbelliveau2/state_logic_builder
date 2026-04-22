@@ -1356,6 +1356,24 @@ body {
 }
 .standards-view__new-btn:active { transform: translateY(1px); }
 
+.standards-view__io-btn {
+  padding: 9px 14px;
+  background: #fff;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.standards-view__io-btn:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+  color: #111827;
+}
+.standards-view__io-btn:active { transform: translateY(1px); }
+
 /* ── New Standard inline form ─────────────────────────────────────────────── */
 
 .standards-view__new-form {

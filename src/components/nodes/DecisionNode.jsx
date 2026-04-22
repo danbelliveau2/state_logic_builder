@@ -149,7 +149,16 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
   const [decisionType, setDecisionType] = useState(data.decisionType ?? 'signal');
   const [exitCount, setExitCount] = useState(() => {
     const isConfigured = data.signalName && data.signalName !== 'Select Signal...';
-    if (data.exitCount != null && isConfigured) return data.exitCount;
+    const storedCount = data.exitCount;
+    if (storedCount != null && isConfigured) {
+      // Rule: a wait node with one (or zero) condition can't branch — if the
+      // condition isn't met, the state simply doesn't advance (same as any
+      // other state). Only decide-mode and multi-condition waits branch.
+      // Auto-correct older nodes that violate this rule on popup open.
+      const condCount = data.conditions?.length ?? (data.sensorRef || data.signalType === 'partTracking' ? 1 : 0);
+      if (data.nodeMode !== 'decide' && condCount <= 1 && storedCount > 1) return 1;
+      return storedCount;
+    }
     return data.nodeMode === 'decide' ? 2 : 1;
   });
   const [exit1Label, setExit1Label] = useState(data.exit1Label ?? 'Pass');
@@ -440,6 +449,13 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     const finalExit1Label = primary ? primary.exit1 : exit1Label;
     const finalExit2Label = primary ? primary.exit2 : exit2Label;
 
+    // Safety net: enforce the wait-branching rule. A wait node with ≤1 condition
+    // can't branch — it just waits. Force single exit regardless of what the
+    // local state says (which should already be correct via UI hiding + init).
+    const finalExitCount = (nodeMode === 'wait' && conditions.length <= 1 && exitCount > 1)
+      ? 1
+      : (nodeMode === 'verify' && exitCount > 1 ? 1 : exitCount);
+
     const updatedData = {
       signalId,
       signalName: finalSignalName,
@@ -447,7 +463,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
       signalSmName,
       signalType: finalSignalType,
       decisionType,
-      exitCount,
+      exitCount: finalExitCount,
       exit1Label: finalExit1Label,
       exit2Label: finalExit2Label,
       nodeMode,
@@ -483,19 +499,19 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
       }
     }
     // Include outcome labels for multi-outcome mode
-    if (exitCount > 2) {
-      updatedData.outcomeLabels = outcomeLabels.slice(0, exitCount);
+    if (finalExitCount > 2) {
+      updatedData.outcomeLabels = outcomeLabels.slice(0, finalExitCount);
     }
     store.updateNodeData(smId, nodeId, updatedData);
-    if (exitCount > 2) {
-      store.addDecisionMultiBranch(smId, nodeId, outcomeLabels.slice(0, exitCount));
-    } else if (exitCount === 2) {
+    if (finalExitCount > 2) {
+      store.addDecisionMultiBranch(smId, nodeId, outcomeLabels.slice(0, finalExitCount));
+    } else if (finalExitCount === 2) {
       store.addDecisionBranches(smId, nodeId, finalExit1Label, finalExit2Label);
-    } else if (exitCount === 1) {
+    } else if (finalExitCount === 1) {
       store.addDecisionSingleBranch(smId, nodeId, finalExit1Label);
     }
     // Create retry branch if retry is enabled (any mode with 2 exits)
-    if (retryEnabled && exitCount === 2) {
+    if (retryEnabled && finalExitCount === 2) {
       store.addDecisionRetryBranch(smId, nodeId);
     }
     onClose();
@@ -590,9 +606,11 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                       className="nodrag"
                       onClick={() => {
                         setNodeMode(m.key);
-                        // Decide always branches; Wait defaults to single exit
+                        // Decide always branches; Wait collapses to a single exit UNLESS
+                        // it's a multi-condition wait (each condition can own an exit).
                         if (m.key === 'decide' && exitCount === 1) setExitCount(2);
-                        if (m.key === 'wait' && exitCount === 2) setExitCount(1);
+                        if (m.key === 'wait' && exitCount > 1 && conditions.length <= 1) setExitCount(1);
+                        if (m.key === 'verify' && exitCount > 1) setExitCount(1);
                       }}
                       style={{
                         flex: 1, padding: '7px 0', borderRadius: 5, cursor: 'pointer', fontSize: 13, fontWeight: 600,
@@ -1274,21 +1292,27 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
             </button>
           )}
 
-          {/* 2 branches -- dual exit */}
-          <button
-            className="nodrag"
-            onClick={() => { setExitCount(2); setExit1Label(dualLabel1); setExit2Label(dualLabel2); }}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-              padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
-              background: exitCount === 2 ? '#1574c4' : '#fff',
-              border: exitCount === 2 ? '1px solid #3b82f6' : '1px solid #d1d5db',
-              color: exitCount === 2 ? '#fff' : '#1e293b', fontSize: 11, textAlign: 'left',
-            }}
-          >
-            <span style={{ fontWeight: 700, fontSize: 13 }}>2</span>
-            <span style={{ flex: 1 }}>Branch <b>{dualLabel1} / {dualLabel2}</b></span>
-          </button>
+          {/* 2 branches -- dual exit.
+              Hidden for wait mode with ≤1 condition: a wait on a single condition
+              can't branch — if the condition isn't met, the state just doesn't
+              advance (same rule as any other state). Wait only branches when
+              multiple conditions are being watched (one exit per condition). */}
+          {!(nodeMode === 'wait' && conditions.length <= 1) && (
+            <button
+              className="nodrag"
+              onClick={() => { setExitCount(2); setExit1Label(dualLabel1); setExit2Label(dualLabel2); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
+                background: exitCount === 2 ? '#1574c4' : '#fff',
+                border: exitCount === 2 ? '1px solid #3b82f6' : '1px solid #d1d5db',
+                color: exitCount === 2 ? '#fff' : '#1e293b', fontSize: 11, textAlign: 'left',
+              }}
+            >
+              <span style={{ fontWeight: 700, fontSize: 13 }}>2</span>
+              <span style={{ flex: 1 }}>Branch <b>{dualLabel1} / {dualLabel2}</b></span>
+            </button>
+          )}
 
           {/* Multiple outcomes — decide mode only */}
           {nodeMode === 'decide' && (
@@ -1538,7 +1562,12 @@ export function DecisionNode({ data, selected, id }) {
   // Derived mode flags used in render below
   const isSensor = signalType === 'sensor' || !!sensorRef;
   const isVerify = nodeMode === 'verify';
-  const isDecide = !isVerify && (nodeMode === 'decide' || exitCount === 2);
+  // Only the explicit 'decide' mode earns the "Decide" badge + purple styling.
+  // A wait node with 2 exits (user picked "Branch True/False" in step 2) is still
+  // a WAIT node — it waits for the signal to resolve, then branches on the outcome.
+  // Its op badge should still read "Wait On" / "Wait Off", and its on/off toggle
+  // should stay usable (canToggleOnOff depends on !isDecide).
+  const isDecide = nodeMode === 'decide';
   // IO type from tag prefix: i_ = DI, q_ = DO
   const ioType = isSensor && sensorInputType !== 'range'
     ? (sensorTag?.startsWith('q_') ? 'DO' : sensorTag?.startsWith('i_') ? 'DI' : null)
@@ -1608,17 +1637,26 @@ export function DecisionNode({ data, selected, id }) {
     const sigId = data.signalId;
     if (!sigId) return null;
     const sig = projectSignals.find(s => s.id === sigId);
-    if (!sig || sig.type !== 'state' || !sig.stateNodeId || !sig.smId) return null;
+    if (!sig || sig.type !== 'state' || !sig.smId) return null;
     // Find the referenced SM and compute current step numbers (live — state numbers
     // are never cached; they come from computeStateNumbers every render).
     const refSm = allSMs.find(sm => sm.id === sig.smId);
     if (!refSm) return null;
     const { stateMap } = computeStateNumbers(refSm.nodes ?? [], refSm.edges ?? [], refSm.devices ?? []);
-    const stepNum = stateMap.get(sig.stateNodeId) ?? '?';
+    // Prefer stateNodeId (stable across renames). Fallback: match by stateName
+    // for older signals stored before we switched to node-id references — avoids
+    // showing stale "Step 3" baked into signalSource when the state has moved.
+    let stepNum = sig.stateNodeId ? stateMap.get(sig.stateNodeId) : null;
+    if (stepNum == null && sig.stateName) {
+      const cleanSigState = sig.stateName.replace(/^\[\d+\]\s*[✓⌂⏳]?\s*/, '').trim();
+      const matchNode = (refSm.nodes ?? []).find(n => (n.data?.label ?? '').trim() === cleanSigState);
+      if (matchNode) stepNum = stateMap.get(matchNode.id);
+    }
+    if (stepNum == null) return null;
     const smName = refSm.displayName ?? refSm.name ?? '';
-    // reachedMode: 'in' → Step == N (in that state right now)
-    //              'reached' → Step >= N (at or past that state)
-    const verb = sig.reachedMode === 'reached' ? 'reached' : 'in';
+    // reachedMode: 'in' → Step == N (in that state right now) → "is in State N"
+    //              'reached' → Step >= N (at or past that state) → "has reached State N"
+    const verb = sig.reachedMode === 'reached' ? 'has reached' : 'is in';
     return `${smName ? smName + ' ' : ''}${verb} State ${stepNum}`;
   }, [data.signalId, projectSignals, allSMs]);
 
@@ -1790,7 +1828,7 @@ export function DecisionNode({ data, selected, id }) {
             if (sensorInputType === 'range') { opLabel = 'Verify Range'; opColor = '#f59e0b'; }
             else { opLabel = isOn ? 'Verify On' : 'Verify Off'; opColor = isOn ? '#16a34a' : '#dc2626'; }
           } else if (isDecide) {
-            opLabel = 'Branch'; opColor = '#7c3aed';
+            opLabel = 'Decide'; opColor = '#7c3aed';
           } else if (isVisionJob) {
             opLabel = 'Vision'; opColor = '#0ea5e9';
           } else if (isSensor) {
@@ -1827,7 +1865,10 @@ export function DecisionNode({ data, selected, id }) {
           } else if (isVisionJob && signalName && signalName !== subjectLine) {
             verifyText = `Job: ${signalName}`;
           } else if (isDecide) {
-            verifyText = resolvedSourceLabel || sourceLabel || (signalName && signalName !== subjectLine ? signalName : null);
+            // Prefer LIVE state-resolved text ("{sm} has reached State N" / "{sm} is in State N")
+            // so renumbering stays accurate. Never fall back to stored signalSource —
+            // older entries baked "→ Step N" into that string and it goes stale on renumber.
+            verifyText = resolvedSourceLabel || (signalName && signalName !== subjectLine ? signalName : null);
           } else if (resolvedSourceLabel) {
             verifyText = resolvedSourceLabel;
           } else if (sourceLabel) {
