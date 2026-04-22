@@ -4,10 +4,26 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.19';
+export const APP_VERSION = '1.20';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.20',
+    date: '2026-04-22',
+    time: '11:00',
+    author: 'Dan Belliveau',
+    changes: [
+      'Standards auto-save — new standards are written to the library immediately on creation; every subsequent edit auto-saves (400ms debounce)',
+      'Tab switches / unmounts flush any pending standards save — edits are never lost',
+      'Standards-linked tabs show a green "★ Saved" pill in the SM header instead of the star button',
+      'Copy button on each library card duplicates a standard to a new editable row with fresh UUIDs (nodes, edges, devices all independent)',
+      'Inline rename — double-click a standard name in the library to edit; Enter/blur saves, Esc cancels',
+      'Standards grouped by category with uppercase headers and per-category count pills; Uncategorized sorts last',
+      'Click anywhere on a library card to open — the redundant Open button is gone',
+      'Fix: SM name and description carry into library correctly on open + create',
+    ],
+  },
   {
     version: '1.19',
     date: '2026-04-22',

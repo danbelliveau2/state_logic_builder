@@ -24,7 +24,7 @@ import { DrawingConnectionLine } from './edges/DrawingConnectionLine.jsx';
 import { ManualDrawOverlay } from './edges/ManualDrawOverlay.jsx';
 import { useDiagramStore } from '../store/useDiagramStore.js';
 import { buildVerifyLabel } from '../lib/conditionBuilder.js';
-import { saveStandard } from '../lib/standardsLibrary.js';
+import { saveStandard, updateStandard } from '../lib/standardsLibrary.js';
 import { computeStateNumbers } from '../lib/computeStateNumbers.js';
 import { computeExitLabels, computeSegmentAxes, computeAutoRoute } from '../lib/edgeRouting.js';
 import { OUTCOME_COLORS } from '../lib/outcomeColors.js';
@@ -169,6 +169,10 @@ function getSourceHandlePos(fromNode, handleId) {
 export function Canvas() {
   const store = useDiagramStore();
   const sm = store.getActiveSm();
+  const project = store.project;
+  // Auto-save state for standards-linked tabs (shown in SM header)
+  const [standardSaveAt, setStandardSaveAt] = useState(null);
+  const pendingStandardSaveRef = useRef(null);
   const reactFlowWrapper = useRef(null);
   const { screenToFlowPosition, setCenter, getViewport, setViewport, fitView, getNodes } = useReactFlow();
   const [selectMode, setSelectMode] = useState(false);
@@ -189,6 +193,45 @@ export function Canvas() {
   // guard, a single drag-release produces two waypoints (one at the corner from
   // onConnectEnd, one at the click position from onPaneClick).
   const lastConnectEndAt = useRef(0);
+
+  // ── Auto-save standards-linked tabs back to the library ───────────────────
+  // When this project is a standard (isStandard) AND it carries a standardId,
+  // any change to the SM's nodes/edges/devices/name/description/category is
+  // debounced-persisted to the localStorage Standards Library. On tab switch
+  // or unmount, the pending save is flushed so no edits are lost.
+  const standardId = project?.standardId;
+  const isStandard = project?.isStandard === true;
+  const stdNodes = sm?.nodes;
+  const stdEdges = sm?.edges;
+  const stdDevices = sm?.devices;
+  const stdName = sm?.displayName ?? sm?.name ?? project?.name;
+  const stdDesc = sm?.description;
+  const stdCategory = sm?.category;
+  useEffect(() => {
+    if (!isStandard || !standardId || !sm) return;
+    const doSave = () => {
+      updateStandard(standardId, {
+        name: stdName,
+        description: stdDesc,
+        category: stdCategory,
+        nodes: stdNodes ?? [],
+        edges: stdEdges ?? [],
+        devices: stdDevices ?? [],
+      });
+      setStandardSaveAt(Date.now());
+      pendingStandardSaveRef.current = null;
+    };
+    pendingStandardSaveRef.current = doSave;
+    const timer = setTimeout(doSave, 400);
+    return () => {
+      clearTimeout(timer);
+      // Flush any pending save before switching tabs / unmounting
+      if (pendingStandardSaveRef.current) {
+        pendingStandardSaveRef.current();
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isStandard, standardId, stdNodes, stdEdges, stdDevices, stdName, stdDesc, stdCategory]);
 
   // ── Re-space nodes vertically using designTheme.verticalNodeSpacing (as GAP) ─
   // Spacing = the visual gap between the bottom of one row and the top of
@@ -1294,17 +1337,36 @@ export function Canvas() {
               ))}
             </select>
           )}
-          {/* Save to Standards */}
-          <button
-            className="canvas-star-btn"
-            title="Save to Standards Library"
-            onClick={() => {
-              setStarName(sm.name || '');
-              setStarDesc('');
-              setStarCategory('');
-              setStarFormOpen(v => !v);
-            }}
-          >★</button>
+          {/* Standards auto-save indicator — shown only when this tab is
+              linked to a library entry (isStandard + standardId). Replaces
+              the ★ button because there's nothing to manually save. */}
+          {isStandard && standardId ? (
+            <span
+              className="canvas-standard-saved"
+              title="This tab is linked to the Standards Library. All edits are saved automatically."
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                marginLeft: 8, fontSize: 11, fontWeight: 600,
+                color: recoveryMode ? '#fff' : '#16a34a',
+                background: recoveryMode ? 'rgba(255,255,255,0.15)' : 'rgba(22,163,74,0.12)',
+                padding: '3px 8px', borderRadius: 10,
+              }}
+            >
+              <span style={{ fontSize: 10 }}>★</span>
+              {standardSaveAt ? 'Saved' : 'Linked'}
+            </span>
+          ) : (
+            <button
+              className="canvas-star-btn"
+              title="Save to Standards Library"
+              onClick={() => {
+                setStarName(sm.name || '');
+                setStarDesc('');
+                setStarCategory('');
+                setStarFormOpen(v => !v);
+              }}
+            >★</button>
+          )}
         </div>
       )}
       {/* Star save form — floats below the header */}
