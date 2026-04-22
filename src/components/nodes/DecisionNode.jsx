@@ -24,6 +24,84 @@ import { PtBadge } from './PtBadge.jsx';
 import { ConnectMenu, HandleClickZone } from '../ConnectMenu.jsx';
 import { OUTCOME_COLORS } from '../../lib/outcomeColors.js';
 
+// ── On/Off Switcher Popup ─────────────────────────────────────────────────────
+// Mirrors StateNode's OperationSwitcher UX. Click the Wait On / Verify On pill
+// on a decision node to open this little menu; pick On or Off.
+
+function OnOffSwitcher({ smId, nodeId, currentType, mode, pos, onClose }) {
+  const menuRef = useRef(null);
+  const store = useDiagramStore();
+  const zoomStyle = useReactFlowZoomScale();
+
+  useEffect(() => {
+    function handleDown(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) onClose();
+    }
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleDown, true);
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', handleDown, true);
+    };
+  }, [onClose]);
+
+  const verb = mode === 'verify' ? 'Verify' : 'Wait';
+  const options = [
+    { value: 'on',  label: `${verb} On`,  color: '#16a34a' },
+    { value: 'off', label: `${verb} Off`, color: '#dc2626' },
+  ];
+
+  return createPortal(
+    <div ref={menuRef} className="nodrag nowheel" style={{
+      position: 'fixed',
+      top: pos.top,
+      left: pos.left,
+      zIndex: 10000,
+      background: '#fff',
+      border: '1px solid #d1d5db',
+      borderRadius: 8,
+      boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+      padding: '4px 0',
+      minWidth: 140,
+      ...zoomStyle,
+    }}>
+      {options.map(op => {
+        const isActive = currentType === op.value || (op.value === 'on' && currentType !== 'off');
+        return (
+          <div
+            key={op.value}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              if (!isActive) {
+                store.updateNodeData(smId, nodeId, { conditionType: op.value });
+              }
+              onClose();
+            }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '6px 12px', cursor: 'pointer',
+              background: isActive ? '#f0f7ff' : 'transparent',
+              fontWeight: isActive ? 700 : 500,
+              fontSize: 12,
+            }}
+            onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = '#f5f5f5'; }}
+            onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+          >
+            <span style={{
+              display: 'inline-block', width: 10, height: 10, borderRadius: 3,
+              background: op.color, flexShrink: 0,
+            }} />
+            <span style={{ color: '#1e293b' }}>{op.label}</span>
+            {isActive && <span style={{ marginLeft: 'auto', color: '#1574c4', fontSize: 11 }}>✓</span>}
+          </div>
+        );
+      })}
+    </div>,
+    document.body
+  );
+}
+
 // ── Inline Edit Popup ──────────────────────────────────────────────────────────
 
 function buildVisionSignalsLocal(allSMs) {
@@ -1392,6 +1470,8 @@ export function DecisionNode({ data, selected, id }) {
 
   const [showPopup, setShowPopup] = useState(false);
   const [popupPos, setPopupPos] = useState({ top: 0, left: 0 });
+  // Op pill switcher (On/Off picker) — matches StateNode's OperationSwitcher pattern
+  const [opSwitcher, setOpSwitcher] = useState(null); // { pos: { top, left } }
 
   // ref on the node wrapper for getBoundingClientRect
   const nodeRef = useRef(null);
@@ -1529,26 +1609,17 @@ export function DecisionNode({ data, selected, id }) {
     if (!sigId) return null;
     const sig = projectSignals.find(s => s.id === sigId);
     if (!sig || sig.type !== 'state' || !sig.stateNodeId || !sig.smId) return null;
-    // Find the referenced SM and compute current step numbers
+    // Find the referenced SM and compute current step numbers (live — state numbers
+    // are never cached; they come from computeStateNumbers every render).
     const refSm = allSMs.find(sm => sm.id === sig.smId);
     if (!refSm) return null;
     const { stateMap } = computeStateNumbers(refSm.nodes ?? [], refSm.edges ?? [], refSm.devices ?? []);
     const stepNum = stateMap.get(sig.stateNodeId) ?? '?';
-    const refNode = (refSm.nodes ?? []).find(n => n.id === sig.stateNodeId);
-    // Build a clean state label
-    let stateName = sig.stateName ?? 'State';
-    // Strip any old [N] prefix from legacy stored names
-    stateName = stateName.replace(/^\[\d+\]\s*[✓⌂⏳]?\s*/, '');
-    if (refNode) {
-      if (refNode.data?.isComplete) stateName = 'Cycle Complete';
-      else if (refNode.data?.isInitial) stateName = 'Home / Initial';
-      else if (refNode.type === 'decisionNode') {
-        const src = refNode.data?.signalSource ?? refNode.data?.signalName ?? 'Decision';
-        stateName = `Wait: ${src}`;
-      } else if (refNode.data?.label) stateName = refNode.data.label;
-    }
     const smName = refSm.displayName ?? refSm.name ?? '';
-    return `${smName ? smName + ' \u2192 ' : ''}Step ${stepNum}: ${stateName}`;
+    // reachedMode: 'in' → Step == N (in that state right now)
+    //              'reached' → Step >= N (at or past that state)
+    const verb = sig.reachedMode === 'reached' ? 'reached' : 'in';
+    return `${smName ? smName + ' ' : ''}${verb} State ${stepNum}`;
   }, [data.signalId, projectSignals, allSMs]);
 
   // Resolve live device + condition name from conditions[0].ref
@@ -1695,108 +1766,158 @@ export function DecisionNode({ data, selected, id }) {
         </div>
       )}
 
-      {/* Content -- centered text; click here to open popup (not the border) */}
+      {/* Content — ActionRow-style layout: [icon] [subject bold] [op badge] / advance-when text.
+          Mirrors StateNode ActionRow so verify/wait/decide share the same visual grammar as actions. */}
       <div
         onPointerDown={handlePointerDown}
         onClick={handleClick}
         style={{
-          padding: '10px 20px 10px',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          textAlign: 'center',
-          color: textColor,
-          lineHeight: 1.3,
-          minHeight: 64,
+          padding: '8px 10px',
           pointerEvents: 'auto',
         }}
       >
-        {/* Line 1: mode name only */}
-        <span style={{ fontSize: 10, color: mutedColor, marginBottom: 2 }}>
-          {isVerify ? 'Verify' : isDecide ? 'Branch' : 'Wait'}
-        </span>
-        {/* Line 2: device/subject — big bold, live name from store */}
-        <span
-          title={subjectLine}
-          style={{
-            fontSize: 14,
-            fontWeight: 700,
-            lineHeight: 1.2,
-            maxWidth: '100%',
-            wordBreak: 'break-word',
-            overflowWrap: 'anywhere',
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
-          }}
-        >
-          {subjectLine}
-        </span>
-        {/* Line 3: DI[2] [On] - MagnetPick all on one row (wait/decide sensor only) */}
-        {showConditionRow && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
-            {conditionPrefix && (
-              <span style={{ fontSize: 9, color: mutedColor, lineHeight: 1.3 }}>{conditionPrefix}</span>
-            )}
-            <span style={{
-              display: 'inline-block',
-              fontSize: 10, fontWeight: 800, letterSpacing: '.5px',
-              padding: '1px 8px', borderRadius: 8, color: '#fff',
-              background: conditionType === 'off' ? '#dc2626' : '#16a34a',
-              textShadow: '0 1px 1px rgba(0,0,0,0.3)', flexShrink: 0,
-            }}>{conditionType === 'off' ? 'Off' : 'On'}</span>
-            {condName && condName !== subjectLine && (
-              <span style={{ fontSize: 9, color: mutedColor, lineHeight: 1.3 }}>- {condName}</span>
-            )}
-          </div>
-        )}
-        {/* Verify mode On/Off pill (separate line, bold) */}
-        {isVerify && isSensor && sensorInputType !== 'range' && (
-          <span style={{
-            display: 'inline-block',
-            fontSize: 10, fontWeight: 800, letterSpacing: '.5px',
-            padding: '2px 10px', borderRadius: 8, color: '#fff',
-            background: conditionType === 'off' ? '#dc2626' : '#16a34a',
-            marginTop: 3, textShadow: '0 1px 1px rgba(0,0,0,0.3)',
-          }}>{`Verify ${conditionType === 'off' ? 'Off' : 'On'}`}</span>
-        )}
-        {/* Non-sensor neutral pill (vision, state signals, multi-condition) */}
-        {!isSensor && sourceLabel && (
-          <span style={{
-            display: 'inline-block', fontSize: 9, fontWeight: 600,
-            padding: '2px 8px', borderRadius: 8,
-            color: 'rgba(255,255,255,0.9)',
-            background: 'rgba(255,255,255,0.15)',
-            border: '1px solid rgba(255,255,255,0.25)',
-            marginTop: 3, maxWidth: '100%',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{sourceLabel}</span>
-        )}
+        {(() => {
+          // Icon type from device/signal category
+          let iconType = null;
+          if (isVisionJob) iconType = 'VisionSystem';
+          else if (isSensor) iconType = sensorInputType === 'range' ? 'AnalogSensor' : 'DigitalSensor';
+          else if (liveDevice?.type) iconType = liveDevice.type;
+
+          // Operation badge: mode + sensor polarity drives label + color
+          const isOn = conditionType !== 'off';
+          let opLabel, opColor;
+          if (isVerify) {
+            if (sensorInputType === 'range') { opLabel = 'Verify Range'; opColor = '#f59e0b'; }
+            else { opLabel = isOn ? 'Verify On' : 'Verify Off'; opColor = isOn ? '#16a34a' : '#dc2626'; }
+          } else if (isDecide) {
+            opLabel = 'Branch'; opColor = '#7c3aed';
+          } else if (isVisionJob) {
+            opLabel = 'Vision'; opColor = '#0ea5e9';
+          } else if (isSensor) {
+            if (sensorInputType === 'range') { opLabel = 'Wait Range'; opColor = '#0ea5e9'; }
+            else { opLabel = isOn ? 'Wait On' : 'Wait Off'; opColor = isOn ? '#16a34a' : '#dc2626'; }
+          } else {
+            // Signal-based waits (state / condition / position) — still binary,
+            // respect conditionType so the label toggles with the op switcher.
+            opLabel = isOn ? 'Wait On' : 'Wait Off';
+            opColor = isOn ? '#16a34a' : '#dc2626';
+          }
+
+          // Auto-scale subject font (match StateNode scaling)
+          const nameLen = (subjectLine ?? '').length;
+          const badgeLen = (opLabel ?? '').length;
+          const totalLen = nameLen + badgeLen;
+          const nameFontSize = totalLen <= 14 ? 13 : totalLen <= 18 ? 12 : totalLen <= 22 ? 11 : totalLen <= 28 ? 10 : 9;
+
+          // Advance-when detail line (under the row).
+          //   Verify: on/off is already in the op badge AND on the branch edges — no second row.
+          //   Wait:   show "{Subject} = ON/OFF" as the condition that advances this state.
+          //   Decide: show the signal/source being branched on.
+          //   Vision: show the job name when it differs from the subject.
+          let verifyText = null;
+          if (isVerify) {
+            verifyText = null; // branch labels + op badge already communicate the condition
+          } else if (isSensor && sensorInputType === 'range') {
+            const minStr = rangeMin !== undefined && rangeMin !== '' ? rangeMin : '?';
+            const maxStr = rangeMax !== undefined && rangeMax !== '' ? rangeMax : '?';
+            verifyText = `Range: ${minStr} – ${maxStr}`;
+          } else if (isSensor) {
+            // Wait on/off sensor: "Subject = ON" / "Subject = OFF"
+            verifyText = `${subjectLine} = ${isOn ? 'ON' : 'OFF'}`;
+          } else if (isVisionJob && signalName && signalName !== subjectLine) {
+            verifyText = `Job: ${signalName}`;
+          } else if (isDecide) {
+            verifyText = resolvedSourceLabel || sourceLabel || (signalName && signalName !== subjectLine ? signalName : null);
+          } else if (resolvedSourceLabel) {
+            verifyText = resolvedSourceLabel;
+          } else if (sourceLabel) {
+            verifyText = sourceLabel;
+          } else if (signalName && signalName !== subjectLine) {
+            // Fallback for wait-signal nodes (state/condition/position)
+            verifyText = `${subjectLine} = ON`;
+          }
+
+          // Inner card tinted to match the outer node color (softer than pure white).
+          const innerBg = `color-mix(in srgb, ${fillColor} 22%, #ffffff)`;
+
+          // Op pill opens a mini popup (matches StateNode action-pill pattern).
+          // Binary wait/verify nodes only — Decide, Vision, and Range aren't binary.
+          const isRangeOp = sensorInputType === 'range';
+          const canToggleOnOff = !isDecide && !isVisionJob && !isRangeOp;
+          const handleOpClick = canToggleOnOff
+            ? (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                if (opSwitcher) {
+                  setOpSwitcher(null);
+                } else {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setOpSwitcher({ pos: { top: rect.bottom + 4, left: rect.left } });
+                }
+              }
+            : undefined;
+
+          return (
+            <div className="action-row-wrap">
+              <div className="action-row" style={{ borderLeftColor: opColor, background: innerBg }}>
+                {iconType && (
+                  <span className="action-icon"><DeviceIcon type={iconType} size={14} /></span>
+                )}
+                <span
+                  className="action-device"
+                  style={{ fontSize: nameFontSize }}
+                  title={subjectLine}
+                >
+                  {subjectLine}
+                </span>
+                <span
+                  className={`action-op${canToggleOnOff ? ' action-op--clickable nodrag' : ''}`}
+                  style={{
+                    background: opColor,
+                    color: '#fff',
+                    borderColor: opColor,
+                  }}
+                  onClick={handleOpClick}
+                  onMouseDown={canToggleOnOff ? (e) => e.stopPropagation() : undefined}
+                  title={canToggleOnOff ? 'Click to toggle On / Off' : undefined}
+                >{opLabel}</span>
+              </div>
+              {verifyText && (
+                <div className="action-verify" style={{ color: '#ffffff', opacity: 0.92, textShadow: '0 1px 1px rgba(0,0,0,0.25)' }}>
+                  {verifyText}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {/* Retry badge — shows in any mode when retry is enabled */}
         {retryEnabled && (
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 3,
-            fontSize: 9, fontWeight: 700,
-            background: 'rgba(0,0,0,0.3)', color: '#fbbf24',
-            padding: '1px 6px', borderRadius: 8, marginTop: 3,
-            letterSpacing: '0.03em',
-          }}>
-            {'\u21BB'} Retry x{retryMax}
-          </span>
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 4 }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 3,
+              fontSize: 9, fontWeight: 700,
+              background: 'rgba(0,0,0,0.3)', color: '#fbbf24',
+              padding: '1px 6px', borderRadius: 8,
+              letterSpacing: '0.03em',
+            }}>
+              {'\u21BB'} Retry x{retryMax}
+            </span>
+          </div>
         )}
         {/* Part Tracking badge */}
         {data.ptEnabled && data.ptFieldName && (
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 3,
-            fontSize: 9, fontWeight: 700,
-            background: 'rgba(0,0,0,0.3)', color: '#86efac',
-            padding: '1px 6px', borderRadius: 8, marginTop: 3,
-            letterSpacing: '0.03em',
-          }}>
-            📊 PT: {data.ptFieldName}
-          </span>
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 4 }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 3,
+              fontSize: 9, fontWeight: 700,
+              background: 'rgba(0,0,0,0.3)', color: '#86efac',
+              padding: '1px 6px', borderRadius: 8,
+              letterSpacing: '0.03em',
+            }}>
+              📊 PT: {data.ptFieldName}
+            </span>
+          </div>
         )}
       </div>
 
@@ -1809,6 +1930,18 @@ export function DecisionNode({ data, selected, id }) {
           data={data}
           onClose={() => setShowPopup(false)}
           style={popupPos}
+        />
+      )}
+
+      {/* On/Off switcher popup for the op pill */}
+      {opSwitcher && smId && (
+        <OnOffSwitcher
+          smId={smId}
+          nodeId={id}
+          currentType={conditionType}
+          mode={nodeMode}
+          pos={opSwitcher.pos}
+          onClose={() => setOpSwitcher(null)}
         />
       )}
 

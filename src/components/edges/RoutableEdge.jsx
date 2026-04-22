@@ -151,6 +151,43 @@ export function RoutableEdge({
         style={{ pointerEvents: 'none' }}
       />
 
+      {/* Direction arrows — one per segment longer than MIN_SEGMENT_LEN.
+          Short connectors between bends don't need arrows. Loops/backward edges
+          get multiple arrows that show flow at each run.
+          First segment skips the area covered by a source pill (if present). */}
+      {segments.map((seg, i) => {
+        const MIN_SEGMENT_LEN = 60;
+        const SIZE = 7;
+        const WIDTH = 4;
+        const segLen = Math.hypot(seg.b.x - seg.a.x, seg.b.y - seg.a.y);
+        if (segLen < MIN_SEGMENT_LEN) return null;
+
+        const hasSourcePill = i === 0 && data?.isDecisionExit && data?.outcomeLabel && sourceHandle !== 'exit-single';
+        const PILL_CLEAR = 84;
+        // If a source pill covers the first segment's start, place arrow past it;
+        // skip entirely if the segment can't fit both pill and arrow.
+        if (hasSourcePill && segLen < PILL_CLEAR + 20) return null;
+        const tDist = hasSourcePill ? PILL_CLEAR : segLen * 0.5;
+
+        const ux = (seg.b.x - seg.a.x) / segLen;
+        const uy = (seg.b.y - seg.a.y) / segLen;
+        const ax = seg.a.x + ux * tDist;
+        const ay = seg.a.y + uy * tDist;
+        const px = -uy, py = ux;
+        const tip   = { x: ax + ux * SIZE,             y: ay + uy * SIZE };
+        const baseL = { x: ax - ux * SIZE + px * WIDTH, y: ay - uy * SIZE + py * WIDTH };
+        const baseR = { x: ax - ux * SIZE - px * WIDTH, y: ay - uy * SIZE - py * WIDTH };
+        return (
+          <polygon
+            key={`arrow-${i}`}
+            points={`${tip.x},${tip.y} ${baseL.x},${baseL.y} ${baseR.x},${baseR.y}`}
+            fill={strokeColor}
+            opacity={0.75}
+            style={{ pointerEvents: 'none' }}
+          />
+        );
+      })}
+
       {/* Decision exit label pill — placed near the source handle (skip single-exit) */}
       {data?.isDecisionExit && data?.outcomeLabel && sourceHandle !== 'exit-single' && segments.length > 0 && (() => {
         const isPass    = data.exitColor === 'pass';

@@ -4,10 +4,36 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.16.5';
+export const APP_VERSION = '1.18';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.18',
+    date: '2026-04-22',
+    time: '07:15',
+    author: 'Dan Belliveau',
+    changes: [
+      'Direction arrows now render on every segment longer than 60px — loops and U-bends show flow at each run',
+      'Click Wait On / Verify On pill to open an On/Off switcher popup (matches StateNode action-pill UX)',
+      'Wait node advance-when text is live — "Magnet_PNP in State 13" / "reached State 13" pulled fresh every render, no stale step references',
+      'Signal-based wait pill toggles polarity (Wait On ⇄ Wait Off) instead of being locked on',
+      'Inner action-row card tinted to match outer node color — softer contrast on verify/wait nodes',
+      'Verify node drops the redundant advance-when row — branch labels already communicate On/Off',
+    ],
+  },
+  {
+    version: '1.17',
+    date: '2026-04-21',
+    time: '16:30',
+    author: 'Dan Belliveau',
+    changes: [
+      'Direction arrows on all edges — subtle chevron mid-last-segment shows flow direction',
+      'Unified wait/verify/decide nodes with StateNode ActionRow layout: [icon] [subject bold] [op badge] + advance-when text',
+      'Op badge dynamically labels the node: Wait On / Wait Off / Verify On / Verify Off / Branch / Vision / Wait Range / Verify Range',
+      'L5X export: SM output tag prefix q_ (was p_) — matches SDC standard for output parameters (non-latching OTE)',
+    ],
+  },
   {
     version: '1.16.5',
     date: '2026-04-21',

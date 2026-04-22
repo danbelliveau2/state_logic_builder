@@ -1237,10 +1237,11 @@ ${decoratedMembers}</Structure>
 </Tag>`, 'PartTracking');
   }
 
-  // SM Output BOOL tags (p_OutputName) — one per smOutput entry
+  // SM Output BOOL tags (q_OutputName) — one per smOutput entry
+  // q_ prefix = output parameter (non-latching, OTE pattern per SDC standard)
   for (const smOut of sm.smOutputs ?? []) {
     if (!smOut.name) continue;
-    const tag = `p_${smOut.name.replace(/[^a-zA-Z0-9_]/g, '')}`;
+    const tag = `q_${smOut.name.replace(/[^a-zA-Z0-9_]/g, '')}`;
     const desc = smOut.description ? smOut.description : `SM Output: ${smOut.name}`;
     addTag(buildBoolTagXml(tag, desc, 'Public'), tag);
   }
@@ -2745,13 +2746,13 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
 
   // ── SM Output OTE rungs ──────────────────────────────────────────────────
   // Each SM Output is TRUE only while the SM is in the specified state (OTE pattern).
-  // Tag: p_OutputName
-  // Rung: XIC(Status.State[N]) OTE(p_OutputName);
+  // Tag: q_OutputName  (q_ = output parameter, non-latching)
+  // Rung: XIC(Status.State[N]) OTE(q_OutputName);
   for (const smOut of sm.smOutputs ?? []) {
     if (!smOut.name || !smOut.activeNodeId) continue;
     const step = stepMap[smOut.activeNodeId];
     if (step == null) continue;
-    const tag = `p_${smOut.name.replace(/[^a-zA-Z0-9_]/g, '')}`;
+    const tag = `q_${smOut.name.replace(/[^a-zA-Z0-9_]/g, '')}`;
     rungs.push(
       buildRung(
         rungNum++,
