@@ -4,10 +4,26 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.22';
+export const APP_VERSION = '1.23';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.23',
+    date: '2026-04-22',
+    time: '21:00',
+    author: 'Dan Belliveau',
+    changes: [
+      'Standards Library is now TEAM-SHARED — backed by a single JSON file on the N:\\ drive',
+      'Save a standard on one machine → every teammate sees it on their next Refresh (or next app launch)',
+      'New /api/standards endpoints (GET/POST upsert/DELETE) with auto-backup of the last 5 versions',
+      'Electron desktop app defaults standardsDir to N:\\AI Folder\\State Logic Diagrams\\standards with graceful fallback to local AppData if the share is unreachable',
+      'localStorage is now only an offline cache — app stays usable without network, syncs when it comes back',
+      'StandardsView: "● Shared" / "● Offline" pill shows sync status; new Refresh button pulls latest from server',
+      'Import now pushes merged/replaced library to the shared server so everyone sees the imported entries',
+      'Removed the public/standards-seed.json fetch-on-first-launch flow — superseded by real sync',
+    ],
+  },
   {
     version: '1.22',
     date: '2026-04-22',

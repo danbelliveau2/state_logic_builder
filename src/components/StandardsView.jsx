@@ -1,14 +1,41 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useDiagramStore } from '../store/useDiagramStore.js';
 import {
   getStandards, deleteStandard, saveStandard, duplicateStandard, renameStandard,
   exportStandardsLibrary, importStandardsLibrary,
+  subscribeStandards, refreshStandardsFromServer, isStandardsServerReachable,
 } from '../lib/standardsLibrary.js';
 
 export function StandardsView() {
   const store = useDiagramStore();
   const [templates, setTemplates] = useState(() => getStandards());
+  const [serverUp, setServerUp] = useState(() => isStandardsServerReachable());
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
+
+  // Subscribe to cache changes. The library notifies whenever it changes —
+  // either from a local mutation, a boot-time server pull, or a manual
+  // refresh — and we rerender. Also pull fresh data on mount so navigating
+  // to the Standards view shows other team members' recent additions.
+  useEffect(() => {
+    const unsub = subscribeStandards(() => {
+      setTemplates(getStandards());
+      setServerUp(isStandardsServerReachable());
+    });
+    // Fire-and-forget refresh — cache renders instantly, server result updates
+    // once it lands.
+    refreshStandardsFromServer();
+    return unsub;
+  }, []);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    try {
+      await refreshStandardsFromServer();
+    } finally {
+      setRefreshing(false);
+    }
+  }
   const [newFormOpen, setNewFormOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newCategory, setNewCategory] = useState('');
@@ -193,6 +220,14 @@ export function StandardsView() {
     <div className="standards-view">
       <div className="standards-view__header">
         <h2 className="standards-view__title">Standards Library</h2>
+        <span
+          className={`standards-view__sync ${serverUp ? 'standards-view__sync--online' : 'standards-view__sync--offline'}`}
+          title={serverUp
+            ? 'Connected to the shared team library. Changes are visible to everyone.'
+            : 'Offline — showing your local cache. Changes will sync when the server is reachable.'}
+        >
+          {serverUp ? '● Shared' : '● Offline'}
+        </span>
         <input
           className="standards-view__search"
           placeholder="Search by name, category, or description…"
@@ -204,15 +239,23 @@ export function StandardsView() {
         </button>
         <button
           className="standards-view__io-btn"
+          onClick={handleRefresh}
+          disabled={refreshing}
+          title="Pull the latest shared library from the server — use this if a teammate just added a new standard"
+        >
+          {refreshing ? 'Refreshing…' : 'Refresh'}
+        </button>
+        <button
+          className="standards-view__io-btn"
           onClick={handleExport}
-          title="Download the entire library as JSON (drop-in seed for public/standards-seed.json)"
+          title="Download the entire library as JSON — handy for one-off backups or sharing offline"
         >
           Export
         </button>
         <button
           className="standards-view__io-btn"
           onClick={() => importInputRef.current?.click()}
-          title="Load a library JSON — merge with or replace current entries"
+          title="Load a library JSON — merge with or replace current entries (pushed to shared library)"
         >
           Import
         </button>

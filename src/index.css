@@ -1373,6 +1373,34 @@ body {
   color: #111827;
 }
 .standards-view__io-btn:active { transform: translateY(1px); }
+.standards-view__io-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Sync status pill — sits next to the title, shows whether we're
+ * connected to the shared library or running from the local cache. */
+.standards-view__sync {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  user-select: none;
+}
+.standards-view__sync--online {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #86efac;
+}
+.standards-view__sync--offline {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
 
 /* ── New Standard inline form ─────────────────────────────────────────────── */
 

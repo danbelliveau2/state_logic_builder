@@ -6,13 +6,23 @@
  *              PORT=8080 node server.js
  *
  * Embedded:    const { startServer } = require('./server.js')
- *              startServer({ port, dataDir, distDir })
+ *              startServer({ port, dataDir, standardsDir, distDir })
  *
  * API:
  *   GET    /api/projects              list all projects
  *   GET    /api/projects/:filename    load a project
  *   POST   /api/projects/:filename    save / overwrite a project
  *   DELETE /api/projects/:filename    delete a project
+ *
+ *   GET    /api/standards             get the entire shared standards library (array)
+ *   POST   /api/standards             replace the entire library with the POST body
+ *   POST   /api/standards/:id         upsert a single standard by id
+ *   DELETE /api/standards/:id         remove a single standard by id
+ *
+ * The standards endpoints back a single shared JSON file at
+ * `<standardsDir>/standards.json` so every client hitting this server
+ * sees the same library. Auto-backs up the last 5 versions before each
+ * write — same pattern as projects.
  */
 
 const http = require('http');
@@ -54,12 +64,24 @@ function readBody(req) {
   });
 }
 
-function startServer({ port, dataDir, distDir } = {}) {
-  const PORT_     = port    || Number(process.env.PORT)    || 3131;
-  const DATA_DIR_ = dataDir || process.env.DATA_DIR        || path.join(__dirname, 'projects');
-  const DIST_DIR_ = distDir || process.env.DIST_DIR        || path.join(__dirname, 'dist');
+function startServer({ port, dataDir, standardsDir, distDir } = {}) {
+  const PORT_          = port         || Number(process.env.PORT)      || 3131;
+  const DATA_DIR_      = dataDir      || process.env.DATA_DIR          || path.join(__dirname, 'projects');
+  // Standards library lives in its own dir so the projects listing isn't
+  // polluted with standards.json. Default sits next to the projects dir —
+  // either both are on local AppData (single-user) or both are on the
+  // shared network drive (team).
+  const STANDARDS_DIR_ = standardsDir || process.env.STANDARDS_DIR     || path.join(path.dirname(DATA_DIR_), 'standards');
+  const STANDARDS_FILE_ = path.join(STANDARDS_DIR_, 'standards.json');
+  const DIST_DIR_      = distDir      || process.env.DIST_DIR          || path.join(__dirname, 'dist');
 
   fs.mkdirSync(DATA_DIR_, { recursive: true });
+  // Best-effort — if this path is a network share that's currently
+  // unreachable, don't crash the whole server. The route handlers will
+  // surface a clear 5xx when they actually try to read/write.
+  try { fs.mkdirSync(STANDARDS_DIR_, { recursive: true }); } catch (e) {
+    console.warn('[standards] Could not create', STANDARDS_DIR_, '—', e.message);
+  }
 
   function handleList(res) {
     const files = fs.readdirSync(DATA_DIR_).filter(f => f.endsWith('.json'));
@@ -130,6 +152,95 @@ function startServer({ port, dataDir, distDir } = {}) {
     catch (e) { sendJson(res, 500, { error: e.message }); }
   }
 
+  // ── Standards Library (shared across all clients) ─────────────────────────
+
+  /** Read the full standards array from disk. Returns [] if the file is
+   *  missing or unreadable. Never throws — callers get an empty list on
+   *  any error and can treat it as "no standards yet". */
+  function readStandardsArray() {
+    try {
+      if (!fs.existsSync(STANDARDS_FILE_)) return [];
+      const raw = fs.readFileSync(STANDARDS_FILE_, 'utf8');
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      console.warn('[standards] read failed:', e.message);
+      return [];
+    }
+  }
+
+  /** Atomically write the array to disk. Backs up the previous version
+   *  (last 5 retained) to match the project auto-backup behavior so a bad
+   *  import or accidental clear can always be recovered. */
+  function writeStandardsArray(arr) {
+    try { fs.mkdirSync(STANDARDS_DIR_, { recursive: true }); } catch (_) {}
+    if (fs.existsSync(STANDARDS_FILE_)) {
+      const backupDir = path.join(STANDARDS_DIR_, '_backups');
+      try {
+        fs.mkdirSync(backupDir, { recursive: true });
+        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+        fs.copyFileSync(STANDARDS_FILE_, path.join(backupDir, `standards__${ts}.json`));
+        // Prune — keep last 5
+        const backups = fs.readdirSync(backupDir)
+          .filter(f => f.startsWith('standards__'))
+          .sort()
+          .reverse();
+        for (const old of backups.slice(5)) {
+          try { fs.unlinkSync(path.join(backupDir, old)); } catch (_) {}
+        }
+      } catch (e) {
+        console.warn('[standards] backup failed:', e.message);
+      }
+    }
+    // Write to a temp file then rename — avoids a half-written file if
+    // the process dies mid-write (especially over a network share).
+    const tmp = STANDARDS_FILE_ + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(arr, null, 2), 'utf8');
+    fs.renameSync(tmp, STANDARDS_FILE_);
+  }
+
+  function handleStandardsList(res) {
+    sendJson(res, 200, readStandardsArray());
+  }
+
+  async function handleStandardsReplace(req, res) {
+    try {
+      const body = await readBody(req);
+      const parsed = JSON.parse(body);
+      if (!Array.isArray(parsed)) return sendJson(res, 400, { error: 'Body must be a JSON array' });
+      writeStandardsArray(parsed);
+      sendJson(res, 200, { ok: true, total: parsed.length });
+    } catch (e) { sendJson(res, 500, { error: e.message }); }
+  }
+
+  async function handleStandardsUpsert(req, res, id) {
+    if (!id) return sendJson(res, 400, { error: 'Missing id' });
+    try {
+      const body = await readBody(req);
+      const incoming = JSON.parse(body);
+      if (!incoming || typeof incoming !== 'object') return sendJson(res, 400, { error: 'Body must be a JSON object' });
+      // Id in the URL is authoritative; overwrite any mismatched id in the body.
+      incoming.id = id;
+      const current = readStandardsArray();
+      const idx = current.findIndex(s => s?.id === id);
+      if (idx === -1) current.push(incoming);
+      else current[idx] = incoming;
+      writeStandardsArray(current);
+      sendJson(res, 200, { ok: true, id, total: current.length });
+    } catch (e) { sendJson(res, 500, { error: e.message }); }
+  }
+
+  function handleStandardsDelete(res, id) {
+    if (!id) return sendJson(res, 400, { error: 'Missing id' });
+    try {
+      const current = readStandardsArray();
+      const next = current.filter(s => s?.id !== id);
+      if (next.length === current.length) return sendJson(res, 404, { error: 'Not found' });
+      writeStandardsArray(next);
+      sendJson(res, 200, { ok: true, id, total: next.length });
+    } catch (e) { sendJson(res, 500, { error: e.message }); }
+  }
+
   function serveStatic(res, reqPath) {
     let fp = path.join(DIST_DIR_, reqPath === '/' ? 'index.html' : reqPath);
     if (!path.extname(fp) || !fs.existsSync(fp)) fp = path.join(DIST_DIR_, 'index.html');
@@ -161,6 +272,16 @@ function startServer({ port, dataDir, distDir } = {}) {
       return sendJson(res, 405, { error: 'Method not allowed' });
     }
 
+    if (pathname.startsWith('/api/standards')) {
+      const rest = pathname.slice('/api/standards'.length);
+      const id   = rest.startsWith('/') ? decodeURIComponent(rest.slice(1)) : null;
+      if (!id && method === 'GET')    return handleStandardsList(res);
+      if (!id && method === 'POST')   return handleStandardsReplace(req, res);
+      if (id  && method === 'POST')   return handleStandardsUpsert(req, res, id);
+      if (id  && method === 'DELETE') return handleStandardsDelete(res, id);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
     if (fs.existsSync(DIST_DIR_)) return serveStatic(res, pathname);
 
     res.writeHead(503, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -187,7 +308,8 @@ function startServer({ port, dataDir, distDir } = {}) {
     console.log('='.repeat(56));
     console.log('  Local:    http://localhost:' + PORT_);
     ips.forEach(ip => console.log('  Network:  http://' + ip + ':' + PORT_ + '  <- share with team'));
-    console.log('  Projects: ' + DATA_DIR_);
+    console.log('  Projects:  ' + DATA_DIR_);
+    console.log('  Standards: ' + STANDARDS_DIR_);
     console.log('='.repeat(56) + '\n  Press Ctrl+C to stop.\n');
   });
 

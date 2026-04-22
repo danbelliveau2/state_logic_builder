@@ -129,8 +129,27 @@ app.whenReady().then(async () => {
   const dataDir = path.join(app.getPath('userData'), 'projects');
   fs.mkdirSync(dataDir, { recursive: true });
 
+  // Standards library is TEAM-SHARED by default — points at the N:\ network
+  // drive so every engineer running the app sees the same library in real
+  // time. If the share is unreachable (laptop off-network, path not mapped),
+  // fall back to the user's local AppData so the app still runs — it just
+  // won't sync until they reconnect and restart.
+  const SHARED_STANDARDS_DIR = 'N:\\AI Folder\\State Logic Diagrams\\standards';
+  const LOCAL_STANDARDS_DIR  = path.join(app.getPath('userData'), 'standards');
+  let standardsDir = SHARED_STANDARDS_DIR;
+  try {
+    fs.mkdirSync(SHARED_STANDARDS_DIR, { recursive: true });
+    // Touch-test write access so we fail fast now, not on first save.
+    fs.accessSync(SHARED_STANDARDS_DIR, fs.constants.W_OK);
+    console.log('[standards] Using shared library at', SHARED_STANDARDS_DIR);
+  } catch (err) {
+    console.warn('[standards] Shared path unreachable —', err.message, '— falling back to local');
+    standardsDir = LOCAL_STANDARDS_DIR;
+    fs.mkdirSync(LOCAL_STANDARDS_DIR, { recursive: true });
+  }
+
   const { startServer } = require(serverScript);
-  const server = startServer({ port: PORT, dataDir, distDir });
+  const server = startServer({ port: PORT, dataDir, standardsDir, distDir });
 
   await new Promise((resolve, reject) => {
     server.once('listening', resolve);
