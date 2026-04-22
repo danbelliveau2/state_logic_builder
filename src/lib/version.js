@@ -4,10 +4,22 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.20';
+export const APP_VERSION = '1.21';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.21',
+    date: '2026-04-22',
+    time: '15:20',
+    author: 'Dan Belliveau',
+    changes: [
+      'Edge clearance: source/target nodes now push their own edge\'s stub-adjacent segments when dragged across them',
+      'Dragging a source node DOWN pulls the bottom horizontal with it — no more snap-above-node',
+      'Handle-based push direction: bottom-handle source pushes own seg down, side handles push outward, target pushes own seg up',
+      'Owner-biased pushes no longer gated by corridor check — force to correct side whenever X ranges overlap',
+    ],
+  },
   {
     version: '1.20',
     date: '2026-04-22',

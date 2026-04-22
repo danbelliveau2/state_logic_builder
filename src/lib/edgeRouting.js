@@ -323,58 +323,150 @@ export function adjustTerminalRuns(waypoints, src, tgt, sourceHandle) {
  * Skips source/target nodes to preserve perpendicular handle stubs.
  * Runs on ALL edges — both manual-route and auto-route.
  */
-export function enforceNodeClearance(wps, src, tgt, allNodes) {
+export function enforceNodeClearance(wps, src, tgt, allNodes, sourceHandle = null) {
   if (!allNodes || !wps || wps.length < 2) return wps;
 
   const PAD = 25;
   const result = wps.map(wp => ({ ...wp }));
 
-  // Skip the edge's own source/target nodes — stubs must stay perpendicular
-  const skipIds = new Set();
+  // Identify which nodes own the source handle and which own the target handle.
+  // The stub segments (first segment at src end, last segment at tgt end) must
+  // stay perpendicular to their handle face, so those segments skip their own
+  // owner node. MIDDLE segments still check against source/target — so if a
+  // node is dragged across the middle of its own edge's route (e.g. the long
+  // vertical of a U-loop), it correctly pushes that segment away.
+  const srcNodeIds = new Set();
+  const tgtNodeIds = new Set();
   for (const node of allNodes) {
     const nx = node.position?.x ?? 0;
     const ny = node.position?.y ?? 0;
     const nw = node.measured?.width ?? node.width ?? NODE_WIDTH;
     const nh = node.measured?.height ?? node.height ?? 80;
-    const containsSrc = src.x >= nx && src.x <= nx + nw && src.y >= ny - 5 && src.y <= ny + nh + 5;
-    const containsTgt = tgt.x >= nx && tgt.x <= nx + nw && tgt.y >= ny - 5 && tgt.y <= ny + nh + 5;
-    if (containsSrc || containsTgt) skipIds.add(node.id);
+    if (src.x >= nx && src.x <= nx + nw && src.y >= ny - 5 && src.y <= ny + nh + 5) srcNodeIds.add(node.id);
+    if (tgt.x >= nx && tgt.x <= nx + nw && tgt.y >= ny - 5 && tgt.y <= ny + nh + 5) tgtNodeIds.add(node.id);
   }
-  const checkNodes = allNodes.filter(n => !skipIds.has(n.id));
+
+  // Handle-based push direction for OWNER-NODE pushes on stub-adjacent segments.
+  // The closer-side heuristic used below for all other pushes is unstable here —
+  // when the user drags the owner node fast, the segment can momentarily end up
+  // in the upper half of the node's bounding box, flipping the "closer side"
+  // from the bottom edge to the top edge and causing the segment to snap across
+  // the node (running alongside its top edge — violation of the perpendicular
+  // stub rule). A segment attached to a bottom handle is structurally always
+  // BELOW its source, so force the push direction DOWN for that case. Same idea
+  // for side handles (push outward from handle face) and for the target end
+  // (top handle → last segment is above target → force UP).
+  const srcIsPassHandle   = sourceHandle === 'exit-pass';
+  const srcIsFailHandle   = sourceHandle === 'exit-fail';
+  const srcIsBottomHandle = !srcIsPassHandle && !srcIsFailHandle; // null, exit-single, exit-retry
+
+  const lastSegIdx = result.length - 2; // segment index for wp[last-1]→wp[last]
+
+  // Stub axes — used by the collinearity check below to decide whether
+  // pushing a stub-adjacent segment would break the perpendicular stub.
+  const firstWp = result[0];
+  const lastWp  = result[result.length - 1];
+  const srcStubVert  = Math.abs(firstWp.x - src.x) <= 2;  // stub goes src → wp[0] vertically
+  const srcStubHoriz = Math.abs(firstWp.y - src.y) <= 2;  // stub goes src → wp[0] horizontally
+  const tgtStubVert  = Math.abs(lastWp.x  - tgt.x) <= 2;
+  const tgtStubHoriz = Math.abs(lastWp.y  - tgt.y) <= 2;
 
   for (let i = 0; i < result.length - 1; i++) {
-    const a = result[i], b = result[i + 1];
-    const isVert = Math.abs(a.x - b.x) <= 2;
-    const isHoriz = Math.abs(a.y - b.y) <= 2;
+    // Determine segment axis from the INITIAL positions (axis can't change mid-loop).
+    const initA = result[i], initB = result[i + 1];
+    const isVert = Math.abs(initA.x - initB.x) <= 2;
+    const isHoriz = Math.abs(initA.y - initB.y) <= 2;
     if (!isVert && !isHoriz) continue;
 
-    for (const node of checkNodes) {
+    // Per-segment skip rule: only skip the owner node when pushing this segment
+    // WOULD actually break its perpendicular stub. That happens only when the
+    // segment is COLLINEAR with the stub (same axis) — in that case a push
+    // would shift the shared waypoint on the stub's axis, bending the stub.
+    //
+    // If the segment is perpendicular to the stub (e.g. stub goes straight
+    // down out of a bottom handle and then the first waypoint segment turns
+    // horizontal), pushing that perpendicular segment just lengthens/shortens
+    // the stub — the stub stays perpendicular. Safe to let the owner node push.
+    // This is what lets a source state, when dragged down, push its own
+    // downward-exiting U-loop's bottom horizontal further down out of the way.
+    const skipSrc = (i === 0) && (
+      (srcStubVert && isVert) || (srcStubHoriz && isHoriz)
+    );
+    const skipTgt = (i === lastSegIdx) && (
+      (tgtStubVert && isVert) || (tgtStubHoriz && isHoriz)
+    );
+
+    for (const node of allNodes) {
+      const isSrcOwner = srcNodeIds.has(node.id);
+      const isTgtOwner = tgtNodeIds.has(node.id);
+      if (skipSrc && isSrcOwner) continue;
+      if (skipTgt && isTgtOwner) continue;
+
       const nx = node.position?.x ?? 0;
       const ny = node.position?.y ?? 0;
       const nw = node.measured?.width ?? node.width ?? NODE_WIDTH;
       const nh = node.measured?.height ?? node.height ?? 80;
 
+      // Is this an owner-push on a stub-adjacent segment? (bias direction)
+      const biasSrc = isSrcOwner && (i === 0);
+      const biasTgt = isTgtOwner && (i === lastSegIdx);
+
+      // Live read: use the CURRENT segment position, not a snapshot captured
+      // before prior pushes in this inner loop. Fixes a latent bug where two
+      // nodes pushing the same segment could overwrite each other based on
+      // stale segX/segY.
       if (isVert) {
-        const segX = a.x;
-        const segMinY = Math.min(a.y, b.y);
-        const segMaxY = Math.max(a.y, b.y);
+        const segX = result[i].x;
+        const segMinY = Math.min(result[i].y, result[i + 1].y);
+        const segMaxY = Math.max(result[i].y, result[i + 1].y);
         if (segMaxY < ny || segMinY > ny + nh) continue;
-        if (segX > nx - PAD && segX < nx + nw + PAD) {
+
+        let newX = null;
+        if (biasSrc && srcIsPassHandle) {
+          // Left-side handle: seg 0 must stay LEFT of source node (stub points left)
+          const maxX = nx - PAD;
+          if (segX > maxX) newX = maxX;
+        } else if (biasSrc && srcIsFailHandle) {
+          // Right-side handle: seg 0 must stay RIGHT of source node
+          const minX = nx + nw + PAD;
+          if (segX < minX) newX = minX;
+        } else if (segX > nx - PAD && segX < nx + nw + PAD) {
+          // Default (non-owner): corridor-gated closer-side push
           const distLeft = segX - nx;
           const distRight = (nx + nw) - segX;
-          const newX = distLeft < distRight ? nx - PAD : nx + nw + PAD;
+          newX = distLeft < distRight ? nx - PAD : nx + nw + PAD;
+        }
+
+        if (newX !== null) {
           result[i] = { ...result[i], x: newX };
           result[i + 1] = { ...result[i + 1], x: newX };
         }
       } else {
-        const segY = a.y;
-        const segMinX = Math.min(a.x, b.x);
-        const segMaxX = Math.max(a.x, b.x);
+        const segY = result[i].y;
+        const segMinX = Math.min(result[i].x, result[i + 1].x);
+        const segMaxX = Math.max(result[i].x, result[i + 1].x);
         if (segMaxX < nx || segMinX > nx + nw) continue;
-        if (segY > ny - PAD && segY < ny + nh + PAD) {
+
+        let newY = null;
+        if (biasSrc && srcIsBottomHandle) {
+          // Bottom handle: seg 0 horizontal must stay BELOW source node — always,
+          // regardless of whether it's currently inside the corridor or orphaned
+          // above it after a fast drag. This is what stops the horizontal from
+          // ever snapping across the top of its own source node.
+          const minY = ny + nh + PAD;
+          if (segY < minY) newY = minY;
+        } else if (biasTgt) {
+          // Top handle target: last seg horizontal must stay ABOVE target node
+          const maxY = ny - PAD;
+          if (segY > maxY) newY = maxY;
+        } else if (segY > ny - PAD && segY < ny + nh + PAD) {
+          // Default (non-owner): corridor-gated closer-side push
           const distTop = segY - ny;
           const distBot = (ny + nh) - segY;
-          const newY = distTop < distBot ? ny - PAD : ny + nh + PAD;
+          newY = distTop < distBot ? ny - PAD : ny + nh + PAD;
+        }
+
+        if (newY !== null) {
           result[i] = { ...result[i], y: newY };
           result[i + 1] = { ...result[i + 1], y: newY };
         }

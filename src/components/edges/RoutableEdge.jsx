@@ -70,7 +70,7 @@ export function RoutableEdge({
   }
 
   // Push any segment that runs too close to a node away with clearance
-  routeWps = enforceNodeClearance(routeWps, src, tgt, nodes);
+  routeWps = enforceNodeClearance(routeWps, src, tgt, nodes, sourceHandle);
 
   // Build the full orthogonal point sequence
   const fullPts  = buildFullPath(src, routeWps, tgt);
