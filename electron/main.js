@@ -134,18 +134,22 @@ app.whenReady().then(async () => {
   // time. If the share is unreachable (laptop off-network, path not mapped),
   // fall back to the user's local AppData so the app still runs — it just
   // won't sync until they reconnect and restart.
+  //
+  // We don't do an aggressive W_OK accessSync probe here — Windows reports
+  // SMB share permissions inconsistently and the probe can reject perfectly
+  // writable paths. A successful mkdirSync (recursive) is enough evidence
+  // that the drive is mapped and the directory exists. Read/write errors
+  // during actual use surface cleanly as HTTP 5xx from /api/standards.
   const SHARED_STANDARDS_DIR = 'N:\\AI Folder\\State Logic Diagrams\\standards';
   const LOCAL_STANDARDS_DIR  = path.join(app.getPath('userData'), 'standards');
   let standardsDir = SHARED_STANDARDS_DIR;
   try {
     fs.mkdirSync(SHARED_STANDARDS_DIR, { recursive: true });
-    // Touch-test write access so we fail fast now, not on first save.
-    fs.accessSync(SHARED_STANDARDS_DIR, fs.constants.W_OK);
     console.log('[standards] Using shared library at', SHARED_STANDARDS_DIR);
   } catch (err) {
-    console.warn('[standards] Shared path unreachable —', err.message, '— falling back to local');
+    console.warn('[standards] Shared path unreachable —', err.message, '— falling back to', LOCAL_STANDARDS_DIR);
     standardsDir = LOCAL_STANDARDS_DIR;
-    fs.mkdirSync(LOCAL_STANDARDS_DIR, { recursive: true });
+    try { fs.mkdirSync(LOCAL_STANDARDS_DIR, { recursive: true }); } catch (_) {}
   }
 
   const { startServer } = require(serverScript);

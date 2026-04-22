@@ -76,8 +76,13 @@ export async function initStandardsLibrary() {
 
   try {
     const fresh = await api.fetchStandards();
-    writeCache(fresh);
+    // CRITICAL: flip the reachability flag BEFORE writeCache, because
+    // writeCache → notifyChanged → subscribers read `isStandardsServerReachable()`
+    // synchronously. If the flag is still false at that moment, the UI will
+    // show "Offline" even though the fetch just succeeded.
     serverReachable = true;
+    writeCache(fresh);
+    console.info('[standardsLibrary] synced from server —', fresh.length, 'standards');
     return true;
   } catch (err) {
     // Server unreachable — keep running with whatever's in the cache.
@@ -94,10 +99,11 @@ export async function initStandardsLibrary() {
 export async function refreshStandardsFromServer() {
   try {
     const fresh = await api.fetchStandards();
+    serverReachable = true;   // flip BEFORE writeCache — see init() for rationale
     writeCache(fresh);
-    serverReachable = true;
     return fresh;
   } catch (err) {
+    console.warn('[standardsLibrary] refresh failed:', err?.message);
     serverReachable = false;
     notifyChanged();
     return null;

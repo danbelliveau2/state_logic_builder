@@ -274,7 +274,29 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
 
     if (pathname.startsWith('/api/standards')) {
       const rest = pathname.slice('/api/standards'.length);
-      const id   = rest.startsWith('/') ? decodeURIComponent(rest.slice(1)) : null;
+      // /api/standards/_debug → diagnostic view of what the server is reading.
+      // Useful for "why is my app showing Offline?" — hit this URL in a browser
+      // pointed at the running server and see the resolved path + file status.
+      if (rest === '/_debug' && method === 'GET') {
+        const fileExists = fs.existsSync(STANDARDS_FILE_);
+        let entryCount = null;
+        let parseError = null;
+        if (fileExists) {
+          try {
+            const raw = fs.readFileSync(STANDARDS_FILE_, 'utf8');
+            const arr = JSON.parse(raw);
+            entryCount = Array.isArray(arr) ? arr.length : 'non-array';
+          } catch (e) { parseError = e.message; }
+        }
+        return sendJson(res, 200, {
+          standardsDir: STANDARDS_DIR_,
+          standardsFile: STANDARDS_FILE_,
+          fileExists,
+          entryCount,
+          parseError,
+        });
+      }
+      const id = rest.startsWith('/') ? decodeURIComponent(rest.slice(1)) : null;
       if (!id && method === 'GET')    return handleStandardsList(res);
       if (!id && method === 'POST')   return handleStandardsReplace(req, res);
       if (id  && method === 'POST')   return handleStandardsUpsert(req, res, id);

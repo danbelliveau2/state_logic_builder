@@ -4,10 +4,22 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.23';
+export const APP_VERSION = '1.23.1';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.23.1',
+    date: '2026-04-22',
+    time: '21:30',
+    author: 'Dan Belliveau',
+    changes: [
+      'Fix: "Offline" pill stuck on even after a successful boot sync — writeCache fired the change notification before serverReachable flipped to true, so the UI read a stale flag. Flag is now set BEFORE the cache write.',
+      'Remove aggressive fs.accessSync W_OK probe on the shared standards path — Windows reports SMB permissions inconsistently and the probe was rejecting writable paths. A successful mkdirSync is enough evidence; real read/write errors now surface cleanly as HTTP 5xx.',
+      'New diagnostic endpoint: GET /api/standards/_debug returns the resolved standards dir + file path + entry count. Hit it from the browser when the Offline pill stays on to see which path the server chose.',
+      'Standards API: console.info log on successful boot sync (# of standards pulled).',
+    ],
+  },
   {
     version: '1.23',
     date: '2026-04-22',
