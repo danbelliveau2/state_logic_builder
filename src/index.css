@@ -6988,6 +6988,38 @@ select.standards-editor__input {
   color: #231f20;
 }
 
+/* ── Canvas Spacing (editable) ────────────────────────────────────────── */
+
+.ds__canvas-spacing {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.ds__canvas-spacing-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  flex: 1;
+  min-width: 320px;
+}
+.ds__canvas-spacing-info {
+  flex: 1;
+  min-width: 200px;
+}
+.ds__canvas-spacing-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ds__canvas-spacing-preview {
+  padding: 12px 16px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 6px;
+  min-width: 160px;
+}
+
 /* ── Spacing & Layout ─────────────────────────────────────────────────── */
 
 .ds__spacing-grid {

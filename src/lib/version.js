@@ -4,10 +4,26 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.18';
+export const APP_VERSION = '1.19';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.19',
+    date: '2026-04-22',
+    time: '09:30',
+    author: 'Dan Belliveau',
+    changes: [
+      'Design System → Canvas Spacing: editable "Vertical Node Gap" value (default 80px)',
+      'Spacing is now a true gap — measured from bottom of one node to top of next, independent of node height',
+      'Tall Home nodes no longer squish the visual gap to the next step',
+      '+ Add State places new nodes at sourceBottom + gap using React-Flow measured heights',
+      'New "Re-space" button in bottom canvas toolbar — applies the configured gap to existing nodes',
+      'Re-space honors selection: ≥2 selected → only those nodes; nothing selected → all nodes',
+      'Row-aware re-spacing — branch siblings at same Y stay paired after re-spacing',
+      'Canvas Spacing input accepts free-typing (clear + retype), commits on valid values or Enter',
+    ],
+  },
   {
     version: '1.18',
     date: '2026-04-22',

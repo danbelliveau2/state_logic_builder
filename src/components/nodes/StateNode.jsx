@@ -2751,6 +2751,10 @@ function ConfigPill({ label, options, effective, meta, overridden, overrideText,
  */
 function HomeConfigPills({ smId, nodeId, sm, machineConfig }) {
   const store = useDiagramStore();
+  // Standards are generic sequence templates — they don't carry station-level
+  // start conditions (index timing, part-tracking entry rule). Hide those pills
+  // when editing a standard, but keep the Part Tracking table pill.
+  const isStandard = useDiagramStore(s => s.project?.isStandard === true);
   const homeNode = sm?.nodes?.find(n => n.id === nodeId);
 
   const entryEffective = resolveEntryRule(homeNode, sm, machineConfig);
@@ -2761,13 +2765,13 @@ function HomeConfigPills({ smId, nodeId, sm, machineConfig }) {
   const indexMeta = getStartConditionMeta(indexEffective);
   const indexOverridden = isIndexSyncOverridden(nodeId, sm);
 
-  const isIndexing = (machineConfig?.machineType ?? 'indexing') === 'indexing';
+  const isIndexing = !isStandard && (machineConfig?.machineType ?? 'indexing') === 'indexing';
 
   return (
     <div
       style={{
         position: 'absolute',
-        top: isIndexing ? -160 : -140,
+        top: isStandard ? -60 : (isIndexing ? -160 : -140),
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 9,
@@ -2782,19 +2786,21 @@ function HomeConfigPills({ smId, nodeId, sm, machineConfig }) {
         gap: 6,
         alignItems: 'center',
       }}>
-        {/* Header */}
-        <div style={{
-          fontSize: 10,
-          fontWeight: 600,
-          letterSpacing: '0.06em',
-          textTransform: 'uppercase',
-          color: '#94a3b8',
-          textAlign: 'center',
-        }}>
-          Start Conditions
-        </div>
+        {/* Header — standards are generic sequences, no "Start Conditions" */}
+        {!isStandard && (
+          <div style={{
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+            color: '#94a3b8',
+            textAlign: 'center',
+          }}>
+            Start Conditions
+          </div>
+        )}
 
-        {/* Index timing row (indexing machines only) */}
+        {/* Index timing row (indexing machines only, hidden on standards) */}
         {isIndexing && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
             <ConfigPill
@@ -2836,21 +2842,23 @@ function HomeConfigPills({ smId, nodeId, sm, machineConfig }) {
           </div>
         )}
 
-        {/* Part-tracking rule row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
-          <ConfigPill
-            options={ENTRY_RULES}
-            effective={entryEffective}
-            meta={entryMeta}
-            overridden={entryOverridden}
-            tooltip={entryOverridden
-              ? 'Overridden — the decision node after home controls part-tracking branching.'
-              : 'Whether this station runs based on part-tracking status.'}
-            onPick={(v) => store.updateNodeData(smId, nodeId, { entryRule: v })}
-          />
-        </div>
+        {/* Part-tracking entry rule row — hidden on standards (not a station concept) */}
+        {!isStandard && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+            <ConfigPill
+              options={ENTRY_RULES}
+              effective={entryEffective}
+              meta={entryMeta}
+              overridden={entryOverridden}
+              tooltip={entryOverridden
+                ? 'Overridden — the decision node after home controls part-tracking branching.'
+                : 'Whether this station runs based on part-tracking status.'}
+              onPick={(v) => store.updateNodeData(smId, nodeId, { entryRule: v })}
+            />
+          </div>
+        )}
 
-        {/* Part Tracking table pill — opens a portaled editable table */}
+        {/* Part Tracking table pill — opens a portaled editable table (kept on standards) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', marginTop: 2 }}>
           <PartTrackingPill sm={sm} />
         </div>

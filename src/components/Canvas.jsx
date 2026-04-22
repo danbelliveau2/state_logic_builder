@@ -190,6 +190,77 @@ export function Canvas() {
   // onConnectEnd, one at the click position from onPaneClick).
   const lastConnectEndAt = useRef(0);
 
+  // ── Re-space nodes vertically using designTheme.verticalNodeSpacing (as GAP) ─
+  // Spacing = the visual gap between the bottom of one row and the top of
+  // the next. Tall nodes get more vertical space; short nodes get less.
+  // Preserves branches (nodes at ~same current Y stay on the same row).
+  // If ≥2 nodes are selected, only re-spaces the selection; otherwise re-spaces all.
+  const respaceVertically = useCallback(() => {
+    if (!sm) return;
+    const activeSeqId = useDiagramStore.getState()._activeRecoverySeqId;
+    const rfNodes = getNodes(); // has measured heights + selection state
+    const storeNodes = activeSeqId
+      ? (sm.recoverySeqs ?? []).find(r => r.id === activeSeqId)?.nodes ?? []
+      : sm.nodes ?? [];
+    if (storeNodes.length < 2) return;
+
+    const gap = Number(useDiagramStore.getState().project?.designTheme?.verticalNodeSpacing) || 80;
+
+    // Attach measured height + selection flag.
+    const rfById = new Map(rfNodes.map(n => [n.id, n]));
+    const withMeta = storeNodes.map(n => {
+      const rfn = rfById.get(n.id);
+      return {
+        ...n,
+        _height: rfn?.measured?.height ?? rfn?.height ?? 120,
+        _selected: rfn?.selected === true,
+      };
+    });
+
+    // If 2+ nodes are selected, operate on just those; otherwise operate on all.
+    const selectedCount = withMeta.filter(n => n._selected).length;
+    const target = selectedCount >= 2 ? withMeta.filter(n => n._selected) : withMeta;
+    if (target.length < 2) return;
+
+    // Group target nodes into rows by current Y (ROW_TOLERANCE handles branch siblings).
+    const ROW_TOLERANCE = 30;
+    const sortedByY = [...target].sort((a, b) => a.position.y - b.position.y);
+    const rows = []; // [{ anchorY, nodes, maxHeight }]
+    for (const n of sortedByY) {
+      const last = rows[rows.length - 1];
+      if (last && Math.abs(n.position.y - last.anchorY) <= ROW_TOLERANCE) {
+        last.nodes.push(n);
+        last.maxHeight = Math.max(last.maxHeight, n._height);
+      } else {
+        rows.push({ anchorY: n.position.y, nodes: [n], maxHeight: n._height });
+      }
+    }
+
+    // Walk rows top-to-bottom: nextRowTop = prevRowTop + prevRowMaxHeight + gap.
+    const newTopById = new Map();
+    let currentTop = rows[0].anchorY;
+    for (let i = 0; i < rows.length; i++) {
+      for (const n of rows[i].nodes) newTopById.set(n.id, currentTop);
+      if (i < rows.length - 1) currentTop += rows[i].maxHeight + gap;
+    }
+
+    const changes = [];
+    for (const n of target) {
+      const newY = newTopById.get(n.id);
+      if (newY !== undefined && Math.abs(newY - n.position.y) >= 0.5) {
+        changes.push({ id: n.id, type: 'position', position: { x: n.position.x, y: newY } });
+      }
+    }
+
+    if (changes.length === 0) return;
+    store._pushHistory();
+    if (activeSeqId) {
+      store.onRecoveryNodesChange(sm.id, activeSeqId, changes);
+    } else {
+      store.onNodesChange(sm.id, changes);
+    }
+  }, [sm, store, getNodes]);
+
   // ── Straighten selected nodes (align centers to median center X) ─────────────
   const straightenSelected = useCallback(() => {
     if (!sm) return;
@@ -443,17 +514,24 @@ export function Canvas() {
       (currentNodes.length > 0 ? currentNodes[currentNodes.length - 1].id : null);
 
     // Default position: straight below source node (center-aligned); branch → offset right
+    // New Y = source bottom + gap, so tall nodes get more vertical room and
+    // the visual gap between nodes stays constant regardless of source height.
     if (!opts.position && connectFromId) {
       const sourceNode = currentNodes.find(n => n.id === connectFromId);
       if (sourceNode) {
         const existingOutEdges = currentEdges.filter(e => e.source === connectFromId);
-        const srcW = sourceNode.measured?.width ?? sourceNode.width ?? 240;
+        // Prefer React-Flow measured dimensions (live layout); fall back to stored values.
+        const rfSource = getNodes().find(n => n.id === connectFromId);
+        const srcW = rfSource?.measured?.width ?? sourceNode.measured?.width ?? sourceNode.width ?? 240;
+        const srcH = rfSource?.measured?.height ?? sourceNode.measured?.height ?? sourceNode.height ?? 120;
+        const gap = Number(useDiagramStore.getState().project?.designTheme?.verticalNodeSpacing) || 80;
         const newW = 240;
         const centerAlignedX = sourceNode.position.x + (srcW - newW) / 2;
+        const newY = sourceNode.position.y + srcH + gap;
         if (existingOutEdges.length > 0) {
-          opts = { ...opts, position: { x: sourceNode.position.x + 300, y: sourceNode.position.y + 200 } };
+          opts = { ...opts, position: { x: sourceNode.position.x + 300, y: newY } };
         } else {
-          opts = { ...opts, position: { x: centerAlignedX, y: sourceNode.position.y + 200 } };
+          opts = { ...opts, position: { x: centerAlignedX, y: newY } };
         }
       }
     }
@@ -1407,6 +1485,20 @@ export function Canvas() {
               <circle cx="12" cy="8" r="1.5" fill="currentColor" />
             </svg>
             <span>Straighten</span>
+          </button>
+          <button
+            className="btn btn--sm canvas-select-btn"
+            onClick={respaceVertically}
+            title="Re-space nodes vertically to the Design System gap value. With a selection: only the selected nodes. Nothing selected: all nodes."
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="1.5" width="10" height="3" rx="0.5" />
+              <rect x="3" y="11.5" width="10" height="3" rx="0.5" />
+              <line x1="8" y1="6" x2="8" y2="10" />
+              <polyline points="6,7 8,5 10,7" />
+              <polyline points="6,9 8,11 10,9" />
+            </svg>
+            <span>Re-space</span>
           </button>
         </div>
       </div>

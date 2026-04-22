@@ -1804,12 +1804,17 @@ export const useDiagramStore = create(
         if (!sm) return null;
         const stepNum = sm.nodes.length;
         const id = uid();
+        // Gap semantic — add (estimated node height + gap) per step for the fallback.
+        // Canvas.jsx supplies a precise position based on measured heights; this is
+        // only used when a node is added outside that path.
+        const vGap = Number(get().project?.designTheme?.verticalNodeSpacing) || 80;
+        const APPROX_NODE_H = 120;
         const node = {
           id,
           type: 'stateNode',
           position: options.position ?? {
             x: 300,
-            y: 80 + stepNum * 200,
+            y: 80 + stepNum * (APPROX_NODE_H + vGap),
           },
           data: {
             stepNumber: stepNum,
@@ -2674,10 +2679,12 @@ export const useDiagramStore = create(
         if (!seq) return null;
         const stepNum = seq.nodes.length;
         const id = uid();
+        const vGap = Number(get().project?.designTheme?.verticalNodeSpacing) || 80;
+        const APPROX_NODE_H = 120;
         const node = {
           id,
           type: 'stateNode',
-          position: options.position ?? { x: 300, y: 80 + stepNum * 200 },
+          position: options.position ?? { x: 300, y: 80 + stepNum * (APPROX_NODE_H + vGap) },
           data: {
             stepNumber: stepNum,
             label: options.label ?? (stepNum === 0 ? 'Start Recovery' : `Recovery Step ${stepNum}`),

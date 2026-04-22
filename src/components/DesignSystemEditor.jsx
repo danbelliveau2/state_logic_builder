@@ -15,7 +15,7 @@
  * Values are stored in project.designTheme for persistence.
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useDiagramStore } from '../store/useDiagramStore.js';
 import { DeviceIcon, DEVICE_ICON_COLORS } from './DeviceIcons.jsx';
 
@@ -236,6 +236,44 @@ function MiniPillShape({ w = 100, h = 40, fillColor = '#fff', borderColor = '#15
       <rect x="1" y="1" width={w - 2} height={h - 2} rx={h / 2} ry={h / 2}
         fill={fillColor} stroke={borderColor} strokeWidth="2" />
     </svg>
+  );
+}
+
+/** Number input that tolerates in-progress typing (empty, below-min, etc.)
+ *  without snapping back to the last committed value. Only commits valid
+ *  numbers in range. Reverts to last good value on blur if draft is junk. */
+function SpacingNumberInput({ value, onCommit, min, max, step }) {
+  const [draft, setDraft] = useState(String(value));
+  // When the underlying value changes from outside (Reset button, etc.),
+  // sync the draft so the field displays the new value.
+  useEffect(() => { setDraft(String(value)); }, [value]);
+  return (
+    <input
+      type="number"
+      min={min}
+      max={max}
+      step={step}
+      value={draft}
+      onChange={e => {
+        setDraft(e.target.value);
+        const n = Number(e.target.value);
+        if (Number.isFinite(n) && n >= min && n <= max) onCommit(n);
+      }}
+      onBlur={() => {
+        const n = Number(draft);
+        if (!Number.isFinite(n) || n < min || n > max) {
+          setDraft(String(value));
+        }
+      }}
+      onKeyDown={e => {
+        if (e.key === 'Enter') { e.currentTarget.blur(); }
+      }}
+      onFocus={e => e.currentTarget.select()}
+      style={{
+        width: 90, padding: '6px 8px', fontSize: 14, fontWeight: 600,
+        border: '1px solid #cbd5e1', borderRadius: 4, textAlign: 'right',
+      }}
+    />
   );
 }
 
@@ -467,6 +505,73 @@ export function DesignSystemEditor() {
               </div>
             </div>
           ))}
+        </div>
+      </Section>
+
+      {/* ── CANVAS SPACING (EDITABLE) ───────────────────────────────────── */}
+      <Section title="Canvas Spacing" subtitle="Visual gap between stacked nodes">
+        <div className="ds__canvas-spacing">
+          <div className="ds__canvas-spacing-row">
+            <div className="ds__canvas-spacing-info">
+              <div className="ds__color-name">Vertical Node Gap</div>
+              <div className="ds__color-desc">
+                Visual gap (in pixels) between the <strong>bottom of one node</strong> and the
+                <strong> top of the next</strong>. Independent of node height — tall Home nodes
+                with many actions get the same visual gap as short nodes. Default 80.
+              </div>
+            </div>
+            <div className="ds__canvas-spacing-controls">
+              <SpacingNumberInput
+                value={Number(tv('verticalNodeSpacing', 80))}
+                onCommit={n => setThemeVal('verticalNodeSpacing', n)}
+                min={20}
+                max={300}
+                step={5}
+              />
+              <span style={{ fontSize: 12, color: '#5a6a7e' }}>px</span>
+              <button
+                onClick={() => setThemeVal('verticalNodeSpacing', 80)}
+                style={{
+                  fontSize: 11, padding: '4px 10px', border: '1px solid #cbd5e1',
+                  background: '#f8fafc', borderRadius: 4, cursor: 'pointer',
+                }}
+              >
+                Reset to 80
+              </button>
+            </div>
+          </div>
+          <div className="ds__canvas-spacing-preview">
+            {/* Visual preview: three stacked boxes with the chosen gap (scaled) */}
+            {(() => {
+              const px = Number(tv('verticalNodeSpacing', 80));
+              const scale = 0.5;
+              const gap = Math.max(4, Math.round(px * scale));
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap, alignItems: 'flex-start' }}>
+                  {[
+                    { label: 'Home (tall)', h: 60 },
+                    { label: 'Step (short)', h: 28 },
+                    { label: 'Step (short)', h: 28 },
+                  ].map((b, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        width: 120, height: b.h, borderRadius: 6,
+                        background: '#fff', border: '2px solid #1574C4',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 11, color: '#1574C4', fontWeight: 600,
+                      }}
+                    >
+                      {b.label}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+            <div style={{ fontSize: 11, color: '#8896a8', marginTop: 8 }}>
+              Gap stays constant regardless of node height. Live: {Number(tv('verticalNodeSpacing', 80))}px
+            </div>
+          </div>
         </div>
       </Section>
 

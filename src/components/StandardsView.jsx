@@ -20,6 +20,7 @@ export function StandardsView() {
     const projectData = {
       id: crypto.randomUUID(),
       name: template.name,
+      isStandard: true, // hides start-condition pills, treats this project as a template
       stateMachines: [{
         id: smId,
         name: template.name,
@@ -50,9 +51,23 @@ export function StandardsView() {
     if (!name) return;
     const smName = name.replace(/[^A-Za-z0-9_]/g, '_');
     const smId = crypto.randomUUID();
+    // Seed the standard with a Home state so the user isn't greeted with a
+    // blank canvas and forced to click "+ Add State" just to begin.
+    const homeNodeId = crypto.randomUUID();
+    const homeNode = {
+      id: homeNodeId,
+      type: 'stateNode',
+      position: { x: 400, y: 200 },
+      data: {
+        label: 'Home',
+        isInitial: true,
+        actions: [],
+      },
+    };
     const projectData = {
       id: crypto.randomUUID(),
       name,
+      isStandard: true, // hides start-condition pills, treats this project as a template
       stateMachines: [{
         id: smId,
         name: smName,
@@ -60,7 +75,7 @@ export function StandardsView() {
         stationNumber: 1,
         description: newDesc.trim(),
         category: newCategory.trim(),
-        nodes: [],
+        nodes: [homeNode],
         edges: [],
         devices: [],
         recoverySeqs: [{ id: crypto.randomUUID(), name: 'Default', nodes: [], edges: [] }],
