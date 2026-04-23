@@ -1,6 +1,6 @@
 {
   "name": "sdc-state-logic-builder",
-  "version": "1.24.1",
+  "version": "1.24.2",
   "description": "SDC State Logic Diagram Builder - ME to L5X",
   "main": "electron/main.js",
   "scripts": {
@@ -65,7 +65,8 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "SDC State Logic Builder",
-      "artifactName": "SDC-State-Logic-Builder-Setup-${version}.exe"
+      "artifactName": "SDC-State-Logic-Builder-Setup-${version}.exe",
+      "include": "build/installer.nsh"
     },
     "publish": {
       "provider": "github",
