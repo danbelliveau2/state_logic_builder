@@ -774,44 +774,57 @@ export function AddDeviceModal() {
             </div>
           )}
 
-          {/* Display Name */}
-          <label className="form-label">Subject Name *</label>
+          {/* Display Name — labelled "Axis Name" for servos (that's how CEs talk
+              about them), "Subject Name" everywhere else. */}
+          <label className="form-label">{isServo ? 'Axis Name *' : 'Subject Name *'}</label>
           <input
             className="form-input"
             autoFocus={!isEdit}
             value={displayName}
             onChange={e => setDisplayName(e.target.value)}
-            placeholder={`e.g. Post Cutter Cylinder`}
-          />
-          <div className="form-hint">Plain English name as seen by the ME</div>
-
-          {/* PLC Tag Name */}
-          <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span>PLC Tag Stem *</span>
-            {nameManuallyEdited && (
-              <button
-                type="button"
-                onClick={() => setNameManuallyEdited(false)}
-                style={{
-                  fontSize: 10, padding: '1px 6px', border: '1px solid #d1d5db',
-                  borderRadius: 4, background: '#f9fafb', color: '#374151',
-                  cursor: 'pointer',
-                }}
-                title="Re-link stem to Subject Name"
-              >↻ Auto-link</button>
-            )}
-          </label>
-          <input
-            className="form-input mono"
-            value={name}
-            onChange={e => { setName(e.target.value); setNameManuallyEdited(true); }}
-            placeholder="e.g. PostCutterCylinder"
+            placeholder={isServo ? `e.g. PNP_XAxis` : `e.g. Post Cutter Cylinder`}
           />
           <div className="form-hint">
-            {nameManuallyEdited
-              ? 'Manually edited — will not auto-sync with Subject Name. Click ↻ Auto-link to re-link.'
-              : 'Auto-derived from Subject Name. PascalCase, no spaces — used in all generated tag names.'}
+            {isServo
+              ? 'Axis name used in tag generation (a01_{name}, p_{name}Home, etc.)'
+              : 'Plain English name as seen by the ME'}
           </div>
+
+          {/* PLC Tag Stem — hidden for servos. Servo tag naming is driven
+              entirely by the axis name + the SDC servo conventions (a{n}_,
+              p_{name}{pos}, {name}iq_MAM.PC); a separate stem just duplicates
+              the axis name and gives users a knob to desync the two. The stem
+              is still kept in sync in state so downstream tag generation works. */}
+          {!isServo && (
+            <>
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>PLC Tag Stem *</span>
+                {nameManuallyEdited && (
+                  <button
+                    type="button"
+                    onClick={() => setNameManuallyEdited(false)}
+                    style={{
+                      fontSize: 10, padding: '1px 6px', border: '1px solid #d1d5db',
+                      borderRadius: 4, background: '#f9fafb', color: '#374151',
+                      cursor: 'pointer',
+                    }}
+                    title="Re-link stem to Subject Name"
+                  >↻ Auto-link</button>
+                )}
+              </label>
+              <input
+                className="form-input mono"
+                value={name}
+                onChange={e => { setName(e.target.value); setNameManuallyEdited(true); }}
+                placeholder="e.g. PostCutterCylinder"
+              />
+              <div className="form-hint">
+                {nameManuallyEdited
+                  ? 'Manually edited — will not auto-sync with Subject Name. Click ↻ Auto-link to re-link.'
+                  : 'Auto-derived from Subject Name. PascalCase, no spaces — used in all generated tag names.'}
+              </div>
+            </>
+          )}
 
           {/* Home Position selector — shown for devices with fixed home positions (not servo) */}
           {Array.isArray(DEVICE_TYPES[type]?.homePositions) && (

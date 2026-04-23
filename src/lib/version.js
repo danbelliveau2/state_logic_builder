@@ -4,10 +4,21 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.24';
+export const APP_VERSION = '1.24.1';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.24.1',
+    date: '2026-04-23',
+    time: '08:55',
+    author: 'Dan Belliveau',
+    changes: [
+      'Edit Subject modal for Servo Axis: "Subject Name" is now labelled "Axis Name" (matches how CEs talk about servos). Hint reflects the servo tag conventions (a01_{name}, p_{name}Home, …).',
+      'Edit Subject modal for Servo Axis: "PLC Tag Stem" field hidden — servo tag generation is driven entirely by the axis name and fixed SDC conventions, so the stem just duplicates the axis name. Stem still auto-syncs in state under the hood so downstream tag generation is unchanged.',
+      'Non-servo devices keep both fields (Subject Name + PLC Tag Stem) — those need the escape hatch when the ME name doesn\'t map cleanly to a PLC identifier.',
+    ],
+  },
   {
     version: '1.24',
     date: '2026-04-22',
