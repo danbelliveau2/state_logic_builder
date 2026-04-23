@@ -4,14 +4,14 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.24.2';
+export const APP_VERSION = '1.24.3';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
   {
-    version: '1.24.2',
+    version: '1.24.3',
     date: '2026-04-23',
-    time: '09:30',
+    time: '09:45',
     author: 'Abhi Kamuju',
     changes: [
       'Fix: NSIS installer now skips failed uninstall and completes a fresh install instead of aborting — resolves "Failed to uninstall old application files: 2" error on auto-update across all machines.',
