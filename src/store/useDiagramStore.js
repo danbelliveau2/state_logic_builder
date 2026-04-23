@@ -35,7 +35,7 @@ const defaultStandardsProfile = {
     main: 'R00_Main',
     inputs: 'R01_Inputs',
     stateTransitions: 'R02_StateTransitions',
-    stateLogicValves: 'R03_StateLogicValves',
+    stateLogicValves: 'R03_StateLogic',
     stateLogicServo: 'R04_StateLogicServo',
     alarms: 'R20_Alarms',
   },

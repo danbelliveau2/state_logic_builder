@@ -44,7 +44,7 @@ const SECTIONS = [
       { key: 'routineNames.main', label: 'Main', type: 'text', placeholder: 'R00_Main' },
       { key: 'routineNames.inputs', label: 'Inputs', type: 'text', placeholder: 'R01_Inputs' },
       { key: 'routineNames.stateTransitions', label: 'State Transitions', type: 'text', placeholder: 'R02_StateTransitions' },
-      { key: 'routineNames.stateLogicValves', label: 'State Logic (Valves)', type: 'text', placeholder: 'R03_StateLogicValves' },
+      { key: 'routineNames.stateLogicValves', label: 'State Logic', type: 'text', placeholder: 'R03_StateLogic' },
       { key: 'routineNames.stateLogicServo', label: 'State Logic (Servo)', type: 'text', placeholder: 'R04_StateLogicServo' },
       { key: 'routineNames.alarms', label: 'Alarms', type: 'text', placeholder: 'R20_Alarms' },
     ],
