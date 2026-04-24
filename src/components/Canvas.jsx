@@ -1163,7 +1163,7 @@ export function Canvas() {
   const smEdges = recoveryMode ? (activeRecoverySeq?.edges ?? []) : (sm?.edges ?? []);
   const smNodes = recoveryMode ? (activeRecoverySeq?.nodes ?? []) : (sm?.nodes ?? []);
   const { stateMap: stateNumberMap, visionSubStepsMap } = useMemo(
-    () => sm ? computeStateNumbers(smNodes, smEdges, devices, recoveryMode ? { startAt: 100 } : {}) : { stateMap: new Map(), visionSubStepsMap: new Map() },
+    () => sm ? computeStateNumbers(smNodes, smEdges, devices, recoveryMode ? { startAt: 100, completeStep: 124 } : {}) : { stateMap: new Map(), visionSubStepsMap: new Map() },
     [sm, smNodes, smEdges, devices, recoveryMode]
   );
 
@@ -1249,12 +1249,12 @@ export function Canvas() {
             const idx = e.data?.outcomeIndex ?? 0;
             if (idx < sn.outcomeLabels.length) liveLabel = sn.outcomeLabels[idx];
           } else {
+            // Prefer stored labels on the node (respects user customization).
+            // Fall back to computed defaults only if unset.
             const computedLabels = computeExitLabels(sn);
-            if (computedLabels) {
-              if (e.sourceHandle === 'exit-pass')  liveLabel = computedLabels.exit1;
-              if (e.sourceHandle === 'exit-fail')  liveLabel = computedLabels.exit2;
-              // Retry branch label stays as stored
-            }
+            if (e.sourceHandle === 'exit-pass')  liveLabel = sn.exit1Label ?? computedLabels?.exit1 ?? liveLabel;
+            if (e.sourceHandle === 'exit-fail')  liveLabel = sn.exit2Label ?? computedLabels?.exit2 ?? liveLabel;
+            // Retry branch label stays as stored
           }
         }
 

@@ -22,10 +22,29 @@ import { START_CONDITIONS, getStartConditionMeta, resolveIndexSync, isIndexSyncO
 import { PartTrackingPill } from '../PartTrackingPanel.jsx';
 import { PtBadge } from './PtBadge.jsx';
 import { ConnectMenu, HandleClickZone } from '../ConnectMenu.jsx';
+import { DecisionEditPopup, DecisionBody } from './DecisionNode.jsx';
 
 // Tiny local ID generator (mirrors store uid — not exported from store)
 let _localId = Date.now();
 const uid = () => `id_${(_localId++).toString(36)}`;
+
+/**
+ * Locate a node inside an SM across main diagram AND recovery sequences,
+ * returning `{ node, nodes, edges }` where `nodes`/`edges` are the
+ * container arrays that own the node. Returns `null` when not found.
+ * Mirrors the `_locateNodeInSm` helper in the store but is file-local so
+ * component code doesn't depend on store internals.
+ */
+function findNodeInSmAcrossContainers(sm, nodeId) {
+  if (!sm) return null;
+  const main = (sm.nodes ?? []).find(n => n.id === nodeId);
+  if (main) return { node: main, nodes: sm.nodes ?? [], edges: sm.edges ?? [] };
+  for (const r of (sm.recoverySeqs ?? [])) {
+    const n = (r.nodes ?? []).find(x => x.id === nodeId);
+    if (n) return { node: n, nodes: r.nodes ?? [], edges: r.edges ?? [] };
+  }
+  return null;
+}
 
 // ── Operation-based colors (SDC Brand: active = SDC Blue, return = SDC Light Blue) ──
 
@@ -379,9 +398,213 @@ function ShapeBackground({ shape, borderColor, selected }) {
   );
 }
 
+// ── Advance Condition helpers ────────────────────────────────────────────────
+// Per-row "when does the NEXT row start?" gate. Mirrors edge conditionType but
+// applies between rows inside the same state.
+//
+// Schema on each action:
+//   advanceCondition: {
+//     type:        'onComplete' | 'none' | 'timer' | 'sensorOn' | 'sensorOff'
+//                | 'servoAtPos' | 'servoAtPct',
+//     timerMs?:    number,                    // for 'timer'
+//     timerFrom?:  'start' | 'complete',      // for 'timer' — reference point
+//     sensorRef?:  'deviceId:signalId',       // for 'sensorOn' | 'sensorOff'
+//     servoPosName?: string,                  // for 'servoAtPos'
+//     servoPct?:   number,                    // for 'servoAtPct' (0-100)
+//   }
+// Missing advanceCondition → treated as onComplete (the historical default).
+function advanceLabel(ac, devices) {
+  if (!ac || ac.type === 'onComplete') return 'after complete';
+  if (ac.type === 'none') return 'concurrent';
+  if (ac.type === 'timer') {
+    const ms = ac.timerMs ?? 0;
+    const suffix = ac.timerFrom === 'complete' ? ' (from end)' : '';
+    return `+${ms}ms${suffix}`;
+  }
+  if (ac.type === 'sensorOn' || ac.type === 'sensorOff') {
+    const ref = ac.sensorRef ?? '';
+    const [devId, sig] = ref.split(':');
+    const dev = devices?.find(d => d.id === devId);
+    const name = dev?.displayName ?? sig ?? '?';
+    return `sensor: ${name} ${ac.type === 'sensorOn' ? 'ON' : 'OFF'}`;
+  }
+  if (ac.type === 'servoAtPos') return `at ${ac.servoPosName ?? '?'}`;
+  if (ac.type === 'servoAtPct') return `at ${ac.servoPct ?? '?'}%`;
+  return 'after complete';
+}
+
+// ── Advance Condition Editor ─────────────────────────────────────────────────
+// Small popup anchored to the action row. User picks when the NEXT row starts:
+//   after complete (default) | concurrent | timer | sensor on/off | servo at pos | servo at %
+// Saves via store.updateAction(smId, nodeId, actionId, { advanceCondition: {...} }).
+function AdvanceConditionEditor({ action, devices, smId, nodeId, onClose }) {
+  const ac = action.advanceCondition ?? { type: 'onComplete' };
+  const [type, setType] = useState(ac.type ?? 'onComplete');
+  const [timerMs, setTimerMs] = useState(ac.timerMs ?? 50);
+  const [timerFrom, setTimerFrom] = useState(ac.timerFrom ?? 'start');
+  const [sensorRef, setSensorRef] = useState(ac.sensorRef ?? '');
+  const [servoPosName, setServoPosName] = useState(ac.servoPosName ?? '');
+  const [servoPct, setServoPct] = useState(ac.servoPct ?? 75);
+
+  // Build sensor list (digital sensors + any bool outputs on devices in this SM)
+  const sensors = [];
+  (devices ?? []).forEach(d => {
+    if (d.type === 'DigitalSensor') {
+      sensors.push({ ref: `${d.id}:value`, label: d.displayName ?? d.name });
+    }
+  });
+
+  // Servo positions from the device this action operates on (if it's a servo)
+  const actionDevice = devices?.find(d => d.id === action.deviceId);
+  const servoPositions = actionDevice?.type === 'ServoAxis'
+    ? (actionDevice.positions ?? []).map(p => p.name)
+    : [];
+
+  function handleDone() {
+    let payload;
+    if (type === 'onComplete') payload = { type: 'onComplete' };
+    else if (type === 'none') payload = { type: 'none' };
+    else if (type === 'timer') payload = { type: 'timer', timerMs: Number(timerMs) || 0, timerFrom };
+    else if (type === 'sensorOn' || type === 'sensorOff') payload = { type, sensorRef };
+    else if (type === 'servoAtPos') payload = { type, servoPosName };
+    else if (type === 'servoAtPct') payload = { type, servoPct: Number(servoPct) || 0 };
+    else payload = { type: 'onComplete' };
+    useDiagramStore.getState().updateAction(smId, nodeId, action.id, { advanceCondition: payload });
+    onClose();
+  }
+
+  const btn = (value, label) => (
+    <button
+      className="nodrag"
+      onClick={() => setType(value)}
+      style={{
+        padding: '6px 10px', borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+        background: type === value ? '#0072B5' : '#fff',
+        color: type === value ? '#fff' : '#1e293b',
+        border: type === value ? '1px solid #0072B5' : '1px solid #d1d5db',
+        flex: 1,
+      }}
+    >{label}</button>
+  );
+
+  return (
+    <div
+      className="nodrag nowheel"
+      style={{
+        width: 280, background: '#fff', border: '1px solid #d1d5db',
+        borderRadius: 8, boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+        padding: 12, display: 'flex', flexDirection: 'column', gap: 10,
+      }}
+      onMouseDown={e => e.stopPropagation()}
+    >
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>
+        When does the next row start?
+      </div>
+      <div style={{ display: 'flex', gap: 4 }}>
+        {btn('onComplete', 'After complete')}
+        {btn('none', 'Concurrent')}
+      </div>
+      <div style={{ display: 'flex', gap: 4 }}>
+        {btn('timer', 'Timer')}
+        {btn('sensorOn', 'Sensor ON')}
+        {btn('sensorOff', 'Sensor OFF')}
+      </div>
+      {servoPositions.length > 0 && (
+        <div style={{ display: 'flex', gap: 4 }}>
+          {btn('servoAtPos', 'At position')}
+          {btn('servoAtPct', 'At %')}
+        </div>
+      )}
+
+      {type === 'timer' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input
+              className="nodrag"
+              type="number"
+              value={timerMs}
+              onChange={e => setTimerMs(e.target.value)}
+              style={{ width: 80, padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 12 }}
+            />
+            <span style={{ fontSize: 11, color: '#64748b' }}>ms</span>
+          </div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button className="nodrag" onClick={() => setTimerFrom('start')}
+              style={{
+                flex: 1, padding: '4px', fontSize: 10, borderRadius: 4, cursor: 'pointer',
+                background: timerFrom === 'start' ? '#0072B5' : '#fff',
+                color: timerFrom === 'start' ? '#fff' : '#1e293b',
+                border: timerFrom === 'start' ? '1px solid #0072B5' : '1px solid #d1d5db',
+              }}>From row start</button>
+            <button className="nodrag" onClick={() => setTimerFrom('complete')}
+              style={{
+                flex: 1, padding: '4px', fontSize: 10, borderRadius: 4, cursor: 'pointer',
+                background: timerFrom === 'complete' ? '#0072B5' : '#fff',
+                color: timerFrom === 'complete' ? '#fff' : '#1e293b',
+                border: timerFrom === 'complete' ? '1px solid #0072B5' : '1px solid #d1d5db',
+              }}>From row complete</button>
+          </div>
+        </div>
+      )}
+
+      {(type === 'sensorOn' || type === 'sensorOff') && (
+        <select
+          className="nodrag"
+          value={sensorRef}
+          onChange={e => setSensorRef(e.target.value)}
+          style={{ padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 12 }}
+        >
+          <option value="">Pick a sensor...</option>
+          {sensors.map(s => <option key={s.ref} value={s.ref}>{s.label}</option>)}
+        </select>
+      )}
+
+      {type === 'servoAtPos' && (
+        <select
+          className="nodrag"
+          value={servoPosName}
+          onChange={e => setServoPosName(e.target.value)}
+          style={{ padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 12 }}
+        >
+          <option value="">Pick position...</option>
+          {servoPositions.map(p => <option key={p} value={p}>{p}</option>)}
+        </select>
+      )}
+
+      {type === 'servoAtPct' && (
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input
+            className="nodrag"
+            type="number"
+            value={servoPct}
+            onChange={e => setServoPct(e.target.value)}
+            style={{ width: 80, padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 12 }}
+          />
+          <span style={{ fontSize: 11, color: '#64748b' }}>% of move</span>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+        <button
+          className="nodrag"
+          onClick={onClose}
+          onMouseDown={e => e.stopPropagation()}
+          style={{ flex: 1, padding: '6px', borderRadius: 4, cursor: 'pointer', background: '#fff', color: '#64748b', border: '1px solid #d1d5db', fontSize: 12 }}
+        >Cancel</button>
+        <button
+          className="nodrag"
+          onClick={handleDone}
+          onMouseDown={e => e.stopPropagation()}
+          style={{ flex: 1, padding: '6px', borderRadius: 4, cursor: 'pointer', background: '#0072B5', color: '#fff', border: '1px solid #0072B5', fontSize: 12, fontWeight: 600 }}
+        >Done</button>
+      </div>
+    </div>
+  );
+}
+
 // ── Action Row ────────────────────────────────────────────────────────────────
 
-function ActionRow({ action, devices, onClickName, onClickOp, smId, nodeId }) {
+function ActionRow({ action, devices, onClickName, onClickOp, onClickAdvance, smId, nodeId, isLast }) {
   // Part Tracking action — special rendering
   if (action.deviceId === '_tracking') {
     const fieldName = action.trackingFieldName ?? action.ptFieldName ?? 'Field';
@@ -417,6 +640,29 @@ function ActionRow({ action, devices, onClickName, onClickOp, smId, nodeId }) {
         </div>
         {verifyText && <div className="action-verify-text">{verifyText}</div>}
       </div>
+    );
+  }
+
+  // Embedded Wait / Decision / Verify row — lives inside the same state.
+  // Renders the SAME body as a standalone DecisionNode (identical visual grammar)
+  // via the shared DecisionBody component, so embedded decisions look & feel
+  // exactly like their standalone counterparts. Click routes to the same
+  // DecisionEditPopup (via onClickName → setEditingDecisionId upstream).
+  if (action.deviceId === '_decision') {
+    return (
+      <DecisionBody
+        data={action}
+        smId={smId}
+        nodeId={nodeId}
+        selected={false}
+        embedded={true}
+        onClick={onClickName}
+        onUpdate={(patch) => {
+          // Re-route On/Off switcher writes from updateNodeData → updateAction
+          // so embedded rows persist into the parent state's action array.
+          useDiagramStore.getState().updateAction(smId, nodeId, action.id, patch);
+        }}
+      />
     );
   }
 
@@ -751,6 +997,21 @@ function ActionRow({ action, devices, onClickName, onClickOp, smId, nodeId }) {
               </div>
             );
           })}
+        </div>
+      )}
+      {/* Advance-condition chip — gates when the NEXT row starts.
+          Hidden on the last row because its gate is the edge to the next state
+          (edge condition is plumbed from this field in a later pass). */}
+      {onClickAdvance && !isLast && (
+        <div className="action-advance">
+          <span className="action-advance__label">then</span>
+          <span
+            className="action-advance__chip nodrag"
+            onClick={(e) => { e.stopPropagation(); onClickAdvance(action); }}
+            title="Click to change when the next row starts"
+          >
+            {advanceLabel(action.advanceCondition, devices)}
+          </span>
         </div>
       )}
     </div>
@@ -1153,7 +1414,10 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
 
     // Update the verify device's displayName
     const freshSm = useDiagramStore.getState().project?.stateMachines?.find(s => s.id === smId);
-    const freshNode = freshSm?.nodes?.find(n => n.id === nodeId);
+    // Recovery-aware: node may live on main or in a recovery seq; grab the right edges too.
+    const located = findNodeInSmAcrossContainers(freshSm, nodeId);
+    const freshNode = located?.node;
+    const scopeEdges = located?.edges ?? [];
     if (freshNode) {
       const verifyAction = (freshNode.data?.actions ?? []).find(a => {
         const dev = (freshSm?.devices ?? []).find(d => d.id === a.deviceId);
@@ -1165,7 +1429,7 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
         const outcomes = device?.outcomes ?? [];
 
         // If 2+ outcomes (branching), show routing step
-        const existingEdges = (freshSm.edges ?? []).filter(e => e.source === nodeId);
+        const existingEdges = scopeEdges.filter(e => e.source === nodeId);
         const usedOutcomeIds = new Set(
           existingEdges.filter(e => e.data?.conditionType === 'checkResult').map(e => e.data?.outcomeId)
         );
@@ -1191,7 +1455,10 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
   /** Final step: create branch nodes/edges based on routing choices */
   function handleVerifyFinish() {
     const freshSm = useDiagramStore.getState().project?.stateMachines?.find(s => s.id === smId);
-    const freshNode = freshSm?.nodes?.find(n => n.id === nodeId);
+    // Recovery-aware: scope node + edges to whichever container owns nodeId.
+    const located = findNodeInSmAcrossContainers(freshSm, nodeId);
+    const freshNode = located?.node;
+    const scopeEdges = located?.edges ?? [];
     if (freshNode) {
       const verifyAction = (freshNode.data?.actions ?? []).find(a => {
         const dev = (freshSm?.devices ?? []).find(d => d.id === a.deviceId);
@@ -1202,7 +1469,7 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
         const outcomes = device?.outcomes ?? [];
 
         if (outcomes.length >= 2) {
-          const existingEdges = (freshSm.edges ?? []).filter(e => e.source === nodeId);
+          const existingEdges = scopeEdges.filter(e => e.source === nodeId);
           const usedOutcomeIds = new Set(
             existingEdges.filter(e => e.data?.conditionType === 'checkResult').map(e => e.data?.outcomeId)
           );
@@ -1320,7 +1587,9 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
   // else → add a DecisionNode below this node and connect it.
   function handleSignalPick(signal) {
     const freshSm = useDiagramStore.getState().project?.stateMachines?.find(s => s.id === smId);
-    const currentNode = freshSm?.nodes?.find(n => n.id === nodeId);
+    // Node may live in sm.nodes (main) or sm.recoverySeqs[*].nodes (recovery tab)
+    const currentNode = freshSm?.nodes?.find(n => n.id === nodeId)
+      ?? (freshSm?.recoverySeqs ?? []).flatMap(r => r.nodes ?? []).find(n => n.id === nodeId);
     if (!currentNode) { onClose(); return; }
 
     // FIX 5: robust empty check — handles undefined/null/empty actions
@@ -1351,8 +1620,16 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
       autoOpenPopup: true,
     };
 
+    // Recovery-aware: if the current node lives in a recovery sequence, the new
+    // decision node + edge must be added to THAT sequence, not the main diagram.
+    const recoveryContainer = (freshSm?.recoverySeqs ?? []).find(r =>
+      (r.nodes ?? []).some(n => n.id === nodeId)
+    );
+    const isRecovery = !!recoveryContainer;
+
     if (isEmpty) {
-      // Replace this state node with a DecisionNode at the same position
+      // Replace this state node with a DecisionNode at the same position.
+      // replaceNodeWithDecision is already container-agnostic via the helper pattern.
       store.replaceNodeWithDecision(smId, nodeId, decisionData);
     } else {
       // Add a DecisionNode below this node and connect it
@@ -1362,24 +1639,35 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
       const parentWidth = currentNode.measured?.width ?? currentNode.width ?? 240;
       const decWidth = 240;
       const decX = currentNode.position.x + (parentWidth - decWidth) / 2;
-      store.addDecisionNode(smId, {
-        id: decisionId,
-        position: {
-          x: decX,
-          y: currentNode.position.y + 200,
-        },
-        data: {
-          label: 'Decision',
-          decisionType: 'signal',
-          ...decisionData,
-        },
-      });
-      store.addEdge(smId, {
-        source: nodeId,
-        sourceHandle: null,
-        target: decisionId,
-        targetHandle: 'input',
-      }, { conditionType: 'ready', label: '' });
+      const position = { x: decX, y: currentNode.position.y + 200 };
+      const fullData = { label: 'Decision', decisionType: 'signal', ...decisionData };
+
+      if (isRecovery) {
+        store.addRecoveryNode(smId, recoveryContainer.id, {
+          id: decisionId,
+          type: 'decisionNode',
+          position,
+          data: fullData,
+        });
+        store.addRecoveryEdge(smId, recoveryContainer.id, {
+          source: nodeId,
+          sourceHandle: null,
+          target: decisionId,
+          targetHandle: 'input',
+        }, { conditionType: 'ready', label: '' });
+      } else {
+        store.addDecisionNode(smId, {
+          id: decisionId,
+          position,
+          data: fullData,
+        });
+        store.addEdge(smId, {
+          source: nodeId,
+          sourceHandle: null,
+          target: decisionId,
+          targetHandle: 'input',
+        }, { conditionType: 'ready', label: '' });
+      }
     }
     onClose();
   }
@@ -1414,18 +1702,29 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
         <>
           <div className="inline-picker__title">{editActionId ? 'Change Subject' : 'Select Subject'}</div>
 
-          {/* Cycle Complete card */}
-          <button
-            className="inline-picker__item inline-picker__item--complete"
-            onClick={() => {
-              store.updateNodeData(smId, nodeId, { isComplete: true, isFault: false, actions: [] });
-              onClose();
-            }}
-            style={{ borderLeft: '3px solid #5a9a48', fontWeight: 600 }}
-          >
-            <span style={{ fontSize: 16, color: '#5a9a48' }}>●</span>
-            <span>Cycle Complete</span>
-          </button>
+          {/* Cycle Complete card — on a recovery tab, shows Step 124 hint
+              because recovery cycle-complete is pinned to 124 in the PLC.
+              On the main diagram there's no fixed number (DFS assigns it). */}
+          {(() => {
+            const _sm = allSMs.find(s => s.id === smId);
+            const _inRecovery = _sm ? (_sm.recoverySeqs ?? []).some(r => (r.nodes ?? []).some(n => n.id === nodeId)) : false;
+            return (
+              <button
+                className="inline-picker__item inline-picker__item--complete"
+                onClick={() => {
+                  store.updateNodeData(smId, nodeId, { isComplete: true, isFault: false, actions: [] });
+                  onClose();
+                }}
+                style={{ borderLeft: '3px solid #5a9a48', fontWeight: 600 }}
+              >
+                <span style={{ fontSize: 16, color: '#5a9a48' }}>●</span>
+                <span>Cycle Complete</span>
+                {_inRecovery && (
+                  <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9ca3af', fontWeight: 400 }}>Step 124</span>
+                )}
+              </button>
+            );
+          })()}
 
           {/* Fault State card */}
           <button
@@ -1476,21 +1775,36 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
             return (
               <>
                 <div className="inline-picker__divider" />
-                {/* Wait / Decision — immediately creates decision node with popup */}
+                {/* Wait / Decision / Verify — adds an EMBEDDED action row in the same state.
+                    Matches how adding a second device action works: row appears in the state,
+                    not as a separate node below. Mode/signal are configured by clicking the row. */}
                 <button
                   className="inline-picker__item"
                   style={{ borderLeft: '3px solid #f59e0b', fontWeight: 700, color: '#f59e0b' }}
                   onClick={() => {
-                    // Create an empty decision node with autoOpenPopup so the popup opens immediately
-                    handleSignalPick({
-                      id: null,
-                      signalName: 'Select Signal...',
+                    // If user is re-opening an existing _decision row, don't duplicate —
+                    // just close the picker so they can click the row to edit in place.
+                    if (editActionId && editAction?.deviceId === '_decision') {
+                      onClose();
+                      return;
+                    }
+                    store.addAction(smId, nodeId, {
+                      deviceId: '_decision',
+                      operation: 'Wait',
+                      decisionType: 'signal',
+                      signalId: null,
+                      signalName: null,
                       signalSource: null,
                       signalType: null,
                       signalSmName: null,
-                      decisionType: 'signal',
-                      type: null,
+                      nodeMode: 'wait',        // 'wait' | 'decide' | 'verify'
+                      conditionType: 'sensorOn', // for verify mode
+                      exitCount: 1,
+                      exit1Label: null,
+                      exit2Label: null,
+                      autoOpenPopup: true,
                     });
+                    onClose();
                   }}
                 >
                   <span style={{ fontSize: 14 }}>&#x2B23;</span>
@@ -1921,22 +2235,26 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
       {/* ── Verify: route each branch (new step or loop back) ─────────── */}
       {step === 'verify-route' && (() => {
         const freshSm = useDiagramStore.getState().project?.stateMachines?.find(s => s.id === smId);
-        const freshNode = freshSm?.nodes?.find(n => n.id === nodeId);
+        // Recovery-aware: find the node in whatever container owns it (main or recovery seq)
+        const located = findNodeInSmAcrossContainers(freshSm, nodeId);
+        const freshNode = located?.node;
         const verifyAction = (freshNode?.data?.actions ?? []).find(a => {
           const dev = (freshSm?.devices ?? []).find(d => d.id === a.deviceId);
           return dev?.type === 'CheckResults' && dev._autoVerify;
         });
         const device = verifyAction ? freshSm.devices.find(d => d.id === verifyAction.deviceId) : null;
         const outcomes = device?.outcomes ?? [];
-        const existingEdges = (freshSm?.edges ?? []).filter(e => e.source === nodeId);
+        const existingEdges = (located?.edges ?? []).filter(e => e.source === nodeId);
         const usedOutcomeIds = new Set(
           existingEdges.filter(e => e.data?.conditionType === 'checkResult').map(e => e.data?.outcomeId)
         );
         const missingOutcomes = outcomes.filter(o => !usedOutcomeIds.has(o.id));
 
-        // Compute state numbers via DFS (same algorithm as Canvas.jsx)
-        const allNodes = freshSm?.nodes ?? [];
-        const allEdges = freshSm?.edges ?? [];
+        // Compute state numbers via DFS (same algorithm as Canvas.jsx) — use the
+        // container's own nodes/edges so loop-back targets on a recovery tab
+        // come from that recovery seq, not the main diagram.
+        const allNodes = located?.nodes ?? [];
+        const allEdges = located?.edges ?? [];
         const allDevices = freshSm?.devices ?? [];
         const stateNums = new Map();
         const visited = new Set();
@@ -2881,6 +3199,20 @@ export function StateNode({ data, selected, id }) {
   // SM Outputs that are active during this node (TRUE while SM is in this state)
   const triggeredOutputs = (sm?.smOutputs ?? []).filter(o => o.activeNodeId === id);
 
+  // ── Signal latch chips — which signals have their ON/OFF condition pinned
+  // to THIS state node? For sequence flags like `Part_Gripped` that latch at
+  // state 7 and release at state 15, this surfaces a green "Part_Gripped ON"
+  // chip on node 7 and a red "Part_Gripped OFF" chip on node 15 — no click
+  // needed to see which signals fire here. Only SM-State signals contribute
+  // (position/condition signals don't map cleanly to a specific state node).
+  const projectSignals = useDiagramStore(s => s.project?.signals ?? []);
+  const onSideSignals = projectSignals.filter(sig =>
+    sig.type === 'state' && sig.stateNodeId === id
+  );
+  const offSideSignals = projectSignals.filter(sig =>
+    sig.offCondition?.stateNodeId === id
+  );
+
   // For the initial (home) node: show device home positions
   // Fall back to defaultHomePosition from device type if device doesn't have one set
   const homeDevices = isInitial
@@ -2909,7 +3241,29 @@ export function StateNode({ data, selected, id }) {
   const [ctxMenu, setCtxMenu] = useState(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [opSwitcher, setOpSwitcher] = useState(null); // { actionId, pos: {top, left} }
+  const [editingAdvanceId, setEditingAdvanceId] = useState(null); // id of action whose advanceCondition is being edited
+  const [editingDecisionId, setEditingDecisionId] = useState(null); // id of _decision action being configured
+  const [decisionPopupPos, setDecisionPopupPos] = useState(null); // {top,left} for DecisionEditPopup (portal)
+  const nodeRootRef = useRef(null);
   const addMenuRef = useRef(null);
+
+  // Position the DecisionEditPopup to the right of the state node (same pattern as DecisionNode)
+  useEffect(() => {
+    if (!editingDecisionId) { setDecisionPopupPos(null); return; }
+    if (!nodeRootRef.current) return;
+    const rect = nodeRootRef.current.getBoundingClientRect();
+    setDecisionPopupPos({ position: 'fixed', top: rect.top, left: rect.right + 8, zIndex: 9999 });
+  }, [editingDecisionId]);
+
+  // Auto-open decision editor for newly-added _decision rows (autoOpenPopup flag)
+  useEffect(() => {
+    const auto = actions.find(a => a.deviceId === '_decision' && a.autoOpenPopup);
+    if (auto) {
+      setEditingDecisionId(auto.id);
+      // Clear the flag so it doesn't re-trigger
+      useDiagramStore.getState().updateAction(sm?.id, id, auto.id, { autoOpenPopup: false });
+    }
+  }, [actions, sm?.id, id]);
 
   // Close add-menu when clicking outside
   useEffect(() => {
@@ -2979,6 +3333,19 @@ export function StateNode({ data, selected, id }) {
   const showVisionSideHandles = hasVisionInspect && visionExitMode === '2-node';
   const showVisionSingleHandle = hasVisionInspect && visionExitMode === '1-node';
 
+  // Embedded decision branching: if the LAST action row is a _decision with
+  // exitCount === 2 (and a chosen signal), the parent state needs pass/fail
+  // side handles so RoutableEdge has endpoints to attach the green/red branches.
+  // Single-exit embedded decisions (exitCount === 1) stay on the default bottom handle.
+  const lastAction = actions[actions.length - 1];
+  const lastIsEmbeddedDecision = lastAction?.deviceId === '_decision';
+  const lastDecisionHasTwoExits = lastIsEmbeddedDecision
+    && lastAction.exitCount === 2
+    && lastAction.signalName
+    && lastAction.signalName !== 'Select Signal...';
+  const lastDecisionHasRetry = lastDecisionHasTwoExits && lastAction.retryEnabled;
+  const showDecisionSideHandles = lastDecisionHasTwoExits && !showVisionSideHandles;
+
   function handleContextMenu(e) {
     e.preventDefault();
     e.stopPropagation();
@@ -2987,6 +3354,7 @@ export function StateNode({ data, selected, id }) {
 
   return (
     <div
+      ref={nodeRootRef}
       className={`state-node state-node--${shape}${selected ? ' state-node--selected' : ''}${isInitial ? ' state-node--initial' : ''}${isComplete ? ' state-node--complete' : ''}${isFault ? ' state-node--fault' : ''}`}
       style={{ '--node-border': borderColor }}
       onContextMenu={handleContextMenu}
@@ -3002,12 +3370,19 @@ export function StateNode({ data, selected, id }) {
         <ShapeBackground shape={shape} borderColor={borderColor} selected={selected} />
       )}
 
-      {/* Floating + button with add-menu */}
+      {/* Floating + button -- opens Select Subject picker directly (no submenu).
+          The picker itself contains Cycle Complete / Fault State / Wait-Decision-Verify
+          / device entries, so the intermediate 3-option menu was redundant. */}
       <div style={{ position: 'absolute', top: -14, right: -14, zIndex: 10 }} ref={addMenuRef}>
         <button
           className="state-node__add-btn"
-          onClick={(e) => { e.stopPropagation(); setShowAddMenu(v => !v); }}
-          title="Add action or next node"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowAddMenu(false);
+            setEditingActionId(null);
+            setShowPicker(p => !p);
+          }}
+          title="Add a subject to this state"
         >+</button>
         {showAddMenu && (
           <div
@@ -3056,21 +3431,40 @@ export function StateNode({ data, selected, id }) {
                 e.stopPropagation();
                 setShowAddMenu(false);
                 const currentSm = store.getActiveSm();
-                const currentNode = currentSm?.nodes?.find(n => n.id === id);
+                // Recovery-aware: when canvas is showing a recovery seq, look up the
+                // source node + add new node/edge in the recovery sequence, not sm.nodes.
+                const recoverySeqId = store._activeRecoverySeqId ?? null;
+                const activeSeq = recoverySeqId
+                  ? (currentSm?.recoverySeqs ?? []).find(r => r.id === recoverySeqId)
+                  : null;
+                const isRecovery = !!activeSeq;
+                const sourceNodes = isRecovery ? activeSeq.nodes : currentSm?.nodes;
+                const currentNode = sourceNodes?.find(n => n.id === id);
                 if (currentNode && currentSm) {
-                  const newNodeId = store.addNode(sm.id, {
-                    position: {
-                      x: currentNode.position.x,
-                      y: currentNode.position.y + 200,
-                    },
-                  });
-                  if (newNodeId) {
-                    store.addEdge(sm.id, {
-                      source: id,
-                      sourceHandle: null,
-                      target: newNodeId,
-                      targetHandle: null,
-                    }, { conditionType: 'ready', label: '' });
+                  const position = {
+                    x: currentNode.position.x,
+                    y: currentNode.position.y + 200,
+                  };
+                  if (isRecovery) {
+                    const newNodeId = store.addRecoveryNode(sm.id, recoverySeqId, { position });
+                    if (newNodeId) {
+                      store.addRecoveryEdge(sm.id, recoverySeqId, {
+                        source: id,
+                        sourceHandle: null,
+                        target: newNodeId,
+                        targetHandle: null,
+                      }, { conditionType: 'ready', label: '' });
+                    }
+                  } else {
+                    const newNodeId = store.addNode(sm.id, { position });
+                    if (newNodeId) {
+                      store.addEdge(sm.id, {
+                        source: id,
+                        sourceHandle: null,
+                        target: newNodeId,
+                        targetHandle: null,
+                      }, { conditionType: 'ready', label: '' });
+                    }
                   }
                 }
               }}
@@ -3142,6 +3536,42 @@ export function StateNode({ data, selected, id }) {
         </NodeToolbar>
       )}
 
+      {/* Advance-condition editor (chip click on an action row) */}
+      {editingAdvanceId && sm && (() => {
+        const action = actions.find(a => a.id === editingAdvanceId);
+        if (!action) return null;
+        return (
+          <NodeToolbar isVisible position="right" offset={8}>
+            <AdvanceConditionEditor
+              action={action}
+              devices={devices}
+              smId={sm.id}
+              nodeId={id}
+              onClose={() => setEditingAdvanceId(null)}
+            />
+          </NodeToolbar>
+        );
+      })()}
+
+      {/* Embedded-decision row editor — reuses the SAME popup standalone DecisionNodes use.
+          `saveTarget='action'` routes the save through updateAction on this row instead
+          of updateNodeData + branch-node creation. Portal positioned right of the state. */}
+      {editingDecisionId && sm && decisionPopupPos && (() => {
+        const action = actions.find(a => a.id === editingDecisionId);
+        if (!action || action.deviceId !== '_decision') return null;
+        return (
+          <DecisionEditPopup
+            nodeId={id}
+            smId={sm.id}
+            data={action}
+            onClose={() => setEditingDecisionId(null)}
+            style={decisionPopupPos}
+            saveTarget="action"
+            actionId={action.id}
+          />
+        );
+      })()}
+
       {/* Home-node config pills (Entry Rule + Start Condition) */}
       {isInitial && sm && (
         <HomeConfigPills smId={sm.id} nodeId={id} sm={sm} machineConfig={machineConfig} />
@@ -3197,55 +3627,134 @@ export function StateNode({ data, selected, id }) {
           </div>
         ) : (
           // Regular node: show actions
-          actions.length > 0 ? (
-            actions.map(action => (
-              <ActionRow key={action.id} action={action} devices={devices} smId={sm?.id} nodeId={id}
-                onClickName={(e) => {
-                  e.stopPropagation();
-                  if (editingActionId === action.id && showPicker) {
-                    setShowPicker(false); setEditingActionId(null); setPickerInitialStep(null);
-                  } else {
-                    setEditingActionId(action.id); setPickerInitialStep(null); setShowPicker(true);
-                  }
-                }}
-                onClickOp={(() => {
-                  const dev = devices?.find(d => d.id === action.deviceId);
-                  const devDef = dev ? DEVICE_TYPES[dev.type] : null;
-                  // Servo: open picker at servo positions step
-                  if (action.operation === 'ServoMove' || action.operation === 'ServoIncr' || action.operation === 'ServoIndex') {
-                    return (e) => {
-                      e.stopPropagation();
-                      if (editingActionId === action.id && showPicker) {
-                        setShowPicker(false); setEditingActionId(null); setPickerInitialStep(null);
-                      } else {
-                        setEditingActionId(action.id); setPickerInitialStep('servoMoves'); setShowPicker(true);
-                      }
-                    };
-                  }
-                  // Any device with 2+ operations: open operation switcher popup
-                  if (devDef && (devDef.operations?.length ?? 0) >= 2) {
-                    return (e) => {
-                      e.stopPropagation();
-                      if (opSwitcher?.actionId === action.id) {
-                        setOpSwitcher(null);
-                      } else {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setOpSwitcher({ actionId: action.id, pos: { top: rect.bottom + 4, left: rect.left } });
-                      }
-                    };
-                  }
-                  return undefined;
-                })()}
-              />
-            ))
-          ) : (
-            <div
-              className="state-node__empty"
-              onClick={(e) => { e.stopPropagation(); store.setSelectedNode(id); setShowPicker(true); }}
-            >
-              + Add action
-            </div>
-          )
+          <>
+            {actions.length > 0 ? (
+              actions.map((action, actionIdx) => (
+                <ActionRow
+                  key={action.id}
+                  action={action}
+                  devices={devices}
+                  smId={sm?.id}
+                  nodeId={id}
+                  isLast={actionIdx === actions.length - 1}
+                  onClickAdvance={(act) => {
+                    // Toggle — second click on the same chip closes
+                    setEditingAdvanceId(prev => prev === act.id ? null : act.id);
+                  }}
+                  onClickName={(e) => {
+                    e.stopPropagation();
+                    // Embedded _decision row: open the dedicated decision editor, not the picker
+                    if (action.deviceId === '_decision') {
+                      setEditingDecisionId(prev => prev === action.id ? null : action.id);
+                      return;
+                    }
+                    if (editingActionId === action.id && showPicker) {
+                      setShowPicker(false); setEditingActionId(null); setPickerInitialStep(null);
+                    } else {
+                      setEditingActionId(action.id); setPickerInitialStep(null); setShowPicker(true);
+                    }
+                  }}
+                  onClickOp={(() => {
+                    const dev = devices?.find(d => d.id === action.deviceId);
+                    const devDef = dev ? DEVICE_TYPES[dev.type] : null;
+                    // Servo: open picker at servo positions step
+                    if (action.operation === 'ServoMove' || action.operation === 'ServoIncr' || action.operation === 'ServoIndex') {
+                      return (e) => {
+                        e.stopPropagation();
+                        if (editingActionId === action.id && showPicker) {
+                          setShowPicker(false); setEditingActionId(null); setPickerInitialStep(null);
+                        } else {
+                          setEditingActionId(action.id); setPickerInitialStep('servoMoves'); setShowPicker(true);
+                        }
+                      };
+                    }
+                    // Any device with 2+ operations: open operation switcher popup
+                    if (devDef && (devDef.operations?.length ?? 0) >= 2) {
+                      return (e) => {
+                        e.stopPropagation();
+                        if (opSwitcher?.actionId === action.id) {
+                          setOpSwitcher(null);
+                        } else {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setOpSwitcher({ actionId: action.id, pos: { top: rect.bottom + 4, left: rect.left } });
+                        }
+                      };
+                    }
+                    return undefined;
+                  })()}
+                />
+              ))
+            ) : (
+              <div
+                className="state-node__empty"
+                onClick={(e) => { e.stopPropagation(); store.setSelectedNode(id); setShowPicker(true); }}
+              >
+                + Add action
+              </div>
+            )}
+
+            {/* Legacy SM Output badges — shown at end of body for outputs triggered by this node */}
+            {triggeredOutputs.length > 0 && (
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: '4px 4px 0' }}>
+                {triggeredOutputs.map(o => (
+                  <span key={o.id} style={{ fontSize: 9, background: '#0072B5', color: '#fff', borderRadius: 3, padding: '1px 5px' }}>
+                    ⤴ {o.name}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Signal latch chips — green = ON-side, red = OFF-side. Blue = pure
+                computed (OTE). Display-only at this zoom; details/editing happen
+                via the Signals section in the sidebar. stopPropagation keeps a
+                chip-click from toggling node selection. Rendered INSIDE
+                state-node__body so SVG-shaped nodes (pentagon/hexagon/etc.)
+                give the chips the z-index:1 content layer instead of clipping
+                them behind the shape background. */}
+            {(onSideSignals.length > 0 || offSideSignals.length > 0) && (
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: '4px 4px 0' }}>
+                {onSideSignals.map(sig => {
+                  const latched = !!sig.offCondition;
+                  const bg = latched ? '#16a34a' : '#0072B5';
+                  const suffix = latched ? ' ON' : '';
+                  return (
+                    <span
+                      key={`sig-on-${sig.id}`}
+                      title={latched
+                        ? `${sig.name} — latches ON at this state (OTL)`
+                        : `${sig.name} — TRUE at/past this state (OTE)`}
+                      onClick={e => e.stopPropagation()}
+                      onMouseDown={e => e.stopPropagation()}
+                      style={{
+                        fontSize: 9, fontWeight: 600, background: bg, color: '#fff',
+                        borderRadius: 10, padding: '1px 6px',
+                        display: 'inline-flex', alignItems: 'center', gap: 3,
+                      }}
+                    >
+                      <span style={{ fontSize: 8 }}>●</span>
+                      {sig.name}{suffix}
+                    </span>
+                  );
+                })}
+                {offSideSignals.map(sig => (
+                  <span
+                    key={`sig-off-${sig.id}`}
+                    title={`${sig.name} — latches OFF at this state (OTU)`}
+                    onClick={e => e.stopPropagation()}
+                    onMouseDown={e => e.stopPropagation()}
+                    style={{
+                      fontSize: 9, fontWeight: 600, background: '#dc2626', color: '#fff',
+                      borderRadius: 10, padding: '1px 6px',
+                      display: 'inline-flex', alignItems: 'center', gap: 3,
+                    }}
+                  >
+                    <span style={{ fontSize: 8 }}>●</span>
+                    {sig.name} OFF
+                  </span>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -3266,17 +3775,6 @@ export function StateNode({ data, selected, id }) {
         );
       })()}
 
-      {/* SM Output badges — shown below actions for outputs triggered by this node */}
-      {triggeredOutputs.length > 0 && (
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: '2px 4px' }}>
-          {triggeredOutputs.map(o => (
-            <span key={o.id} style={{ fontSize: 9, background: '#0072B5', color: '#fff', borderRadius: 3, padding: '1px 5px' }}>
-              ⤴ {o.name}
-            </span>
-          ))}
-        </div>
-      )}
-
       {/* PT/Signal Badge — always visible when content exists, add-badge on select */}
       {sm && !isInitial && !isComplete && !isFault && (
         <PtBadge nodeId={id} smId={sm.id} annotations={data.ptAnnotations ?? []} selected={selected} />
@@ -3287,8 +3785,9 @@ export function StateNode({ data, selected, id }) {
         <ConnectMenu nodeId={id} nodeType="stateNode" smId={sm.id} />
       )}
 
-      {/* Source handles: vision side exits OR default bottom handle */}
-      {showVisionSideHandles ? (
+      {/* Source handles: vision side exits, embedded decision side exits,
+          single vision exit, or default bottom handle. */}
+      {showVisionSideHandles || showDecisionSideHandles ? (
         <>
           <Handle
             type="source"
@@ -3302,6 +3801,16 @@ export function StateNode({ data, selected, id }) {
             id="exit-fail"
             className="sdc-handle sdc-handle--fail"
           />
+          {/* Retry handle for decision with retry enabled — matches DecisionNode pattern */}
+          {lastDecisionHasRetry && (
+            <Handle
+              type="source"
+              position={Position.Bottom}
+              id="exit-retry"
+              className="sdc-handle sdc-handle--retry"
+              isConnectable
+            />
+          )}
         </>
       ) : showVisionSingleHandle ? (
         <Handle
@@ -3318,8 +3827,19 @@ export function StateNode({ data, selected, id }) {
         />
       )}
 
-      {/* Click detection on bottom handle to open ConnectMenu */}
-      {sm && !isComplete && !isFault && (
+      {/* Click detection on source handles — ConnectMenu routing matches which
+          handle mode this state is in. For side-exit modes (vision-branch or
+          embedded-decision-branch) we wire the pass/fail zones; otherwise the
+          default bottom-handle zone covers regular states + single-exit waits. */}
+      {sm && !isComplete && !isFault && (showVisionSideHandles || showDecisionSideHandles) ? (
+        <>
+          <HandleClickZone nodeId={id} handleSelector=".sdc-handle--pass" handleId="exit-pass" />
+          <HandleClickZone nodeId={id} handleSelector=".sdc-handle--fail" handleId="exit-fail" />
+          {lastDecisionHasRetry && (
+            <HandleClickZone nodeId={id} handleSelector=".sdc-handle--retry" handleId="exit-retry" />
+          )}
+        </>
+      ) : sm && !isComplete && !isFault && (
         <HandleClickZone
           nodeId={id}
           handleSelector=".sdc-handle.react-flow__handle-bottom"

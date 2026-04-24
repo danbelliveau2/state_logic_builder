@@ -9,6 +9,53 @@ import { applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
 import * as projectApi from '../lib/projectApi.js';
 import { computeExitLabels } from '../lib/edgeRouting.js';
 import { OUTCOME_COLORS } from '../lib/outcomeColors.js';
+import { getStandards as _getStandards } from '../lib/standardsLibrary.js';
+
+// Build a fresh projectData object from a standards library template.
+// Mirrors StandardsView.handleOpen() so the store can recover/re-open
+// a standard without reaching back into that component.
+function _projectFromStandardTemplate(template) {
+  if (!template) return null;
+  const smId = crypto.randomUUID();
+  return {
+    id: crypto.randomUUID(),
+    name: template.name,
+    isStandard: true,
+    standardId: template.id,
+    stateMachines: [{
+      id: smId,
+      name: template.name,
+      displayName: template.name,
+      stationNumber: 1,
+      description: template.description || '',
+      category: template.category || '',
+      nodes: JSON.parse(JSON.stringify(template.nodes ?? [])),
+      edges: JSON.parse(JSON.stringify(template.edges ?? [])),
+      devices: JSON.parse(JSON.stringify(template.devices ?? [])),
+      recoverySeqs: [{ id: crypto.randomUUID(), name: 'Default', nodes: [], edges: [] }],
+    }],
+    signals: [],
+    partTracking: { fields: [] },
+    recipes: [],
+  };
+}
+
+// Find a library template by id first, then by name (case-insensitive, with
+// underscore/space equivalence so legacy tabs whose display name drifted
+// can still be linked back to their source).
+function _findStandardTemplate({ id, name } = {}) {
+  const templates = _getStandards() ?? [];
+  if (id) {
+    const byId = templates.find(t => t.id === id);
+    if (byId) return byId;
+  }
+  if (name) {
+    const norm = (s) => String(s || '').toLowerCase().replace(/[\s_]+/g, ' ').trim();
+    const target = norm(name);
+    return templates.find(t => norm(t.name) === target) ?? null;
+  }
+  return null;
+}
 
 // Tiny ID generator (avoid nanoid async import issues)
 let _id = Date.now();
@@ -174,6 +221,91 @@ function _updateProject(state, smsUpdater) {
 }
 
 /**
+ * Apply `nodeUpdater(node) → newNode` to whichever container owns the node id:
+ *   - `sm.nodes` (normal diagram), or
+ *   - any `sm.recoverySeqs[*].nodes` (recovery sequence).
+ *
+ * Returns a new `sm` with the mutation applied. If the node isn't found in
+ * either place the sm is returned unchanged (same as before, no-op). This lets
+ * action/edge/data mutators work identically on main and recovery nodes without
+ * each caller having to know which container the node lives in.
+ */
+function _mutateNodeInSm(sm, nodeId, nodeUpdater) {
+  if (!sm) return sm;
+  if ((sm.nodes ?? []).some(n => n.id === nodeId)) {
+    return { ...sm, nodes: sm.nodes.map(n => n.id === nodeId ? nodeUpdater(n) : n) };
+  }
+  const seqs = sm.recoverySeqs ?? [];
+  let mutated = false;
+  const nextSeqs = seqs.map(r => {
+    if ((r.nodes ?? []).some(n => n.id === nodeId)) {
+      mutated = true;
+      return { ...r, nodes: r.nodes.map(n => n.id === nodeId ? nodeUpdater(n) : n) };
+    }
+    return r;
+  });
+  return mutated ? { ...sm, recoverySeqs: nextSeqs } : sm;
+}
+
+/**
+ * Locate which container inside an SM owns a given node id.
+ * Returns `{ container: 'main', node }` for the main diagram, or
+ * `{ container: 'recovery', seqId, node }` for a recovery sequence.
+ * Returns `null` if the node isn't found anywhere in this SM.
+ */
+function _locateNodeInSm(sm, nodeId) {
+  if (!sm) return null;
+  const main = (sm.nodes ?? []).find(n => n.id === nodeId);
+  if (main) return { container: 'main', node: main };
+  for (const r of (sm.recoverySeqs ?? [])) {
+    const n = (r.nodes ?? []).find(n => n.id === nodeId);
+    if (n) return { container: 'recovery', seqId: r.id, node: n };
+  }
+  return null;
+}
+
+/**
+ * Read the `{ nodes, edges }` container that owns a given node. Pairs with
+ * `_locateNodeInSm` — pass the location it returns. Returns empty arrays
+ * if `loc` is null so callers can still filter without null-checking every
+ * step. Keeps branch-creation functions container-agnostic (they read from
+ * here and write through `_rewireAroundNodeInSm`).
+ */
+function _getContainerNodesEdges(sm, loc) {
+  if (!sm || !loc) return { nodes: [], edges: [] };
+  if (loc.container === 'main') return { nodes: sm.nodes ?? [], edges: sm.edges ?? [] };
+  const seq = (sm.recoverySeqs ?? []).find(r => r.id === loc.seqId);
+  return { nodes: seq?.nodes ?? [], edges: seq?.edges ?? [] };
+}
+
+/**
+ * Replace nodes/edges wholesale in whichever container owns a given node id.
+ * `transform({ nodes, edges }) → { nodes, edges }` runs on whichever pair the
+ * node lives in — either `sm.{nodes,edges}` or the matching recovery seq's
+ * `{nodes,edges}`. Lets callers that need to do multi-node rewires (e.g.
+ * replaceNodeWithDecision, which removes one node + adds another + rewires
+ * edges) work identically on both containers.
+ */
+function _rewireAroundNodeInSm(sm, anchorNodeId, transform) {
+  if (!sm) return sm;
+  const loc = _locateNodeInSm(sm, anchorNodeId);
+  if (!loc) return sm;
+  if (loc.container === 'main') {
+    const next = transform({ nodes: sm.nodes ?? [], edges: sm.edges ?? [] });
+    return { ...sm, nodes: next.nodes, edges: next.edges };
+  }
+  return {
+    ...sm,
+    recoverySeqs: sm.recoverySeqs.map(r =>
+      r.id !== loc.seqId ? r : {
+        ...r,
+        ...transform({ nodes: r.nodes ?? [], edges: r.edges ?? [] }),
+      }
+    ),
+  };
+}
+
+/**
  * Generate a unique PLC tag name for a device across all SMs.
  * e.g. "HeadOpener" → "HeadOpener2" → "HeadOpener3"
  */
@@ -250,14 +382,29 @@ export const useDiagramStore = create(
         const sm = get().getActiveSm();
         const id = get().selectedNodeId;
         if (!sm || !id) return null;
-        return (sm.nodes ?? []).find(n => n.id === id) ?? null;
+        // Main diagram first, then any recovery sequence — recovery selections
+        // need to resolve here too so the properties panel + keyboard delete
+        // find the right node regardless of which tab the user is on.
+        const main = (sm.nodes ?? []).find(n => n.id === id);
+        if (main) return main;
+        for (const r of (sm.recoverySeqs ?? [])) {
+          const rn = (r.nodes ?? []).find(n => n.id === id);
+          if (rn) return rn;
+        }
+        return null;
       },
 
       getSelectedEdge() {
         const sm = get().getActiveSm();
         const id = get().selectedEdgeId;
         if (!sm || !id) return null;
-        return (sm.edges ?? []).find(e => e.id === id) ?? null;
+        const main = (sm.edges ?? []).find(e => e.id === id);
+        if (main) return main;
+        for (const r of (sm.recoverySeqs ?? [])) {
+          const re = (r.edges ?? []).find(e => e.id === id);
+          if (re) return re;
+        }
+        return null;
       },
 
       // ── Undo / Redo ────────────────────────────────────────────────────────
@@ -376,6 +523,19 @@ export const useDiagramStore = create(
           if (!sm.smOutputs) sm.smOutputs = [];
           // Ensure recoverySeqs exists for older projects
           if (!sm.recoverySeqs) sm.recoverySeqs = [{ id: `rseq_${sm.id}`, name: 'Default', nodes: [], edges: [] }];
+          // Auto-heal: legacy recovery nodes labeled "Cycle Complete" without the
+          // `isComplete` flag need the flag set so they pin to step 124 and render
+          // with the green "Cycle Complete" styling.
+          sm.recoverySeqs = sm.recoverySeqs.map(seq => ({
+            ...seq,
+            nodes: (seq.nodes ?? []).map(n => {
+              if (n.type !== 'stateNode') return n;
+              if (n.data?.isComplete) return n;
+              const label = String(n.data?.label ?? '').trim().toLowerCase();
+              if (label !== 'cycle complete') return n;
+              return { ...n, data: { ...n.data, isComplete: true, isFault: false } };
+            }),
+          }));
           // Migration: convert old latch-pattern (triggerNodeId/clearNodeId/autoClear) to new OTE model (activeNodeId)
           sm.smOutputs = sm.smOutputs.map(o => {
             if ('triggerNodeId' in o || 'clearNodeId' in o || 'autoClear' in o) {
@@ -1803,6 +1963,10 @@ export const useDiagramStore = create(
         // only used when a node is added outside that path.
         const vGap = Number(get().project?.designTheme?.verticalNodeSpacing) || 80;
         const APPROX_NODE_H = 120;
+        // Standards are generic sequence templates — no station-level "home" concept,
+        // no dial-index wait. Never auto-promote the first node to isInitial / Home.
+        const isStandard = get().project?.isStandard === true;
+        const defaultStep0Label = isStandard ? 'Step 0' : 'Wait for Index Complete';
         const node = {
           id,
           type: 'stateNode',
@@ -1812,9 +1976,9 @@ export const useDiagramStore = create(
           },
           data: {
             stepNumber: stepNum,
-            label: options.label ?? (stepNum === 0 ? 'Wait for Index Complete' : `Step ${stepNum}`),
+            label: options.label ?? (stepNum === 0 ? defaultStep0Label : `Step ${stepNum}`),
             actions: [],
-            isInitial: stepNum === 0,
+            isInitial: !isStandard && stepNum === 0,
           },
         };
         set(s => ({
@@ -1906,81 +2070,71 @@ export const useDiagramStore = create(
         get()._pushHistory();
         const sm = _getSmArray(get()).find(s => s.id === smId);
         if (!sm) return;
-        const decisionNode = sm.nodes.find(n => n.id === nodeId);
-        if (!decisionNode) return;
+        // Container-agnostic: decision node may live in sm.nodes OR sm.recoverySeqs[*].nodes
+        const loc = _locateNodeInSm(sm, nodeId);
+        if (!loc) return;
+        const decisionNode = loc.node;
+        const { nodes: cNodes, edges: cEdges } = _getContainerNodesEdges(sm, loc);
 
-        // If branches already exist, update their labels instead of creating duplicates
-        const existingOut = sm.edges.filter(e => e.source === nodeId);
-        if (existingOut.length > 0) {
-          const passEdge = existingOut.find(e => e.sourceHandle === 'exit-pass');
-          const failEdge = existingOut.find(e => e.sourceHandle === 'exit-fail');
+        // If pass/fail branches already exist, update their labels instead of
+        // creating duplicates. NOTE: we only treat this as "already branched"
+        // when real exit-pass/exit-fail handles are in use — a plain bottom-exit
+        // edge on a state (no handle id) means the state was NOT previously
+        // branching and we should create fresh pass/fail branches below.
+        const existingOut = cEdges.filter(e => e.source === nodeId);
+        const passEdgeExisting = existingOut.find(e => e.sourceHandle === 'exit-pass');
+        const failEdgeExisting = existingOut.find(e => e.sourceHandle === 'exit-fail');
+        if (passEdgeExisting || failEdgeExisting) {
+          const passEdge = passEdgeExisting;
+          const failEdge = failEdgeExisting;
           set(s => ({
             project: _updateProject(s, sms => sms.map(sm2 => {
               if (sm2.id !== smId) return sm2;
-              const updatedEdges = sm2.edges.map(e => {
-                if (passEdge && e.id === passEdge.id) {
-                  return { ...e, label: exit1Label, data: { ...e.data, label: exit1Label, outcomeLabel: exit1Label } };
-                }
-                if (failEdge && e.id === failEdge.id) {
-                  return { ...e, label: exit2Label, data: { ...e.data, label: exit2Label, outcomeLabel: exit2Label } };
-                }
-                return e;
+              return _rewireAroundNodeInSm(sm2, nodeId, ({ nodes, edges }) => {
+                const updatedEdges = edges.map(e => {
+                  if (passEdge && e.id === passEdge.id) {
+                    return { ...e, label: exit1Label, data: { ...e.data, label: exit1Label, outcomeLabel: exit1Label } };
+                  }
+                  if (failEdge && e.id === failEdge.id) {
+                    return { ...e, label: exit2Label, data: { ...e.data, label: exit2Label, outcomeLabel: exit2Label } };
+                  }
+                  return e;
+                });
+                // Update auto-created child node labels if they still match old edge labels
+                const updatedNodes = nodes.map(n => {
+                  if (passEdge && n.id === passEdge.target && n.data?.label === passEdge.label) {
+                    return { ...n, data: { ...n.data, label: exit1Label } };
+                  }
+                  if (failEdge && n.id === failEdge.target && n.data?.label === failEdge.label) {
+                    return { ...n, data: { ...n.data, label: exit2Label } };
+                  }
+                  return n;
+                });
+                return { nodes: updatedNodes, edges: updatedEdges };
               });
-              // Update auto-created child node labels if they still match old edge labels
-              const updatedNodes = sm2.nodes.map(n => {
-                if (passEdge && n.id === passEdge.target && n.data?.label === passEdge.label) {
-                  return { ...n, data: { ...n.data, label: exit1Label } };
-                }
-                if (failEdge && n.id === failEdge.target && n.data?.label === failEdge.label) {
-                  return { ...n, data: { ...n.data, label: exit2Label } };
-                }
-                return n;
-              });
-              return { ...sm2, edges: updatedEdges, nodes: updatedNodes };
             })),
           }));
           return;
         }
 
-        const passId = uid();
+        // Reusable bottom-handle edge? When the source node (usually a state
+        // that just became a decision source via an embedded _decision row)
+        // already has a plain bottom-exit edge pointing somewhere, retarget it
+        // as the pass branch rather than leaving a dangling edge. Creates a
+        // single new fail branch below-right. Covers the flow "state had a
+        // next-state edge → user added embedded verify → want pass to be the
+        // existing downstream path + new fail branch".
+        const reusableEdge = existingOut.find(
+          e => e.sourceHandle == null || e.sourceHandle === 'exit-single' || e.sourceHandle === ''
+        );
+
         const failId = uid();
-        const passEdgeId = uid();
         const failEdgeId = uid();
-
-        // Part tracking is now table-driven (per SM). No PT actions are
-        // inserted into branch nodes — the PT table derives writes from
-        // the decision node itself. Keeps the diagram clean.
-        const passActions = [];
-        const failActions = [];
-
-        const passNode = {
-          id: passId,
-          type: 'stateNode',
-          position: { x: decisionNode.position.x - 280, y: decisionNode.position.y + 220 },
-          data: { label: exit1Label, actions: passActions, isInitial: false, stepNumber: sm.nodes.length },
-        };
         const failNode = {
           id: failId,
           type: 'stateNode',
           position: { x: decisionNode.position.x + 280, y: decisionNode.position.y + 220 },
-          data: { label: exit2Label, actions: failActions, isInitial: false, stepNumber: sm.nodes.length + 1 },
-        };
-
-        const passEdge = {
-          id: passEdgeId,
-          source: nodeId,
-          sourceHandle: 'exit-pass',
-          target: passId,
-          targetHandle: null,
-          type: 'routableEdge',
-          animated: false,
-          style: { stroke: '#16a34a', strokeWidth: 2 },
-          markerEnd: { type: 'ArrowClosed', color: '#16a34a' },
-          label: exit1Label,
-          labelStyle: { fill: '#fff', fontWeight: 600, fontSize: 11 },
-          labelBgStyle: { fill: '#16a34a', rx: 4, ry: 4 },
-          labelBgPadding: [4, 8],
-          data: { conditionType: 'ready', label: exit1Label, outcomeLabel: exit1Label, isDecisionExit: true, exitColor: 'pass' },
+          data: { label: exit2Label, actions: [], isInitial: false, stepNumber: cNodes.length + 1 },
         };
         const failEdge = {
           id: failEdgeId,
@@ -1999,13 +2153,66 @@ export const useDiagramStore = create(
           data: { conditionType: 'ready', label: exit2Label, outcomeLabel: exit2Label, isDecisionExit: true, exitColor: 'fail' },
         };
 
+        if (reusableEdge) {
+          // Retarget the existing edge to the pass handle; create only the fail branch.
+          set(s => ({
+            project: _updateProject(s, sms => sms.map(sm2 =>
+                sm2.id !== smId ? sm2 : _rewireAroundNodeInSm(sm2, nodeId, ({ nodes, edges }) => ({
+                  nodes: [...nodes, failNode],
+                  edges: [
+                    ...edges.map(e => e.id === reusableEdge.id
+                      ? {
+                          ...e,
+                          sourceHandle: 'exit-pass',
+                          label: exit1Label,
+                          style: { ...(e.style ?? {}), stroke: '#16a34a', strokeWidth: 2 },
+                          markerEnd: { type: 'ArrowClosed', color: '#16a34a' },
+                          labelStyle: { fill: '#fff', fontWeight: 600, fontSize: 11 },
+                          labelBgStyle: { fill: '#16a34a', rx: 4, ry: 4 },
+                          labelBgPadding: [4, 8],
+                          data: { ...(e.data ?? {}), label: exit1Label, outcomeLabel: exit1Label, isDecisionExit: true, exitColor: 'pass' },
+                        }
+                      : e),
+                    failEdge,
+                  ],
+                }))
+              )),
+          }));
+          return;
+        }
+
+        // No reusable edge — create both pass and fail branch nodes + edges.
+        const passId = uid();
+        const passEdgeId = uid();
+        const passNode = {
+          id: passId,
+          type: 'stateNode',
+          position: { x: decisionNode.position.x - 280, y: decisionNode.position.y + 220 },
+          data: { label: exit1Label, actions: [], isInitial: false, stepNumber: cNodes.length },
+        };
+        const passEdge = {
+          id: passEdgeId,
+          source: nodeId,
+          sourceHandle: 'exit-pass',
+          target: passId,
+          targetHandle: null,
+          type: 'routableEdge',
+          animated: false,
+          style: { stroke: '#16a34a', strokeWidth: 2 },
+          markerEnd: { type: 'ArrowClosed', color: '#16a34a' },
+          label: exit1Label,
+          labelStyle: { fill: '#fff', fontWeight: 600, fontSize: 11 },
+          labelBgStyle: { fill: '#16a34a', rx: 4, ry: 4 },
+          labelBgPadding: [4, 8],
+          data: { conditionType: 'ready', label: exit1Label, outcomeLabel: exit1Label, isDecisionExit: true, exitColor: 'pass' },
+        };
+
         set(s => ({
-          project: _updateProject(s, sms => sms.map(sm =>
-              sm.id !== smId ? sm : {
-                ...sm,
-                nodes: [...sm.nodes, passNode, failNode],
-                edges: [...sm.edges, passEdge, failEdge],
-              }
+          project: _updateProject(s, sms => sms.map(sm2 =>
+              sm2.id !== smId ? sm2 : _rewireAroundNodeInSm(sm2, nodeId, ({ nodes, edges }) => ({
+                nodes: [...nodes, passNode, failNode],
+                edges: [...edges, passEdge, failEdge],
+              }))
             )),
         }));
       },
@@ -2014,14 +2221,16 @@ export const useDiagramStore = create(
         get()._pushHistory();
         const sm = _getSmArray(get()).find(s => s.id === smId);
         if (!sm) return;
-        const decisionNode = sm.nodes.find(n => n.id === nodeId);
-        if (!decisionNode) return;
+        const loc = _locateNodeInSm(sm, nodeId);
+        if (!loc) return;
+        const decisionNode = loc.node;
+        const { nodes: cNodes, edges: cEdges } = _getContainerNodesEdges(sm, loc);
 
         // If the single exit already exists, update its label (and matching child node label) instead of creating a duplicate.
         // If MULTIPLE edges exist (migrating from an invalid wait+multi-exit state), keep one
         // and drop the rest — otherwise the node would display 2 exits even though its data
         // says exitCount=1. Preference: keep exit-single if present, else exit-pass, else first.
-        const existingOut = sm.edges.filter(e => e.source === nodeId);
+        const existingOut = cEdges.filter(e => e.source === nodeId);
         if (existingOut.length > 0) {
           const keepEdge = existingOut.find(e => e.sourceHandle === 'exit-single')
                         ?? existingOut.find(e => e.sourceHandle === 'exit-pass')
@@ -2035,43 +2244,45 @@ export const useDiagramStore = create(
           );
           const dropNodeIds = new Set();
           for (const tId of droppedTargetIds) {
-            const targetNode = sm.nodes.find(n => n.id === tId);
+            const targetNode = cNodes.find(n => n.id === tId);
             if (!targetNode) continue;
-            const hasOtherIn = sm.edges.some(e => e.target === tId && !dropEdgeIds.has(e.id));
-            const hasOutgoing = sm.edges.some(e => e.source === tId);
+            const hasOtherIn = cEdges.some(e => e.target === tId && !dropEdgeIds.has(e.id));
+            const hasOutgoing = cEdges.some(e => e.source === tId);
             const hasActions = (targetNode.data?.actions ?? []).length > 0;
             if (!hasOtherIn && !hasOutgoing && !hasActions) dropNodeIds.add(tId);
           }
           set(s => ({
             project: _updateProject(s, sms => sms.map(sm2 => {
               if (sm2.id !== smId) return sm2;
-              const updatedEdges = sm2.edges
-                .filter(e => !dropEdgeIds.has(e.id))
-                .map(e => {
-                  if (e.id === keepEdge.id) {
-                    // Normalize the kept edge to the canonical single-exit shape so
-                    // the node renders a single bottom handle, not a side handle.
-                    return {
-                      ...e,
-                      sourceHandle: 'exit-single',
-                      label: exitLabel,
-                      style: { ...(e.style ?? {}), stroke: '#16a34a' },
-                      markerEnd: { type: 'ArrowClosed', color: '#16a34a' },
-                      labelBgStyle: { ...(e.labelBgStyle ?? {}), fill: '#16a34a', rx: 4, ry: 4 },
-                      data: { ...(e.data ?? {}), label: exitLabel, isDecisionExit: true, exitColor: 'pass' },
-                    };
-                  }
-                  return e;
-                });
-              const updatedNodes = sm2.nodes
-                .filter(n => !dropNodeIds.has(n.id))
-                .map(n => {
-                  if (n.id === keepEdge.target && n.data?.label === keepEdge.label) {
-                    return { ...n, data: { ...n.data, label: exitLabel } };
-                  }
-                  return n;
-                });
-              return { ...sm2, edges: updatedEdges, nodes: updatedNodes };
+              return _rewireAroundNodeInSm(sm2, nodeId, ({ nodes, edges }) => {
+                const updatedEdges = edges
+                  .filter(e => !dropEdgeIds.has(e.id))
+                  .map(e => {
+                    if (e.id === keepEdge.id) {
+                      // Normalize the kept edge to the canonical single-exit shape so
+                      // the node renders a single bottom handle, not a side handle.
+                      return {
+                        ...e,
+                        sourceHandle: 'exit-single',
+                        label: exitLabel,
+                        style: { ...(e.style ?? {}), stroke: '#16a34a' },
+                        markerEnd: { type: 'ArrowClosed', color: '#16a34a' },
+                        labelBgStyle: { ...(e.labelBgStyle ?? {}), fill: '#16a34a', rx: 4, ry: 4 },
+                        data: { ...(e.data ?? {}), label: exitLabel, isDecisionExit: true, exitColor: 'pass' },
+                      };
+                    }
+                    return e;
+                  });
+                const updatedNodes = nodes
+                  .filter(n => !dropNodeIds.has(n.id))
+                  .map(n => {
+                    if (n.id === keepEdge.target && n.data?.label === keepEdge.label) {
+                      return { ...n, data: { ...n.data, label: exitLabel } };
+                    }
+                    return n;
+                  });
+                return { nodes: updatedNodes, edges: updatedEdges };
+              });
             })),
           }));
           return;
@@ -2084,7 +2295,7 @@ export const useDiagramStore = create(
           id: nextId,
           type: 'stateNode',
           position: { x: decisionNode.position.x, y: decisionNode.position.y + 180 },
-          data: { label: exitLabel, actions: [], isInitial: false, stepNumber: sm.nodes.length },
+          data: { label: exitLabel, actions: [], isInitial: false, stepNumber: cNodes.length },
         };
 
         // Single-exit wait is SEQUENTIAL — no branch, no pass/fail. Render gray
@@ -2103,12 +2314,11 @@ export const useDiagramStore = create(
         };
 
         set(s => ({
-          project: _updateProject(s, sms => sms.map(sm =>
-              sm.id !== smId ? sm : {
-                ...sm,
-                nodes: [...sm.nodes, nextNode],
-                edges: [...sm.edges, edge],
-              }
+          project: _updateProject(s, sms => sms.map(sm2 =>
+              sm2.id !== smId ? sm2 : _rewireAroundNodeInSm(sm2, nodeId, ({ nodes, edges }) => ({
+                nodes: [...nodes, nextNode],
+                edges: [...edges, edge],
+              }))
             )),
         }));
       },
@@ -2118,11 +2328,13 @@ export const useDiagramStore = create(
         get()._pushHistory();
         const sm = _getSmArray(get()).find(s => s.id === smId);
         if (!sm) return;
-        const decisionNode = sm.nodes.find(n => n.id === nodeId);
-        if (!decisionNode) return;
+        const loc = _locateNodeInSm(sm, nodeId);
+        if (!loc) return;
+        const decisionNode = loc.node;
+        const { nodes: cNodes, edges: cEdges } = _getContainerNodesEdges(sm, loc);
 
         // Don't create duplicate retry branch
-        const existingRetry = sm.edges.find(e => e.source === nodeId && e.sourceHandle === 'exit-retry');
+        const existingRetry = cEdges.find(e => e.source === nodeId && e.sourceHandle === 'exit-retry');
         if (existingRetry) return;
 
         const retryNodeId = uid();
@@ -2132,7 +2344,7 @@ export const useDiagramStore = create(
           id: retryNodeId,
           type: 'stateNode',
           position: { x: decisionNode.position.x, y: decisionNode.position.y + 220 },
-          data: { label: 'Retry_Fail', actions: [], isInitial: false, stepNumber: sm.nodes.length },
+          data: { label: 'Retry_Fail', actions: [], isInitial: false, stepNumber: cNodes.length },
         };
 
         const retryEdge = {
@@ -2153,12 +2365,11 @@ export const useDiagramStore = create(
         };
 
         set(s => ({
-          project: _updateProject(s, sms => sms.map(sm =>
-              sm.id !== smId ? sm : {
-                ...sm,
-                nodes: [...sm.nodes, retryNode],
-                edges: [...sm.edges, retryEdge],
-              }
+          project: _updateProject(s, sms => sms.map(sm2 =>
+              sm2.id !== smId ? sm2 : _rewireAroundNodeInSm(sm2, nodeId, ({ nodes, edges }) => ({
+                nodes: [...nodes, retryNode],
+                edges: [...edges, retryEdge],
+              }))
             )),
         }));
       },
@@ -2168,37 +2379,42 @@ export const useDiagramStore = create(
         get()._pushHistory();
         const sm = _getSmArray(get()).find(s => s.id === smId);
         if (!sm) return;
-        const decisionNode = sm.nodes.find(n => n.id === nodeId);
-        if (!decisionNode) return;
+        const loc = _locateNodeInSm(sm, nodeId);
+        if (!loc) return;
+        const decisionNode = loc.node;
+        const { nodes: cNodes, edges: cEdges } = _getContainerNodesEdges(sm, loc);
 
         const n = outcomeLabels.length;
 
         // If branches already exist for this node, update labels
-        const existingOut = sm.edges.filter(e => e.source === nodeId && /^exit-\d+$/.test(e.sourceHandle));
+        const existingOut = cEdges.filter(e => e.source === nodeId && /^exit-\d+$/.test(e.sourceHandle));
         if (existingOut.length > 0) {
           set(s => ({
             project: _updateProject(s, sms => sms.map(sm2 => {
               if (sm2.id !== smId) return sm2;
-              const updatedEdges = sm2.edges.map(e => {
-                if (e.source !== nodeId) return e;
-                const match = e.sourceHandle?.match(/^exit-(\d+)$/);
-                if (!match) return e;
-                const idx = parseInt(match[1], 10);
-                if (idx < outcomeLabels.length) {
-                  const label = outcomeLabels[idx];
-                  return { ...e, label, data: { ...e.data, label, outcomeLabel: label } };
-                }
-                return e;
+              return _rewireAroundNodeInSm(sm2, nodeId, ({ nodes, edges }) => {
+                const updatedEdges = edges.map(e => {
+                  if (e.source !== nodeId) return e;
+                  const match = e.sourceHandle?.match(/^exit-(\d+)$/);
+                  if (!match) return e;
+                  const idx = parseInt(match[1], 10);
+                  if (idx < outcomeLabels.length) {
+                    const label = outcomeLabels[idx];
+                    return { ...e, label, data: { ...e.data, label, outcomeLabel: label } };
+                  }
+                  return e;
+                });
+                return { nodes, edges: updatedEdges };
               });
-              return { ...sm2, edges: updatedEdges };
             })),
           }));
           return;
         }
 
         // Also remove any existing 2-exit branches (pass/fail/single) before creating multi
-        const oldExitEdges = sm.edges.filter(e => e.source === nodeId);
+        const oldExitEdges = cEdges.filter(e => e.source === nodeId);
         const oldExitTargets = new Set(oldExitEdges.map(e => e.target));
+        const oldExitEdgeIds = new Set(oldExitEdges.map(e => e.id));
 
         // Create N new nodes fanned out below the decision node
         const decX = decisionNode.position.x;
@@ -2219,7 +2435,7 @@ export const useDiagramStore = create(
             id: nid,
             type: 'stateNode',
             position: { x: startX + i * spacing - 120, y: decY + 240 },
-            data: { label, actions: [], isInitial: false, stepNumber: sm.nodes.length + i },
+            data: { label, actions: [], isInitial: false, stepNumber: cNodes.length + i },
           });
 
           newEdges.push({
@@ -2248,22 +2464,21 @@ export const useDiagramStore = create(
         }
 
         set(s => ({
-          project: _updateProject(s, sms => sms.map(sm2 => {
-            if (sm2.id !== smId) return sm2;
-            // Remove old exit edges and their orphaned target nodes
-            const cleanEdges = sm2.edges.filter(e => !(e.source === nodeId && oldExitEdges.find(o => o.id === e.id)));
-            // Only remove target nodes that have no other incoming edges
-            const cleanNodes = sm2.nodes.filter(n => {
-              if (!oldExitTargets.has(n.id)) return true;
-              // Keep if another edge still targets this node
-              return cleanEdges.some(e => e.target === n.id);
-            });
-            return {
-              ...sm2,
-              nodes: [...cleanNodes, ...newNodes],
-              edges: [...cleanEdges, ...newEdges],
-            };
-          })),
+          project: _updateProject(s, sms => sms.map(sm2 =>
+            sm2.id !== smId ? sm2 : _rewireAroundNodeInSm(sm2, nodeId, ({ nodes, edges }) => {
+              // Remove old exit edges and their orphaned target nodes
+              const cleanEdges = edges.filter(e => !oldExitEdgeIds.has(e.id));
+              // Only remove target nodes that have no other incoming edges
+              const cleanNodes = nodes.filter(n => {
+                if (!oldExitTargets.has(n.id)) return true;
+                return cleanEdges.some(e => e.target === n.id);
+              });
+              return {
+                nodes: [...cleanNodes, ...newNodes],
+                edges: [...cleanEdges, ...newEdges],
+              };
+            })
+          )),
         }));
       },
 
@@ -2273,11 +2488,13 @@ export const useDiagramStore = create(
         get()._pushHistory();
         const sm = _getSmArray(get()).find(s => s.id === smId);
         if (!sm) return;
-        const visionNode = sm.nodes.find(n => n.id === nodeId);
-        if (!visionNode) return;
+        const loc = _locateNodeInSm(sm, nodeId);
+        if (!loc) return;
+        const visionNode = loc.node;
+        const { edges: cEdges } = _getContainerNodesEdges(sm, loc);
 
         // Don't create duplicates if branches already exist
-        const existingOut = sm.edges.filter(e => e.source === nodeId);
+        const existingOut = cEdges.filter(e => e.source === nodeId);
         if (existingOut.length > 0) return;
 
         const passId = uid();
@@ -2347,12 +2564,11 @@ export const useDiagramStore = create(
         };
 
         set(s => ({
-          project: _updateProject(s, sms => sms.map(sm =>
-              sm.id !== smId ? sm : {
-                ...sm,
-                nodes: [...sm.nodes, passNode, failNode],
-                edges: [...sm.edges, passEdge, failEdge],
-              }
+          project: _updateProject(s, sms => sms.map(sm2 =>
+              sm2.id !== smId ? sm2 : _rewireAroundNodeInSm(sm2, nodeId, ({ nodes, edges }) => ({
+                nodes: [...nodes, passNode, failNode],
+                edges: [...edges, passEdge, failEdge],
+              }))
             )),
         }));
       },
@@ -2361,11 +2577,13 @@ export const useDiagramStore = create(
         get()._pushHistory();
         const sm = _getSmArray(get()).find(s => s.id === smId);
         if (!sm) return;
-        const visionNode = sm.nodes.find(n => n.id === nodeId);
-        if (!visionNode) return;
+        const loc = _locateNodeInSm(sm, nodeId);
+        if (!loc) return;
+        const visionNode = loc.node;
+        const { edges: cEdges } = _getContainerNodesEdges(sm, loc);
 
         // Don't create duplicates
-        const existingOut = sm.edges.filter(e => e.source === nodeId);
+        const existingOut = cEdges.filter(e => e.source === nodeId);
         if (existingOut.length > 0) return;
 
         const nextId = uid();
@@ -2401,12 +2619,11 @@ export const useDiagramStore = create(
         };
 
         set(s => ({
-          project: _updateProject(s, sms => sms.map(sm =>
-              sm.id !== smId ? sm : {
-                ...sm,
-                nodes: [...sm.nodes, nextNode],
-                edges: [...sm.edges, edge],
-              }
+          project: _updateProject(s, sms => sms.map(sm2 =>
+              sm2.id !== smId ? sm2 : _rewireAroundNodeInSm(sm2, nodeId, ({ nodes, edges }) => ({
+                nodes: [...nodes, nextNode],
+                edges: [...edges, edge],
+              }))
             )),
         }));
       },
@@ -2416,14 +2633,7 @@ export const useDiagramStore = create(
         set(s => ({
           project: _updateProject(s, sms => sms.map(sm =>
               sm.id === smId
-                ? {
-                    ...sm,
-                    nodes: sm.nodes.map(n =>
-                      n.id === nodeId
-                        ? { ...n, data: { ...n.data, ...dataUpdates } }
-                        : n
-                    ),
-                  }
+                ? _mutateNodeInSm(sm, nodeId, n => ({ ...n, data: { ...n.data, ...dataUpdates } }))
                 : sm
             )),
         }));
@@ -2439,8 +2649,11 @@ export const useDiagramStore = create(
       syncDecisionExitLabels(smId, nodeId) {
         const sm = _getSmArray(get()).find(s => s.id === smId);
         if (!sm) return;
-        const node = sm.nodes.find(n => n.id === nodeId);
-        if (!node || node.type !== 'decisionNode') return;
+        const loc = _locateNodeInSm(sm, nodeId);
+        if (!loc) return;
+        const node = loc.node;
+        if (node.type !== 'decisionNode') return;
+        const { nodes: cNodes, edges: cEdges } = _getContainerNodesEdges(sm, loc);
 
         const d = node.data;
         const { exit1Label, exit2Label } = d;
@@ -2450,35 +2663,50 @@ export const useDiagramStore = create(
         if (!computed) return;
         const { exit1: correct1, exit2: correct2 } = computed;
 
+        // User-typed custom labels are canon — but the `exitLabelsCustomized`
+        // flag is sticky across saves and may be incorrectly true on legacy
+        // records. So detect "genuinely customized" by checking whether the
+        // current labels fall OUTSIDE the known generic-default vocabulary.
+        // Labels like "Gripped"/"Slipped" don't match any default pair → treat
+        // as custom → skip. Labels like "Pass"/"Fail" on a binary signal ARE
+        // a legacy default → overwrite with fresh On/Off.
+        const GENERIC_DEFAULT_PAIRS = [
+          ['Pass', 'Fail'], ['True', 'False'],
+          ['On', 'Off'], ['Off', 'On'],
+          ['InRange', 'OutOfRange'], ['In Range', 'Out of Range'],
+        ];
+        const isGenericDefault = GENERIC_DEFAULT_PAIRS.some(
+          ([a, b]) => exit1Label === a && exit2Label === b
+        );
+        if (d.exitLabelsCustomized === true && !isGenericDefault) return;
+
         // Bail if labels already correct
         if (exit1Label === correct1 && exit2Label === correct2) return;
 
         // Find connected edges to determine which child nodes need label updates
-        const passEdge  = sm.edges.find(e => e.source === nodeId && e.sourceHandle === 'exit-pass');
-        const failEdge  = sm.edges.find(e => e.source === nodeId && e.sourceHandle === 'exit-fail');
-        const singleEdge = sm.edges.find(e => e.source === nodeId && e.sourceHandle === 'exit-single');
+        const passEdge  = cEdges.find(e => e.source === nodeId && e.sourceHandle === 'exit-pass');
+        const failEdge  = cEdges.find(e => e.source === nodeId && e.sourceHandle === 'exit-fail');
+        const singleEdge = cEdges.find(e => e.source === nodeId && e.sourceHandle === 'exit-single');
 
         const childUpdates = new Map(); // childNodeId → newLabel
         if (passEdge) {
-          const child = sm.nodes.find(n => n.id === passEdge.target);
+          const child = cNodes.find(n => n.id === passEdge.target);
           if (child && child.data?.label === exit1Label) childUpdates.set(passEdge.target, correct1);
         }
         if (failEdge) {
-          const child = sm.nodes.find(n => n.id === failEdge.target);
+          const child = cNodes.find(n => n.id === failEdge.target);
           if (child && child.data?.label === exit2Label) childUpdates.set(failEdge.target, correct2);
         }
         if (singleEdge) {
-          const child = sm.nodes.find(n => n.id === singleEdge.target);
+          const child = cNodes.find(n => n.id === singleEdge.target);
           if (child && child.data?.label === exit1Label) childUpdates.set(singleEdge.target, correct1);
         }
 
-        // Atomic update — node + edges + child nodes
+        // Atomic update — node + edges + child nodes (on the correct container)
         set(s => ({
-          project: _updateProject(s, sms => sms.map(sm2 => {
-            if (sm2.id !== smId) return sm2;
-            return {
-              ...sm2,
-              nodes: sm2.nodes.map(n => {
+          project: _updateProject(s, sms => sms.map(sm2 =>
+            sm2.id !== smId ? sm2 : _rewireAroundNodeInSm(sm2, nodeId, ({ nodes, edges }) => ({
+              nodes: nodes.map(n => {
                 if (n.id === nodeId) {
                   return { ...n, data: { ...n.data, exit1Label: correct1, exit2Label: correct2 } };
                 }
@@ -2487,7 +2715,7 @@ export const useDiagramStore = create(
                 }
                 return n;
               }),
-              edges: sm2.edges.map(e => {
+              edges: edges.map(e => {
                 if (e.source !== nodeId) return e;
                 if (e.sourceHandle === 'exit-pass') {
                   return { ...e, label: correct1, data: { ...e.data, label: correct1, outcomeLabel: correct1 } };
@@ -2500,8 +2728,8 @@ export const useDiagramStore = create(
                 }
                 return e;
               }),
-            };
-          })),
+            }))
+          )),
         }));
       },
 
@@ -2704,19 +2932,23 @@ export const useDiagramStore = create(
         const seq = (sm.recoverySeqs ?? []).find(r => r.id === seqId);
         if (!seq) return null;
         const stepNum = seq.nodes.length;
-        const id = uid();
+        const id = options.id ?? uid();
         const vGap = Number(get().project?.designTheme?.verticalNodeSpacing) || 80;
         const APPROX_NODE_H = 120;
+        // Recovery sequences are NOT a root entry point — they're triggered from
+        // the main sequence when a fault condition is met. First node is just a
+        // plain state, not a Home/isInitial node.
+        // Supports options.type ('stateNode' | 'decisionNode') and options.data
+        // so the same action can spawn decision nodes inside a recovery tab.
+        const nodeType = options.type ?? 'stateNode';
+        const defaultData = nodeType === 'decisionNode'
+          ? { label: 'Decision', decisionType: 'signal' }
+          : { stepNumber: stepNum, label: options.label ?? `Recovery Step ${stepNum + 1}`, actions: [], isInitial: false };
         const node = {
           id,
-          type: 'stateNode',
+          type: nodeType,
           position: options.position ?? { x: 300, y: 80 + stepNum * (APPROX_NODE_H + vGap) },
-          data: {
-            stepNumber: stepNum,
-            label: options.label ?? (stepNum === 0 ? 'Start Recovery' : `Recovery Step ${stepNum}`),
-            actions: [],
-            isInitial: stepNum === 0,
-          },
+          data: { ...defaultData, ...(options.data ?? {}) },
         };
         set(s => ({
           project: _updateProject(s, sms => sms.map(sm2 =>
@@ -2848,14 +3080,9 @@ export const useDiagramStore = create(
         set(s => ({
           project: _updateProject(s, sms => sms.map(sm =>
               sm.id === smId
-                ? {
-                    ...sm,
-                    nodes: sm.nodes.map(n =>
-                      n.id === nodeId
-                        ? { ...n, data: { ...n.data, actions: [...n.data.actions, action] } }
-                        : n
-                    ),
-                  }
+                ? _mutateNodeInSm(sm, nodeId, n => ({
+                    ...n, data: { ...n.data, actions: [...(n.data.actions ?? []), action] },
+                  }))
                 : sm
             )),
         }));
@@ -2867,22 +3094,15 @@ export const useDiagramStore = create(
         set(s => ({
           project: _updateProject(s, sms => sms.map(sm =>
               sm.id === smId
-                ? {
-                    ...sm,
-                    nodes: sm.nodes.map(n =>
-                      n.id === nodeId
-                        ? {
-                            ...n,
-                            data: {
-                              ...n.data,
-                              actions: n.data.actions.map(a =>
-                                a.id === actionId ? { ...a, ...updates } : a
-                              ),
-                            },
-                          }
-                        : n
-                    ),
-                  }
+                ? _mutateNodeInSm(sm, nodeId, n => ({
+                    ...n,
+                    data: {
+                      ...n.data,
+                      actions: (n.data.actions ?? []).map(a =>
+                        a.id === actionId ? { ...a, ...updates } : a
+                      ),
+                    },
+                  }))
                 : sm
             )),
         }));
@@ -2893,14 +3113,9 @@ export const useDiagramStore = create(
         set(s => ({
           project: _updateProject(s, sms => sms.map(sm =>
               sm.id === smId
-                ? {
-                    ...sm,
-                    nodes: sm.nodes.map(n =>
-                      n.id === nodeId
-                        ? { ...n, data: { ...n.data, actions: n.data.actions.filter(a => a.id !== actionId) } }
-                        : n
-                    ),
-                  }
+                ? _mutateNodeInSm(sm, nodeId, n => ({
+                    ...n, data: { ...n.data, actions: (n.data.actions ?? []).filter(a => a.id !== actionId) },
+                  }))
                 : sm
             )),
         }));
@@ -3346,7 +3561,7 @@ export const useDiagramStore = create(
       findOrCreateVerifyDevice(smId, nodeId) {
         const sm = _getSmArray(get()).find(s => s.id === smId);
         if (!sm) return null;
-        const node = sm.nodes.find(n => n.id === nodeId);
+        const node = _locateNodeInSm(sm, nodeId)?.node;
         if (!node) return null;
 
         // Look for existing auto-verify device already linked to this node via an action
@@ -3394,7 +3609,7 @@ export const useDiagramStore = create(
 
         // Ensure the node has a Check action for this device
         const sm = _getSmArray(get()).find(s => s.id === smId);
-        const node = sm?.nodes?.find(n => n.id === nodeId);
+        const node = sm ? _locateNodeInSm(sm, nodeId)?.node : null;
         const hasAction = (node?.data?.actions ?? []).some(a => a.deviceId === device.id);
         if (!hasAction) {
           get().addAction(smId, nodeId, { deviceId: device.id, operation: 'Check' });
@@ -3403,7 +3618,9 @@ export const useDiagramStore = create(
         // If we just went from 1→2 outcomes, retroactively update existing edges
         if (updatedOutcomes.length === 2) {
           const freshSm = _getSmArray(get()).find(s => s.id === smId);
-          const existingEdges = (freshSm?.edges ?? []).filter(e => e.source === nodeId);
+          const freshLoc = freshSm ? _locateNodeInSm(freshSm, nodeId) : null;
+          const { edges: freshEdges } = _getContainerNodesEdges(freshSm, freshLoc);
+          const existingEdges = freshEdges.filter(e => e.source === nodeId);
           for (const edge of existingEdges) {
             if (edge.data?.conditionType === 'verify' || (edge.data?.conditionType !== 'checkResult' && edge.data?.conditionType !== 'ready')) {
               get().updateEdge(smId, edge.id, {
@@ -3428,7 +3645,7 @@ export const useDiagramStore = create(
       removeVerifyCondition(smId, nodeId, outcomeId) {
         const sm = _getSmArray(get()).find(s => s.id === smId);
         if (!sm) return;
-        const node = sm.nodes.find(n => n.id === nodeId);
+        const node = _locateNodeInSm(sm, nodeId)?.node;
         if (!node) return;
 
         const verifyAction = (node.data?.actions ?? []).find(a => {
@@ -3452,7 +3669,9 @@ export const useDiagramStore = create(
           // 2→1: convert remaining checkResult edges back to verify
           if (updatedOutcomes.length === 1) {
             const freshSm = _getSmArray(get()).find(s => s.id === smId);
-            const existingEdges = (freshSm?.edges ?? []).filter(e => e.source === nodeId);
+            const freshLoc = freshSm ? _locateNodeInSm(freshSm, nodeId) : null;
+            const { edges: freshEdges } = _getContainerNodesEdges(freshSm, freshLoc);
+            const existingEdges = freshEdges.filter(e => e.source === nodeId);
             for (const edge of existingEdges) {
               if (edge.data?.conditionType === 'checkResult' && edge.data?.deviceId === device.id) {
                 if (edge.data.outcomeId === updatedOutcomes[0].id) {
@@ -3478,8 +3697,10 @@ export const useDiagramStore = create(
         get()._pushHistory();
         const sm = _getSmArray(get()).find(s => s.id === smId);
         if (!sm) return null;
-        const sourceNode = sm.nodes.find(n => n.id === nodeId);
-        if (!sourceNode) return null;
+        const loc = _locateNodeInSm(sm, nodeId);
+        if (!loc) return null;
+        const sourceNode = loc.node;
+        const { nodes: cNodes } = _getContainerNodesEdges(sm, loc);
 
         const newId = uid();
         const newNode = {
@@ -3491,7 +3712,7 @@ export const useDiagramStore = create(
           },
           data: {
             ...sourceNode.data,
-            stepNumber: sm.nodes.length,
+            stepNumber: cNodes.length,
             isInitial: false,
             label: `${sourceNode.data.label} (copy)`,
             actions: sourceNode.data.actions.map(a => ({ ...a, id: uid() })),
@@ -3500,7 +3721,10 @@ export const useDiagramStore = create(
 
         set(s => ({
           project: _updateProject(s, sms => sms.map(sm2 =>
-              sm2.id === smId ? { ...sm2, nodes: [...sm2.nodes, newNode] } : sm2
+              sm2.id !== smId ? sm2 : _rewireAroundNodeInSm(sm2, nodeId, ({ nodes, edges }) => ({
+                nodes: [...nodes, newNode],
+                edges,
+              }))
             )),
           selectedNodeId: newId,
           selectedEdgeId: null,
@@ -3514,14 +3738,9 @@ export const useDiagramStore = create(
         set(s => ({
           project: _updateProject(s, sms => sms.map(sm =>
               sm.id === smId
-                ? {
-                    ...sm,
-                    nodes: sm.nodes.map(n =>
-                      n.id === nodeId
-                        ? { ...n, ...updates, data: { ...n.data, ...(updates.data || {}) } }
-                        : n
-                    ),
-                  }
+                ? _mutateNodeInSm(sm, nodeId, n => ({
+                    ...n, ...updates, data: { ...n.data, ...(updates.data || {}) },
+                  }))
                 : sm
             )),
         }));
@@ -3529,15 +3748,18 @@ export const useDiagramStore = create(
 
       /**
        * Replace a state node with a decision node at the same position.
-       * Rewires all incoming edges that pointed at the old node to the new decision node.
-       * The old node is removed.
+       * Rewires all incoming edges that pointed at the old node to the new
+       * decision node. Outgoing edges from the old node are dropped.
+       * Works on both main-diagram nodes and recovery-sequence nodes — the
+       * rewire happens inside whichever container owns `oldNodeId`.
        */
       replaceNodeWithDecision(smId, oldNodeId, decisionData) {
         get()._pushHistory();
         const sm = _getSmArray(get()).find(s => s.id === smId);
         if (!sm) return null;
-        const oldNode = sm.nodes.find(n => n.id === oldNodeId);
-        if (!oldNode) return null;
+        const loc = _locateNodeInSm(sm, oldNodeId);
+        if (!loc) return null;
+        const oldNode = loc.node;
 
         const newId = decisionData.id ?? `id_${(Date.now()).toString(36)}`;
         // Center decision node horizontally under the old node
@@ -3566,15 +3788,14 @@ export const useDiagramStore = create(
         set(s => ({
           project: _updateProject(s, sms => sms.map(sm2 => {
               if (sm2.id !== smId) return sm2;
-              const nodes = sm2.nodes
-                .filter(n => n.id !== oldNodeId)
-                .concat(newNode);
-              const edges = sm2.edges.map(e =>
-                e.target === oldNodeId
-                  ? { ...e, target: newId, targetHandle: 'input' }
-                  : e
-              ).filter(e => e.source !== oldNodeId); // remove outgoing edges from old node
-              return { ...sm2, nodes, edges };
+              return _rewireAroundNodeInSm(sm2, oldNodeId, ({ nodes, edges }) => ({
+                nodes: nodes.filter(n => n.id !== oldNodeId).concat(newNode),
+                edges: edges
+                  .map(e => e.target === oldNodeId
+                    ? { ...e, target: newId, targetHandle: 'input' }
+                    : e)
+                  .filter(e => e.source !== oldNodeId),
+              }));
             })),
           selectedNodeId: newId,
           selectedEdgeId: null,
@@ -4035,6 +4256,114 @@ export const useDiagramStore = create(
         set({ serverAvailable: available });
         if (!available) return;
 
+        // Migration: repair legacy tab records that were saved before the
+        // standards-tab fix landed. Three problems we clean up here:
+        //   1. Tabs whose filename is a raw string like "SDC Servo PNP" (no
+        //      .json) — the server rejects these with 400 "Invalid filename".
+        //   2. Tabs that came from the standards library but lost their
+        //      standardId / kind markers, so switchTab can't re-open them.
+        //   3. Duplicate tabs for the same standard (opened once before the
+        //      dedup check, once after, now showing as two rows in the bar).
+        const isProjFn = (f) => typeof f === 'string' && /^[a-zA-Z0-9_\- .]+\.json$/.test(f);
+        {
+          const { openTabs, currentFilename, project } = get();
+          let changed = false;
+          // Pass 1: for each tab, figure out whether it's actually a standard
+          // (by kind marker, snapshot flag, stored standardId, OR by matching
+          // its display name / filename against the live library).
+          const repaired = openTabs.map(t => {
+            if (!t) return t;
+            const snapIsStandard = t.snapshot?.project?.isStandard === true;
+            const snapStandardId = t.snapshot?.project?.standardId ?? null;
+            const hasValidFn = isProjFn(t.filename);
+
+            // Try to resolve this tab to a library entry by any signal we have.
+            const template = _findStandardTemplate({
+              id: t.standardId ?? snapStandardId,
+              name: t.name ?? (typeof t.filename === 'string' ? t.filename : null),
+            });
+
+            const shouldBeStandard =
+              t.kind === 'standard' ||
+              !!t.standardId ||
+              snapIsStandard ||
+              !!template;
+
+            if (shouldBeStandard) {
+              const resolvedId = t.standardId ?? snapStandardId ?? template?.id ?? null;
+              const resolvedName = template?.name ?? t.name ?? 'Standard';
+              // Only count as "changed" if something actually differs.
+              const same =
+                t.filename == null &&
+                t.kind === 'standard' &&
+                t.standardId === resolvedId &&
+                t.name === resolvedName;
+              if (same) return t;
+              changed = true;
+              return {
+                ...t,
+                filename: null,
+                kind: 'standard',
+                standardId: resolvedId,
+                name: resolvedName,
+              };
+            }
+            // Not a standard — strip invalid filename so the tab becomes
+            // droppable in pass 2 rather than firing 400s.
+            if (!hasValidFn) changed = true;
+            return t;
+          }).filter(t => {
+            // Drop tabs we can't restore from ANY source: not a project file,
+            // not a standard, no snapshot, nothing to hang onto.
+            if (!t) return false;
+            if (isProjFn(t.filename)) return true;
+            if (t.kind === 'standard') return true;
+            if (t.snapshot) return true;
+            changed = true;
+            return false;
+          });
+
+          // Pass 2: dedupe. A standard can appear more than once if it was
+          // opened before the standardId-dedup check existed. Keep the first
+          // occurrence (prefer the active tab if it's one of the duplicates).
+          const activeId = get().activeTabId;
+          const seen = new Map(); // key -> index in `deduped`
+          const deduped = [];
+          for (const t of repaired) {
+            const key = t.standardId ? `std:${t.standardId}`
+              : t.filename ? `prj:${t.filename}`
+              : t.kind === 'standard' && t.name ? `std-name:${t.name}`
+              : `id:${t.id}`;
+            if (!seen.has(key)) {
+              seen.set(key, deduped.length);
+              deduped.push(t);
+            } else {
+              const existingIdx = seen.get(key);
+              // If the duplicate is the active tab, promote it so we don't
+              // leave the user staring at a now-removed tab id.
+              if (t.id === activeId) {
+                deduped[existingIdx] = { ...deduped[existingIdx], id: t.id };
+              }
+              changed = true;
+            }
+          }
+
+          if (changed) {
+            const activeStillExists = deduped.find(t => t.id === activeId);
+            const nextActiveId = activeStillExists ? activeId : deduped[0]?.id ?? null;
+            const fixCurrent = !isProjFn(currentFilename) && project?.isStandard !== true
+              ? null
+              : currentFilename;
+            set({
+              openTabs: deduped,
+              activeTabId: nextActiveId,
+              currentFilename: project?.isStandard === true ? null : fixCurrent,
+            });
+          } else if (project?.isStandard === true && currentFilename && !isProjFn(currentFilename)) {
+            set({ currentFilename: null });
+          }
+        }
+
         /** Preserve current activeSmId if valid, else restore from saved, else first SM. */
         function pickActiveSmId(data) {
           const sms = data.stateMachines ?? [];
@@ -4049,6 +4378,14 @@ export const useDiagramStore = create(
 
         try {
           const projects = await projectApi.listProjects();
+
+          // If the restored project is a Standard (in-memory, no project file),
+          // don't overwrite it by auto-loading the "latest project". Standards
+          // live in /api/standards and were already rehydrated from localStorage.
+          if (get().project?.isStandard === true) {
+            get()._ensureCurrentTab();
+            return;
+          }
 
           // If we already have a currentFilename from localStorage, try loading it
           const { currentFilename } = get();
@@ -4134,8 +4471,17 @@ export const useDiagramStore = create(
         const targetTab = openTabs.find(t => t.id === tabId);
         if (!targetTab) return;
 
-        // Save current project to server before switching
-        if (serverAvailable && currentFilename) {
+        // A "project filename" is anything the server will accept: matches its
+        // safeFilename regex (alnum/_/-/space/dot + .json). Anything else
+        // (standards tabs with null filenames, legacy tabs saved with bogus
+        // names) must NOT be sent to /api/projects — the server returns 400
+        // "Invalid filename" which surfaces as "Failed to load project tab".
+        const isProjectFilename = (f) => typeof f === 'string' && /^[a-zA-Z0-9_\- .]+\.json$/.test(f);
+        const isStandardProject = project?.isStandard === true;
+
+        // Save current project to server before switching — skip for standards
+        // tabs and for any tab whose filename wouldn't pass server validation.
+        if (serverAvailable && currentFilename && !isStandardProject && isProjectFilename(currentFilename)) {
           try {
             const dataToSave = { ...project, _lastActiveSmId: activeSmId };
             await projectApi.saveProject(currentFilename, dataToSave);
@@ -4152,9 +4498,47 @@ export const useDiagramStore = create(
           return t;
         });
 
-        // Load target tab
+        // Load target tab. Order of preference:
+        //   1. If the tab has a valid server-backed filename, always fetch
+        //      fresh from the server — snapshots persist across sessions via
+        //      localStorage, so they can drift out of date when the file is
+        //      edited elsewhere (another tab, another client, direct disk
+        //      edit). The server is the source of truth for project files.
+        //   2. Otherwise use the snapshot (standards tabs, unsaved projects).
+        //   3. If server is unreachable, fall back to snapshot even for
+        //      project tabs so the user isn't locked out offline.
+        if (serverAvailable && isProjectFilename(targetTab.filename)) {
+          try {
+            const loaded = await projectApi.loadProject(targetTab.filename);
+            const restoredSmId = loaded._lastActiveSmId;
+            const validSmId = (loaded.stateMachines ?? []).some(sm => sm.id === restoredSmId)
+              ? restoredSmId
+              : loaded.stateMachines?.[0]?.id ?? null;
+            set({
+              openTabs: updatedTabs.map(t => t.id === tabId ? { ...t, snapshot: null } : t),
+              activeTabId: tabId,
+              project: loaded,
+              activeSmId: validSmId,
+              activeRecipeId: null,
+              currentFilename: targetTab.filename,
+              selectedNodeId: null,
+              selectedEdgeId: null,
+              _past: [],
+              _future: [],
+            });
+            return;
+          } catch (err) {
+            // Server reachable at detection time but this particular load
+            // failed. Fall through to snapshot if we have one, otherwise alert.
+            console.warn('switchTab: server load failed, falling back to snapshot if any', err);
+            if (!targetTab.snapshot) {
+              alert(`Failed to load project tab: ${err.message}`);
+              return;
+            }
+          }
+        }
         if (targetTab.snapshot) {
-          // Restore from snapshot
+          // Restore from snapshot (standards tab, offline, or server-load fallback).
           const snap = targetTab.snapshot;
           set({
             openTabs: updatedTabs.map(t => t.id === tabId ? { ...t, snapshot: null } : t),
@@ -4168,56 +4552,107 @@ export const useDiagramStore = create(
             _past: [],
             _future: [],
           });
-        } else if (serverAvailable && targetTab.filename) {
-          // Load from server (tab was opened but not yet loaded)
-          try {
-            const loaded = await projectApi.loadProject(targetTab.filename);
-            const restoredSmId = loaded._lastActiveSmId;
-            const validSmId = (loaded.stateMachines ?? []).some(sm => sm.id === restoredSmId)
-              ? restoredSmId
-              : loaded.stateMachines?.[0]?.id ?? null;
-            set({
-              openTabs: updatedTabs,
-              activeTabId: tabId,
-              project: loaded,
-              activeSmId: validSmId,
-              activeRecipeId: null,
-              currentFilename: targetTab.filename,
-              selectedNodeId: null,
-              selectedEdgeId: null,
-              _past: [],
-              _future: [],
+        } else {
+          // No snapshot and no server-loadable filename. If this looks like a
+          // standards tab (kind marker, stored standardId, or the display name
+          // matches a library entry) we can re-hydrate it from the standards
+          // library instead of leaving the user staring at a dead tab.
+          const looksLikeStandard =
+            targetTab.kind === 'standard' ||
+            !!targetTab.standardId ||
+            !!_findStandardTemplate({ id: targetTab.standardId, name: targetTab.name });
+          if (looksLikeStandard) {
+            const template = _findStandardTemplate({
+              id: targetTab.standardId,
+              name: targetTab.name,
             });
-          } catch (err) {
-            alert(`Failed to load project tab: ${err.message}`);
+            if (template) {
+              const projectData = _projectFromStandardTemplate(template);
+              const validSmId = projectData.stateMachines?.[0]?.id ?? null;
+              // Replace this tab's fields so it's canonically a standards tab
+              // going forward (kind + standardId + null filename).
+              set({
+                openTabs: updatedTabs.map(t => t.id === tabId ? {
+                  ...t,
+                  filename: null,
+                  kind: 'standard',
+                  standardId: template.id,
+                  name: template.name,
+                  snapshot: null,
+                } : t),
+                activeTabId: tabId,
+                project: projectData,
+                activeSmId: validSmId,
+                activeRecipeId: null,
+                currentFilename: null,
+                selectedNodeId: null,
+                selectedEdgeId: null,
+                _past: [],
+                _future: [],
+              });
+              return;
+            }
+            // Tab claims to be a standard but the library doesn't have it
+            // anymore — drop the tab so the user isn't stuck clicking it.
+            const cleaned = updatedTabs.filter(t => t.id !== tabId);
+            set({ openTabs: cleaned });
+            console.warn('switchTab: standards tab references a template that is no longer in the library — tab removed', targetTab);
+            alert(`"${targetTab.name}" is no longer in the Standards library. Tab closed.`);
+            return;
           }
+          console.warn('switchTab: target tab has no snapshot and no valid filename — staying on current tab', targetTab);
         }
       },
 
       /** Close a tab. If it's the active tab, switch to adjacent. */
       closeTab(tabId) {
-        const { openTabs, activeTabId } = get();
-        if (openTabs.length <= 1) return; // Don't close the last tab
+        const { openTabs, activeTabId, currentFilename } = get();
         const idx = openTabs.findIndex(t => t.id === tabId);
-        if (idx < 0) return;
-        const newTabs = openTabs.filter(t => t.id !== tabId);
-        if (tabId === activeTabId) {
-          // Switch to adjacent tab
-          const nextIdx = Math.min(idx, newTabs.length - 1);
-          get().switchTab(newTabs[nextIdx].id);
-          set({ openTabs: newTabs });
-        } else {
-          set({ openTabs: newTabs });
+        if (idx < 0) {
+          console.warn('closeTab: tab not found', tabId);
+          return;
         }
+        const closedTab = openTabs[idx];
+        const newTabs = openTabs.filter(t => t.id !== tabId);
+
+        if (tabId !== activeTabId) {
+          // Closing a background tab — just drop it. Persist immediately.
+          set({ openTabs: newTabs });
+          return;
+        }
+
+        // Closing the active tab. We need a successor or we'll be staring at
+        // the project state of a tab that no longer has a row in the bar.
+        if (newTabs.length === 0) {
+          // Last tab closed. Clear the active pointer and the filename so the
+          // app falls into its "synthesized current tab" fallback on re-render,
+          // instead of being stuck pointing at a ghost id.
+          const cleared = closedTab.filename && closedTab.filename === currentFilename;
+          set({
+            openTabs: [],
+            activeTabId: null,
+            ...(cleared ? { currentFilename: null } : {}),
+          });
+          return;
+        }
+        // Switch to an adjacent sibling.
+        const nextIdx = Math.min(idx, newTabs.length - 1);
+        const nextId = newTabs[nextIdx].id;
+        // Drop the closed tab BEFORE calling switchTab so switchTab's save-
+        // before-switch logic doesn't try to re-snapshot onto a tab we're
+        // about to remove.
+        set({ openTabs: newTabs });
+        get().switchTab(nextId);
       },
 
       /** Open a project file in a new tab (or switch to it if already open). */
       async openInNewTab(filename) {
         const { openTabs, serverAvailable } = get();
         if (!serverAvailable) return;
+        if (!filename) return; // guard: null filenames are standards tabs — don't route through project API
 
         // Already open? Just switch to it
-        const existing = openTabs.find(t => t.filename === filename);
+        const existing = openTabs.find(t => t.filename && t.filename === filename);
         if (existing) {
           await get().switchTab(existing.id);
           return;
@@ -4272,9 +4707,25 @@ export const useDiagramStore = create(
         }
       },
 
-      /** Open a project from raw JSON data in a new tab (file picker flow). */
+      /** Open a project from raw JSON data in a new tab (file picker flow).
+       *  Also used by StandardsView to open a standard as an in-memory project.
+       *  Standards are NOT backed by a file on the /api/projects server (they live
+       *  in /api/standards), so for isStandard projects we leave filename/currentFilename
+       *  null and rely on tab snapshots + Canvas's own auto-save-to-standards effect. */
       openProjectFromFile(projectData, originalFileName) {
         const { openTabs, activeTabId, project, activeSmId, activeRecipeId, currentFilename, serverAvailable } = get();
+
+        const isStandard = projectData?.isStandard === true;
+
+        // Dedupe: if this is a standard and a tab already represents the same
+        // standardId, switch to it instead of opening a duplicate.
+        if (isStandard && projectData?.standardId) {
+          const dup = openTabs.find(t => t.standardId === projectData.standardId);
+          if (dup) {
+            get().switchTab(dup.id);
+            return;
+          }
+        }
 
         // Snapshot the current tab
         const updatedTabs = openTabs.map(t => {
@@ -4297,15 +4748,19 @@ export const useDiagramStore = create(
         }
 
         const tabId = `tab_${(_id++).toString(36)}`;
-        const filename = originalFileName?.replace(/\.json$/i, '') || projectData.name || 'Imported';
+        const rawName = originalFileName?.replace(/\.json$/i, '') || projectData.name || 'Imported';
+        // Standards don't map to a project-API file — null filename disables the
+        // save-before-switch / load-from-server calls that would otherwise 400.
+        const filename = isStandard ? null : rawName;
         const validSmId = projectData.stateMachines?.[0]?.id ?? null;
 
         set({
           openTabs: [...baseTabs, {
             id: tabId,
             filename,
-            name: projectData.name || filename,
+            name: projectData.name || rawName,
             snapshot: null,
+            ...(isStandard ? { standardId: projectData.standardId ?? null, kind: 'standard' } : {}),
           }],
           activeTabId: tabId,
           project: projectData,

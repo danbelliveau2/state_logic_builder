@@ -4,10 +4,192 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.24.3';
+export const APP_VERSION = '1.24.19';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.24.19',
+    date: '2026-04-24',
+    time: '13:20',
+    author: 'Dan Belliveau',
+    changes: [
+      'Decide rows: the internal signal recipe line (e.g., "SDC_Servo_PNP is in State 7") is no longer rendered under the signal name. A Decide is a snapshot-and-branch — the reader of the row cares about "I\'m branching on Part_Gripped", not the chain of conditions that determines Part_Gripped\'s bit. Recipe is still reachable via hover tooltip on the signal name ("Part_Gripped — TRUE when SDC_Servo_PNP is in State 7") and via the edit popup.',
+      'Decide rows on project-level signals now render a broadcast "Signal" icon next to the signal name, matching the visual grammar of every other row (every row leads with a device/signal icon). New SignalIcon glyph added to DeviceIcons.jsx (dot-with-radiating-arcs) + registered as a regular DeviceIcon type so other surfaces can reuse it.',
+      'Fallback order for the Decide / Verify / Wait row icon is: vision job → live device tag → sensor ref → project signal (new). Rows that previously rendered iconless now pick up the Signal glyph.',
+    ],
+  },
+  {
+    version: '1.24.18',
+    date: '2026-04-24',
+    time: '13:00',
+    author: 'Dan Belliveau',
+    changes: [
+      'Fix: signal chips on state nodes now render INSIDE `state-node__body` instead of as siblings after it. SVG-shaped nodes (pentagon / hexagon / octagon / decagon / etc.) make `state-node__body` sit at `z-index: 1` above the SVG `.state-node__shape-bg` — siblings fell back to the default stacking order and ended up visually clipped behind the shape. This is why 1.24.17 rendered the red "Part_Gripped OFF" chip as a sliver peeking from behind a pentagon on state 19. Chips (and the legacy-output row right above them) are now inside the body and paint cleanly on every shape.',
+      'Fix: PtBadge no longer renders the blue ⚑ flag for project-level state signals. 1.24.17 added green/red chips for signals but left PtBadge\'s signal path intact, so ON-side nodes (state 7 in the reported bug) displayed BOTH the corner ⚑ and the inline chip — same information twice, in conflicting colors. PtBadge is now PT-annotations + legacy `smOutputs` only. Project signals live exclusively in the chip row and the sidebar latch indicator.',
+      'Housekeeping: dropped the dead `REACHED_MODE_LABELS` constant from PtBadge.jsx (it was only referenced by the signal popup row we just deleted).',
+    ],
+  },
+  {
+    version: '1.24.17',
+    date: '2026-04-24',
+    time: '12:35',
+    author: 'Dan Belliveau',
+    changes: [
+      'Signals: opt-in OFF condition. Every signal still has a top condition that turns it ON (pure OTE — unchanged). A new checkbox "Also define an OFF condition" reveals a second block of the same type (SM State / Position / Condition). When present, the signal becomes a SET/RESET latch — OTL on ON-fire, OTU on OFF-fire — so sequence flags like `Part_Gripped` can latch at state 7 and release at state 15 without a separate branch or node. Backward compatible: `offCondition: null` means today\'s behavior exactly.',
+      'Sidebar signal list: every signal row now shows a latch indicator next to the type badge. Blue filled dot = pure computed (OTE). Split green/red circle = latched (OTL + OTU). Hover for a tooltip summarizing the semantics.',
+      'State nodes: inline colored chips appear on the state the signal\'s ON condition references (green chip "SignalName ON" for latched, blue chip "SignalName" for pure computed) AND on the state its OFF condition references (red chip "SignalName OFF"). Gives at-a-glance visibility into which states fire which signals without opening the signal editor. Only SM-State signals render chips — position/condition signals don\'t pin to a specific node.',
+      'L5X export wiring for latched signals is queued as a follow-up — the data model is in place but project signals don\'t yet emit controller tags/rungs regardless of latch type.',
+    ],
+  },
+  {
+    version: '1.24.16',
+    date: '2026-04-24',
+    time: '12:05',
+    author: 'Dan Belliveau',
+    changes: [
+      'Recovery "Cycle Complete" now ALWAYS numbers to step 124 regardless of how the node was created. Engineers call recovery sequences "initialize"; in the SDC PLC standard, 124 is the reserved initialize/recovery-complete step. Previously only nodes with `data.isComplete: true` were pinned — nodes built before the recovery picker wired up that flag (label = "Cycle Complete" but no flag) were getting sequential numbers like 109.',
+      'Two-pronged fix: (1) `computeStateNumbers` now treats a node as the cycle-complete terminal when `data.isComplete === true` OR `data.label === "Cycle Complete"` (case-insensitive). (2) Project hydration auto-heals legacy recovery nodes: any state node labeled "Cycle Complete" in a recovery sequence without the flag gets `isComplete: true` set on load, so PT writes, L5X export, and styling all stay consistent with numbering.',
+    ],
+  },
+  {
+    version: '1.24.15',
+    date: '2026-04-24',
+    time: '11:40',
+    author: 'Dan Belliveau',
+    changes: [
+      'HOTFIX: "Wait / Decision / Verify" crashed the app with `ReferenceError: isSensor is not defined`. The v1.24.13 rewrite of the Step-2 IIFE removed the `isSensor`/`isRange`/`isVerify`/`isVision` locals that deeper JSX branches (sensor condition config, range setpoint picker) still reference. Re-added them inside the IIFE alongside the new `vocab` helper.',
+    ],
+  },
+  {
+    version: '1.24.14',
+    date: '2026-04-24',
+    time: '11:25',
+    author: 'Dan Belliveau',
+    changes: [
+      '`syncDecisionExitLabels` no longer gates purely on `exitLabelsCustomized === true` — that flag is sticky across saves and stops legacy records from ever being refreshed. Now also checks whether the current labels form a generic-default pair (Pass/Fail, True/False, On/Off, Off/On, InRange/OutOfRange); if they do, overwrites with fresh values from `computeExitLabels` regardless of the flag.',
+      'Standalone DecisionNode component: destructured `exit1Label`/`exit2Label` defaults are now vision-aware (Pass/Fail only for `signalType === "visionJob"`, On/Off otherwise).',
+    ],
+  },
+  {
+    version: '1.24.13',
+    date: '2026-04-24',
+    time: '11:10',
+    author: 'Dan Belliveau',
+    changes: [
+      'Redesign: branch-label vocabulary is now PURELY a function of the CONDITION, never the mode. Pass/Fail appears ONLY for vision jobs (which have named pass/fail outcomes). Verify and Decide modes use the condition\'s OWN vocabulary: On/Off for binary conditions (sensor, signal, state, condition, partTracking, partResult), InRange/OutOfRange for ranges. There is no "True/False" anywhere anymore — Decide on a binary is still On/Off. Rationale: Verify asserts "is this condition true?"; Decide branches on the same boolean — neither creates a Pass/Fail concept.',
+      'Popup button labels in Step 2 ("1 Single exit — …", "2 Branch … / …") now flow from `conditions[0]` via a single local `vocab` helper. Old code had a tangled switch that produced "True" for wait+signal, "Pass" for verify+signal, etc. — all of those violated the new rule.',
+      'DecisionNode `derivePrimary` rewritten to the same rule (vision-only → Pass/Fail; everything else → On/Off or InRange/OutOfRange). `computeExitLabels` (edgeRouting.js) matched so canvas edge labels stay in sync with popup inputs.',
+      'handlePTPick no longer sets Pass/Fail as the default Part Tracking branch labels — PT is binary, so it now seeds On/Off (or InRange/OutOfRange for real-typed PT fields).',
+      'Part Tracking "Pass writes / Fail writes" column headers in the popup are now "{exit1Label} writes / {exit2Label} writes" — e.g. "On writes SUCCESS" for a binary verify. Stops the UI from saying Pass/Fail when the actual branches are On/Off.',
+      'Useless useState fallback `exit1Label ?? \'Pass\'` swapped to a vision-aware fallback (Pass/Fail only if the saved `signalType` is visionJob; On/Off otherwise). The v1.24.12 effect still auto-refreshes on mount, but the placeholder now won\'t flash Pass/Fail for one frame on a binary popup.',
+    ],
+  },
+  {
+    version: '1.24.12',
+    date: '2026-04-24',
+    time: '10:45',
+    author: 'Dan Belliveau',
+    changes: [
+      'Fix: DecisionEditPopup Left/Right exit inputs ACTUALLY refresh to the current-vocabulary defaults now — v1.24.11 gated on the `exitLabelsCustomized` flag, but that flag gets sticky-true across saves and stops the refresh from ever firing on legacy records. v1.24.12 drops the flag gate and instead detects whether the current labels are a GENERIC DEFAULT PAIR (Pass/Fail, True/False, On/Off, Off/On, InRange/OutOfRange). If so → overwrite with `derivePrimary(conditions[0])` output. A user-typed custom label like "Gripped"/"Slipped" won\'t match any default pair, so real customizations stay put. Pre-v1.24.10 "Pass/Fail on a binary signal" records now correct themselves on first popup open.',
+    ],
+  },
+  {
+    version: '1.24.11',
+    date: '2026-04-24',
+    time: '10:35',
+    author: 'Dan Belliveau',
+    changes: [
+      'Fix (superseded by 1.24.12): DecisionEditPopup Left/Right exit inputs now show the correct default labels for the current condition vocabulary on open. First attempt gated on `exitLabelsCustomized` — but that flag was sticky-true on legacy records so the refresh never fired. See 1.24.12 for the actual fix.',
+    ],
+  },
+  {
+    version: '1.24.10',
+    date: '2026-04-24',
+    time: '10:20',
+    author: 'Dan Belliveau',
+    changes: [
+      'Fix: embedded decision on a RECOVERY tab no longer silently fails to create branches. The "is this the last row?" check in `DecisionEditPopup.handleDone` now searches both `sm.nodes` and `sm.recoverySeqs[*].nodes` — before, recovery-tab parent states returned undefined and skipped branch creation entirely.',
+      'Branch labels now default to the CONDITION vocabulary instead of generic True/False. Verifying a signal "on" → branches default to On/Off (not Pass/Fail). Applies to sensor, signal, state, condition, and partTracking signal types — all binary conditions share the same vocabulary. Range stays InRange/OutOfRange; vision jobs stay Pass/Fail (they have named outcomes). Verify mode additionally flips so exit1 = picked polarity (Verify Off → exit1=Off).',
+      'Synchronized the label derivation across three sites: `handleSignalPick` (initial set), `derivePrimary` (re-derive at save), and `computeExitLabels` (canvas render + `syncDecisionExitLabels`). All three now agree.',
+    ],
+  },
+  {
+    version: '1.24.9',
+    date: '2026-04-24',
+    time: '10:00',
+    author: 'Dan Belliveau',
+    changes: [
+      'Fix: picking "Branch Pass/Fail" in a VERIFY decision (standalone or embedded) was silently reverting to 1 exit on Done — `finalExitCount` clamped verify mode to 1 regardless of what the user selected. The "2 branches" button is visible for verify (pass=continue, fail=fault/recovery is a legitimate pattern), so the clamp was wrong. Removed. Embedded-verify + last-row + 2 exits now correctly triggers `addDecisionBranches` and spawns Pass_X / Fail_X nodes below the state with the right side handles.',
+    ],
+  },
+  {
+    version: '1.24.8',
+    date: '2026-04-24',
+    time: '09:45',
+    author: 'Dan Belliveau',
+    changes: [
+      'Embedded decision rows now look and branch EXACTLY like a standalone DecisionNode. Extracted a shared `<DecisionBody>` component with full derivation logic (mode → fill/border colors, live device/signal resolution, op badge label + color, verify-text subtitle, retry/PT badges, On/Off switcher) and used it for BOTH the standalone DecisionNode body and the embedded `_decision` ActionRow in StateNode. Wait = blue, Decide = purple, Verify = orange — all the same visual grammar as standalone.',
+      'When an embedded decision is the LAST row in a state AND has 2 exits, the parent state automatically grows `exit-pass` / `exit-fail` side handles (same pattern as vision-inspect side-exit states) and spawns Pass_X / Fail_X branch nodes below via `addDecisionBranches`. Retry branch is added too when retry is enabled. Non-last-row embedded decisions stay single-exit (they gate the next row via their advanceCondition).',
+      '`addDecisionBranches` refined: early-return "branches already exist" path now only fires when real exit-pass/exit-fail edges are present, not any outgoing edge. Reusable bottom-handle edges are retargeted to `exit-pass` when creating branches, so adding a verify to an existing state with a "next state" edge preserves the downstream connection as the pass branch and spawns the fail branch below-right.',
+      '`OnOffSwitcher` + `DecisionBody` now accept an `onUpdate(patch)` callback. Embedded rows route this to `updateAction(smId, parentNodeId, actionId, patch)` so On/Off toggles persist into the parent state\'s action array instead of trying to overwrite node-level data.',
+    ],
+  },
+  {
+    version: '1.24.7',
+    date: '2026-04-24',
+    time: '09:15',
+    author: 'Dan Belliveau',
+    changes: [
+      'Embedded decision row editor now uses the EXACT SAME popup as a standalone DecisionNode — no homemade config panel. `DecisionEditPopup` is exported from DecisionNode.jsx and takes an optional `saveTarget="action"` + `actionId` to route the save through `updateAction` on the embedded row instead of `updateNodeData` + branch-node creation. All sections (vision jobs, signals, sensors, part tracking, conditions, retry, PT write, multi-condition AND/OR, Left/Right label inputs, On/Off presets) work identically on an embedded row.',
+    ],
+  },
+  {
+    version: '1.24.6',
+    date: '2026-04-24',
+    time: '09:00',
+    author: 'Dan Belliveau',
+    changes: [
+      '"Wait / Decision / Verify" from the Select Subject picker now adds an EMBEDDED action row inside the current state — mirrors how adding a second device action works. No more separate DecisionNode below. The row lives alongside pneumatic/servo/PT rows and can have its own `advanceCondition` chip ("then …") gating the next row.',
+      'New action schema: `deviceId: \'_decision\'` with `nodeMode` ∈ {wait | decide | verify}, `signalId`, `signalName`, `signalSource`, `signalType`, `conditionType`, `exitCount`, `exit1Label`, `exit2Label`. ActionRow has a rendering branch for this: big-bold signalSource (device/SM), small subtitle signalName (job/signal), mode pill (Wait=blue, Decide=purple, Verify=orange), Verify On/Off colored chip, Pass/Fail exit chips for 2-branch mode.',
+      'Standalone DecisionNodes still exist and can be dragged in from the canvas add-menu — this change is only about what happens when you hit "+" on an existing state.',
+    ],
+  },
+  {
+    version: '1.24.5',
+    date: '2026-04-24',
+    time: '08:15',
+    author: 'Dan Belliveau',
+    changes: [
+      'Per-row "advance condition" on state action rows — each action now has a small "then …" chip below it that says when the NEXT row starts: after complete (default) / concurrent / timer (ms + from-start or from-complete) / sensor ON / sensor OFF / servo at position / servo at %. Matches how programmers mentally model multi-action states ("retract Z, then wait 50ms, then fire stamper"). Last row has no chip — its gate IS the edge to the next state (plumbed in a follow-up pass).',
+      'Fix: "Wait / Decision / Verify" from a state on the recovery tab was silently closing — `handleSignalPick` was calling main-diagram `addDecisionNode` + `addEdge` even when the parent state lived in a recovery sequence, so the new decision node landed in `sm.nodes` (invisible on the recovery tab) instead of the sequence. Now routes through `addRecoveryNode`/`addRecoveryEdge`. `addRecoveryNode` extended to accept `type: \'decisionNode\'` + custom `data` for this.',
+      'Top-right "+" button on state nodes now opens the Select Subject picker directly — no more intermediate 3-option submenu (Add Action / Add State / Add Decision). The picker already has all those paths as subjects.',
+      'Decision node: Canvas live-label render now prefers stored `exit1Label`/`exit2Label` over `computeExitLabels()` defaults, so custom labels typed into Left/Right inputs ("On"/"Off" for a signal-type decision) actually stick on the edge pills. Pairs with the exitLabelsCustomized flag shipped in 1.24.4.',
+    ],
+  },
+  {
+    version: '1.24.4',
+    date: '2026-04-24',
+    time: '07:30',
+    author: 'Dan Belliveau',
+    changes: [
+      'Decision node: custom exit labels are now SACRED. Type "On"/"Off" into the Left/Right exit inputs of a signal-type decision → "On"/"Off" sticks on the branches and in the node data. Was silently reverting to "True"/"False" on Done because `syncDecisionExitLabels` auto-corrected anything that didn\'t match its computed defaults.',
+      'Fix at two layers: (1) `handleDone` no longer re-derives exit labels from `primary.exit1/exit2` — uses the input state directly; (2) new `exitLabelsCustomized` flag on the node, set when the user types into Left/Right inputs and cleared when they pick a new condition or preset. `syncDecisionExitLabels` early-returns on customized nodes so nothing clobbers them on render.',
+    ],
+  },
+  {
+    version: '1.24.3.1',
+    date: '2026-04-23',
+    time: '10:45',
+    author: 'Dan Belliveau',
+    changes: [
+      'Recovery tab now behaves identically to the main sequence tab — same signal picker, same decision/verify/wait conversions, same branch creation, same verify routing. Every store mutation that used to hard-code `sm.nodes` / `sm.edges` now routes through a container-agnostic helper so recovery nodes aren\'t silently dropped.',
+      'Architectural fix: store functions `addDecisionBranches`, `addDecisionSingleBranch`, `addDecisionRetryBranch`, `addDecisionMultiBranch`, `addVisionBranches`, `addVisionSingleBranch`, `syncDecisionExitLabels`, `findOrCreateVerifyDevice`, `addVerifyCondition`, `removeVerifyCondition`, and `duplicateNode` are now recovery-aware. Was causing silent "click does nothing" failures on recovery decision nodes.',
+      'StateNode verify-flow picker (`handleVerifyConditionsDone`, `handleVerifyFinish`, `verify-route` step) now scopes node + edge lookups to whichever container owns the node — loop-back targets on a recovery tab come from that recovery seq, not the main diagram.',
+      'Recovery state numbering: Cycle Complete nodes in a recovery sequence are now pinned to step 124 (the initialize / recovery-complete step in the SDC PLC standard). `computeStateNumbers` takes a new `completeStep` option; 124 is skipped in the sequential counter so a busy recovery flow can\'t collide. Inline "Cycle Complete" picker card shows a "Step 124" hint on recovery tabs, matching the Fault "Step 127" hint.',
+      '(Local-only label: this landed in parallel with Abhi\'s 1.24.3 installer fix — renumbered to 1.24.3.1 to preserve Abhi\'s version in the changelog while keeping this entry chronologically after it.)',
+    ],
+  },
   {
     version: '1.24.3',
     date: '2026-04-23',

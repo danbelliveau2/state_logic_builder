@@ -635,24 +635,35 @@ export function findLongestVerticalSegment(segments) {
  */
 export function computeExitLabels(nodeData) {
   const { nodeMode, conditionType: ct, signalType: st, signalName: sn,
-          sensorInputType: sit, sensorRef } = nodeData;
+          sensorInputType: sit } = nodeData;
   if (!sn || sn === 'Select Signal...') return null;
 
-  const isSensor = st === 'sensor' || !!sensorRef;
-  const isRange = sit === 'range';
+  const isRange = sit === 'range' || ct === 'range';
   const isVision = st === 'visionJob';
 
+  // Branch labels ALWAYS flow from the CONDITION, never from the mode.
+  //   Vision job  → Pass / Fail    [ONLY place Pass/Fail appears — vision has
+  //                                 named outcomes like "Link_Orient Pass"]
+  //   Range       → InRange / OutOfRange
+  //   Binary (everything else: sensor, signal, state, condition, partTracking,
+  //           partResult, or unknown) → On / Off
+  //           Verify+Off flips so exit1 = picked polarity = the "good" side.
+  //
+  // Rationale: Verify asserts a condition; Decide branches on a condition.
+  // Neither mode creates a Pass/Fail concept — the CONDITION's own vocabulary
+  // (On/Off, InRange/OutOfRange) is what branches are labelled with.
   let exit1, exit2;
-  if (isSensor) {
-    if (isRange) { exit1 = 'InRange'; exit2 = 'OutOfRange'; }
-    else if (ct === 'off') { exit1 = 'Off'; exit2 = 'On'; }
-    else { exit1 = 'On'; exit2 = 'Off'; }
-  } else if (isVision) {
+  if (isVision) {
     exit1 = 'Pass'; exit2 = 'Fail';
-  } else if (st === 'state' || st === 'signal' || st === 'condition') {
-    exit1 = 'True'; exit2 = 'False';
+  } else if (isRange) {
+    exit1 = 'InRange'; exit2 = 'OutOfRange';
   } else {
-    exit1 = 'Pass'; exit2 = 'Fail';
+    // Binary condition fallback — all non-vision, non-range conditions.
+    if (nodeMode === 'verify' && ct === 'off') {
+      exit1 = 'Off'; exit2 = 'On';
+    } else {
+      exit1 = 'On'; exit2 = 'Off';
+    }
   }
 
   return { exit1, exit2 };

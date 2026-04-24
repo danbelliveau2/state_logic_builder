@@ -28,7 +28,7 @@ import { OUTCOME_COLORS } from '../../lib/outcomeColors.js';
 // Mirrors StateNode's OperationSwitcher UX. Click the Wait On / Verify On pill
 // on a decision node to open this little menu; pick On or Off.
 
-function OnOffSwitcher({ smId, nodeId, currentType, mode, pos, onClose }) {
+function OnOffSwitcher({ smId, nodeId, currentType, mode, pos, onClose, onUpdate }) {
   const menuRef = useRef(null);
   const store = useDiagramStore();
   const zoomStyle = useReactFlowZoomScale();
@@ -74,7 +74,8 @@ function OnOffSwitcher({ smId, nodeId, currentType, mode, pos, onClose }) {
             onMouseDown={(e) => {
               e.stopPropagation();
               if (!isActive) {
-                store.updateNodeData(smId, nodeId, { conditionType: op.value });
+                if (onUpdate) onUpdate({ conditionType: op.value });
+                else store.updateNodeData(smId, nodeId, { conditionType: op.value });
               }
               onClose();
             }}
@@ -126,7 +127,11 @@ function buildVisionSignalsLocal(allSMs) {
   return result;
 }
 
-function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
+// saveTarget: 'node' (default) → writes to node via updateNodeData + creates branch nodes
+//             'action'          → writes to an action row via updateAction (embedded decision),
+//                                 no branch node creation (the state's outgoing edges handle that)
+// When saveTarget === 'action', `actionId` must be provided.
+export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarget = 'node', actionId = null }) {
   const store = useDiagramStore();
   const allSMs = store.project?.stateMachines ?? [];
   const projectSignals = store.project?.signals ?? [];
@@ -161,8 +166,18 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     }
     return data.nodeMode === 'decide' ? 2 : 1;
   });
-  const [exit1Label, setExit1Label] = useState(data.exit1Label ?? 'Pass');
-  const [exit2Label, setExit2Label] = useState(data.exit2Label ?? 'Fail');
+  // Initial input values. These are just a placeholder until the useEffect
+  // below re-derives them from conditions[0] + current mode. Vision defaults
+  // to Pass/Fail (vision-only vocabulary); everything else defaults to On/Off
+  // so a fresh popup with no condition picked doesn't flash the wrong word.
+  const [exit1Label, setExit1Label] = useState(data.exit1Label ?? (data.signalType === 'visionJob' ? 'Pass' : 'On'));
+  const [exit2Label, setExit2Label] = useState(data.exit2Label ?? (data.signalType === 'visionJob' ? 'Fail' : 'Off'));
+  // Tracks whether the user has manually typed into the Left/Right exit inputs.
+  // When true, `syncDecisionExitLabels` must NOT overwrite the labels with
+  // auto-derived defaults. Reset to false whenever the user picks a new
+  // condition (vision/signal/PT/sensor) or hits an On/Off/Range preset button,
+  // because the new condition implies fresh defaults.
+  const [labelsCustomized, setLabelsCustomized] = useState(!!data.exitLabelsCustomized);
   const [nodeMode, setNodeMode] = useState(data.nodeMode ?? 'wait');  // 'wait' | 'decide' | 'verify'
 
   // Multi-outcome labels for decide mode (exitCount > 2)
@@ -231,6 +246,41 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     return () => el.removeEventListener('wheel', handler);
   }, []);
 
+  // Auto-refresh exit label inputs when they're stale relative to the current
+  // condition vocabulary. Example: a decision saved before v1.24.10 has
+  // exit1Label='Pass'/exit2Label='Fail' baked in, but its condition is a binary
+  // signal like "Part_Gripped" which should branch into On/Off today.
+  //
+  // We CAN'T purely gate on `labelsCustomized` — that flag gets sticky-true on
+  // any save where it was true in the past, and pre-v1.24.10 records that
+  // auto-defaulted to Pass/Fail may have it set as well. Instead we detect
+  // whether the current labels look like a GENERIC DEFAULT PAIR (Pass/Fail,
+  // True/False, On/Off, Off/On, InRange/OutOfRange). If they do → overwrite
+  // with the fresh `derivePrimary` output. A user-typed label like "Gripped"
+  // won't match any default pair, so those stay put.
+  const GENERIC_DEFAULT_PAIRS = [
+    ['Pass', 'Fail'],
+    ['True', 'False'],
+    ['On', 'Off'],
+    ['Off', 'On'],
+    ['InRange', 'OutOfRange'],
+    ['In Range', 'Out of Range'],
+  ];
+  function looksLikeGenericDefault(e1, e2) {
+    return GENERIC_DEFAULT_PAIRS.some(([a, b]) => e1 === a && e2 === b);
+  }
+  useEffect(() => {
+    if (conditions.length === 0) return;
+    const primary = derivePrimary(conditions[0]);
+    if (!primary) return;
+    // Respect truly custom labels — if either input holds something outside
+    // the known default vocabulary, the user typed it, so don't touch.
+    if (!looksLikeGenericDefault(exit1Label, exit2Label)) return;
+    if (primary.exit1 !== exit1Label) setExit1Label(primary.exit1);
+    if (primary.exit2 !== exit2Label) setExit2Label(primary.exit2);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conditions, conditionType, nodeMode]);
+
   // Vision job picked -> show branch config
   function handleVisionPick(sig) {
     const jobName = sig.signalName ?? sig.name ?? 'Signal';
@@ -255,6 +305,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     setDecisionType('signal');
     setExit1Label('Pass');
     setExit2Label('Fail');
+    setLabelsCustomized(false);
     setExitCount(nodeMode === 'decide' ? 2 : 1);
     // nodeMode stays whatever the user chose at the top of the popup
     setConditions([newCond]);
@@ -288,8 +339,19 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     setSignalSmName(sig.smName ?? null);
     setSignalType(sig.type ?? 'signal');
     setDecisionType('signal');
-    setExit1Label('True');
-    setExit2Label('False');
+    // Default exit labels follow the CONDITION. A binary signal ("is this
+    // signal on?") branches into On/Off — same vocabulary as a sensor decision.
+    // Verify mode: match conditionType so "Verify On" → exit1=On, "Verify Off"
+    // → exit1=Off (the "pass" side of the verify is whichever polarity was
+    // picked). Wait/decide modes always use On/Off in condition order.
+    if (nodeMode === 'verify') {
+      setExit1Label(conditionType === 'off' ? 'Off' : 'On');
+      setExit2Label(conditionType === 'off' ? 'On' : 'Off');
+    } else {
+      setExit1Label('On');
+      setExit2Label('Off');
+    }
+    setLabelsCustomized(false);
     setExitCount(nodeMode === 'decide' ? 2 : 1);
     // nodeMode stays whatever the user chose at the top of the popup
     setConditions([newCond]);
@@ -338,8 +400,16 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     setSignalSmName(isVisionLinked ? (field._visionSmName ?? null) : null);
     setSignalType(isVisionLinked ? 'partResult' : 'partTracking');
     setDecisionType('signal');
-    setExit1Label('Pass');
-    setExit2Label('Fail');
+    // Part tracking fields are binary → On/Off vocabulary (not Pass/Fail,
+    // which is vision-only).
+    if (isRealField) {
+      setExit1Label('InRange');
+      setExit2Label('OutOfRange');
+    } else {
+      setExit1Label('On');
+      setExit2Label('Off');
+    }
+    setLabelsCustomized(false);
     setExitCount(2);
     // nodeMode stays whatever the user chose at the top of the popup.
     // If the user hadn't changed it from the default 'wait', switch to 'decide'
@@ -391,6 +461,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     }
     setExit1Label(e1);
     setExit2Label(e2);
+    setLabelsCustomized(false);
     setConditions([newCond]);
 
     // All modes go to branch config so user can review retries, labels, multi-outcome, etc.
@@ -408,31 +479,28 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
       : (cond.group ?? '');
     const type = cond.signalType ?? 'signal';
     let exit1, exit2;
-    // Verify mode: sensor uses On/Off (matching what's being verified),
-    // non-sensor uses Pass/Fail.
-    if (nodeMode === 'verify') {
-      if (cond.inputType === 'range') {
-        exit1 = 'InRange';
-        exit2 = 'OutOfRange';
-      } else if (cond.signalType === 'sensor') {
-        exit1 = conditionType === 'off' ? 'Off' : 'On';
-        exit2 = conditionType === 'off' ? 'On' : 'Off';
-      } else {
-        exit1 = 'Pass';
-        exit2 = 'Fail';
-      }
-    } else if (cond.inputType === 'range') {
-      exit1 = 'InRange';
-      exit2 = 'OutOfRange';
-    } else if (cond.signalType === 'sensor') {
-      exit1 = 'On';
-      exit2 = 'Off';
-    } else if (cond.signalType === 'state' || cond.signalType === 'signal' || cond.signalType === 'condition') {
-      exit1 = 'True';
-      exit2 = 'False';
-    } else {
+    // Branch labels follow the CONDITION — the MODE never dictates the vocabulary.
+    //   Vision job (named outcomes) → Pass / Fail    [ONLY place Pass/Fail appears]
+    //   Range                       → InRange / OutOfRange
+    //   Binary (sensor/signal/state/condition/PT) → On / Off
+    //     (Verify+Off swaps so exit1 = picked polarity)
+    // Rationale: Verify means "assert the condition"; Decide means "branch on the
+    // condition". Neither is a Pass/Fail concept — those are vision-only.
+    if (cond.signalType === 'visionJob') {
       exit1 = 'Pass';
       exit2 = 'Fail';
+    } else if (cond.inputType === 'range' || cond.conditionType === 'range') {
+      exit1 = 'InRange';
+      exit2 = 'OutOfRange';
+    } else {
+      // Binary — everything that isn't vision or range falls here.
+      if (nodeMode === 'verify' && conditionType === 'off') {
+        exit1 = 'Off';
+        exit2 = 'On';
+      } else {
+        exit1 = 'On';
+        exit2 = 'Off';
+      }
     }
     return { name, source, type, exit1, exit2 };
   }
@@ -446,15 +514,26 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     const finalSignalName = primary?.name ?? signalName;
     const finalSignalSource = primary?.source ?? signalSource;
     const finalSignalType = primary?.type ?? signalType;
-    const finalExit1Label = primary ? primary.exit1 : exit1Label;
-    const finalExit2Label = primary ? primary.exit2 : exit2Label;
+    // Exit labels: honor whatever the user last typed into the Left/Right exit
+    // inputs. `exit1Label`/`exit2Label` are already kept in sync via
+    // `setExit1Label`/`setExit2Label` whenever a condition is added or swapped,
+    // so the state already reflects the defaults for the current condition
+    // EXCEPT when the user has since overridden them — which is exactly what
+    // we want to preserve. Don't re-derive from `primary` here, because that
+    // would silently clobber "On/Off" back to "True/False" on Done.
+    const finalExit1Label = exit1Label;
+    const finalExit2Label = exit2Label;
 
     // Safety net: enforce the wait-branching rule. A wait node with ≤1 condition
     // can't branch — it just waits. Force single exit regardless of what the
     // local state says (which should already be correct via UI hiding + init).
+    // Verify mode: used to be clamped to 1 here, but the "Branch Pass/Fail" UI
+    // button is visible for verify (so the user can pick 2 exits), and silently
+    // reverting that choice broke "pick 2 branches on embedded verify → nothing
+    // happens". Verify with 2 exits is legitimate (pass=continue, fail=fault).
     const finalExitCount = (nodeMode === 'wait' && conditions.length <= 1 && exitCount > 1)
       ? 1
-      : (nodeMode === 'verify' && exitCount > 1 ? 1 : exitCount);
+      : exitCount;
 
     const updatedData = {
       signalId,
@@ -466,6 +545,9 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
       exitCount: finalExitCount,
       exit1Label: finalExit1Label,
       exit2Label: finalExit2Label,
+      // Persist the "user customized the labels" flag so `syncDecisionExitLabels`
+      // won't clobber custom names like "On"/"Off" on a signal-type condition.
+      exitLabelsCustomized: labelsCustomized,
       nodeMode,
       // Sensor/condition data
       conditionType,
@@ -502,17 +584,59 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
     if (finalExitCount > 2) {
       updatedData.outcomeLabels = outcomeLabels.slice(0, finalExitCount);
     }
-    store.updateNodeData(smId, nodeId, updatedData);
-    if (finalExitCount > 2) {
-      store.addDecisionMultiBranch(smId, nodeId, outcomeLabels.slice(0, finalExitCount));
-    } else if (finalExitCount === 2) {
-      store.addDecisionBranches(smId, nodeId, finalExit1Label, finalExit2Label);
-    } else if (finalExitCount === 1) {
-      store.addDecisionSingleBranch(smId, nodeId, finalExit1Label);
-    }
-    // Create retry branch if retry is enabled (any mode with 2 exits)
-    if (retryEnabled && finalExitCount === 2) {
-      store.addDecisionRetryBranch(smId, nodeId);
+    if (saveTarget === 'action' && actionId) {
+      // Embedded decision row: save onto the action, preserve deviceId === '_decision'
+      // and set operation to match the mode.
+      store.updateAction(smId, nodeId, actionId, {
+        ...updatedData,
+        deviceId: '_decision',
+        operation: nodeMode === 'wait' ? 'Wait' : nodeMode === 'decide' ? 'Decide' : 'Verify',
+        autoOpenPopup: false,
+      });
+      // If this embedded decision is the LAST row AND has 2+ exits, the parent
+      // state needs to branch the same way a standalone DecisionNode would.
+      // Delegate to the existing branch-creation store actions using the PARENT
+      // state's nodeId as the "decision" source, so Pass_X / Fail_X nodes spawn
+      // below the state and edges wire to its side handles.
+      // Recovery-aware lookup: the parent state may live in sm.nodes OR in any
+      // recoverySeqs[*].nodes (recovery tab). Must search both so this doesn't
+      // silently no-op on recovery-tab decisions.
+      const sm = store.project?.stateMachines?.find(m => m.id === smId);
+      let parentState = sm?.nodes?.find(n => n.id === nodeId);
+      if (!parentState) {
+        for (const r of (sm?.recoverySeqs ?? [])) {
+          const found = (r.nodes ?? []).find(n => n.id === nodeId);
+          if (found) { parentState = found; break; }
+        }
+      }
+      const parentActions = parentState?.data?.actions ?? [];
+      const isLastRow = parentActions.length > 0
+        && parentActions[parentActions.length - 1]?.id === actionId;
+      if (isLastRow) {
+        if (finalExitCount > 2) {
+          store.addDecisionMultiBranch(smId, nodeId, outcomeLabels.slice(0, finalExitCount));
+        } else if (finalExitCount === 2) {
+          store.addDecisionBranches(smId, nodeId, finalExit1Label, finalExit2Label);
+          if (retryEnabled) {
+            store.addDecisionRetryBranch(smId, nodeId);
+          }
+        }
+        // exitCount === 1 → use the state's default bottom handle; no branch
+        // creation needed. User can draw the onward edge manually.
+      }
+    } else {
+      store.updateNodeData(smId, nodeId, updatedData);
+      if (finalExitCount > 2) {
+        store.addDecisionMultiBranch(smId, nodeId, outcomeLabels.slice(0, finalExitCount));
+      } else if (finalExitCount === 2) {
+        store.addDecisionBranches(smId, nodeId, finalExit1Label, finalExit2Label);
+      } else if (finalExitCount === 1) {
+        store.addDecisionSingleBranch(smId, nodeId, finalExit1Label);
+      }
+      // Create retry branch if retry is enabled (any mode with 2 exits)
+      if (retryEnabled && finalExitCount === 2) {
+        store.addDecisionRetryBranch(smId, nodeId);
+      }
     }
     onClose();
   }
@@ -885,26 +1009,41 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
 
       {/* -- Branch config (step 2) -- works for vision, signals, sensors */}
       {showBranchConfig && (() => {
+        // Local type flags — used by JSX below (sensor condition config,
+        // range picker, etc.). Keep these in sync with the standalone
+        // DecisionNode component's equivalents (search for `const isSensor`).
         const isVision = signalType === 'visionJob';
-        const isSensor = signalType === 'sensor';
+        const isSensor = signalType === 'sensor' || !!sensorRef;
         const isVerify = nodeMode === 'verify';
         const isRange = sensorInputType === 'range';
-        // For verify-sensor: labels reflect the actual ON/OFF condition.
-        // Green (pass) = what you're verifying; Red (fail) = the opposite.
-        // For verify-vision or verify-signal: generic Pass/Fail.
-        const singleLabel = isVerify
-          ? (isSensor && !isRange ? (conditionType === 'off' ? 'Off' : 'On') : 'Pass')
-          : isVision ? 'Pass' : 'True';
-        const dualLabel1 = isVerify
-          ? (isSensor ? (isRange ? 'In Range' : (conditionType === 'off' ? 'Off' : 'On')) : 'Pass')
-          : isVision ? 'Pass'
-          : isSensor ? (isRange ? 'In Range' : (conditionType === 'off' ? 'Off' : 'On'))
-          : 'True';
-        const dualLabel2 = isVerify
-          ? (isSensor ? (isRange ? 'Out of Range' : (conditionType === 'off' ? 'On' : 'Off')) : 'Fail')
-          : isVision ? 'Fail'
-          : isSensor ? (isRange ? 'Out of Range' : (conditionType === 'off' ? 'On' : 'Off'))
-          : 'False';
+
+        // Branch label vocabulary flows from the CONDITION, never the mode.
+        //   - Vision job → Pass / Fail (vision jobs have named outcomes)
+        //   - Range      → In Range / Out of Range
+        //   - Binary (sensor, signal, state, condition, partTracking) → On / Off
+        //     (Verify Off swaps so exit1 = picked polarity = the "good" side)
+        //   - Nothing picked yet → generic "—"
+        // There is NO "Pass/Fail" or "True/False" for Verify or Decide modes;
+        // both those modes assert/branch on a condition, and the condition's
+        // own vocabulary (On/Off, InRange/OutOfRange) is what we show.
+        const vocab = (() => {
+          const cond = conditions[0];
+          if (!cond) return { exit1: '—', exit2: '—' };
+          if (cond.signalType === 'visionJob') return { exit1: 'Pass', exit2: 'Fail' };
+          if (cond.inputType === 'range' || cond.conditionType === 'range') {
+            return { exit1: 'In Range', exit2: 'Out of Range' };
+          }
+          if (nodeMode === 'verify' && conditionType === 'off') {
+            return { exit1: 'Off', exit2: 'On' };
+          }
+          return { exit1: 'On', exit2: 'Off' };
+        })();
+        const singleLabel = vocab.exit1;
+        const dualLabel1 = vocab.exit1;
+        const dualLabel2 = vocab.exit2;
+        // Silence unused-var lint; several of these are referenced only by
+        // deeper JSX branches that may or may not render for a given mode.
+        void isVision; void isSensor; void isVerify; void isRange;
         return (
         <div style={{ padding: '8px 10px', flex: 1, display: 'flex', flexDirection: 'column', gap: 6, overflowY: 'auto' }}>
 
@@ -977,6 +1116,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                         setConditionType('on');
                         setExit1Label('On');
                         setExit2Label('Off');
+                        setLabelsCustomized(false);
                       }}
                       style={{
                         flex: 1, padding: '5px 0', borderRadius: 4, cursor: 'pointer', fontSize: 11, fontWeight: 600,
@@ -991,6 +1131,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                         setConditionType('off');
                         setExit1Label('Off');
                         setExit2Label('On');
+                        setLabelsCustomized(false);
                       }}
                       style={{
                         flex: 1, padding: '5px 0', borderRadius: 4, cursor: 'pointer', fontSize: 11, fontWeight: 600,
@@ -1048,6 +1189,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                             setConditionType('on');
                             setExit1Label('InRange');
                             setExit2Label('OutOfRange');
+                            setLabelsCustomized(false);
                           }}
                           style={{
                             width: '100%', background: '#fff', border: '1px solid #d1d5db',
@@ -1251,10 +1393,14 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                     }}
                   />
                 )}
-                {/* Pass/Fail values */}
+                {/* PT field writes per branch. Labels use the current branch
+                    vocabulary (exit1Label/exit2Label) — NOT hardcoded "Pass/Fail".
+                    For a binary "Verify On" condition these read "✓ On writes" /
+                    "✗ Off writes"; for a vision decision they read "✓ Pass writes"
+                    / "✗ Fail writes". */}
                 <div style={{ display: 'flex', gap: 6 }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 8, color: '#16a34a', fontWeight: 700, marginBottom: 1 }}>✓ Pass writes</div>
+                    <div style={{ fontSize: 8, color: '#16a34a', fontWeight: 700, marginBottom: 1 }}>✓ {exit1Label} writes</div>
                     <select className="nodrag" value={ptPassValue} onChange={e => setPtPassValue(e.target.value)}
                       style={{ width: '100%', fontSize: 10, padding: '2px 4px', borderRadius: 3, border: '1px solid #d1d5db', background: '#fff', color: '#1e293b', cursor: 'pointer' }}>
                       <option value="SUCCESS">SUCCESS</option>
@@ -1262,7 +1408,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                     </select>
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 8, color: '#dc2626', fontWeight: 700, marginBottom: 1 }}>✗ Fail writes</div>
+                    <div style={{ fontSize: 8, color: '#dc2626', fontWeight: 700, marginBottom: 1 }}>✗ {exit2Label} writes</div>
                     <select className="nodrag" value={ptFailValue} onChange={e => setPtFailValue(e.target.value)}
                       style={{ width: '100%', fontSize: 10, padding: '2px 4px', borderRadius: 3, border: '1px solid #d1d5db', background: '#fff', color: '#1e293b', cursor: 'pointer' }}>
                       <option value="FAILURE">FAILURE</option>
@@ -1278,7 +1424,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
           {nodeMode !== 'decide' && (
             <button
               className="nodrag"
-              onClick={() => { setExitCount(1); setExit1Label(singleLabel); }}
+              onClick={() => { setExitCount(1); setExit1Label(singleLabel); setLabelsCustomized(false); }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8, width: '100%',
                 padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
@@ -1300,7 +1446,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
           {!(nodeMode === 'wait' && conditions.length <= 1) && (
             <button
               className="nodrag"
-              onClick={() => { setExitCount(2); setExit1Label(dualLabel1); setExit2Label(dualLabel2); }}
+              onClick={() => { setExitCount(2); setExit1Label(dualLabel1); setExit2Label(dualLabel2); setLabelsCustomized(false); }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8, width: '100%',
                 padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
@@ -1349,7 +1495,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                 <input
                   className="nodrag"
                   value={exit1Label}
-                  onChange={e => setExit1Label(e.target.value)}
+                  onChange={e => { setExit1Label(e.target.value); setLabelsCustomized(true); }}
                   style={{
                     width: '100%', background: '#fff', border: '1px solid #d1d5db',
                     color: '#1e293b', borderRadius: 4, padding: '3px 6px', fontSize: 11,
@@ -1362,7 +1508,7 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
                 <input
                   className="nodrag"
                   value={exit2Label}
-                  onChange={e => setExit2Label(e.target.value)}
+                  onChange={e => { setExit2Label(e.target.value); setLabelsCustomized(true); }}
                   style={{
                     width: '100%', background: '#fff', border: '1px solid #d1d5db',
                     color: '#1e293b', borderRadius: 4, padding: '3px 6px', fontSize: 11,
@@ -1462,6 +1608,378 @@ function DecisionEditPopup({ nodeId, smId, data, onClose, style }) {
   return createPortal(popupContent, document.body);
 }
 
+// ── DecisionBody ──────────────────────────────────────────────────────────────
+// Visual body of a decision — colored card + icon + subject + op badge + verify
+// text + retry + PT badges. Shared between standalone DecisionNode and embedded
+// `_decision` action rows inside StateNode so they look and feel identical.
+//
+// Props:
+//   data       — decision data object (signalId, signalName, nodeMode, conditionType, ...)
+//   smId       — state machine id (for live device/signal resolution)
+//   nodeId     — host node id (for setSelectedNode on click)
+//   selected   — boolean, for white border highlight
+//   onClick    — click handler (opens the editor popup from parent)
+//   onContextMenu — optional right-click handler
+//   embedded   — true when rendered inside a StateNode row (omits state-number badge,
+//                adjusts width/margins to fit inside a state)
+export function DecisionBody({ data, smId, nodeId, selected, onClick, onContextMenu, embedded = false, onUpdate = null }) {
+  const {
+    decisionType = 'signal',
+    signalName = 'Select Signal...',
+    signalSource = null,
+    signalSmName = null,
+    signalType = null,
+    exitCount = 2,
+    nodeMode = 'wait',
+    stateNumber = null,
+    conditionType = 'on',
+    rangeMin,
+    rangeMax,
+    sensorRef = null,
+    sensorTag = '',
+    sensorInputType = 'bool',
+    retryEnabled = false,
+    retryMax = 3,
+  } = data;
+
+  const store = useDiagramStore();
+  const [opSwitcher, setOpSwitcher] = useState(null);
+  const nodeRef = useRef(null);
+  const pointerDownPos = useRef(null);
+
+  // Derivation (mirrors DecisionNode main render logic) ────────────────────────
+  const primaryCond = (data.conditions ?? [])[0];
+  const isVision = signalType === 'visionJob'
+    || signalType === 'partResult'
+    || decisionType === 'vision'
+    || primaryCond?.signalType === 'visionJob'
+    || primaryCond?._visionLinked === true;
+  const fillColor   = nodeMode === 'verify' ? '#E8A317'
+                    : nodeMode === 'decide' ? '#7c3aed'
+                    : '#0072B5';
+  const borderColor = nodeMode === 'verify' ? '#b87d0f'
+                    : nodeMode === 'decide' ? '#6d28d9'
+                    : '#005a91';
+  const isSensor = signalType === 'sensor' || !!sensorRef;
+  const isVerify = nodeMode === 'verify';
+  const isDecide = nodeMode === 'decide';
+  const ioType = isSensor && sensorInputType !== 'range'
+    ? (sensorTag?.startsWith('q_') ? 'DO' : sensorTag?.startsWith('i_') ? 'DI' : null)
+    : null;
+  const isVisionJob = signalType === 'visionJob';
+  const displayName = isVisionJob
+    ? (signalSource ?? signalSmName ?? signalName ?? 'Select Signal...')
+    : (signalName ?? signalSource ?? 'Select Signal...');
+  const multiConditions = data.conditions ?? [];
+  const multiLogic = data.conditionLogic ?? 'AND';
+
+  let conditionDisplayName = displayName;
+  let axisCount = null;
+  let deviceDisplayLabel = null;
+  if (isSensor) {
+    const pc = multiConditions[0] ?? null;
+    const rawLabel = (pc?.label || displayName || '').trim();
+    const group = (pc?.group || signalSource || '').trim();
+    let condPart = rawLabel;
+    let devicePart = null;
+    if (group && rawLabel.startsWith(group)) {
+      condPart = rawLabel.slice(group.length).trim();
+      devicePart = group;
+    } else {
+      const tokens = rawLabel.split(' ');
+      const last = tokens[tokens.length - 1];
+      if (last && /^\[\d+\]$/.test(last)) {
+        axisCount = last.match(/\[(\d+)\]/)[1];
+        condPart = tokens[tokens.length - 2] ?? '';
+        devicePart = tokens.slice(0, -2).join(' ') || null;
+      }
+    }
+    if (!axisCount) {
+      const axisMatch = condPart.match(/\[(\d+)\]$/);
+      if (axisMatch) {
+        axisCount = axisMatch[1];
+        condPart = condPart.replace(/\s*\[\d+\]$/, '').trim();
+      }
+    }
+    if (condPart && condPart !== rawLabel) {
+      conditionDisplayName = condPart;
+      deviceDisplayLabel = devicePart || null;
+    }
+  }
+
+  const smDevices = useDiagramStore(s => s.project?.stateMachines?.find(m => m.id === smId)?.devices ?? []);
+  const allSMs = useDiagramStore(s => s.project?.stateMachines ?? []);
+  const projectSignals = useDiagramStore(s => s.project?.signals ?? []);
+  const resolvedSourceLabel = useMemo(() => {
+    const sigId = data.signalId;
+    if (!sigId) return null;
+    const sig = projectSignals.find(s => s.id === sigId);
+    if (!sig || sig.type !== 'state' || !sig.smId) return null;
+    const refSm = allSMs.find(sm => sm.id === sig.smId);
+    if (!refSm) return null;
+    const { stateMap } = computeStateNumbers(refSm.nodes ?? [], refSm.edges ?? [], refSm.devices ?? []);
+    let stepNum = sig.stateNodeId ? stateMap.get(sig.stateNodeId) : null;
+    if (stepNum == null && sig.stateName) {
+      const cleanSigState = sig.stateName.replace(/^\[\d+\]\s*[✓⌂⏳]?\s*/, '').trim();
+      const matchNode = (refSm.nodes ?? []).find(n => (n.data?.label ?? '').trim() === cleanSigState);
+      if (matchNode) stepNum = stateMap.get(matchNode.id);
+    }
+    if (stepNum == null) return null;
+    const smName = refSm.displayName ?? refSm.name ?? '';
+    const verb = sig.reachedMode === 'reached' ? 'has reached' : 'is in';
+    return `${smName ? smName + ' ' : ''}${verb} State ${stepNum}`;
+  }, [data.signalId, projectSignals, allSMs]);
+
+  const primaryRef = multiConditions[0]?.ref || sensorRef || '';
+  const colonIdx = primaryRef.indexOf(':');
+  const refDeviceId = colonIdx >= 0 ? primaryRef.slice(0, colonIdx) : (primaryRef || null);
+  const refSuffix = colonIdx >= 0 ? primaryRef.slice(colonIdx + 1) : null;
+  const liveDevice = (isSensor && refDeviceId)
+    ? (smDevices.find(d => d.id === refDeviceId) ?? allSMs.flatMap(m => m.devices ?? []).find(d => d.id === refDeviceId) ?? null)
+    : null;
+  const liveDeviceName = liveDevice?.displayName ?? liveDevice?.name ?? null;
+  const refSignalId = refSuffix?.split(':')[0] ?? null;
+  const liveSignal = (liveDevice?.type === 'Robot' && refSignalId)
+    ? (liveDevice.signals?.find(s => s.id === refSignalId) ?? null)
+    : null;
+  const liveConditionName = liveSignal?.name ?? null;
+  const liveAxisCount = liveSignal?.number != null ? String(liveSignal.number) : null;
+
+  let effectiveIoType = ioType;
+  if (liveSignal?.group === 'DI' || liveSignal?.group === 'DO') {
+    effectiveIoType = liveSignal.group;
+  } else if (isSensor && !liveSignal) {
+    const storedGroup = multiConditions[0]?.group || '';
+    if (storedGroup.includes(' DI') || storedGroup === 'Robot DI') effectiveIoType = 'DI';
+    else if (storedGroup.includes(' DO') || storedGroup === 'Robot DO') effectiveIoType = 'DO';
+  }
+
+  const subjectLine = liveDeviceName ?? deviceDisplayLabel ?? (isSensor ? (signalSource || displayName) : displayName);
+  const condName = liveConditionName || conditionDisplayName || '';
+  const effectiveAxisCount = liveAxisCount || axisCount;
+  const conditionPrefix = (effectiveIoType ?? '') + (effectiveAxisCount ? `[${effectiveAxisCount}]` : '');
+
+  // Op badge label + color
+  const isOn = conditionType !== 'off';
+  let opLabel, opColor;
+  if (isVerify) {
+    if (sensorInputType === 'range') { opLabel = 'Verify Range'; opColor = '#f59e0b'; }
+    else { opLabel = isOn ? 'Verify On' : 'Verify Off'; opColor = isOn ? '#16a34a' : '#dc2626'; }
+  } else if (isDecide) {
+    opLabel = 'Decide'; opColor = '#7c3aed';
+  } else if (isVisionJob) {
+    opLabel = 'Vision'; opColor = '#0ea5e9';
+  } else if (isSensor) {
+    if (sensorInputType === 'range') { opLabel = 'Wait Range'; opColor = '#0ea5e9'; }
+    else { opLabel = isOn ? 'Wait On' : 'Wait Off'; opColor = isOn ? '#16a34a' : '#dc2626'; }
+  } else {
+    opLabel = isOn ? 'Wait On' : 'Wait Off';
+    opColor = isOn ? '#16a34a' : '#dc2626';
+  }
+
+  // Icon type — what glyph to render next to the subject name. Priority:
+  //   1. Vision job       → camera
+  //   2. Live device tag  → the device's own icon (cylinder / servo / etc.)
+  //   3. Sensor ref       → sensor beam / analog gauge
+  //   4. Project signal   → broadcast "Signal" glyph. This covers the
+  //      common case "Decide on Part_Gripped" where the subject is a
+  //      computed / latched signal with no direct device tie — the row
+  //      used to render iconless, which felt inconsistent with every
+  //      other row in the state (they all lead with an icon).
+  let iconType = null;
+  if (isVisionJob) iconType = 'VisionSystem';
+  else if (liveDevice?.type) iconType = liveDevice.type;
+  else if (isSensor) iconType = sensorInputType === 'range' ? 'AnalogSensor' : 'DigitalSensor';
+  else if (data.signalId) iconType = 'Signal';
+
+  const nameLen = (subjectLine ?? '').length;
+  const badgeLen = (opLabel ?? '').length;
+  const totalLen = nameLen + badgeLen;
+  const nameFontSize = totalLen <= 14 ? 13 : totalLen <= 18 ? 12 : totalLen <= 22 ? 11 : totalLen <= 28 ? 10 : 9;
+
+  const stripSourcePrefix = (name) => {
+    if (!name) return name;
+    let out = name;
+    const candidates = [signalSource, subjectLine, deviceDisplayLabel, liveDeviceName].filter(Boolean);
+    for (const pfx of candidates) {
+      if (out.startsWith(pfx + ' ') || out.startsWith(pfx + '\u2192') || out.startsWith(pfx + ' \u2192')) {
+        out = out.slice(pfx.length).replace(/^\s*\u2192?\s*/, '').trim();
+      }
+    }
+    return out || name;
+  };
+
+  let verifyText = null;
+  if (isVerify) {
+    verifyText = null;
+  } else if (isSensor && sensorInputType === 'range') {
+    const minStr = rangeMin !== undefined && rangeMin !== '' ? rangeMin : '?';
+    const maxStr = rangeMax !== undefined && rangeMax !== '' ? rangeMax : '?';
+    verifyText = `Range: ${minStr} – ${maxStr}`;
+  } else if (isSensor) {
+    const tag = multiConditions[0]?.tag || sensorTag;
+    const detail = tag
+      || (condName && condName !== subjectLine ? condName : null)
+      || stripSourcePrefix(signalName)
+      || subjectLine;
+    verifyText = `${detail} = ${isOn ? 'ON' : 'OFF'}`;
+  } else if (isVisionJob && signalName && signalName !== subjectLine) {
+    verifyText = `Job: ${signalName}`;
+  } else if (isDecide) {
+    // Decide = snapshot + branch. The signal's internal recipe
+    // (e.g., "SDC_Servo_PNP is in State 7") is authoring-detail that
+    // belongs in the tooltip/editor, NOT on the row — reading the row
+    // the answer you want is "branching on Part_Gripped", not the
+    // chain of conditions that compute Part_Gripped's bit. Leave the
+    // verify line blank; the signal name + [Decide] badge carries the
+    // meaning, and hover tooltip below preserves the recipe.
+    verifyText = null;
+  } else if (resolvedSourceLabel) {
+    verifyText = resolvedSourceLabel;
+  } else if (signalName && signalName !== subjectLine) {
+    const detail = stripSourcePrefix(signalName);
+    verifyText = `${detail} = ${isOn ? 'ON' : 'OFF'}`;
+  }
+
+  const innerBg = `color-mix(in srgb, ${fillColor} 22%, #ffffff)`;
+  const isRangeOp = sensorInputType === 'range';
+  const canToggleOnOff = !isDecide && !isVisionJob && !isRangeOp;
+  const handleOpClick = canToggleOnOff
+    ? (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (opSwitcher) setOpSwitcher(null);
+        else {
+          const rect = e.currentTarget.getBoundingClientRect();
+          setOpSwitcher({ pos: { top: rect.bottom + 4, left: rect.left } });
+        }
+      }
+    : undefined;
+
+  function handlePointerDown(e) {
+    if (e.target.closest('.react-flow__handle')) return;
+    pointerDownPos.current = { x: e.clientX, y: e.clientY };
+  }
+
+  function handleBodyClick(e) {
+    if (e.target.closest('.react-flow__handle')) return;
+    e.stopPropagation();
+    if (smId && nodeId) store.setSelectedNode(nodeId);
+    if (pointerDownPos.current) {
+      const dx = Math.abs(e.clientX - pointerDownPos.current.x);
+      const dy = Math.abs(e.clientY - pointerDownPos.current.y);
+      if (dx > 5 || dy > 5) return;
+    }
+    onClick?.(e);
+  }
+
+  return (
+    <div
+      ref={nodeRef}
+      style={{
+        width: embedded ? '100%' : (exitCount > 2 ? Math.max(NODE_WIDTH, exitCount * 70) : NODE_WIDTH),
+        position: 'relative',
+        cursor: 'pointer',
+        background: fillColor,
+        border: `2px solid ${selected ? '#ffffff' : borderColor}`,
+        borderRadius: 10,
+        boxShadow: selected
+          ? `0 0 0 3px ${fillColor}66, 0 10px 24px rgba(0,0,0,0.12)`
+          : (embedded ? 'none' : '0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.05)'),
+        transition: 'box-shadow .15s',
+        userSelect: 'none',
+      }}
+      onContextMenu={onContextMenu}
+    >
+      {/* State number badge (top-left) — only on standalone DecisionNode, not embedded */}
+      {!embedded && stateNumber != null && stateNumber > 0 && (
+        <div style={{
+          position: 'absolute', top: -6, left: -6, minWidth: 22, height: 18, padding: '0 4px',
+          borderRadius: 9, fontSize: 9, fontWeight: 800, color: '#fff', background: '#1a1f2e',
+          border: '1.5px solid rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center',
+          justifyContent: 'center', zIndex: 3, pointerEvents: 'none', lineHeight: 1,
+          boxSizing: 'border-box',
+        }}>{stateNumber}</div>
+      )}
+
+      <div
+        onPointerDown={handlePointerDown}
+        onClick={handleBodyClick}
+        style={{ padding: '8px 10px', pointerEvents: 'auto' }}
+      >
+        <div className="action-row-wrap">
+          <div className="action-row" style={{ borderLeftColor: opColor, background: innerBg }}>
+            {iconType && (
+              <span className="action-icon"><DeviceIcon type={iconType} size={14} /></span>
+            )}
+            {/* For Decide rows the recipe (resolvedSourceLabel) is suppressed
+                from the visible row, but we still expose it via the title
+                tooltip so authors can discover it on hover without opening
+                the editor. Other row types keep the default subject tooltip. */}
+            <span
+              className="action-device"
+              style={{ fontSize: nameFontSize }}
+              title={
+                isDecide && resolvedSourceLabel
+                  ? `${subjectLine} — TRUE when ${resolvedSourceLabel}`
+                  : subjectLine
+              }
+            >
+              {subjectLine}
+            </span>
+            <span
+              className={`action-op${canToggleOnOff ? ' action-op--clickable nodrag' : ''}`}
+              style={{ background: opColor, color: '#fff', borderColor: opColor }}
+              onClick={handleOpClick}
+              onMouseDown={canToggleOnOff ? (e) => e.stopPropagation() : undefined}
+              title={canToggleOnOff ? 'Click to toggle On / Off' : undefined}
+            >{opLabel}</span>
+          </div>
+          {verifyText && (
+            <div className="action-verify" style={{ color: '#ffffff', opacity: 0.92, textShadow: '0 1px 1px rgba(0,0,0,0.25)' }}>
+              {verifyText}
+            </div>
+          )}
+        </div>
+
+        {/* Retry badge */}
+        {retryEnabled && (
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 4 }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 9, fontWeight: 700,
+              background: 'rgba(0,0,0,0.3)', color: '#fbbf24', padding: '1px 6px', borderRadius: 8,
+              letterSpacing: '0.03em',
+            }}>{'\u21BB'} Retry x{retryMax}</span>
+          </div>
+        )}
+        {/* Part Tracking badge */}
+        {data.ptEnabled && data.ptFieldName && (
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 4 }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 9, fontWeight: 700,
+              background: 'rgba(0,0,0,0.3)', color: '#86efac', padding: '1px 6px', borderRadius: 8,
+              letterSpacing: '0.03em',
+            }}>📊 PT: {data.ptFieldName}</span>
+          </div>
+        )}
+      </div>
+
+      {/* On/Off switcher popup */}
+      {opSwitcher && smId && (
+        <OnOffSwitcher
+          smId={smId}
+          nodeId={nodeId}
+          currentType={conditionType}
+          mode={nodeMode}
+          pos={opSwitcher.pos}
+          onClose={() => setOpSwitcher(null)}
+          onUpdate={onUpdate}
+        />
+      )}
+    </div>
+  );
+}
+
 // ── DecisionNode ───────────────────────────────────────────────────────────────
 
 // Node width matches StateNode (240px)
@@ -1475,8 +1993,13 @@ export function DecisionNode({ data, selected, id }) {
     signalSmName = null,
     signalType = null,
     exitCount = 2,
-    exit1Label = 'Pass',
-    exit2Label = 'Fail',
+    // Fallback defaults: Pass/Fail ONLY for vision (vision jobs have named
+    // pass/fail outcomes); On/Off for everything else (binary conditions).
+    // `syncDecisionExitLabels` re-syncs these to the correct vocabulary on
+    // next mount anyway — this just prevents the wrong word flashing for a
+    // frame on an unconfigured node.
+    exit1Label = (signalType === 'visionJob' ? 'Pass' : 'On'),
+    exit2Label = (signalType === 'visionJob' ? 'Fail' : 'Off'),
     nodeMode = 'wait',
     stateNumber = null,
     conditionType = 'on',

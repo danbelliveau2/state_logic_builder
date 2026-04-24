@@ -14,7 +14,10 @@ export function ActionModal() {
   const nodeId = store.actionModalNodeId;
   const actionId = store.actionModalActionId; // null = add new
 
-  const node = sm?.nodes.find(n => n.id === nodeId);
+  // Node may live in sm.nodes (main diagram) OR sm.recoverySeqs[*].nodes
+  // (recovery tab). Fall back to recovery seqs if the main array misses.
+  const node = sm?.nodes.find(n => n.id === nodeId)
+    ?? (sm?.recoverySeqs ?? []).flatMap(r => r.nodes ?? []).find(n => n.id === nodeId);
   const existingAction = actionId ? node?.data.actions.find(a => a.id === actionId) : null;
 
   const devices = sm?.devices ?? [];

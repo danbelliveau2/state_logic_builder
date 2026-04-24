@@ -5,13 +5,32 @@
  * VisionInspect nodes consume 5 sub-state slots (+12 total).
  * Fault nodes are always 127.
  *
+ * Options:
+ *   - startAt:      first step number (default 1 main, 100 recovery)
+ *   - completeStep: if provided, any node with data.isComplete (OR whose label
+ *                   is "Cycle Complete", as a legacy safety net) gets exactly
+ *                   this number and is skipped by the sequential counter. Used
+ *                   for recovery sequences where "Cycle Complete" is always 124
+ *                   (the initialize/recovery-complete step in the PLC).
+ *
  * Returns { stateMap: Map<nodeId, number>, visionSubStepsMap: Map<nodeId, number[]> }
  */
+
+// A node is the recovery terminal "Cycle Complete" when either:
+//   - it carries the explicit `isComplete: true` flag (preferred / new records)
+//   - its label reads "Cycle Complete" (legacy records built before the flag
+//     was wired up through the recovery picker — still must snap to step 124)
+function isCycleCompleteNode(n) {
+  if (n?.data?.isComplete) return true;
+  const label = String(n?.data?.label ?? '').trim().toLowerCase();
+  return label === 'cycle complete';
+}
 
 export function computeStateNumbers(nodes, edges, devices, options = {}) {
   if (!nodes || nodes.length === 0) return { stateMap: new Map(), visionSubStepsMap: new Map() };
 
   const startAt = options.startAt ?? 1;
+  const completeStep = options.completeStep; // e.g. 124 for recovery
   const stateMap = new Map();
   const visionSubStepsMap = new Map();
 
@@ -58,11 +77,16 @@ export function computeStateNumbers(nodes, edges, devices, options = {}) {
     .sort((a, b) => a.position.y - b.position.y);
   ordered.push(...unreached);
 
-  // Assign state numbers (fault nodes are always 127 — skip in sequence)
+  // Assign state numbers (fault nodes are always 127 — skip in sequence;
+  // recovery cycle-complete is always `completeStep` (124) when provided — skip too)
   let currentStep = startAt - 3;
   for (const n of ordered) {
     if (n.data?.isFault) {
       stateMap.set(n.id, 127);
+      continue;
+    }
+    if (completeStep !== undefined && isCycleCompleteNode(n)) {
+      stateMap.set(n.id, completeStep);
       continue;
     }
     if (n.data?.isInitial) {
@@ -72,6 +96,9 @@ export function computeStateNumbers(nodes, edges, devices, options = {}) {
     }
 
     currentStep += 3;
+    // Skip `completeStep` in the sequential counter so a busy recovery flow
+    // can't collide with the reserved complete number.
+    if (completeStep !== undefined && currentStep === completeStep) currentStep += 3;
     stateMap.set(n.id, currentStep);
 
     // Check if this node has a VisionSystem Inspect action

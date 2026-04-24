@@ -181,6 +181,15 @@ function SignalsSection() {
             )}
             {signals.map(sig => {
               const badge = SIGNAL_TYPE_BADGES[sig.type] ?? SIGNAL_TYPE_BADGES.condition;
+              const isLatched = !!sig.offCondition;
+              // Tooltip summarizes on/off semantics so the user doesn't have
+              // to open the modal just to remember what a signal does.
+              const tooltip = [
+                sig.description || sig.name,
+                isLatched
+                  ? 'Latched (OTL + OTU) — latches ON at the ON condition, OFF at the OFF condition.'
+                  : 'Computed (OTE) — TRUE whenever the condition holds.',
+              ].filter(Boolean).join('\n');
               return (
                 <div key={sig.id} className="pt-field-row">
                   <span style={{
@@ -190,7 +199,22 @@ function SignalsSection() {
                   }}>
                     {badge.label}
                   </span>
-                  <span className="pt-field-row__name" title={sig.description || sig.name}>{sig.name}</span>
+                  {/* Latch indicator: blue dot = pure computed (OTE),
+                      split green/red flag = latched (OTL + OTU). Tooltip covers the rest. */}
+                  <span
+                    title={isLatched ? 'Latched (ON + OFF conditions)' : 'Computed (ON condition only)'}
+                    style={{
+                      flexShrink: 0,
+                      width: 14, height: 14, borderRadius: '50%',
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      background: isLatched
+                        ? 'linear-gradient(135deg, #16a34a 50%, #dc2626 50%)'
+                        : '#0072B5',
+                      border: '1px solid #fff',
+                      boxShadow: '0 0 0 1px rgba(0,0,0,0.15)',
+                    }}
+                  />
+                  <span className="pt-field-row__name" title={tooltip}>{sig.name}</span>
                   <button
                     className="icon-btn icon-btn--sm"
                     title="Edit signal"

@@ -2,12 +2,18 @@
  * PtBadge — Small informational badge on nodes.
  *
  * Shows:
- *   - "S"  (blue)   when signals are PRODUCED at this node
- *   - "PT" (purple)  when Part Tracking fields are annotated on this node
+ *   - "⚑" (blue)    when a LEGACY SM output is active at this node
+ *   - "PT" (purple) when Part Tracking fields are annotated on this node
  *   - Combo gradient when both
  *
+ * Note: Project-level signals (state signals with `stateNodeId`) NO LONGER
+ * render here — they surface as green/red chips inside `state-node__body`
+ * (see StateNode.jsx's onSideSignals / offSideSignals chip row). This
+ * avoids double-visualizing the same signal and frees the corner badge
+ * for PT annotations + the small remaining pool of legacy smOutputs.
+ *
  * Click to see details (read-only popup):
- *   - Signal name + when it activates (reached / in / completed)
+ *   - Output name + "Output active at this state"
  *   - PT field name + value (SET / CLEAR / SUCCESS / FAILURE)
  *
  * This is purely informational — not an editor.
@@ -26,36 +32,25 @@ const VALUE_COLORS = {
   FAILURE: { bg: '#dc2626', text: '#fff' },
 };
 
-const REACHED_MODE_LABELS = {
-  in:        'While in this state',
-  completed: 'Once past this state',
-  reached:   'Once reaching this state',
-};
-
 export function PtBadge({ nodeId, smId, annotations = [], selected = false }) {
   const [showPopup, setShowPopup] = useState(false);
   const badgeRef = useRef(null);
   const popupRef = useRef(null);
 
-  const signals = useDiagramStore(s => s.project?.signals ?? []);
   const smOutputs = useDiagramStore(s => {
     const sm = (s.project?.stateMachines ?? []).find(m => m.id === smId);
     return sm?.smOutputs ?? [];
   });
 
   // ── Signal detection ────────────────────────────────────────────────
-  // Only signals PRODUCED at this node (stateNodeId matches).
-  const producedSignals = signals.filter(sig =>
-    sig.type === 'state' && sig.stateNodeId === nodeId
-  );
-
-  // Legacy SM outputs active on this node
+  // Project-level signals (type === 'state') render as chips inside the
+  // state-node body, not here — we used to double-show them as a blue ⚑
+  // which confused users who'd just placed a green ON chip via the signal
+  // editor. PtBadge now only surfaces legacy SM outputs + PT annotations.
   const activeOutputs = smOutputs.filter(o => o.activeNodeId === nodeId);
 
-  const allSignalItems = [...producedSignals, ...activeOutputs];
-
   const hasPt = annotations.length > 0;
-  const hasSignals = allSignalItems.length > 0;
+  const hasSignals = activeOutputs.length > 0;
   const hasContent = hasPt || hasSignals;
 
   // Close popup on click outside — must be before early return (React hooks rule)
@@ -109,7 +104,6 @@ export function PtBadge({ nodeId, smId, annotations = [], selected = false }) {
         onClick={handleBadgeClick}
         onMouseDown={e => e.stopPropagation()}
         title={[
-          ...producedSignals.map(s => `Signal: ${s.name}`),
           ...activeOutputs.map(o => `Output: ${o.name}`),
           ...annotations.map(a => `PT: ${a.fieldName} → ${a.value}`),
         ].join('\n')}
@@ -127,16 +121,7 @@ export function PtBadge({ nodeId, smId, annotations = [], selected = false }) {
           style={{ top: popupPos.top, left: popupPos.left }}
           onMouseDown={e => e.stopPropagation()}
         >
-          {/* ── Signals ──────────────────────────────────────────── */}
-          {producedSignals.map(sig => (
-            <div key={`sig-${sig.id}`} className="pt-popup__signal-row">
-              <div className="pt-popup__signal-name">{sig.name}</div>
-              <div className="pt-popup__signal-desc">
-                {REACHED_MODE_LABELS[sig.reachedMode] ?? 'Once reaching this state'}
-              </div>
-            </div>
-          ))}
-
+          {/* ── Legacy SM outputs ────────────────────────────────── */}
           {activeOutputs.map(out => (
             <div key={`out-${out.id}`} className="pt-popup__signal-row">
               <div className="pt-popup__signal-name">{out.name}</div>

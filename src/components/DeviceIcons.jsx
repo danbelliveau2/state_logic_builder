@@ -136,6 +136,25 @@ function SensorIcon({ size, color }) {
   );
 }
 
+// ── Signal (radio-wave / broadcast glyph) ────────────────────────────────────
+// Used for embedded Decide / Verify / Wait rows that reference a project-level
+// signal (as opposed to a device tag). Reads as "broadcast bit" — dot in the
+// center with two outward arcs, visually distinct from the sensor beam icon.
+function SignalIcon({ size, color }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Source dot */}
+      <circle cx="12" cy="12" r="2" fill={color}/>
+      {/* Inner arcs */}
+      <path d="M 8.5 9 A 4.5 4.5 0 0 0 8.5 15" stroke={color} strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+      <path d="M 15.5 9 A 4.5 4.5 0 0 1 15.5 15" stroke={color} strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+      {/* Outer arcs */}
+      <path d="M 5.5 6.5 A 8 8 0 0 0 5.5 17.5" stroke={color} strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+      <path d="M 18.5 6.5 A 8 8 0 0 1 18.5 17.5" stroke={color} strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
 // ── Parameter (tag / flag icon) ───────────────────────────────────────────────
 function ParameterIcon({ size, color }) {
   return (
@@ -276,6 +295,7 @@ const ICON_COMPONENTS = {
   DigitalSensor:           SensorIcon,
   AnalogSensor:            AnalogSensorIcon,
   Parameter:               ParameterIcon,
+  Signal:                  SignalIcon,
   VisionSystem:            VisionSystemIcon,
   Custom:                  CustomDeviceIcon,
 };
@@ -292,6 +312,7 @@ export const DEVICE_ICON_COLORS = {
   DigitalSensor:           '#64748b',
   AnalogSensor:            '#6366f1',
   Parameter:               '#f97316',
+  Signal:                  '#0072B5',
   VisionSystem:            '#0891b2',
   Custom:                  '#6b7280',
 };

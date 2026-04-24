@@ -191,7 +191,7 @@ export function HandleClickZone({ nodeId, handleSelector, handleId }) {
           _connectMenuNodeId: nodeId,
           _connectMenuHandleId: handleId ?? null,
         });
-      }, 300);
+      }, 120);
     }
 
     function onLeave() {
@@ -281,7 +281,16 @@ export function ConnectMenu({ nodeId, nodeType, exitCount, signalName, smId }) {
     const sm = (store.project?.stateMachines ?? []).find(s => s.id === smId);
     if (!sm) return;
 
-    const fromNode = sm.nodes.find(n => n.id === nodeId);
+    // Detect recovery-mode context: if the canvas is showing a recovery sequence,
+    // lookups + mutations must target sm.recoverySeqs[*].nodes/edges, not sm.nodes.
+    const recoverySeqId = store._activeRecoverySeqId ?? null;
+    const activeSeq = recoverySeqId
+      ? (sm.recoverySeqs ?? []).find(r => r.id === recoverySeqId)
+      : null;
+    const isRecovery = !!activeSeq;
+    const sourceNodes = isRecovery ? activeSeq.nodes : sm.nodes;
+
+    const fromNode = sourceNodes.find(n => n.id === nodeId);
     if (!fromNode) return;
 
     const srcW = fromNode.measured?.width ?? fromNode.width ?? 240;
@@ -292,22 +301,38 @@ export function ConnectMenu({ nodeId, nodeType, exitCount, signalName, smId }) {
       y: fromNode.position.y + (fromNode.measured?.height ?? fromNode.height ?? 80) + offset.y,
     };
 
-    const position = findClearPosition(desired, sm.nodes, newW, nodeId);
+    const position = findClearPosition(desired, sourceNodes, newW, nodeId);
 
     store._pushHistory();
-    const newNodeId = store.addNode(smId, { position });
-    if (!newNodeId) return;
-
-    store.addEdge(
-      smId,
-      {
-        source: nodeId,
-        sourceHandle: sourceHandle,
-        target: newNodeId,
-        targetHandle: null,
-      },
-      { conditionType: 'ready', label: 'Ready' }
-    );
+    let newNodeId;
+    if (isRecovery) {
+      newNodeId = store.addRecoveryNode(smId, recoverySeqId, { position });
+      if (!newNodeId) return;
+      store.addRecoveryEdge(
+        smId,
+        recoverySeqId,
+        {
+          source: nodeId,
+          sourceHandle: sourceHandle,
+          target: newNodeId,
+          targetHandle: null,
+        },
+        { conditionType: 'ready', label: 'Ready' }
+      );
+    } else {
+      newNodeId = store.addNode(smId, { position });
+      if (!newNodeId) return;
+      store.addEdge(
+        smId,
+        {
+          source: nodeId,
+          sourceHandle: sourceHandle,
+          target: newNodeId,
+          targetHandle: null,
+        },
+        { conditionType: 'ready', label: 'Ready' }
+      );
+    }
 
     store.setOpenPickerOnNode(newNodeId);
     useDiagramStore.setState({ _connectMenuNodeId: null, _connectMenuHandleId: null });
