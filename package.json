@@ -32,6 +32,7 @@
     "productName": "SDC State Logic Builder",
     "files": [
       "electron/**/*",
+      "node_modules/**/*",
       "package.json"
     ],
     "extraResources": [
