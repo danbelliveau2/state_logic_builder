@@ -64,11 +64,11 @@ export function buildAvailableInputs(devices, allSMs, currentSmId, trackingField
         inputs.push({ ref: `${d.id}:value`, tag: `${d.name}Scaled`, label: `${d.displayName} Value`, inputType: 'range', group: 'Analog Sensors' });
         // Each setpoint as a bool "in range" check
         for (const sp of (d.setpoints ?? []))
-          inputs.push({ ref: `${d.id}:${sp.name}`, tag: `${d.name}${sp.name}RC.In_Range`, label: `${d.displayName} @ ${sp.name} (In Range)`, inputType: 'bool', group: 'Analog Sensors' });
+          inputs.push({ ref: `${d.id}:${sp.name}`, tag: `${d.name}${sp.name}RC.InPos`, label: `${d.displayName} @ ${sp.name} (In Range)`, inputType: 'bool', group: 'Analog Sensors' });
         break;
       case 'ServoAxis':
         for (const pos of (d.positions ?? []))
-          inputs.push({ ref: `${d.id}:${pos.name}`, tag: `${d.name}${pos.name}RC.In_Range`, label: `${d.displayName} @ ${pos.name}`, inputType: 'range', group: 'Servo Positions' });
+          inputs.push({ ref: `${d.id}:${pos.name}`, tag: `${d.name}${pos.name}.InPos`, label: `${d.displayName} @ ${pos.name}`, inputType: 'range', group: 'Servo Positions' });
         break;
       case 'Parameter': {
         const pfx = d.dataType === 'boolean' ? 'q_' : 'p_';

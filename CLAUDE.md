@@ -59,30 +59,42 @@ src/
 These standards are derived from the SDC PLC Software Standardization Guide and must be respected in all L5X output.
 
 ### 3.1 Tag Naming
+> **All names are full words, not abbreviations.** `Extend`/`Retract`/`Extended`/`Retracted` — never `Ext`/`Ret`. See §15.2 for the complete generator rules.
+
 | Category | Pattern | Type | Example |
 |----------|---------|------|---------|
-| Digital input sensor | `i_{name}Ext` / `i_{name}Ret` | BOOL | `i_StampCylExt` |
-| Digital output solenoid | `q_Ext{name}` / `q_Ret{name}` | BOOL | `q_ExtStampCyl` |
-| Delay timer | `{name}ExtDelay` / `{name}RetDelay` | TIMER | `StampCylExtDelay` |
-| Servo axis | `a{n}_{name}` | AXIS_CIP_DRIVE | `a1_Rotary` |
-| Servo position param | `p_{name}{posName}` | REAL | `p_RotaryHome` |
+| Digital input sensor (pneumatic position) | `i_{name}Extended` / `i_{name}Retracted` | BOOL | `i_StampCylExtended` |
+| Digital output solenoid | `q_Extend{name}` / `q_Retract{name}` | BOOL | `q_ExtendStampCyl` |
+| Delay timer | `{name}ExtendDelay` / `{name}RetractDelay` | TIMER | `StampCylExtendDelay` |
+| Gripper solenoid (2-sol standard) | `q_Close{name}` / `q_Open{name}` | BOOL | `q_ClosePNPGripper` |
+| Part-present / generic digital sensor | `i_{name}` (debounced via `{name}Debounce`) | BOOL | `i_PartInNest` → `PartInNest Debounce.On` |
+| Servo axis | `a{NN}_S{station}{name}` (controller-scope) + `iq_{name}` program InOut | AXIS_CIP_DRIVE | `a02_S01PNPXAxis` |
+| Servo HMI tag | `HMI_{name}` (ServoOverall UDT) | UDT | `HMI_XAxis` |
 | SM output / signal | `p_{signalName}` | BOOL (Public) | `p_StampComplete` |
 | Parameter tag | `p_{name}` (REAL) or `q_{name}` (BOOL) | varies | |
 
 ### 3.2 Program / Routine Naming
 - Program: `S{nn}_{PascalCaseName}` (e.g., `S02_StampCycle`)
 - Routines per SM:
-  - **R00_Main** — JSR calls to R01, R02, R03
-  - **R01_Inputs** — Debounce/invert for 1-sensor pneumatics
+  - **R00_Main** — JSR calls to R01, R02, R03 (+ R04/R05 when servos present, + R20 Alarms)
+  - **R01_Inputs** — HMI_Toggle decode, SS_OK, debounce, lockout rung, 1-sensor pneumatic invert
   - **R02_StateTransitions** — Step change conditions (XIC/XIO/MAM triggers)
   - **R03_StateLogic** — OTL/OTU complementary outputs per step
-  - *(R04/R20 are NOT generated — fault detection delegated to `State_Engine_128Max` AOI)*
+  - **R04_{axis}Servo** — one per servo axis (MSO/MSF/MAFR/MASR/MAJ/MAS/MAH+AOI_TorqueHome/MAM auto/position monitor/GSV); naming: `R04_StateLogicServo` for 1 axis, `R04_{axis1}Servo` + `R05_{axis2}Servo` for multi
+  - **R20_Alarms** — `ProgramAlarmHandler` AOI call; fault summary OTEs
+  - *(Fault detection delegated to `State_Engine_128Max` AOI via `EnaFaultDetect`/`TransitionTime`/`FaultTime`)*
 
 ### 3.3 Step Counter
 - DINT tag `Step` — compatible with `State_Engine_128Max` AOI
 - State numbers: base 1, increment **+3** per state (1, 4, 7, 10, 13, ...)
 - Vision Inspect nodes consume **4 sub-states** (N, N+3, N+6, N+9)
 - DFS traversal from initial node assigns numbers; unreachable nodes appended at end sorted by Y
+- Reserved states (never assigned by DFS — see §15.5):
+  - **0** — powerup / pre-init
+  - **1, 2, 3** — reserved for future SDC use
+  - **99** — lockout (forced by HMI_Toggle.0)
+  - **100–127** — station-type initialization block
+  - **127** — initialization complete / cycle-ready gate
 
 ### 3.4 State Engine AOI
 - Wraps `StateLogicControl` UDT (StateReg, EnaFaultDetect, TransitionTime, FaultTime)
@@ -91,6 +103,7 @@ These standards are derived from the SDC PLC Software Standardization Guide and 
 
 ### 3.5 Part Tracking
 - `PartTracking` UDT with one BOOL per tracking field
+- `PartStarted` BOOL set at cycle start / cleared at cycle complete — gates in-cycle-only logic
 - L5X output stores field definitions but write logic remains in user code
 - Vision-linked tracking fields auto-created via `syncVisionPartTracking()`
 
@@ -594,4 +607,168 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:5173
 
 ---
 
-*Last updated: 2026-04-19 — Rev 1.10: Wait node display overhaul — live-linked device/condition names, inline DI[n] pill, correct DI/DO labels for robot signals, single-exit default for wait mode.*
+## 15. SDC PLC STANDARDS (GENERATOR RULES)
+
+> **Source of truth:** SDC PLC Software Standardization Guide Rev 1 (`X:\Electrical Dept\EE Process and Standards Documents\PLC Software Standardization Guide - Rev1.pdf`) + engineer reference `S05_ServoPNP.L5X` + confirmed user answers (2026-04-23).
+>
+> **Guiding principle:** The exporter embodies these standards as *rules*. Reference L5X files are for pattern-learning only; the generator MUST produce correct output for machines we've never seen, with no reference file available. Every rule below must be honored by `l5xExporter.js` — if a machine doesn't need a feature, it is gated on declared device/signal presence, never on matching a reference file.
+
+### 15.1 Layered Output Architecture
+
+The L5X output is composed in layers. Each layer's contribution is **gated on declared project state**, never on the presence of a reference file.
+
+| Layer | Contents | Gate |
+|-------|----------|------|
+| **L1 — Infrastructure** | `StateLogicControl`, `StateLogicStatus`, `PartTracking` UDTs; `State_Engine_128Max` AOI; `ProgramAlarmHandler` AOI | Always emitted |
+| **L2 — Station-type template** | Init state skeleton 100→...→127; station-specific rungs | Keyed on `sm.stationType` (first supported: `SDCStandardPNP`) |
+| **L3 — Per-device blocks** | Device UDTs/AOIs, tags, R01 inputs, R04/R05 servo, gripper rungs | One block per declared device — no device, no block |
+| **L4 — Flowchart-compiled logic** | R02 transitions + R03 OTL/OTU from diagram nodes/edges | DFS over `sm.nodes`/`sm.edges` |
+| **L5 — Always-on boilerplate** | Lockout state 99, HMI_Toggle decode, SS_OK, HMI_Momentary auto-clear, cycle-complete/cycle-start latching, `CPU_TimeDate_wJulian` | Always emitted at program scope |
+
+### 15.2 Tag Naming (authoritative)
+
+Per SDC Guide §8 and §10. Deviations from the old exporter behavior are marked ❗.
+
+- **Pneumatic single-solenoid:**
+  - Solenoid output: `q_Extend{name}` / `q_Retract{name}` ❗ (was `q_Ext{name}`)
+  - Sensor input: `i_{name}Extended` / `i_{name}Retracted` ❗ (was `i_{name}Ext`)
+  - Delay timers: `{name}ExtendDelay` / `{name}RetractDelay`
+- **2-solenoid gripper (default):** `q_Close{name}` / `q_Open{name}` + `{name}CloseDelay` / `{name}OpenDelay`. Single-solenoid spring-return gripper is a unique case — programmer handles manually, exporter only emits 2-sol pattern for `PneumaticGripper` type.
+- **Digital sensor (part-present and generic):** `i_{name}`. AOI_Debounce instance `{name}Debounce` is REQUIRED for part-present sensors; extend/retract position sensors do NOT debounce. Downstream references use `{name}Debounce.On`.
+- **Servo axis tag:** controller-scope `a{NN}_S{station}{name}` ❗ where `{NN}` is 2-digit global axis number (01, 02, 03…) and `{station}` is the SM's station number (e.g., `a02_S01PNPXAxis`). Program scope exposes `iq_{name}` as InOut param aliased to the controller tag.
+- **Servo HMI tag:** `HMI_{name}` of type `ServoOverall` (UDT defined in L1 for servo machines). Standard — do not rename.
+- **Servo motion-instruction instances (one set per axis):** `MSO_{name}`, `MSF_{name}`, `MAFR_{name}`, `MASR_{name}`, `MAJ_{name}`, `MAS_{name}_Jog`, `MAH_{name}`, `MAM_{name}_Auto`.
+- **Per-axis support tags:** `{Name}Ready`, `{Name}Permissive`, `{Name}AutoEnable`, `{Name}HomeConfimed` *(sic — spelling per guide)*, `{Name}HomeRequested`, `{Name}HomeSelect`, `{Name}TorqueHome`.
+- **Signals (SM outputs):** `p_{signalName}` BOOL Public. Position signals: `p_At{name}`.
+- **HMI toggles — FIXED BIT MAP (SDC standard, never change):**
+  - `HMI_Toggle.0` → Lockout (forces Step=99)
+  - `HMI_Toggle.1` → DryRun
+  - `HMI_Toggle.2` → SS (Single-Step mode)
+- **HMI_Momentary:** dynamic — bits allocated per machine based on momentary buttons declared. `HMI_Button` is **not used** (legacy).
+- **CamelCase:** tag names are PascalCase segments joined without underscore inside a segment; underscore separates prefix/segment (`q_ExtendStampCyl`, not `q_Extend_StampCyl`).
+
+### 15.3 Position Array Stability
+
+Per SDC Guide §10 and user confirmation:
+- Servo positions live in `HMI_{name}.Parameters.Positions[N]`, `AutoSpeed[N]`, `Accel[N]`, `Decel[N]`.
+- Each declared position gets a **stable index** assigned at creation and **never reshuffled**. Deleting a position leaves a gap — indices ≥ the deleted one do not shift.
+- Position index must be persisted on the position object (`positionIndex: number`) and preserved across rename/delete of other positions.
+- Default MAM arguments in R04/R05 reference `HMI_{name}.Parameters.AutoSpeed[0]`, `Accel[0]`, `Decel[0]` unless the diagram specifies otherwise.
+
+### 15.4 Servo Architecture (applies when `sm.devices` includes any `ServoAxis`)
+
+**Controller-scope emissions:**
+- One `MotionGroup` tag of type `MOTION_GROUP` (shared across all axes in the project).
+- One `a{NN}_S{station}{name}` AXIS_CIP_DRIVE tag per servo axis.
+
+**Program-scope emissions (per axis):**
+- `iq_{name}` InOut parameter aliased to the controller-scope axis tag.
+- `HMI_{name}` of type `ServoOverall`.
+- All motion instruction instances (§15.2).
+- All support tags (§15.2).
+- Position data in `HMI_{name}.Parameters.Positions[]`.
+
+**Required UDTs (emit once when any servo present):**
+- `ServoOverall` (container)
+- `ServoStatus`, `ServoControl`, `ServoParameters`, `ServoMomentary` (sub-UDTs)
+- `STRING100` (string type used by ServoOverall)
+
+**Required AOI (always embedded on servo machines):**
+- `AOI_TorqueHome` — full definition pasted into the L5X. The engineer may or may not USE it in the home rung (a plain MAH is the alternative), but the AOI must be available. Default generator emits AOI_TorqueHome call in the home rung; CE switches to MAH post-export if desired.
+
+**R04/R05 routine content (per axis):**
+1. MSO (enable) — on `{Name}AutoEnable` + `{Name}Permissive`
+2. MSF (disable) — on fault or E-stop
+3. MAFR (fault reset) — on `HMI_{name}.Momentary.FaultReset`
+4. MASR (shutdown reset)
+5. MAJ (+/−) — on HMI jog buttons, using `HMI_{name}.Parameters.JogSpeed/JogAccel/JogDecel`
+6. MAS_Jog (stop jog)
+7. MAH / AOI_TorqueHome — on `{Name}HomeRequested`
+8. MAM auto — triggered by state logic writing to `HMI_{name}.Control.MoveType` and firing `HMI_{name}.Momentary.MoveTrigger` (or equivalent flag set by R03)
+9. Position monitoring — compare `a{NN}_...ActualPosition` to each `HMI_{name}.Parameters.Positions[N]` within `HMI_{name}.Parameters.PositionTolerance[N]`, set `HMI_{name}.Status.AtPosition[N]`
+10. GSV — copy axis status into `HMI_{name}.Status` fields
+
+### 15.5 State Machine Skeleton (reserved state numbers)
+
+DFS numbering (§3.3) starts at 1 by default, but certain state numbers are RESERVED across all SDC machines and must not be assigned by the flowchart DFS. The exporter inserts them independently of the diagram:
+
+| State | Meaning | Emission |
+|-------|---------|----------|
+| **0** | Pre-init / powerup | Implicit — `Step = 0` at controller start |
+| **1, 2, 3** | Reserved for future SDC use | Do not emit, do not assign |
+| **99** | Lockout | Always emitted. R02 rung: `XIC(HMI_Toggle.0) MOV(99, Step)` forces Step=99 when lockout toggled. R03: only OTL of safe-state outputs (retract solenoids, disable servos). |
+| **100–127** | Station-type initialization block | Emitted from station-type template (§15.6) |
+| **127** | Init-complete / cycle-ready | Station template's terminal init state. Exit transition: `XIC(HMI_Toggle.1_NOT_Lockout) XIC(CycleStart) MOV({flowchart_first_step}, Step)` |
+
+**The flowchart-compiled logic (R02/R03) is responsible for states ≥ the first non-reserved step returned by DFS** (typically 4 onward, or wherever the diagram's initial node lands). State 127 bridges the fixed init block to the flowchart block.
+
+### 15.6 Station-Type Init Templates
+
+Each SM carries a `stationType` field. Exporter emits a canned init block for the chosen type. First supported type:
+
+**`SDCStandardPNP`** (2-axis PNP with 2-solenoid gripper):
+- **State 100** — Retract Z axis. Exit: `XIC(ZAxisAtPosition[RetractedIdx])` → depends on gripper state: if `i_{gripper}Open` at init → MOV 103; if `i_{gripper}Closed` at init → MOV 106.
+- **State 103** — Retract X axis (gripper-open path, empty return). Exit: `XIC(XAxisAtPosition[HomeIdx])` → MOV 124.
+- **State 106** — Extend X axis (gripper-closed path, carrying part from incomplete prior cycle). Exit: `XIC(XAxisAtPosition[PickOrPlaceIdx])` → MOV 109 (open gripper) → ... → eventually MOV 124.
+- **State 124** — Initialization complete. Gripper and axes at known safe state. Exit: `XIC(CycleStart) XIO(HMI_Toggle.0)` → MOV 127.
+- **State 127** — Cycle-ready. Exit to flowchart's initial step.
+
+Other station types (not yet implemented): standard pneumatic station, inspection station, robot-cell station. Adding a new type = adding a template; core exporter is unaffected.
+
+### 15.7 R01_Inputs Boilerplate (always emitted)
+
+Order of rungs in R01:
+1. **HMI_Toggle decode:**
+   - `XIC(HMI_Toggle.0) OTE(Lockout)`
+   - `XIC(HMI_Toggle.1) OTE(DryRun)`
+   - `XIC(HMI_Toggle.2) OTE(SS)`
+2. **SS_OK derivation:** `XIO(SS) OTE(SS_OK)` ORed with `XIC(SS) XIC(HMI_Momentary.StepAdvance) OTE(SS_OK)` (advance pulse).
+3. **HMI_Momentary auto-clear:** one rung per declared momentary bit — `XIC(HMI_Momentary.X) OTU(HMI_Momentary.X)` on next scan.
+4. **1-sensor pneumatic invert** (only for devices flagged as 1-sensor): `XIO(i_{name}Extended) OTE(i_{name}Retracted)` or the reverse.
+5. **Debounce calls** (per §15.8).
+6. **CPU_TimeDate_wJulian** call (once per program).
+
+### 15.8 AOI_Debounce Usage
+
+Per user confirmation:
+- **Required:** every `DigitalSensor` (part-present) device.
+- **Not required:** pneumatic extend/retract sensors (those are already conditioned by state logic).
+- **Not required:** robot DI/DO (`TrigReady`, `InspPass`, etc.) — those come through a robot interface block.
+
+Emission: `AOI_Debounce({name}Debounce, i_{name}, 100, 100)` in R01 (100 ms on, 100 ms off defaults). Downstream references (R02 transitions, signals) use `{name}Debounce.On` rather than `i_{name}`.
+
+### 15.9 Gripper Rules (2-solenoid default)
+
+For each `PneumaticGripper` device:
+- Emit outputs `q_Close{name}` and `q_Open{name}`.
+- Emit delay timers `{name}CloseDelay` and `{name}OpenDelay`.
+- Default delay preset: 500 ms (engineer adjusts post-export).
+- R03 rungs: gripper-close states OTL `q_Close{name}` + OTU `q_Open{name}`; gripper-open states do the reverse.
+- Transitions (R02) consume `{name}CloseDelay.DN` / `{name}OpenDelay.DN` as the completion signal.
+- Single-solenoid spring-return gripper: NOT auto-generated — flagged for manual authoring.
+
+### 15.10 R20_Alarms
+
+Always emitted. Contains:
+- One `ProgramAlarmHandler` AOI call.
+- Summary OTEs aggregating fault bits from State_Engine_128Max (`StateLogicStatus.TimeoutFlt` → fault bit per state).
+- Empty by default beyond the AOI call; fills in as device/signal fault types are declared.
+
+### 15.11 Version Fields
+
+- `SoftwareRevision` in L5X header: follow target Studio 5000 version. Current standard: **37.00** (engineer's file). Older projects at 35.00 still supported — drive this from a project setting (default 37.00 for new exports).
+- `ControllerName`: read from project settings. No hardcoded `SDCController`.
+
+### 15.12 What NOT to Do
+
+Hard-learned rules:
+- **Never splice from a reference L5X file.** Generator must produce correct output from declared project state alone.
+- **Never strip the station prefix from axis names** (bug in prior splice: `a02_PNPXAxis` is WRONG; correct is `a02_S01PNPXAxis`).
+- **Never assign flowchart states to reserved numbers** (99, 100–127, 1–3). Let the init template and lockout rung own those.
+- **Never pre-populate servo velocity/acceleration** with non-zero values in motion instructions — CE tunes post-export.
+- **Never emit device-type-specific blocks unconditionally.** Gate on `sm.devices.some(d => d.type === X)` or equivalent.
+- **Never check the confidential PLC guide into the repo.** `plc_guide.*` and SDC guide PDFs are gitignored; copies in the worktree must be deleted before commit.
+
+---
+
+*Last updated: 2026-04-23 — Rev 1.11: Added §15 SDC PLC Standards (Generator Rules) — layered architecture, full tag naming per guide §8/§10, servo architecture (ServoOverall UDT, AOI_TorqueHome, controller-scope axis + iq_ InOut + MotionGroup), reserved state skeleton (99/100–127), SDCStandardPNP init template (100→103 or 100→106 →124→127), 2-solenoid gripper default, AOI_Debounce scope rules, R01 boilerplate (HMI_Toggle decode .0/.1/.2 fixed, SS_OK, HMI_Momentary auto-clear), position array stable indexing. Corrected §3.1 tag naming to full words (q_Extend / i_{name}Extended) per guide.*

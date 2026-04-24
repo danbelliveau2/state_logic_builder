@@ -310,7 +310,7 @@ export function buildAutoConditions(sourceNode, devices) {
           setpointName:  spName,
           rcTag,
           label:         `${device.displayName} — @ ${spName || '(setpoint)'}`,
-          description:   `Value in range: ${rcTag}.In_Range`,
+          description:   `Value in range: ${rcTag}.InPos`,
           group:         device.displayName,
           groupColor:    typeInfo.color,
         });
@@ -548,14 +548,14 @@ export function buildVerifyLabel(sourceNode, devices) {
 
       // ── Servo Axis ────────────────────────────────────────────────────────
       case 'ServoAxis': {
-        // VerifyCond1: MAM Progress Complete
-        conditions.push({ tag: `${device.name}iq_MAM.PC`, state: 'On', role: 'servo-mam',
+        // VerifyCond1: MAM Progress Complete — {axis}_MAM suffix naming
+        conditions.push({ tag: `${device.name}_MAM.PC`, state: 'On', role: 'servo-mam',
           deviceId: device.id, operation: action.operation });
-        // VerifyCond2: Position In_Range — only for ServoMove with known position (not for ServoIncr/ServoIndex)
+        // VerifyCond2: Position .InPos — only for ServoMove with known position (not for ServoIncr/ServoIndex)
         if (action.operation === 'ServoMove') {
           const posName = action.positionName ?? '';
           if (posName) {
-            conditions.push({ tag: `${device.name}iq_${posName}RC.In_Range`, state: 'On', role: 'servo-inrange',
+            conditions.push({ tag: `${device.name}${posName}.InPos`, state: 'On', role: 'servo-inrange',
               deviceId: device.id, operation: action.operation });
           }
         }
@@ -602,7 +602,7 @@ export function buildVerifyLabel(sourceNode, devices) {
         const spName = action.setpointName ?? '';
         if (spName) {
           const rcTag = `${device.name}${spName}RC`;
-          conditions.push({ tag: `${rcTag}.In_Range`, state: 'On', role: 'analog-inrange',
+          conditions.push({ tag: `${rcTag}.InPos`, state: 'On', role: 'analog-inrange',
             deviceId: device.id, operation: action.operation });
         }
         break;

@@ -31,29 +31,30 @@ export const DEVICE_TYPES = {
     defaultHomePosition: 'Retract',
     sensorArrangements: ['1-sensor (Ret only)', '2-sensor (Ext + Ret)'],
     defaultSensorArrangement: '2-sensor (Ext + Ret)',
+    // SDC Guide §8/§10: full words, never Ext/Ret abbreviations.
     tagPatterns: {
-      inputExt:       'i_{name}Ext',
-      inputRet:       'i_{name}Ret',
-      outputExtend:   'q_Ext{name}',
-      outputRetract:  'q_Ret{name}',
-      timerExt:       '{name}ExtDelay',
-      timerRet:       '{name}RetDelay',
-      debounceExt:    '{name}ExtDebounce',
-      debounceRet:    '{name}RetDebounce',
+      inputExt:       'i_{name}Extended',
+      inputRet:       'i_{name}Retracted',
+      outputExtend:   'q_Extend{name}',
+      outputRetract:  'q_Retract{name}',
+      timerExt:       '{name}ExtendDelay',
+      timerRet:       '{name}RetractDelay',
+      debounceExt:    '{name}ExtendDebounce',
+      debounceRet:    '{name}RetractDebounce',
     },
     defaultTimerPreMs: 500,
     // Transition condition auto-generated after each operation:
     transitionConditions: {
       Extend: {
         type: 'sensorTimer',
-        sensorTag: 'i_{name}Ext',
-        timerTag: '{name}ExtDelay',
+        sensorTag: 'i_{name}Extended',
+        timerTag: '{name}ExtendDelay',
         labelTemplate: "'{deviceName}' Extended & Timer",
       },
       Retract: {
         type: 'sensorTimer',
-        sensorTag: 'i_{name}Ret',
-        timerTag: '{name}RetDelay',
+        sensorTag: 'i_{name}Retracted',
+        timerTag: '{name}RetractDelay',
         labelTemplate: "'{deviceName}' Retracted & Timer",
       },
     },
@@ -78,32 +79,35 @@ export const DEVICE_TYPES = {
     sensorArrangements: ['1-sensor (Ret only)', '2-sensor (Ext + Ret)'],
     defaultSensorArrangement: '2-sensor (Ext + Ret)',
     tagPatterns: {
-      inputExt:       'i_{name}Ext',
-      inputRet:       'i_{name}Ret',
-      outputExtend:   'q_Ext{name}',
-      outputRetract:  'q_Ret{name}',
-      timerExt:       '{name}ExtDelay',
-      timerRet:       '{name}RetDelay',
-      debounceExt:    '{name}ExtDebounce',
-      debounceRet:    '{name}RetDebounce',
+      inputExt:       'i_{name}Extended',
+      inputRet:       'i_{name}Retracted',
+      outputExtend:   'q_Extend{name}',
+      outputRetract:  'q_Retract{name}',
+      timerExt:       '{name}ExtendDelay',
+      timerRet:       '{name}RetractDelay',
+      debounceExt:    '{name}ExtendDebounce',
+      debounceRet:    '{name}RetractDebounce',
     },
     defaultTimerPreMs: 500,
     transitionConditions: {
       Extend: {
         type: 'sensorTimer',
-        sensorTag: 'i_{name}Ext',
-        timerTag: '{name}ExtDelay',
+        sensorTag: 'i_{name}Extended',
+        timerTag: '{name}ExtendDelay',
         labelTemplate: "'{deviceName}' Extended",
       },
       Retract: {
         type: 'sensorTimer',
-        sensorTag: 'i_{name}Ret',
-        timerTag: '{name}RetDelay',
+        sensorTag: 'i_{name}Retracted',
+        timerTag: '{name}RetractDelay',
         labelTemplate: "'{deviceName}' Retracted",
       },
     },
   },
 
+  // SDC Guide §15.9: 2-solenoid gripper is the standard.
+  // Operation values stay Engage/Disengage for UI backward-compat;
+  // tag patterns use Close/Open per guide.
   PneumaticGripper: {
     label: 'Gripper',
     icon: '✋',
@@ -112,39 +116,39 @@ export const DEVICE_TYPES = {
     sides: 6,
     category: 'Pneumatic',
     operations: [
-      { value: 'Engage', label: 'Engage (Close)', verb: 'Engage', icon: '✊' },
-      { value: 'Disengage', label: 'Disengage (Open)', verb: 'Disengage', icon: '✋' },
+      { value: 'Engage', label: 'Close (Engage)', verb: 'Close', icon: '✊' },
+      { value: 'Disengage', label: 'Open (Disengage)', verb: 'Open', icon: '✋' },
     ],
     homePositions: [
-      { value: 'Disengage', label: 'Disengaged (Open)' },
-      { value: 'Engage', label: 'Engaged (Closed)' },
+      { value: 'Disengage', label: 'Open' },
+      { value: 'Engage', label: 'Closed' },
     ],
     defaultHomePosition: 'Disengage',
-    sensorArrangements: ['1-sensor (Engaged only)', '2-sensor (Eng + Dis)'],
-    defaultSensorArrangement: '1-sensor (Engaged only)',
+    sensorArrangements: ['1-sensor (Closed only)', '2-sensor (Closed + Open)'],
+    defaultSensorArrangement: '2-sensor (Closed + Open)',
     tagPatterns: {
-      inputEngage:      'i_{name}Engage',
-      inputDisengage:   'i_{name}Disengage',
-      outputEngage:     'q_Engage{name}',
-      outputDisengage:  'q_Disengage{name}',
-      timerEngage:      '{name}EngageDelay',
-      timerDisengage:   '{name}DisengageDelay',
-      debounceEngage:   '{name}EngageDebounce',
-      debounceDisengage:'{name}DisengageDebounce',
+      inputEngage:      'i_{name}Closed',
+      inputDisengage:   'i_{name}Open',
+      outputEngage:     'q_Close{name}',
+      outputDisengage:  'q_Open{name}',
+      timerEngage:      '{name}CloseDelay',
+      timerDisengage:   '{name}OpenDelay',
+      debounceEngage:   '{name}CloseDebounce',
+      debounceDisengage:'{name}OpenDebounce',
     },
-    defaultTimerPreMs: 300,
+    defaultTimerPreMs: 500,
     transitionConditions: {
       Engage: {
         type: 'sensorTimer',
-        sensorTag: 'i_{name}Engage',
-        timerTag: '{name}EngageDelay',
-        labelTemplate: "'{deviceName}' Engaged",
+        sensorTag: 'i_{name}Closed',
+        timerTag: '{name}CloseDelay',
+        labelTemplate: "'{deviceName}' Closed",
       },
       Disengage: {
         type: 'sensorTimer',
-        sensorTag: 'i_{name}Disengage',
-        timerTag: '{name}DisengageDelay',
-        labelTemplate: "'{deviceName}' Disengaged",
+        sensorTag: 'i_{name}Open',
+        timerTag: '{name}OpenDelay',
+        labelTemplate: "'{deviceName}' Open",
       },
     },
   },
@@ -197,6 +201,13 @@ export const DEVICE_TYPES = {
     },
   },
 
+  // SDC Guide §15.4: Servo architecture —
+  //   Controller-scope AXIS_CIP_DRIVE: a{NN}_S{station}{name}  (NN = global axis #)
+  //   Program InOut (alias):          iq_{name}
+  //   HMI block (ServoOverall UDT):   HMI_{name}
+  //   Motion instruction instances:   MSO_/MSF_/MAFR_/MASR_/MAJ_/MAS_{name}_Jog/MAH_/MAM_{name}_Auto
+  //   Support tags:                   {Name}Ready/Permissive/AutoEnable/HomeConfimed/HomeRequested/HomeSelect/TorqueHome
+  //   Positions live in HMI_{name}.Parameters.Positions[N] (stable index, §15.3)
   ServoAxis: {
     label: 'Servo Axis',
     icon: '⚡',
@@ -212,17 +223,53 @@ export const DEVICE_TYPES = {
       { value: 'ServoIndex', label: 'Index', verb: 'Index', icon: '🔄' },
     ],
     tagPatterns: {
+      // Controller-scope axis tag (AXIS_CIP_DRIVE). {axisNum} = global axis index.
+      // Engineer convention: a{NN}_{name} — no station infix.
       axisTag:          'a{axisNum}_{name}',
+      // Program-scope InOut parameter aliased to the controller axis tag.
+      axisInOut:        'iq_{name}',
+      // HMI block — ServoOverall UDT (replaces legacy MAMParam).
+      hmiTag:           'HMI_{name}',
+      // Per-position REAL parameter tags and AOI_RangeCheck instance tags.
+      // Engineer uses flat tags directly (not HMI_{name}.Parameters.Positions[N] array).
+      // AOI_RangeCheck instance is named by position directly (e.g., XAxisExtend, ZAxisPick)
+      // and exposes .InPos / .InPosWide BOOL outputs.
       positionParam:    'p_{name}{positionName}',
-      positionRC:       '{name}{positionName}RC',
+      positionRC:       '{name}{positionName}',
       incrementParam:   'p_{name}IncrDist',
       indexAngleParam:  'p_{name}IndexAngle',
-      motionParam:      '{name}_MotionParam',
-      mamControl:       'MAM_{name}',
-      oneShotTag:       '{name}_Step{step}_OS',
+      // Motion instruction instances (MOTION_INSTRUCTION — one per rung type).
+      // Engineer convention: suffix style — {name}_MAM, {name}_MSO, etc.
+      msoInst:          '{name}_MSO',
+      msfInst:          '{name}_MSF',
+      mafrInst:         '{name}_MAFR',
+      masrInst:         '{name}_MASR',
+      majInst:          '{name}_MAJ',
+      masJogInst:       '{name}_MAS_Jog',
+      masAllInst:       '{name}_MAS_All',    // Stop-on-permissive-lost
+      mahInst:          '{name}_MAH',
+      mamAutoInst:      '{name}_MAM',        // Auto-mode MAM
+      mamInchInst:      '{name}_MAM_Inch',   // Inch-mode MAM
+      // Per-axis support tags.
+      readyTag:         '{Name}Ready',
+      enableDelayTag:   '{Name}EnableDelay', // TON — debounce Ready→AutoEnable
+      onsTag:           '{Name}ONS',         // DINT — ONS bits 0..N
+      permissiveTag:    '{Name}Permissive',
+      autoEnableTag:    '{Name}AutoEnable',
+      jogDirectionTag:  '{Name}JogDirection',// DINT — 0 pos / 1 neg
+      inchAmountTag:    '{Name}InchAmount',  // REAL — signed inch distance
+      homeConfirmedTag: '{Name}HomeConfimed',    // sic — spelling per SDC guide §10
+      homeConfirmDelayTag: '{Name}HomeConfirmDelay', // TIMER
+      homeRequestedTag: '{Name}HomeRequested',
+      homeSelectTag:    '{Name}HomeSelect',
+      torqueHomeTag:    '{Name}TorqueHome',  // AOI_TorqueHome instance
+      manMoveTrigTag:   '{Name}ManMoveTrig',
+      motionParamsTag:  '{name}MotionParameters', // MAMParam UDT instance — engineer: {axis}MotionParameters
+      // Position signal (SM output): p_At{name}.
+      atPositionSignal: 'p_At{name}',
     },
     defaultTimerPreMs: 0,
-    // Positions are user-defined per device instance
+    // Positions are user-defined per device instance; each carries a stable positionIndex (§15.3).
     transitionConditions: {
       ServoMove: {
         type: 'servoAtTarget',
@@ -306,7 +353,7 @@ export const DEVICE_TYPES = {
       scaledTag:       '{name}Scaled',
       highLimit:       '{name}HighLim',
       lowLimit:        '{name}LowLim',
-      inRangeTag:      '{name}RC.In_Range',
+      inRangeTag:      '{name}RC.InPos',
       debounce:        '{name}Debounce',
       rangeCheckInst:  '{name}{setpointName}RC',
       setpointParam:   'p_{name}{setpointName}',
@@ -315,7 +362,7 @@ export const DEVICE_TYPES = {
     transitionConditions: {
       CheckRange: {
         type: 'analogRange',
-        inRangeTag: '{name}RC.In_Range',
+        inRangeTag: '{name}RC.InPos',
         labelTemplate: "'{deviceName}' In Range",
       },
       ReadValue: {
@@ -529,7 +576,7 @@ export function getSensorConfigKey(device) {
 
     case 'PneumaticGripper':
       if (arr.includes('2-sensor')) return 'both';
-      if (arr.includes('1-sensor') || arr.includes('engaged only')) return 'engageOnly';
+      if (arr.includes('1-sensor') || arr.includes('engaged only') || arr.includes('closed only')) return 'engageOnly';
       return 'none';
 
     default:

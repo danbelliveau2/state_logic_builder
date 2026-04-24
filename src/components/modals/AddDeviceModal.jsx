@@ -1690,7 +1690,7 @@ export function AddDeviceModal() {
                     {name}Scaled (REAL — scaled value)<br />
                     {setpoints.filter(s => s.name?.trim()).map((sp, i) => (
                       <span key={i}>
-                        {name}{sp.name}RC.In_Range (BOOL — {sp.lowLimit?.toFixed(2)} to {sp.highLimit?.toFixed(2)} {sensorUnit})<br />
+                        {name}{sp.name}RC.InPos (BOOL — {sp.lowLimit?.toFixed(2)} to {sp.highLimit?.toFixed(2)} {sensorUnit})<br />
                       </span>
                     ))}
                   </>

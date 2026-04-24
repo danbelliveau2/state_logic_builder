@@ -4,10 +4,26 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.24.19';
+export const APP_VERSION = '1.24.20';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.24.20',
+    date: '2026-04-24',
+    time: '14:30',
+    author: 'Dan Belliveau',
+    changes: [
+      'L5X generator rewrite merged in from the loving-sammet worktree — the 1.24.2-era generator fix that got stranded when 1.24.3+ signal/multi-stage work went forward on main is now reunited with the current UI. Layered output architecture (L1 Infrastructure / L2 Station-type template / L3 Per-device / L4 Flowchart-compiled / L5 Always-on boilerplate) is live in `l5xExporter.js`, with gating on declared project state rather than reference-file splicing.',
+      'Tag naming corrected to SDC PLC Standardization Guide Rev 1 full-word convention: `q_Extend{name}` / `q_Retract{name}` (was `q_Ext` / `q_Ret`), `i_{name}Extended` / `i_{name}Retracted` (was `i_{name}Ext` / `i_{name}Ret`), `{name}ExtendDelay` / `{name}RetractDelay` (was `{name}ExtDelay`), `{name}RC.InPos` (was `{name}RC.In_Range`). Updated `tagNaming.js`, `conditionBuilder.js`, `availableInputs.js`, `deviceTypes.js`, plus downstream verify-text builders in `StateNode.jsx` and help text in `AddDeviceModal.jsx`.',
+      'Servo architecture: controller-scope `a{NN}_S{station}{name}` AXIS_CIP_DRIVE tag (e.g., `a02_S01PNPXAxis`, not the stripped `a02_PNPXAxis` bug from the splice), program-scope `iq_{name}` InOut param aliased to the controller tag, `HMI_{name}` ServoOverall UDT per axis, full motion-instruction complement (MSO/MSF/MAFR/MASR/MAJ/MAS_Jog/MAH+AOI_TorqueHome/MAM_Auto), and position arrays with STABLE indices that never reshuffle on delete.',
+      'Reserved state skeleton enforced: DFS no longer emits flowchart numbers into 99 (lockout), 100–127 (init block), or 1–3 (reserved future). Station-type templates (first: `SDCStandardPNP`) own 100→...→127; flowchart starts after the init-complete bridge. Fault state stays pinned at 127, recovery `Cycle Complete` stays pinned at 124.',
+      'R01 boilerplate: HMI_Toggle fixed bit map (.0 Lockout / .1 DryRun / .2 SS), SS_OK derivation with StepAdvance pulse, HMI_Momentary auto-clear rungs, 1-sensor pneumatic invert, AOI_Debounce calls for DigitalSensor part-present devices (NOT for pneumatic extend/retract — those are already state-conditioned).',
+      'CLAUDE.md §15 added: "SDC PLC Standards (Generator Rules)" — authoritative layered architecture, tag naming, position stability, servo architecture, reserved state numbers, SDCStandardPNP init template, R01 boilerplate, AOI_Debounce scope rules, 2-solenoid gripper default, R20 alarms, and a "what NOT to do" list (no splicing from reference L5X, no stripped station prefixes, no flowchart numbers in reserved ranges). This is now the source of truth for the generator.',
+      'Port in detail: 5 lib files copied wholesale from loving-sammet (`l5xExporter.js`, `tagNaming.js`, `conditionBuilder.js`, `availableInputs.js`, `deviceTypes.js`) — no overlap with main\'s 1.24.19 signal/multi-stage UI work, so merge was surgical. Smoke-test scripts (`scripts/dump-export.mjs`, `scripts/smoke-export.mjs`) also ported for exporter verification. `.gitignore` extended to exclude confidential PLC guide material and smoke-test output.',
+      'Known follow-up: project-level signals (including 1.24.17\'s latched signals) are not yet wired into L5X tag/rung emission — the data model is in place, but the generator currently emits legacy `smOutputs` only. Queued for 1.24.21+.',
+    ],
+  },
   {
     version: '1.24.19',
     date: '2026-04-24',

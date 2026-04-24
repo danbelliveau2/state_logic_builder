@@ -31,3 +31,12 @@ dist-electron/
 
 # Claude Code local settings (machine-specific)
 .claude/settings.local.json
+
+# Confidential SDC reference material (never commit)
+plc_guide.*
+**/PLC Software Standardization Guide*
+**/SDC*Guide*.pdf
+
+# Smoke test output (regenerated)
+scripts/out.L5X
+test_output*.L5X

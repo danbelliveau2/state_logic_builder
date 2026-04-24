@@ -204,8 +204,8 @@ function buildActionVerifyText(action, device) {
     }
     case 'ServoAxis': {
       const posName = action.positionName ?? '';
-      parts.push(`${device.name}iq_MAM.PC`);
-      if (posName) parts.push(`${device.name}iq_${posName}RC.In_Range`);
+      parts.push(`${device.name}_MAM.PC`);
+      if (posName) parts.push(`${device.name}${posName}.InPos`);
       break;
     }
     case 'Timer':

@@ -106,12 +106,14 @@ function resolveInputRefTag(inputRef, devices, allSMs = [], trackingFields = [])
   switch (dev.type) {
     case 'PneumaticLinearActuator':
     case 'PneumaticRotaryActuator':
-      if (key === 'ext') return `i_${dev.name}Ext`;
-      if (key === 'ret') return `i_${dev.name}Ret`;
+      // SDC Guide §8: full words — Extended/Retracted, not Ext/Ret.
+      if (key === 'ext') return `i_${dev.name}Extended`;
+      if (key === 'ret') return `i_${dev.name}Retracted`;
       break;
     case 'PneumaticGripper':
-      if (key === 'eng') return `i_${dev.name}Engage`;
-      if (key === 'dis') return `i_${dev.name}Disengage`;
+      // SDC Guide §15.9: 2-solenoid gripper — sensors are Closed/Open.
+      if (key === 'eng') return `i_${dev.name}Closed`;
+      if (key === 'dis') return `i_${dev.name}Open`;
       break;
     case 'PneumaticVacGenerator':
       if (key === 'vac') return `i_${dev.name}VacOn`;
@@ -120,11 +122,11 @@ function resolveInputRefTag(inputRef, devices, allSMs = [], trackingFields = [])
       if (key === 'sensor') return `i_${dev.name}`;
       break;
     case 'AnalogSensor':
-      // key = setpointName → "{name}{setpointName}RC.In_Range"
-      return `${dev.name}${key}RC.In_Range`;
+      // key = setpointName → AOI_RangeCheck instance "{name}{setpointName}RC" with .InPos output
+      return `${dev.name}${key}RC.InPos`;
     case 'ServoAxis':
-      // key = positionName → "{name}{positionName}RC.In_Range"
-      return `${dev.name}${key}RC.In_Range`;
+      // key = positionName → AOI_RangeCheck instance "{name}{positionName}" with .InPos output
+      return `${dev.name}${key}.InPos`;
     case 'Parameter': {
       const pfx = dev.dataType === 'boolean' ? 'q_' : 'p_';
       return `${pfx}${dev.name}`;
@@ -164,11 +166,23 @@ function resolveInputRefTag(inputRef, devices, allSMs = [], trackingFields = [])
 // ── Constants ────────────────────────────────────────────────────────────────
 
 export const SCHEMA_REV = '1.0';
-export const SOFTWARE_REV = '35.00';    // Default — overrideable per project via machineConfig.softwareRevision
+// SDC Guide §15.11: default to Studio 5000 v37 (engineer's current standard).
+// Per-project override via project.machineConfig.softwareRevision.
+export const SOFTWARE_REV = '37.00';
 export const STEP_BASE = 1;          // Wait/Home state = 1
 export const STEP_INCREMENT = 3;     // First action = 4, then 7, 10, 13, …
 export const DEFAULT_FAULT_TIME = 5000;
+// SDC Guide §15.11: controller name flows from project.machineConfig.controllerName.
+// Constant is a fallback only for un-named projects.
 export const CONTROLLER_NAME = 'SDCController';
+
+// SDC Guide §15.5: state numbers reserved across all SDC machines — DFS must skip.
+// 0 = pre-init; 1/2/3 = reserved; 99 = lockout; 100–127 = station-type init block.
+// Flowchart DFS numbers (1, 4, 7, ...) that fall within any reserved range jump forward.
+export const RESERVED_STATE_NUMBERS = new Set([0, 1, 2, 3, 99]);
+export const RESERVED_STATE_RANGE_LOCKOUT = 99;
+export const RESERVED_STATE_RANGE_INIT_MIN = 100;
+export const RESERVED_STATE_RANGE_INIT_MAX = 127;
 
 // ── XML helpers ──────────────────────────────────────────────────────────────
 
@@ -224,12 +238,33 @@ function orderNodes(nodes, edges) {
 // States 4, 7, 10, … = user's action nodes
 // Last step + 3 = auto-generated Complete state
 
+/**
+ * Returns true if `n` lands in (or overlaps with) an SDC-reserved state number.
+ * Reserved per §15.5: 0, 1, 2, 3 (future SDC use), 99 (lockout), 100-127 (init block).
+ * The first three are handled by STEP_BASE starting the iteration after them;
+ * this check covers 99 and the 100-127 range.
+ */
+function isReservedStateNumber(n) {
+  if (n === RESERVED_STATE_RANGE_LOCKOUT) return true;
+  if (n >= RESERVED_STATE_RANGE_INIT_MIN && n <= RESERVED_STATE_RANGE_INIT_MAX) return true;
+  return false;
+}
+
+/** Advance `step` forward by STEP_INCREMENT, skipping any reserved numbers. */
+function advanceStep(step) {
+  let next = step + STEP_INCREMENT;
+  while (isReservedStateNumber(next)) {
+    next += STEP_INCREMENT;
+  }
+  return next;
+}
+
 function buildStepMap(orderedNodes, devices) {
   const map = {};
   let currentStep = STEP_BASE; // starts at 1 (wait state)
 
   orderedNodes.forEach((n) => {
-    currentStep += STEP_INCREMENT;
+    currentStep = advanceStep(currentStep);
     map[n.id] = currentStep;
 
     // VisionSystem Inspect nodes consume 4 sub-states (N, N+3, N+6, N+9)
@@ -238,7 +273,8 @@ function buildStepMap(orderedNodes, devices) {
       return dev?.type === 'VisionSystem' && (a.operation === 'Inspect' || a.operation === 'VisionInspect');
     });
     if (hasVisionInspect) {
-      currentStep += STEP_INCREMENT * 3; // consumed 3 extra slots (4 total sub-states)
+      // Consume 3 extra slots. Skip reserved along the way.
+      for (let i = 0; i < 3; i++) currentStep = advanceStep(currentStep);
     }
   });
 
@@ -443,6 +479,20 @@ ${cdata('[0,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000]')}
 </Tag>`;
 }
 
+/**
+ * Minimal AOI instance tag. For complex AOIs (AOI_TorqueHome, AOI_Debounce,
+ * etc.) where we don't enumerate every internal member, emit just the type
+ * declaration — Studio 5000 fills defaults on import.
+ */
+function buildAOIInstanceTagXml(name, aoiName, description) {
+  return `
+<Tag Name="${name}" TagType="Base" DataType="${aoiName}" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+${cdata(description)}
+</Description>
+</Tag>`;
+}
+
 function buildRangeCheckTagXml(name, description) {
   return `
 <Tag Name="${name}" TagType="Base" DataType="AOI_RangeCheck" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
@@ -459,7 +509,9 @@ ${cdata('[1,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000,0]')
 <DataValueMember Name="Value" DataType="REAL" Radix="Float" Value="0.0"/>
 <DataValueMember Name="Deadband" DataType="REAL" Radix="Float" Value="0.0"/>
 <DataValueMember Name="Actual" DataType="REAL" Radix="Float" Value="0.0"/>
-<DataValueMember Name="In_Range" DataType="BOOL" Value="0"/>
+<DataValueMember Name="InPos" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DeadbandWide" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="InPosWide" DataType="BOOL" Value="0"/>
 </Structure>
 </Data>
 </Tag>`;
@@ -977,58 +1029,126 @@ ${cdata('0.000000')}
       }
 
       case 'ServoAxis': {
+        // SDC Guide §15.4: Program-scope servo emissions.
+        //   iq_{name}      InOut alias to controller-scope AXIS_CIP_DRIVE
+        //   HMI_{name}     ServoOverall UDT (HMI block)
+        //   MSO_/MSF_/MAFR_/MASR_/MAJ_/MAS_{name}_Jog/MAH_/MAM_{name}_Auto
+        //   {Name}Ready/Permissive/AutoEnable/HomeConfimed/HomeRequested/HomeSelect/TorqueHome
+        //
+        // Controller-scope axis tag and MotionGroup are emitted separately in exportToL5X.
+        // Positions live inside HMI_{name}.Parameters.Positions[N] (stable index, §15.3),
+        // not as per-position REAL tags.
         const sp = DEVICE_TYPES.ServoAxis.tagPatterns;
-        const axNum = String(device.axisNumber ?? 1).padStart(2, '0');
-        const axisTag = sp.axisTag.replace(/\{name\}/g, device.name).replace(/\{axisNum\}/g, axNum);
-        const mamTag = sp.mamControl.replace(/\{name\}/g, device.name).replace(/\{axisNum\}/g, axNum);
-        const motionParamTag = sp.motionParam.replace(/\{name\}/g, device.name).replace(/\{axisNum\}/g, axNum);
+        const stationNum = String(sm.stationNumber ?? 1).padStart(2, '0');
+        const resolve = (patt) =>
+          patt
+            .replace(/\{name\}/g, device.name)
+            .replace(/\{Name\}/g, device.name)
+            .replace(/\{axisNum\}/g, String(device.axisNumber ?? 1).padStart(2, '0'))
+            .replace(/\{station\}/g, stationNum);
 
-        // Axis tag (AXIS_CIP_DRIVE, InOut)
-        addTag(buildAxisTagXml(axisTag, `${device.displayName} - CIP Axis`), axisTag);
+        // iq_{name} InOut alias to controller-scope axis tag.
+        const axisInOutTag = resolve(sp.axisInOut);
+        addTag(buildAxisTagXml(axisInOutTag, `${device.displayName} - CIP Axis`), axisInOutTag);
 
-        // MAM control tag (MOTION_INSTRUCTION)
-        addTag(buildMotionInstructionTagXml(mamTag, `${device.displayName} - MAM`), mamTag);
+        // HMI_{name} ServoOverall UDT — HMI block.
+        const hmiTag = resolve(sp.hmiTag);
+        addTag(
+          `        <Tag Name="${hmiTag}" TagType="Base" DataType="ServoOverall" Constant="false" ExternalAccess="Read/Write">\n` +
+          `          <Description>\n            ${cdata(`${device.displayName} - HMI block`)}\n          </Description>\n` +
+          `          <Data Format="Decorated"><Structure DataType="ServoOverall"/></Data>\n` +
+          `        </Tag>`,
+          hmiTag
+        );
 
-        // Motion parameters tag (MAMParam UDT)
-        addTag(buildMAMParamTagXml(motionParamTag), motionParamTag);
-
-        // Position parameters and per-position Range Check tags
-        if (device.positions) {
-          for (const pos of device.positions) {
-            const posTag = sp.positionParam
-              .replace(/\{name\}/g, device.name)
-              .replace(/\{positionName\}/g, pos.name);
-            const rcTag = sp.positionRC
-              .replace(/\{name\}/g, device.name)
-              .replace(/\{positionName\}/g, pos.name);
-            const usage = pos.isRecipe ? 'Public' : 'Local';
-
-            addTag(
-              buildRealParamTagXml(
-                posTag,
-                `${device.displayName} - ${pos.name} Position`,
-                pos.defaultValue ?? 0.0,
-                usage
-              ),
-              posTag
-            );
-            addTag(
-              buildRangeCheckTagXml(rcTag, `${device.displayName} - At ${pos.name} Position`),
-              rcTag
-            );
-          }
+        // Motion instruction instances (MOTION_INSTRUCTION, Local).
+        // Engineer convention: {name}_MSO, {name}_MAJ, {name}_MAM, etc. — name prefix.
+        const motionInstances = [
+          { key: 'msoInst',     desc: 'MSO - Servo On' },
+          { key: 'msfInst',     desc: 'MSF - Servo Off' },
+          { key: 'mafrInst',    desc: 'MAFR - Axis Fault Reset' },
+          { key: 'masrInst',    desc: 'MASR - Shutdown Reset' },
+          { key: 'majInst',     desc: 'MAJ - Jog' },
+          { key: 'masJogInst',  desc: 'MAS - Stop Jog' },
+          { key: 'masAllInst',  desc: 'MAS - Stop All (permissive lost)' },
+          { key: 'mahInst',     desc: 'MAH - Home' },
+          { key: 'mamAutoInst', desc: 'MAM - Auto Move' },
+          { key: 'mamInchInst', desc: 'MAM - Inch' },
+        ];
+        for (const m of motionInstances) {
+          const patt = sp[m.key];
+          if (!patt) continue;
+          const tagName = resolve(patt);
+          addTag(
+            buildMotionInstructionTagXml(tagName, `${device.displayName} - ${m.desc}`),
+            tagName
+          );
         }
-        // Increment parameter tag (for ServoIncr operations)
+
+        // Per-axis support tags — mixed data types (§15.4 engineer reference).
+        // BOOLs
+        const supportBools = [
+          { key: 'readyTag',         desc: 'Ready' },
+          { key: 'permissiveTag',    desc: 'Motion Permissive' },
+          { key: 'autoEnableTag',    desc: 'Auto Enable' },
+          { key: 'homeConfirmedTag', desc: 'Home Confirmed' },  // sic: HomeConfimed per guide
+          { key: 'homeRequestedTag', desc: 'Home Requested' },
+          { key: 'homeSelectTag',    desc: 'Home Select' },
+          { key: 'manMoveTrigTag',   desc: 'Manual Move Trigger' },
+        ];
+        for (const s of supportBools) {
+          const patt = sp[s.key];
+          if (!patt) continue;
+          const tagName = resolve(patt);
+          addTag(
+            buildBoolTagXml(tagName, `${device.displayName} - ${s.desc}`, 'Local'),
+            tagName
+          );
+        }
+        // TIMER — EnableDelay + HomeConfirmDelay
+        if (sp.enableDelayTag) {
+          const t = resolve(sp.enableDelayTag);
+          addTag(buildTimerTagXml(t, `${device.displayName} - Enable Debounce`, 0), t);
+        }
+        if (sp.homeConfirmDelayTag) {
+          const t = resolve(sp.homeConfirmDelayTag);
+          addTag(buildTimerTagXml(t, `${device.displayName} - Home Confirm Delay`, 0), t);
+        }
+        // DINT — ONS bits + JogDirection
+        if (sp.onsTag) {
+          const t = resolve(sp.onsTag);
+          addTag(buildDintTagXml(t, `${device.displayName} - ONS Bits`), t);
+        }
+        if (sp.jogDirectionTag) {
+          const t = resolve(sp.jogDirectionTag);
+          addTag(buildDintTagXml(t, `${device.displayName} - Jog Direction (0=+, 1=-)`), t);
+        }
+        // REAL — InchAmount
+        if (sp.inchAmountTag) {
+          const t = resolve(sp.inchAmountTag);
+          addTag(buildRealTagXml(t, `${device.displayName} - Inch Amount`), t);
+        }
+        // MAMParam UDT — MotionParameters block
+        if (sp.motionParamsTag) {
+          const t = resolve(sp.motionParamsTag);
+          addTag(buildMAMParamTagXml(t), t);
+        }
+        // AOI_TorqueHome instance
+        if (sp.torqueHomeTag) {
+          const t = resolve(sp.torqueHomeTag);
+          addTag(buildAOIInstanceTagXml(t, 'AOI_TorqueHome', `${device.displayName} - Torque Home`), t);
+        }
+
+        // Increment / Index params — retained for ServoIncr / ServoIndex operations.
         if (sp.incrementParam) {
-          const incrTag = sp.incrementParam.replace(/\{name\}/g, device.name);
+          const incrTag = resolve(sp.incrementParam);
           addTag(
             buildRealParamTagXml(incrTag, `${device.displayName} - Increment Distance`, 0.0, 'Public'),
             incrTag
           );
         }
-        // Index Angle parameter tag (for ServoIndex operations)
         if (sp.indexAngleParam) {
-          const indexTag = sp.indexAngleParam.replace(/\{name\}/g, device.name);
+          const indexTag = resolve(sp.indexAngleParam);
           addTag(
             buildRealParamTagXml(indexTag, `${device.displayName} - Index Angle`, 0.0, 'Public'),
             indexTag
@@ -1251,14 +1371,25 @@ ${decoratedMembers}</Structure>
 
 // ── R00_Main ─────────────────────────────────────────────────────────────────
 
-function generateR00Main() {
-  const rungs = [
-    buildRung(0, 'Subroutine Calls', 'JSR(R01_Inputs,0);'),
-    buildRung(1, null, 'JSR(R02_StateTransitions,0);'),
-    buildRung(2, null, 'JSR(R03_StateLogic,0);'),
-    buildRung(3, null, 'JSR(R05_Recovery,0);'),
-    buildRung(4, null, 'JSR(R20_Alarms,0);'),
-  ];
+function generateR00Main(sm = null) {
+  const rungs = [];
+  let n = 0;
+  rungs.push(buildRung(n++, 'Subroutine Calls', 'JSR(R01_Inputs,0);'));
+  rungs.push(buildRung(n++, null, 'JSR(R02_StateTransitions,0);'));
+  rungs.push(buildRung(n++, null, 'JSR(R03_StateLogic,0);'));
+
+  // Per-axis servo routines: R04_{axis1}Servo, R05_{axis2}Servo, ... (engineer convention).
+  const servos = (sm?.devices ?? []).filter(d => d.type === 'ServoAxis');
+  servos.forEach((dev, idx) => {
+    const num = String(4 + idx).padStart(2, '0');
+    rungs.push(buildRung(n++, null, `JSR(R${num}_${dev.name}Servo,0);`));
+  });
+
+  // Recovery routine at the next consecutive slot after servos (R04 if 0 servos).
+  const recoveryNum = String(4 + servos.length).padStart(2, '0');
+  rungs.push(buildRung(n++, null, `JSR(R${recoveryNum}_Recovery,0);`));
+
+  rungs.push(buildRung(n++, null, 'JSR(R20_Alarms,0);'));
 
   return `
 <Routine Name="R00_Main" Type="RLL">
@@ -1269,16 +1400,25 @@ function generateR00Main() {
 
 // ── R01_Inputs ───────────────────────────────────────────────────────────────
 //
-// SDC Standard (1116 pattern):
-//  - Map Supervisor cross-program tags to local BOOLs
-//  - Single-step logic
-//  - 1-sensor actuator delay timers
+// SDC Guide §15.7 — boilerplate R01 ordering (emitted on every SM):
+//   1. HMI_Toggle decode (fixed bit map: .0 Lockout, .1 DryRun, .2 SS)
+//   2. SS_OK derivation (single-step advance pulse gate)
+//   3. HMI_Momentary auto-clear (one OTU per declared momentary bit)
+//   4. 1-sensor pneumatic invert (only for devices flagged as 1-sensor)
+//   5. AOI_Debounce calls for part-present DigitalSensors (100/100 ms defaults)
+//   6. CPU_TimeDate_wJulian call (once per program)
+//
+// Legacy Supervisor mappings (ManualMode/SafetyOK/FaultReset/CycleRunning/
+// Initialized) are retained at the top for backward compatibility with
+// existing State 0/1/2/3 R02 rungs — these will eventually be folded into the
+// §15.5 reserved-state model.
 
 function generateR01Inputs(sm) {
   const rungs = [];
   let rungNum = 0;
+  const devices = sm.devices ?? [];
 
-  // Supervisor integration — mapped inputs
+  // ── Legacy Supervisor integration (retained) ─────────────────────────────
   rungs.push(buildRung(rungNum++, 'Mapped Inputs from Supervisor', 'NOP();'));
   rungs.push(buildRung(rungNum++, null, 'XIC(\\Supervisor.q_ManualMode)XIO(HMI_LocalManualOverride)OTE(ManualMode);'));
   rungs.push(buildRung(rungNum++, null, 'XIC(\\Supervisor.q_SafetyOK)OTE(SafetyOK);'));
@@ -1286,13 +1426,35 @@ function generateR01Inputs(sm) {
   rungs.push(buildRung(rungNum++, null, '[XIC(\\Supervisor.q_CycleStartLatch) ,XIC(HMI_LocalManualOverride) ]OTE(CycleRunning);'));
   rungs.push(buildRung(rungNum++, null, 'XIO(\\Supervisor.q_CycleStartLatch)OTE(CycleStopping);'));
   rungs.push(buildRung(rungNum++, null, 'XIC(\\Supervisor.q_CycleStopped)ONS(ONS.0)XIO(Status.State[2])XIO(Status.State[3])OTE(CycleStopped);'));
-
-  // Initialization check
   rungs.push(buildRung(rungNum++, 'Initialization', 'XIC(Status.State[124])OTE(Initialized);'));
 
-  // 1-sensor actuator delay timers
+  // ── §15.7 step 1: HMI_Toggle decode (fixed bit map) ──────────────────────
+  rungs.push(buildRung(rungNum++, 'HMI_Toggle Decode', 'XIC(HMI_Toggle.0)OTE(Lockout);'));
+  rungs.push(buildRung(rungNum++, null, 'XIC(HMI_Toggle.1)OTE(DryRun);'));
+  rungs.push(buildRung(rungNum++, null, 'XIC(HMI_Toggle.2)OTE(SS);'));
+
+  // ── §15.7 step 2: SS_OK ──────────────────────────────────────────────────
+  // SS_OK is true when single-step is OFF, or when SS is ON and the operator
+  // has pulsed HMI_Momentary.StepAdvance (one-shot advance).
+  rungs.push(buildRung(rungNum++, 'SS_OK', '[XIO(SS) ,XIC(SS) XIC(HMI_Momentary.StepAdvance) ONS(SS_ONS) ]OTE(SS_OK);'));
+
+  // ── §15.7 step 3: HMI_Momentary auto-clear ───────────────────────────────
+  // Each declared momentary bit: XIC(HMI_Momentary.X) OTU(HMI_Momentary.X) so
+  // the pulse self-clears on the next scan. Default bit: StepAdvance. Additional
+  // bits from project.machineConfig.hmiMomentaryBits (if present) get added.
+  const momentaryBits = sm.hmiMomentaryBits ?? ['StepAdvance', 'FaultReset', 'CycleStart'];
+  let momentaryCommentAdded = false;
+  for (const bitName of momentaryBits) {
+    rungs.push(buildRung(rungNum++, !momentaryCommentAdded ? 'HMI_Momentary Auto-Clear' : null,
+      `XIC(HMI_Momentary.${bitName})OTU(HMI_Momentary.${bitName});`));
+    momentaryCommentAdded = true;
+  }
+
+  // ── §15.7 step 4: 1-sensor pneumatic invert ──────────────────────────────
+  // For devices with only one limit switch, derive the opposite sensor via TON
+  // (the existing pattern is a delay-timer gate on the declared-sensor edge).
   let addedSensorComment = false;
-  for (const device of sm.devices ?? []) {
+  for (const device of devices) {
     if (device.type !== 'PneumaticLinearActuator' && device.type !== 'PneumaticRotaryActuator') continue;
     const sensorConfig = getSensorConfigKey(device);
     const patterns = DEVICE_TYPES[device.type]?.tagPatterns;
@@ -1301,19 +1463,39 @@ function generateR01Inputs(sm) {
     if (sensorConfig === 'retractOnly') {
       const retSensor = patterns.inputRet.replace(/\{name\}/g, device.name);
       const extDelay = patterns.timerExt.replace(/\{name\}/g, device.name);
-      rungs.push(buildRung(rungNum++, !addedSensorComment ? 'Sensor Delay Timers' : null, `XIO(${retSensor})TON(${extDelay},?,?);`));
+      rungs.push(buildRung(rungNum++, !addedSensorComment ? '1-Sensor Pneumatic Delay Timers' : null,
+        `XIO(${retSensor})TON(${extDelay},?,?);`));
       addedSensorComment = true;
     } else if (sensorConfig === 'extendOnly') {
       const extSensor = patterns.inputExt.replace(/\{name\}/g, device.name);
       const retDelay = patterns.timerRet.replace(/\{name\}/g, device.name);
-      rungs.push(buildRung(rungNum++, !addedSensorComment ? 'Sensor Delay Timers' : null, `XIO(${extSensor})TON(${retDelay},?,?);`));
+      rungs.push(buildRung(rungNum++, !addedSensorComment ? '1-Sensor Pneumatic Delay Timers' : null,
+        `XIO(${extSensor})TON(${retDelay},?,?);`));
       addedSensorComment = true;
     }
   }
 
-  // Single step logic
-  rungs.push(buildRung(rungNum++, 'Single Step Logic', 'XIC(LocalSS)OTE(SS);'));
-  rungs.push(buildRung(rungNum++, null, '[XIO(SS) ,XIC(LocalSSONS) ONS(ONS.1) ]OTE(SS_OK);'));
+  // ── §15.7 step 5: AOI_Debounce calls for part-present DigitalSensors ─────
+  // Per user confirmation: required for DigitalSensor part-present; NOT for
+  // pneumatic ext/ret sensors, NOT for robot DI/DO.
+  let debounceCommentAdded = false;
+  for (const device of devices) {
+    if (device.type !== 'DigitalSensor') continue;
+    const inputTag = `i_${device.name}`;
+    const debounceInst = `${device.name}Debounce`;
+    // AOI_Debounce(instance, Input, OnDelay, OffDelay) — SDC default 100 ms / 100 ms.
+    rungs.push(buildRung(rungNum++, !debounceCommentAdded ? 'Debounce Filters' : null,
+      `AOI_Debounce(${debounceInst},${inputTag},100,100);`));
+    debounceCommentAdded = true;
+  }
+
+  // ── §15.7 step 6: CPU time/date capture (g_CPUDateTime is controller-scope) ──
+  rungs.push(buildRung(rungNum++, 'CPU Time/Date',
+    'CPU_TimeDate_wJulian(\\g_CPUDateTime);'));
+
+  // Legacy SS handling — retained so LocalSS panel buttons still work until
+  // the project fully migrates to HMI_Toggle-only.
+  rungs.push(buildRung(rungNum++, 'Legacy LocalSS Passthrough', 'XIC(LocalSS)OTE(SS);'));
 
   return `
 <Routine Name="R01_Inputs" Type="RLL">
@@ -1477,7 +1659,8 @@ function buildVerifyConditions(node, devices, allSMs = [], trackingFields = []) 
       }
 
       case 'ServoAxis': {
-        const mamTag = patterns.mamControl.replace(/\{name\}/g, device.name);
+        // Engineer convention: {name}_MAM is the auto-move instance (§15.2).
+        const mamTag = (patterns.mamAutoInst ?? '{name}_MAM').replace(/\{name\}/g, device.name);
         conditions += `XIC(${mamTag}.PC)`;
         // Position In_Range only for ServoMove (not ServoIncr/ServoIndex)
         if (action.operation === 'ServoMove') {
@@ -1486,7 +1669,7 @@ function buildVerifyConditions(node, devices, allSMs = [], trackingFields = []) 
             const rcTag = patterns.positionRC
               .replace(/\{name\}/g, device.name)
               .replace(/\{positionName\}/g, posName);
-            conditions += `XIC(${rcTag}.In_Range)`;
+            conditions += `XIC(${rcTag}.InPos)`;
           }
         }
         break;
@@ -1514,13 +1697,13 @@ function buildVerifyConditions(node, devices, allSMs = [], trackingFields = []) 
       }
 
       case 'AnalogSensor': {
-        // VerifyValue: check AOI_RangeCheck In_Range bit for the selected setpoint
+        // VerifyValue: check AOI_RangeCheck .InPos bit for the selected setpoint
         const spName = action.setpointName ?? '';
         if (spName) {
           const rcTag = patterns.rangeCheckInst
             .replace(/\{name\}/g, device.name)
             .replace(/\{setpointName\}/g, spName);
-          conditions += `XIC(${rcTag}.In_Range)`;
+          conditions += `XIC(${rcTag}.InPos)`;
         }
         break;
       }
@@ -1621,6 +1804,13 @@ function generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs = [], tra
       `[XIC(Status.State[2]) XIC(Initialized) ,XIC(Status.State[${completeStep}]) ]MOVE(3,Control.StateReg);`)
   );
 
+  // State 99: Lockout (§15.5 — HMI_Toggle.0 forces Step=99 from any state).
+  // Safe-state outputs (retract pneumatics, disable servos) are handled in R03.
+  rungs.push(
+    buildRung(rungNum++, 'State 99: Lockout (HMI_Toggle.0)',
+      `XIC(HMI_Toggle.0)MOVE(99,Control.StateReg);`)
+  );
+
   // ── Process Transitions ───────────────────────────────────────────────────
 
   // State 3 → first process state (with home position verify)
@@ -1694,7 +1884,7 @@ function generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs = [], tra
           // Legacy: AnalogSensor
           const sensorDev = devices.find(d => d.id === outcome.sensorDeviceId);
           if (sensorDev) {
-            const rcTag = `${sensorDev.name}${outcome.setpointName ?? ''}RC.In_Range`;
+            const rcTag = `${sensorDev.name}${outcome.setpointName ?? ''}RC.InPos`;
             branchCond = outcome.condition === 'outOfRange' ? `XIO(${rcTag})` : `XIC(${rcTag})`;
           }
         } else if (outcome?.paramDeviceId) {
@@ -2495,7 +2685,7 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
         if (step == null) continue;
         const device = devices.find(d => d.name === row._deviceName);
         if (!device) continue;
-        const rcTag = `${device.name}${row._setpointName ?? ''}RC.In_Range`;
+        const rcTag = `${device.name}${row._setpointName ?? ''}RC.InPos`;
         rungs.push(
           buildRung(
             rungNum++,
@@ -2542,10 +2732,11 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
     }
   }
 
-  // ── ServoAxis MAM motion commands ────────────────────────────────────────
-  // Per axis: 1) position selection  2) MAM execute  3) range checks
+  // ── ServoAxis motion commands (engineer's 3-rung pattern per axis) ───────
+  // Per reference S01_SDCServoPNP, servo motion lives entirely in R03 — no
+  // separate R04 routine. Three rungs per axis: Position Select / MAM / Monitor.
   {
-    const servoMoveMap = {}; // deviceId -> { device, moves: [{ step, positionName }] }
+    const servoMoveMap = {}; // deviceId -> { device, moves: [{ step, positionName, operation }] }
 
     for (const node of orderedNodes) {
       const step = stepMap[node.id];
@@ -2566,8 +2757,8 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
       const sp = DEVICE_TYPES.ServoAxis.tagPatterns;
       const axNum = String(device.axisNumber ?? 1).padStart(2, '0');
       const axisTag = sp.axisTag.replace(/\{name\}/g, device.name).replace(/\{axisNum\}/g, axNum);
-      const mamTag = sp.mamControl.replace(/\{name\}/g, device.name).replace(/\{axisNum\}/g, axNum);
-      const motionParamTag = sp.motionParam.replace(/\{name\}/g, device.name).replace(/\{axisNum\}/g, axNum);
+      const mamTag = sp.mamAutoInst.replace(/\{name\}/g, device.name).replace(/\{axisNum\}/g, axNum);
+      const motionParamTag = sp.motionParamsTag.replace(/\{name\}/g, device.name).replace(/\{Name\}/g, device.name).replace(/\{axisNum\}/g, axNum);
 
       // Rung A: Position Selection — conditional MOVE of target position per state
       if (moves.length > 0) {
@@ -2595,7 +2786,7 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
       }
 
       // Rung B: MAM Execute — triggers on any servo move state for this axis
-      {
+      if (moves.length > 0) {
         const triggerParts = moves.map(m => `XIC(Status.State[${m.step}])`);
         const triggerText = triggerParts.length === 1
           ? triggerParts[0]
@@ -2620,7 +2811,7 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
           const posTag = sp.positionParam
             .replace(/\{name\}/g, device.name)
             .replace(/\{positionName\}/g, pos.name);
-          return `AOI_RangeCheck(${rcTag},${posTag},0.5,${axisTag}.ActualPosition)`;
+          return `AOI_RangeCheck(${rcTag},${posTag},0.5,${axisTag}.ActualPosition,5.0)`;
         });
         rungs.push(
           buildRung(
@@ -2650,7 +2841,7 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
         const spTag = ap.setpointParam
           .replace(/\{name\}/g, device.name)
           .replace(/\{setpointName\}/g, sp.name);
-        return `AOI_RangeCheck(${rcTag},${spTag},${device.tolerance ?? 0.5},${inputTag})`;
+        return `AOI_RangeCheck(${rcTag},${spTag},${device.tolerance ?? 0.5},${inputTag},5.0)`;
       });
       rungs.push(
         buildRung(
@@ -3093,6 +3284,10 @@ ${routMembers.join('\n')}
 export function generateDataTypes(hasServos = false, trackingFields = [], robotDevices = []) {
   let servoUDT = '';
   if (hasServos) {
+    // SDC Guide §15.4: ServoOverall UDT set emitted together whenever any servo is present.
+    // Verbatim structural copy from the SDC standard library. Members are fixed-size arrays
+    // (Positions[12], AutoSpeed[5], Accel/Decel[2]) so per-axis code can reference them by
+    // stable index (§15.3). MAMParam is retained for per-MAM scratch use by R03/R04 logic.
     servoUDT = `
 <DataType Name="MAMParam" Family="NoFamily" Class="User">
 <Members>
@@ -3102,6 +3297,62 @@ export function generateDataTypes(hasServos = false, trackingFields = [], robotD
 <Member Name="Accel" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
 <Member Name="Decel" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
 </Members>
+</DataType>
+<DataType Name="ServoMomentary" Family="NoFamily" Class="User">
+<Members>
+<Member Name="ZZZZZZZZZZServoMomen0" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="Enable" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoMomen0" BitNumber="0" ExternalAccess="Read/Write"/>
+<Member Name="Disable" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoMomen0" BitNumber="1" ExternalAccess="Read/Write"/>
+<Member Name="JogPositive" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoMomen0" BitNumber="2" ExternalAccess="Read/Write"/>
+<Member Name="JogNegative" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoMomen0" BitNumber="3" ExternalAccess="Read/Write"/>
+<Member Name="InchPositive" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoMomen0" BitNumber="4" ExternalAccess="Read/Write"/>
+<Member Name="InchNegative" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoMomen0" BitNumber="5" ExternalAccess="Read/Write"/>
+<Member Name="HomeRequest" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoMomen0" BitNumber="6" ExternalAccess="Read/Write"/>
+<Member Name="HomeConfirm" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoMomen0" BitNumber="7" ExternalAccess="Read/Write"/>
+<Member Name="ZZZZZZZZZZServoMomen9" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="SetTorquePos" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoMomen9" BitNumber="0" ExternalAccess="Read/Write"/>
+<Member Name="SetTorqueNeg" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoMomen9" BitNumber="1" ExternalAccess="Read/Write"/>
+<Member Name="ManMoves" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+</DataType>
+<DataType Name="ServoParameters" Family="NoFamily" Class="User">
+<Members>
+<Member Name="Accel" DataType="REAL" Dimension="2" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Decel" DataType="REAL" Dimension="2" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="JogSpeed" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="ManualSpeed" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="AutoSpeed" DataType="REAL" Dimension="5" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="InchAmount" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Positions" DataType="REAL" Dimension="12" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="TorquePos" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="TorqueNeg" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+</DataType>
+<DataType Name="ServoStatus" Family="NoFamily" Class="User">
+<Members>
+<Member Name="ZZZZZZZZZZServoStatu0" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="HomeRequested" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoStatu0" BitNumber="0" ExternalAccess="Read/Write"/>
+<Member Name="HomeInProcess" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoStatu0" BitNumber="1" ExternalAccess="Read/Write"/>
+<Member Name="HomeComplete" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoStatu0" BitNumber="2" ExternalAccess="Read/Write"/>
+<Member Name="ActualTorque" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="ActualVelocity" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="ActualPosition" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="MaxVelocity" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="MaxAccel" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="MaxDecel" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+</DataType>
+<DataType Name="ServoOverall" Family="NoFamily" Class="User">
+<Members>
+<Member Name="Status" DataType="ServoStatus" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Control" DataType="ServoMomentary" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Parameters" DataType="ServoParameters" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+<Dependencies>
+<Dependency Type="DataType" Name="ServoStatus"/>
+<Dependency Type="DataType" Name="ServoMomentary"/>
+<Dependency Type="DataType" Name="ServoParameters"/>
+</Dependencies>
 </DataType>`;
   }
 
@@ -3334,7 +3585,7 @@ ${cdata('HMI Reset input')}
 
 function generateAOIRangeCheck() {
   return `
-<AddOnInstructionDefinition Name="AOI_RangeCheck" Class="Standard" Revision="0.1" ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" CreatedDate="2010-03-29T16:58:02.278Z" CreatedBy="SDC" EditedDate="2024-01-01T00:00:00.000Z" EditedBy="SDC" SoftwareRevision="v35.00">
+<AddOnInstructionDefinition Name="AOI_RangeCheck" Class="Standard" Revision="0.1" ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" CreatedDate="2010-03-29T16:58:02.278Z" CreatedBy="SDC" EditedDate="2026-04-22T19:54:09.008Z" EditedBy="SDC" SoftwareRevision="v37.00">
 <Parameters>
 <Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
 <Description>
@@ -3370,7 +3621,23 @@ ${cdata('0.00000000e+000')}
 <DataValue DataType="REAL" Radix="Float" Value="0.0"/>
 </DefaultData>
 </Parameter>
-<Parameter Name="In_Range" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="Read Only">
+<Parameter Name="InPos" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="Read Only">
+<DefaultData Format="L5K">
+${cdata('0')}
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</DefaultData>
+</Parameter>
+<Parameter Name="DeadbandWide" TagType="Base" DataType="REAL" Usage="Input" Radix="Float" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K">
+${cdata('0.00000000e+000')}
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="REAL" Radix="Float" Value="0.0"/>
+</DefaultData>
+</Parameter>
+<Parameter Name="InPosWide" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="Read Only">
 <DefaultData Format="L5K">
 ${cdata('0')}
 </DefaultData>
@@ -3396,6 +3663,22 @@ ${cdata('0.00000000e+000')}
 <DataValue DataType="REAL" Radix="Float" Value="0.0"/>
 </DefaultData>
 </LocalTag>
+<LocalTag Name="MaxWide" DataType="REAL" Radix="Float" ExternalAccess="None">
+<DefaultData Format="L5K">
+${cdata('0.00000000e+000')}
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="REAL" Radix="Float" Value="0.0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="MinWide" DataType="REAL" Radix="Float" ExternalAccess="None">
+<DefaultData Format="L5K">
+${cdata('0.00000000e+000')}
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="REAL" Radix="Float" Value="0.0"/>
+</DefaultData>
+</LocalTag>
 </LocalTags>
 <Routines>
 <Routine Name="Logic" Type="RLL">
@@ -3407,7 +3690,17 @@ ${cdata('[ADD(Value,Deadband,Max) ,SUB(Value,Deadband,Min) ];')}
 </Rung>
 <Rung Number="1" Type="N">
 <Text>
-${cdata('LIMIT(Min,Actual,Max)OTE(In_Range);')}
+${cdata('LIMIT(Min,Actual,Max)OTE(InPos);')}
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Text>
+${cdata('[ADD(Value,DeadbandWide,MaxWide) ,SUB(Value,Deadband,MinWide) ];')}
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Text>
+${cdata('LIMIT(MinWide,Actual,MaxWide)OTE(InPosWide);')}
 </Text>
 </Rung>
 </RLLContent>
@@ -3418,7 +3711,7 @@ ${cdata('LIMIT(Min,Actual,Max)OTE(In_Range);')}
 
 // ── AOI Definition (State_Engine_128Max) ─────────────────────────────────────
 
-export function generateAOI(hasServos = false, hasRobots = false) {
+export function generateAOI(hasServos = false, hasRobots = false, hasDebouncedSensors = false) {
   const boolL5K = generate128BoolL5K();
   const boolDec = generate128BoolDecorated();
 
@@ -3623,6 +3916,8 @@ ${stContent}
 </AddOnInstructionDefinition>${hasServos ? generateAOIRangeCheck() : ''}
 ${generateAOIProgramAlarmHandler()}
 ${hasRobots ? generateAOIRunRobotSeq() : ''}
+${hasServos ? generateAOITorqueHome() : ''}
+${hasDebouncedSensors ? generateAOIDebounce() : ''}
 </AddOnInstructionDefinitions>`;
 }
 
@@ -3922,15 +4217,508 @@ ${cdata('Manages a single robot sequence request through the AAMAIN command hand
 </AddOnInstructionDefinition>`;
 }
 
-// ── R05_Recovery ──────────────────────────────────────────────────────────────
+// ── AOI_Debounce (SDC Guide §15.8) ───────────────────────────────────────────
+//
+// Standard library AOI — verbatim XML structure from SDC library. Used by R01
+// for part-present digital sensors (NOT pneumatic ext/ret, NOT robot DI/DO).
+// Callers reference {name}Debounce.On (debounced true) and .Off (debounced false).
+function generateAOIDebounce() {
+  return `
+<AddOnInstructionDefinition Name="AOI_Debounce" Class="Standard" Revision="1.0" ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" CreatedDate="2017-12-20T17:38:23.616Z" CreatedBy="SDC" EditedDate="2017-12-20T17:43:44.150Z" EditedBy="SDC" SoftwareRevision="v30.00">
+<Parameters>
+<Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>${cdata('Enable Input - System Defined Parameter')}</Description>
+</Parameter>
+<Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>${cdata('Enable Output - System Defined Parameter')}</Description>
+</Parameter>
+<Parameter Name="Input" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K">${cdata('0')}</DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="OnDelay" TagType="Base" DataType="DINT" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K">${cdata('0')}</DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="DINT" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="OffDelay" TagType="Base" DataType="DINT" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K">${cdata('0')}</DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="DINT" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="On" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="Read Only">
+<DefaultData Format="L5K">${cdata('0')}</DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="Off" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="Read Only">
+<DefaultData Format="L5K">${cdata('0')}</DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+</Parameters>
+<LocalTags>
+<LocalTag Name="OnTimer" DataType="TIMER" ExternalAccess="None">
+<DefaultData Format="L5K">${cdata('[0,0,0]')}</DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="OffTimer" DataType="TIMER" ExternalAccess="None">
+<DefaultData Format="L5K">${cdata('[0,0,0]')}</DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+</LocalTags>
+<Routines>
+<Routine Name="Logic" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Text>${cdata('[XIC(Input) MOVE(OnDelay,OnTimer.PRE) TON(OnTimer,?,?) ,XIO(Input) MOVE(OffDelay,OffTimer.PRE) TON(OffTimer,?,?) ];')}</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Text>${cdata('[XIC(OnTimer.DN) OTE(On) ,XIC(OffTimer.DN) OTE(Off) ];')}</Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</AddOnInstructionDefinition>`;
+}
+
+// ── AOI_TorqueHome (SDC Guide §15.4) ─────────────────────────────────────────
+//
+// Standard library AOI — verbatim logic from SDC library. Drives servo home
+// using torque limit detection. Emitted only when any ServoAxis device is
+// present. The engineer may use a plain MAH instead in the home rung, but this
+// AOI must be available in the project.
+function generateAOITorqueHome() {
+  // Motion instruction local tag template (many copies are needed).
+  const motionInst = (name) => `<LocalTag Name="${name}" DataType="MOTION_INSTRUCTION" ExternalAccess="None">
+<DefaultData Format="L5K">${cdata('[0,0,0,0,0,0,0,0,0]')}</DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="MOTION_INSTRUCTION">
+<DataValueMember Name="FLAGS" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ER" DataType="BOOL" Value="0"/>
+<DataValueMember Name="PC" DataType="BOOL" Value="0"/>
+<DataValueMember Name="IP" DataType="BOOL" Value="0"/>
+<DataValueMember Name="AC" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ACCEL" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DECEL" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TrackingMaster" DataType="BOOL" Value="0"/>
+<DataValueMember Name="CalculatedDataAvailable" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ERR" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="STATUS" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="STATE" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="SEGMENT" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EXERR" DataType="SINT" Radix="Decimal" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>`;
+
+  const timer = (name, pre = 0) => `<LocalTag Name="${name}" DataType="TIMER" ExternalAccess="None">
+<DefaultData Format="L5K">${cdata(`[0,${pre},0]`)}</DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="${pre}"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>`;
+
+  const realLocal = (name) => `<LocalTag Name="${name}" DataType="REAL" Radix="Float" ExternalAccess="None">
+<DefaultData Format="L5K">${cdata('0.00000000e+000')}</DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="REAL" Radix="Float" Value="0.0"/></DefaultData>
+</LocalTag>`;
+
+  const dintLocal = (name) => `<LocalTag Name="${name}" DataType="DINT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">${cdata('0')}</DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="DINT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>`;
+
+  const boolLocal = (name) => `<LocalTag Name="${name}" DataType="BOOL" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">${cdata('0')}</DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>`;
+
+  return `
+<AddOnInstructionDefinition Name="AOI_TorqueHome" Class="Standard" Revision="1.0" ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="true" CreatedDate="2014-09-18T14:11:39.176Z" CreatedBy="SDC" EditedDate="2019-09-25T15:36:56.907Z" EditedBy="SDC" SoftwareRevision="v31.00">
+<Description>${cdata('Home Servo Axis By Using Torque Limit')}</Description>
+<Parameters>
+<Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>${cdata('Enable Input - System Defined Parameter')}</Description>
+</Parameter>
+<Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>${cdata('Enable Output - System Defined Parameter')}</Description>
+</Parameter>
+<Parameter Name="Axis" TagType="Base" DataType="AXIS_CIP_DRIVE" Usage="InOut" Required="true" Visible="true"/>
+<Parameter Name="HomingTorque" TagType="Base" DataType="REAL" Usage="Input" Radix="Float" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K">${cdata('0.00000000e+000')}</DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="REAL" Radix="Float" Value="0.0"/></DefaultData>
+</Parameter>
+<Parameter Name="RunTorque" TagType="Base" DataType="REAL" Usage="Input" Radix="Float" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K">${cdata('0.00000000e+000')}</DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="REAL" Radix="Float" Value="0.0"/></DefaultData>
+</Parameter>
+<Parameter Name="Error" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="Read Only">
+<DefaultData Format="L5K">${cdata('0')}</DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="IP" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="Read Only">
+<DefaultData Format="L5K">${cdata('0')}</DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="PC" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="Read Only">
+<DefaultData Format="L5K">${cdata('0')}</DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="HomingSpeed" TagType="Base" DataType="REAL" Usage="Input" Radix="Float" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K">${cdata('0.00000000e+000')}</DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="REAL" Radix="Float" Value="0.0"/></DefaultData>
+</Parameter>
+<Parameter Name="OvertorqueLimit" TagType="Base" DataType="REAL" Usage="Input" Radix="Float" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K">${cdata('0.00000000e+000')}</DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="REAL" Radix="Float" Value="0.0"/></DefaultData>
+</Parameter>
+<Parameter Name="HomeOffsetDist" TagType="Base" DataType="REAL" Usage="Input" Radix="Float" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K">${cdata('0.00000000e+000')}</DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="REAL" Radix="Float" Value="0.0"/></DefaultData>
+</Parameter>
+<Parameter Name="HomeDirection" TagType="Base" DataType="DINT" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K">${cdata('0')}</DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="DINT" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+</Parameters>
+<LocalTags>
+${dintLocal('TorqueHome_CS')}
+${dintLocal('TorqueHome_SW')}
+${motionInst('Axis_MSO')}
+${motionInst('Axis_MSF')}
+${motionInst('Axis_MAJ')}
+${realLocal('OvertorqueLimitTime')}
+${motionInst('Axis_MAFR')}
+${motionInst('Axis_MAM')}
+${timer('FaultTimer', 0)}
+${dintLocal('TorqueHome_CS_Pre')}
+${boolLocal('TorqueHomeSC')}
+${motionInst('Axis_MAH')}
+${dintLocal('SoftOTCheck')}
+${motionInst('Axis_MAS')}
+${timer('TorqueHome_ST6_TMR', 500)}
+${timer('PosSettleTimer', 0)}
+${timer('TorqueHome_ST2_TMR', 100)}
+${timer('TorqueHome_ST6A_TMR', 100)}
+${realLocal('AxisScalingNumerator')}
+${realLocal('OffsetMoveSpeed')}
+</LocalTags>
+<Routines>
+<Routine Name="EnableInFalse" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N"><Text>${cdata('XIC(IP)OTU(IP);')}</Text></Rung>
+</RLLContent>
+</Routine>
+<Routine Name="Logic" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N"><Text>${cdata('XIC(EnableIn)XIO(IP)[MOVE(0,TorqueHome_CS) ,OTL(IP) ,OTU(Error) ,OTU(PC) ];')}</Text></Rung>
+<Rung Number="1" Type="N"><Text>${cdata('XIC(TorqueHome_SW.0)XIC(Axis.ServoActionStatus)MOVE(1,TorqueHome_CS);')}</Text></Rung>
+<Rung Number="2" Type="N"><Text>${cdata('[XIC(TorqueHome_SW.1) MSF(Axis,Axis_MSF) ,XIC(TorqueHome_SW.0) ]XIO(Axis.ServoActionStatus)MOVE(2,TorqueHome_CS);')}</Text></Rung>
+<Rung Number="3" Type="N"><Text>${cdata('XIC(TorqueHome_SW.2)[SSV(Axis,Axis,TorqueLimitNegative,HomingTorque) ,SSV(Axis,Axis,OvertorqueLimit,OvertorqueLimit) ,MOVE(0.1,OvertorqueLimitTime) SSV(Axis,Axis,OvertorqueLimitTime,OvertorqueLimitTime) ,MOVE(0,SoftOTCheck) SSV(Axis,Axis,SoftTravelLimitChecking,SoftOTCheck) ]MOVE(100,TorqueHome_ST2_TMR.PRE)TON(TorqueHome_ST2_TMR,?,?)XIC(TorqueHome_ST2_TMR.DN)MOVE(3,TorqueHome_CS);')}</Text></Rung>
+<Rung Number="4" Type="N"><Text>${cdata('XIC(TorqueHome_SW.3)MSO(Axis,Axis_MSO)XIC(Axis.ServoActionStatus)MOVE(4,TorqueHome_CS);')}</Text></Rung>
+<Rung Number="5" Type="N"><Text>${cdata('XIC(TorqueHome_SW.4)MAJ(Axis,Axis_MAJ,HomeDirection,HomingSpeed,Units per sec,50,Units per sec2,50,Units per sec2,Trapezoidal,0,0,Units per sec3,Disabled,0,0,None)XIC(Axis_MAJ.IP)MOVE(5,TorqueHome_CS);')}</Text></Rung>
+<Rung Number="6" Type="N"><Text>${cdata('XIC(TorqueHome_SW.5)[XIC(Axis.OvertorqueLimitFault) ,XIC(Axis.ExcessivePositionErrorFault) ]XIO(Axis.ServoActionStatus)MOVE(6,TorqueHome_CS);')}</Text></Rung>
+<Rung Number="7" Type="N"><Text>${cdata('XIC(TorqueHome_SW.6)MAFR(Axis,Axis_MAFR)EQ(Axis.AxisFault,0)[SSV(Axis,Axis,TorqueLimitNegative,RunTorque) ,MOVE(0,OvertorqueLimitTime) SSV(Axis,Axis,OvertorqueLimitTime,OvertorqueLimitTime) ,MOVE(1,SoftOTCheck) SSV(Axis,Axis,SoftTravelLimitChecking,SoftOTCheck) ]MOVE(1000,TorqueHome_ST6A_TMR.PRE)TON(TorqueHome_ST6A_TMR,?,?)XIC(TorqueHome_ST6A_TMR.DN)MOVE(7,TorqueHome_CS);')}</Text></Rung>
+<Rung Number="8" Type="N"><Text>${cdata('XIC(TorqueHome_SW.7)MSO(Axis,Axis_MSO)XIC(Axis.ServoActionStatus)MOVE(8,TorqueHome_CS)GSV(Axis,Axis,PositionScalingNumerator,AxisScalingNumerator);')}</Text></Rung>
+<Rung Number="9" Type="N"><Text>${cdata('XIC(TorqueHome_SW.8)[EQ(AxisScalingNumerator,360.0) MOVE(15.0,OffsetMoveSpeed) ,NE(AxisScalingNumerator,360.0) MOVE(1.0,OffsetMoveSpeed) ]MAM(Axis,Axis_MAM,1,HomeOffsetDist,OffsetMoveSpeed,Units per sec,150,Units per sec2,150,Units per sec2,Trapezoidal,0,0,Units per sec3,Disabled,0,0,None,0,0)XIC(Axis_MAM.PC)MOVE(250,PosSettleTimer.PRE)TON(PosSettleTimer,?,?)XIC(PosSettleTimer.DN)MOVE(10,TorqueHome_CS);')}</Text></Rung>
+<Rung Number="10" Type="N"><Text>${cdata('AFI()XIC(TorqueHome_SW.9)MSF(Axis,Axis_MSF)XIO(Axis.ServoActionStatus)MOVE(10,TorqueHome_CS);')}</Text></Rung>
+<Rung Number="11" Type="N"><Text>${cdata('XIC(TorqueHome_SW.10)MAH(Axis,Axis_MAH)XIC(Axis_MAH.PC)MOVE(11,TorqueHome_CS)OTL(PC);')}</Text></Rung>
+<Rung Number="12" Type="N"><Text>${cdata('XIO(TorqueHomeSC)[[XIC(TorqueHome_SW.1) ,XIC(TorqueHome_SW.2) ,XIC(TorqueHome_SW.3) ,XIC(TorqueHome_SW.4) ,XIC(TorqueHome_SW.6) ,XIC(TorqueHome_SW.7) ,XIC(TorqueHome_SW.9) ,XIC(TorqueHome_SW.10) ] MOVE(2000,FaultTimer.PRE) ,XIC(TorqueHome_SW.5) MOVE(60000,FaultTimer.PRE) ,XIC(TorqueHome_SW.8) MOVE(5000,FaultTimer.PRE) ]TON(FaultTimer,?,?)XIC(FaultTimer.DN)[SSV(Axis,Axis,TorqueLimitNegative,RunTorque) ,MOVE(0,OvertorqueLimitTime) SSV(Axis,Axis,OvertorqueLimitTime,OvertorqueLimitTime) ,MOVE(1,SoftOTCheck) SSV(Axis,Axis,SoftTravelLimitChecking,SoftOTCheck) ]MOVE(31,TorqueHome_CS)[OTL(Error) ,MAS(Axis,Axis_MAS,All,Yes,150,Units per sec2,No,0,Units per sec3) ];')}</Text></Rung>
+<Rung Number="13" Type="N"><Text>${cdata('[CLR(TorqueHome_SW) ,OTE(TorqueHome_SW.[TorqueHome_CS]) ];')}</Text></Rung>
+<Rung Number="14" Type="N"><Text>${cdata('NE(TorqueHome_CS,TorqueHome_CS_Pre)MOVE(TorqueHome_CS,TorqueHome_CS_Pre)OTE(TorqueHomeSC);')}</Text></Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</AddOnInstructionDefinition>`;
+}
+
+// ── R04/R05+ per-axis servo routines (§15.4) ─────────────────────────────────
+//
+// Emits one routine per ServoAxis device. Naming per §15.2:
+//   1 axis  → R04_StateLogicServo
+//   2 axes  → R04_{axis1}Servo + R05_{axis2}Servo
+//   N axes  → R04.. R(03+N)_{axisName}Servo
+//
+// Each routine has 22 rungs per the engineer's reference (R04_XAxisServo):
+//   0  Axis Ready                       16  Stop on permissive lost (MAS)
+//   1  AutoEnable (ready → debounce)    17  Set +Torque
+//   2  Permissive (machine-specific)    18  Set -Torque
+//   3  Enable (MSO)                     19  Retrieve ActualPosition/Velocity/Torque
+//   4  Disable (MSF)                    20  GSV maximums (first-scan)
+//   5  Fault reset (MAFR/MASR)          21  Position Monitor (AOI_RangeCheck)
+//   6  Jog +/- (MAJ)
+//   7  Jog stop (MAS_Jog)
+//   8  Inch (MAM Inch)
+//   9  Home Request
+//  10  Home Confirm
+//  11  Home (MAH or AOI_TorqueHome)
+//  12  Home status → HMI
+//  13  Manual Mode (HMI ManMoves → MAM params)
+//  14  Auto Mode (state → position MOVE)
+//  15  Axis Motion Command (MAM auto)
+//
+// Rungs 14, 15 auto-bind every ServoMove action in the flowchart (+ recovery
+// flowchart) to this axis — rung 14 MOVEs the chosen position into the motion
+// struct; rung 15 gates the MAM on the list of states that triggered any
+// ServoMove. Rung 2 still emits a bare Permissive OTE (CE refines).
+// Rung 21 generates one AOI_RangeCheck instance per declared position.
+
+// Walk main + recovery flowcharts and return Map<stateNumber, positionIndex>
+// for every ServoMove action that targets `device`.
+function collectServoMovesForAxis(sm, device, orderedNodes, stepMap) {
+  const positions = device.positions ?? [];
+  const servoStateToPos = new Map();
+
+  const addNode = (node, stepNum) => {
+    if (!stepNum) return;
+    const actions = node.data?.actions ?? [];
+    for (const action of actions) {
+      if (action.deviceId !== device.id) continue;
+      if (action.operation !== 'ServoMove') continue;
+      const pos = positions.find(p => p.name === action.positionName);
+      if (!pos) continue;
+      const posIdx = pos.positionIndex ?? positions.indexOf(pos);
+      servoStateToPos.set(stepNum, posIdx);
+    }
+  };
+
+  for (const node of orderedNodes ?? []) addNode(node, stepMap?.[node.id]);
+
+  const recSeq = (sm.recoverySeqs ?? [])[0];
+  if (recSeq?.nodes?.length > 0) {
+    const recNodes = orderNodes(recSeq.nodes, recSeq.edges ?? []);
+    const recMap = buildRecoveryStepMap(recNodes, sm.devices ?? []);
+    for (const node of recNodes) addNode(node, recMap[node.id]);
+  }
+
+  return servoStateToPos;
+}
+
+function generateServoAxisRoutine(routineName, device, sm, orderedNodes, stepMap) {
+  const name = device.name;
+  const rungs = [];
+  let n = 0;
+  const positions = device.positions ?? [];
+  const axisTag = `iq_${name}`;
+  const hmi = `HMI_${name}`;
+  const mp = `${name}MotionParameters`;
+
+  const servoStateToPos = collectServoMovesForAxis(sm, device, orderedNodes, stepMap);
+  // Group by position index so multiple states sharing a position share a MOVE branch.
+  const posToStates = new Map();
+  for (const [stateNum, posIdx] of servoStateToPos) {
+    if (!posToStates.has(posIdx)) posToStates.set(posIdx, []);
+    posToStates.get(posIdx).push(stateNum);
+  }
+  for (const list of posToStates.values()) list.sort((a, b) => a - b);
+  const allServoStates = [...servoStateToPos.keys()].sort((a, b) => a - b);
+
+  // Rung 0 — Axis Ready
+  rungs.push(buildRung(n++, 'Axis Is Ready For Operation',
+    `XIC(MotionGroup.GroupSynced)XIO(${axisTag}.SafeTorqueOffActiveInhibit)OTE(${name}Ready);`));
+
+  // Rung 1 — AutoEnable (SafetyOK + Ready → TON debounce → ONS pulse)
+  rungs.push(buildRung(n++, null,
+    `XIC(SafetyOK)XIC(${name}Ready)TON(${name}EnableDelay,?,?)XIC(${name}EnableDelay.DN)ONS(${name}ONS.0)OTE(${name}AutoEnable);`));
+
+  // Rung 2 — Permissive (machine-specific — CE adds interference checks)
+  rungs.push(buildRung(n++,
+    'Axis Motion Permissive (Add more conditions if necessary. Permissive should be based on the physical state of itself potentially interfering devices)',
+    `OTE(${name}Permissive);`));
+
+  // Rung 3 — Enable (MSO)
+  rungs.push(buildRung(n++, 'Enable Axis',
+    `[XIC(Status.State[1]) XIC(${hmi}.Control.Enable) XIC(${name}Ready) ,XIC(${name}AutoEnable) ]XIO(${axisTag}.ServoActionStatus)MSO(${axisTag},${name}_MSO);`));
+
+  // Rung 4 — Disable (MSF)
+  rungs.push(buildRung(n++, 'Disable Axis',
+    `XIC(Status.State[1])XIC(${hmi}.Control.Disable)MSF(${axisTag},${name}_MSF);`));
+
+  // Rung 5 — Fault Reset (MAFR on transient, MASR on shutdown)
+  rungs.push(buildRung(n++, 'Fault Reset Axis',
+    `NE(${axisTag}.AxisFault,0)XIC(FaultReset)[XIO(${axisTag}.ShutdownStatus) MAFR(${axisTag},${name}_MAFR) ,XIC(${axisTag}.ShutdownStatus) MASR(${axisTag},${name}_MASR) ];`));
+
+  // Rung 6 — Jog +/- (MAJ) with direction MOVE
+  rungs.push(buildRung(n++, 'Jog Axis',
+    `XIC(Status.State[1])XIC(${name}Permissive)XIC(${axisTag}.ServoActionStatus)XIO(${axisTag}.JogStatus)XIO(${axisTag}.MoveStatus)` +
+    `[XIC(${hmi}.Control.JogPositive) XIO(${hmi}.Control.JogNegative) MOVE(0,${name}JogDirection) ,` +
+    `XIC(${hmi}.Control.JogNegative) XIO(${hmi}.Control.JogPositive) MOVE(1,${name}JogDirection) ]` +
+    `MAJ(${axisTag},${name}_MAJ,${name}JogDirection,${hmi}.Parameters.JogSpeed,Units per sec,${hmi}.Parameters.Accel[0],Units per sec2,${hmi}.Parameters.Decel[0],Units per sec2,Trapezoidal,0,0,Units per MasterUnit3,Disabled,0,0,None);`));
+
+  // Rung 7 — Jog stop (MAS_Jog)
+  rungs.push(buildRung(n++, null,
+    `XIC(${name}_MAJ.IP)XIO(${hmi}.Control.JogPositive)XIO(${hmi}.Control.JogNegative)MAS(${axisTag},${name}_MAS_Jog,Jog,Yes,${hmi}.Parameters.Decel[0],Units per sec2,No,0,Units per sec3);`));
+
+  // Rung 8 — Inch (MAM Inch mode, signed)
+  rungs.push(buildRung(n++, 'Inch Axis',
+    `XIC(Status.State[1])XIC(${name}Permissive)XIC(${axisTag}.ServoActionStatus)XIO(${axisTag}.JogStatus)XIO(${axisTag}.MoveStatus)` +
+    `[XIC(${hmi}.Control.InchPositive) ONS(${name}ONS.1) MOVE(${hmi}.Parameters.InchAmount,${name}InchAmount) ,` +
+    `XIC(${hmi}.Control.InchNegative) ONS(${name}ONS.2) NEG(${hmi}.Parameters.InchAmount,${name}InchAmount) ]` +
+    `MAM(${axisTag},${name}_Inch,1,${name}InchAmount,${hmi}.Parameters.ManualSpeed,Units per sec,${hmi}.Parameters.Accel[0],Units per sec2,${hmi}.Parameters.Decel[0],Units per sec2,Trapezoidal,0,0,Units per sec3,Disabled,0,0,None,0,0);`));
+
+  // Rung 9 — Home Request (HMI pulse or retriggered)
+  rungs.push(buildRung(n++, 'Home Axis',
+    `XIC(Status.State[1])[XIC(${hmi}.Control.HomeRequest) ONS(${name}ONS.3) XIO(${name}TorqueHome.IP) ,` +
+    `XIC(${name}HomeRequested) XIO(${name}HomeConfirmDelay.DN) XIO(${name}HomeConfimed) ]` +
+    `XIC(${name}Ready)[OTE(${name}HomeRequested) ,TON(${name}HomeConfirmDelay,?,?) ];`));
+
+  // Rung 10 — Home Confirm (operator confirms homed position)
+  rungs.push(buildRung(n++, null,
+    `XIC(Status.State[1])[XIC(${hmi}.Control.HomeConfirm) ONS(${name}ONS.4) ,` +
+    `XIC(${name}HomeConfimed) XIC(${name}HomeSelect) XIO(${name}TorqueHome.PC) XIO(${name}TorqueHome.Error) ]OTE(${name}HomeConfimed);`));
+
+  // Rung 11 — Home (MAH immediate or AOI_TorqueHome)
+  rungs.push(buildRung(n++,
+    `Home Select = 0 is for Immediate Home (Example, servo indexer)\nHome Select = 1 is for Home To Torque (Example, PNP)\n\nHoming Torque = Start at 25%, Increase In 5% Increments If Not Enough\nRun Torque = Normal Running Torque Of Axis\nHoming Speed = Homing Speed in units/s\nOvertorque Limit = Set The Same As Homing Torque\nHome Offset Distance = Distance Moved Off Of Hard Stop When Homing Complete\nHome Direction = 0 Is Positive, 1 Is Negative`,
+    `XIC(${name}HomeConfimed)[XIO(${name}HomeSelect) MAH(${axisTag},${name}_MAH) ,` +
+    `XIC(${name}HomeSelect) AOI_TorqueHome(${name}TorqueHome,${axisTag},25.0,100.0,5.0,25.0,0.5,1) ];`));
+
+  // Rung 12 — Home status OTEs (HMI display)
+  rungs.push(buildRung(n++, null,
+    `[XIC(${name}HomeRequested) OTE(${hmi}.Status.HomeRequested) ,` +
+    `[XIC(${name}TorqueHome.IP) ,XIC(${name}_MAH.IP) ] OTE(${hmi}.Status.HomeInProcess) ,` +
+    `[XIC(${name}TorqueHome.PC) ,XIC(${name}_MAH.PC) ] OTE(${hmi}.Status.HomeComplete) ];`));
+
+  // Rung 13 — Manual Mode (ManMoves.N → MotionParameters.Position via declared positions)
+  let manBranches = `MOVE(${hmi}.Parameters.ManualSpeed,${mp}.Speed) ,XIC(${name}Permissive) [`;
+  if (positions.length === 0) {
+    manBranches += `XIC(${hmi}.Control.ManMoves.0) MOVE(${hmi}.Parameters.Positions[0],${mp}.Position) `;
+  } else {
+    manBranches += positions.map((pos, i) =>
+      `XIC(${hmi}.Control.ManMoves.${pos.positionIndex ?? i}) MOVE(${hmi}.Parameters.Positions[${pos.positionIndex ?? i}],${mp}.Position)`
+    ).join(' ,');
+  }
+  manBranches += ` ] OTE(${name}ManMoveTrig) `;
+  rungs.push(buildRung(n++, 'Manual Mode',
+    `XIC(SafetyOK)XIC(Status.State[1])[${manBranches}];`));
+
+  // Rung 14 — Auto Mode (state → position MOVE). Each declared position gets a
+  // branch listing every flowchart state that moves this axis to that position.
+  let rung14 = `XIC(SafetyOK)XIO(Status.State[1])[MOVE(0,${mp}.MoveType) ,` +
+    `MOVE(${hmi}.Parameters.AutoSpeed[0],${mp}.Speed) ,` +
+    `MOVE(${hmi}.Parameters.Accel[0],${mp}.Accel) ,` +
+    `MOVE(${hmi}.Parameters.Decel[0],${mp}.Decel)`;
+  const sortedPosEntries = [...posToStates.entries()].sort(([a], [b]) => a - b);
+  for (const [posIdx, stateNums] of sortedPosEntries) {
+    const gate = stateNums.length === 1
+      ? `XIC(Status.State[${stateNums[0]}])`
+      : `[${stateNums.map(s => `XIC(Status.State[${s}])`).join(' ,')}]`;
+    rung14 += ` ,${gate} MOVE(${hmi}.Parameters.Positions[${posIdx}],${mp}.Position)`;
+  }
+  rung14 += ` ];`;
+  rungs.push(buildRung(n++, 'Auto Mode', rung14));
+
+  // Rung 15 — Axis Motion Command (MAM auto) — gated on manual trigger or any
+  // state that binds a ServoMove to this axis.
+  const autoStateGate = allServoStates.length === 0
+    ? ''
+    : (allServoStates.length === 1
+        ? `XIC(Status.State[${allServoStates[0]}]) `
+        : `[${allServoStates.map(s => `XIC(Status.State[${s}])`).join(' ,')}] `);
+  rungs.push(buildRung(n++, 'Axis Motion Command',
+    `XIC(SafetyOK)[XIC(Status.State[1]) XIC(${name}ManMoveTrig) ,XIO(Status.State[1]) ${autoStateGate}]` +
+    `XIC(${axisTag}.ServoActionStatus)XIC(${axisTag}.AxisHomedStatus)XIC(${name}Permissive)` +
+    `MAM(${axisTag},${name}_MAM,${mp}.MoveType,${mp}.Position,${mp}.Speed,Units per sec,${mp}.Accel,Units per sec2,${mp}.Decel,Units per sec2,Trapezoidal,0,0,Units per sec3,Disabled,0,0,None,0,0);`));
+
+  // Rung 16 — Stop on permissive lost
+  rungs.push(buildRung(n++, 'Stop axis if permissive turns off while in motion and use max or close to max decel value',
+    `XIO(${axisTag}.MotionStatus.0)[XIO(${name}Permissive) ,XIO(SafetyOK) ]MAS(${axisTag},${name}_MAS_All,All,Yes,90,% of Maximum,Yes,90,% of Maximum);`));
+
+  // Rungs 17, 18 — Torque set (+ / -)
+  rungs.push(buildRung(n++, 'Set torque',
+    `XIC(${hmi}.Control.SetTorquePos)MOVE(${hmi}.Parameters.TorquePos,${axisTag}.TorqueLimitPositive);`));
+  rungs.push(buildRung(n++, null,
+    `XIC(${hmi}.Control.SetTorqueNeg)MOVE(${hmi}.Parameters.TorqueNeg,${axisTag}.TorqueLimitNegative);`));
+
+  // Rung 19 — Retrieve values from axis → HMI status
+  rungs.push(buildRung(n++, 'Retrieve values from axis',
+    `MOVE(${axisTag}.ActualPosition,${hmi}.Status.ActualPosition)MOVE(${axisTag}.ActualVelocity,${hmi}.Status.ActualVelocity)MOVE(${axisTag}.TorqueReferenceFiltered,${hmi}.Status.ActualTorque);`));
+
+  // Rung 20 — GSV max values (first-scan)
+  rungs.push(buildRung(n++, 'Retrieve the max values from the drive and adjust them for your application if necessary with math instructions',
+    `XIC(S:FS)GSV(Axis,${axisTag},MaximumAcceleration,${hmi}.Status.MaxAccel)GSV(Axis,${axisTag},MaximumDeceleration,${hmi}.Status.MaxDecel)GSV(Axis,${axisTag},MaximumSpeed,${hmi}.Status.MaxVelocity);`));
+
+  // Rung 21 — Position Monitor (AOI_RangeCheck per declared position)
+  if (positions.length > 0) {
+    const rcBranches = positions.map((pos, i) => {
+      const posIdx = pos.positionIndex ?? i;
+      const rcTag = `${name}${pos.name.replace(/[^A-Za-z0-9]/g, '')}`;
+      return `AOI_RangeCheck(${rcTag},${hmi}.Parameters.Positions[${posIdx}],0.5,${hmi}.Status.ActualPosition,5) `;
+    }).join(',');
+    rungs.push(buildRung(n++, 'Axis Position Monitor', `[${rcBranches}];`));
+  }
+
+  return `
+<Routine Name="${routineName}" Type="RLL">
+<RLLContent>${rungs.join('')}
+</RLLContent>
+</Routine>`;
+}
+
+function generateR04ServoRoutines(sm, orderedNodes, stepMap) {
+  const servos = (sm.devices ?? []).filter(d => d.type === 'ServoAxis');
+  if (servos.length === 0) return '';
+
+  // Engineer convention: R04_{axis1}Servo, R05_{axis2}Servo, R06_{axis3}Servo, ... consecutive.
+  // Recovery routine is placed at R{4+N} after all servo routines.
+  const routines = servos.map((dev, idx) => {
+    const num = String(4 + idx).padStart(2, '0');
+    return generateServoAxisRoutine(`R${num}_${dev.name}Servo`, dev, sm, orderedNodes, stepMap);
+  });
+
+  return routines.join('\n');
+}
+
+// AOI_RangeCheck instance tags — emitted per ServoAxis declared position.
+// Called from generateAllTags so tags land with other program-scope declarations.
+function generateServoRangeCheckTags(sm) {
+  const servos = (sm.devices ?? []).filter(d => d.type === 'ServoAxis');
+  const xmls = [];
+  for (const dev of servos) {
+    for (const pos of (dev.positions ?? [])) {
+      const rcTag = `${dev.name}${pos.name.replace(/[^A-Za-z0-9]/g, '')}`;
+      xmls.push(buildRangeCheckTagXml(rcTag, `${dev.displayName ?? dev.name} - ${pos.name} position check`));
+    }
+  }
+  return xmls.join('');
+}
+
+// ── Recovery routine ─────────────────────────────────────────────────────────
 //
 // Executes the recovery sequence (states 100–121) when a fault occurs.
 // Entry: State 127 (fault) → State 100 (first recovery action).
 // Transitions through recovery nodes with verify conditions, then returns
 // to State 2 (Auto Idle) when the last recovery action completes.
-// R05 runs after R02 in R00_Main, so its MOVE wins over R02's 127→2 rung.
+// Runs after R02 in R00_Main, so its MOVE wins over R02's 127→2 rung.
+// Routine number is dynamic — placed at R{4+servoCount} to sit after R04..RN
+// servo routines (e.g. 0 servos → R04_Recovery, 2 servos → R06_Recovery).
 
-function generateR05Recovery(sm, allSMs = [], trackingFields = []) {
+function generateRecoveryRoutine(sm, allSMs = [], trackingFields = []) {
+  const servoCount = (sm.devices ?? []).filter(d => d.type === 'ServoAxis').length;
+  const num = String(4 + servoCount).padStart(2, '0');
+  const routineName = `R${num}_Recovery`;
+
   const rungs = [];
   let rungNum = 0;
   const devices = sm.devices ?? [];
@@ -3942,7 +4730,7 @@ function generateR05Recovery(sm, allSMs = [], trackingFields = []) {
   if (recNodes.length === 0) {
     rungs.push(buildRung(rungNum++, 'No recovery sequence configured — manual FaultReset returns to State 2', 'NOP();'));
     return `
-<Routine Name="R05_Recovery" Type="RLL">
+<Routine Name="${routineName}" Type="RLL">
 <RLLContent>${rungs.join('')}
 </RLLContent>
 </Routine>`;
@@ -3974,7 +4762,7 @@ function generateR05Recovery(sm, allSMs = [], trackingFields = []) {
   }
 
   return `
-<Routine Name="R05_Recovery" Type="RLL">
+<Routine Name="${routineName}" Type="RLL">
 <RLLContent>${rungs.join('')}
 </RLLContent>
 </Routine>`;
@@ -3992,12 +4780,19 @@ export function exportProgramXml(sm, allSMs = [], trackingFields = [], machineCo
   // Merge caller-provided PT fields with this SM's auto-derived PT table
   const effectiveTrackingFields = buildEffectiveTrackingFields(sm, stepMap, trackingFields);
 
+  const servoCount = (sm.devices ?? []).filter(d => d.type === 'ServoAxis').length;
+
   const tagsXml = generateAllTags(sm, orderedNodes, stepMap, effectiveTrackingFields);
-  const r00 = generateR00Main();
+  const rangeCheckTags = generateServoRangeCheckTags(sm);
+  const r00 = generateR00Main(sm);
   const r01 = generateR01Inputs(sm);
   const r02 = generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs, effectiveTrackingFields, machineConfig);
   const r03 = generateR03StateLogic(sm, orderedNodes, stepMap, allSMs, effectiveTrackingFields);
-  const r05 = generateR05Recovery(sm, allSMs, effectiveTrackingFields);
+  // Per-axis servo routines (engineer convention): R04_{axis1}Servo, R05_{axis2}Servo, ...
+  // orderedNodes + stepMap let rungs 14/15 bind flowchart ServoMove states to MAM.
+  const r04Servos = generateR04ServoRoutines(sm, orderedNodes, stepMap);
+  // Recovery routine — placed at R{4+servoCount} to sit after all servo routines.
+  const recovery = generateRecoveryRoutine(sm, allSMs, effectiveTrackingFields);
   const r20 = generateR20Alarms(sm, orderedNodes, stepMap);
 
   const stationDesc = `S${String(sm.stationNumber ?? 0).padStart(2, '0')} ${sm.description ?? sm.name ?? ''}`;
@@ -4008,13 +4803,15 @@ ${cdata(`${stationDesc} - Auto-generated by SDC State Logic Builder`)}
 </Description>
 <Tags>
 ${tagsXml}
+${rangeCheckTags}
 </Tags>
 <Routines>
 ${r00}
 ${r01}
 ${r02}
 ${r03}
-${r05}
+${r04Servos}
+${recovery}
 ${r20}
 </Routines>
 </Program>`;
@@ -4026,9 +4823,12 @@ export function exportToL5X(sm, allSMs = [], trackingFields = [], machineConfig 
   if (!sm) throw new Error('No state machine provided');
 
   const programName = buildProgramName(sm.stationNumber ?? 0, sm.name ?? 'Unnamed');
-  const hasServos = (sm.devices ?? []).some(d => d.type === 'ServoAxis');
+  const servoDevices = (sm.devices ?? []).filter(d => d.type === 'ServoAxis');
+  const hasServos = servoDevices.length > 0;
   const hasAnalogSensors = (sm.devices ?? []).some(d => d.type === 'AnalogSensor');
   const robotDevices = (sm.devices ?? []).filter(d => d.type === 'Robot');
+  const digitalSensorDevices = (sm.devices ?? []).filter(d => d.type === 'DigitalSensor');
+  const hasDebouncedSensors = digitalSensorDevices.length > 0;
   const needsRangeCheck = hasServos || hasAnalogSensors;
 
   // UDT needs the merged field list (global + derived from this SM's PT table)
@@ -4038,20 +4838,63 @@ export function exportToL5X(sm, allSMs = [], trackingFields = [], machineConfig 
 
   const programXml = exportProgramXml(sm, allSMs, trackingFields, machineConfig);
   const dataTypes = generateDataTypes(hasServos, effectiveTrackingFields, robotDevices);
-  const aoi = generateAOI(needsRangeCheck, robotDevices.length > 0);
+  const aoi = generateAOI(needsRangeCheck, robotDevices.length > 0, hasDebouncedSensors);
+
+  // SDC Guide §15.11: per-project overrides from project.machineConfig.
+  const softwareRevision = machineConfig?.softwareRevision ?? SOFTWARE_REV;
+  const controllerName = machineConfig?.controllerName ?? CONTROLLER_NAME;
+
+  // SDC Guide §15.4: controller-scope tags (MotionGroup + AXIS_CIP_DRIVE per axis)
+  // must precede the Programs block whenever any servo is present in this SM.
+  const controllerTags = hasServos
+    ? generateControllerTagsXml(sm, servoDevices)
+    : '';
 
   const now = new Date().toUTCString();
 
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<RSLogix5000Content SchemaRevision="${SCHEMA_REV}" SoftwareRevision="${SOFTWARE_REV}" TargetName="${programName}" TargetType="Program" TargetClass="Standard" ContainsContext="true" ExportDate="${now}" ExportOptions="References NoRawData L5KData DecoratedData Context Dependencies ForceProtectedEncoding AllProjDocTrans">
-<Controller Use="Context" Name="${CONTROLLER_NAME}">
+<RSLogix5000Content SchemaRevision="${SCHEMA_REV}" SoftwareRevision="${softwareRevision}" TargetName="${programName}" TargetType="Program" TargetClass="Standard" ContainsContext="true" ExportDate="${now}" ExportOptions="References NoRawData L5KData DecoratedData Context Dependencies ForceProtectedEncoding AllProjDocTrans">
+<Controller Use="Context" Name="${controllerName}">
 ${dataTypes}
 ${aoi}
+${controllerTags}
 <Programs Use="Context">
 ${programXml}
 </Programs>
 </Controller>
 </RSLogix5000Content>`;
+}
+
+// ── Controller-scope Tags (SDC Guide §15.4) ──────────────────────────────────
+//
+// Emits a MotionGroup tag plus one AXIS_CIP_DRIVE tag per servo device.
+// Engineer convention: axis tag = `a{NN}_{name}` (no station infix).
+// Program-scope code references these via iq_{name} InOut parameters.
+// AxisParameters are SDC defaults — CE tunes motor catalog / scaling / limits
+// post-export.
+function generateControllerTagsXml(sm, servoDevices) {
+  // Per-axis default AxisParameters block. Attributes match the structure of
+  // a newly-created AXIS_CIP_DRIVE; numeric values (motor specs, tuning) are
+  // left as Rockwell defaults and CE reconfigures after import.
+  const axisTags = servoDevices.map(dev => {
+    const axisNum = String(dev.axisNumber ?? 1).padStart(2, '0');
+    const axisTagName = `a${axisNum}_${dev.name}`;
+    const moduleName = `sd${axisNum}_${dev.name}`;
+    return `<Tag Name="${escapeXml(axisTagName)}" Class="Standard" TagType="Base" DataType="AXIS_CIP_DRIVE" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="Axis">
+<AxisParameters MotionGroup="MotionGroup" MotionModule="${escapeXml(moduleName)}:Ch1" AxisConfiguration="Position Loop" FeedbackConfiguration="Motor Feedback" MotorDataSource="Database" ConversionConstant="10000.0" OutputCamExecutionTargets="0" PositionUnits="mm" AverageVelocityTimebase="0.25" PositionUnwind="1000000" HomeMode="Active" HomeDirection="Bi-directional Forward" HomeSequence="Immediate" HomeConfigurationBits="16#0000_0000" HomePosition="0.0" HomeOffset="0.0" HomeSpeed="0.0" HomeReturnSpeed="0.0" MaximumSpeed="0.0" MaximumAcceleration="0.0" MaximumDeceleration="0.0" ProgrammedStopMode="Fast Stop" AxisUpdateSchedule="Base" ScalingSource="From Calculator" LoadType="Linear Actuator" ActuatorType="Screw" TravelMode="Limited" PositionScalingNumerator="1.0" PositionScalingDenominator="1.0" TravelRange="1000.0" MotionResolution="10000" MotionPolarity="Normal"/>
+</Data>
+</Tag>`;
+  }).join('\n');
+
+  return `<Tags Use="Context">
+${axisTags}
+<Tag Name="MotionGroup" Class="Standard" TagType="Base" DataType="MOTION_GROUP" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="MotionGroup">
+<MotionGroupParameters CoarseUpdatePeriod="2000" PhaseShift="0" GeneralFaultType="Non Major Fault" AutoTagUpdate="Enabled" Alternate1UpdateMultiplier="1" Alternate2UpdateMultiplier="1"/>
+</Data>
+</Tag>
+</Tags>`;
 }
 
 // ── Download helpers ─────────────────────────────────────────────────────────

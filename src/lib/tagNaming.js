@@ -22,12 +22,20 @@
 import { DEVICE_TYPES } from './deviceTypes.js';
 
 /**
- * Resolve a tag pattern for a device, replacing {name}, {axisNum}, etc.
+ * Resolve a tag pattern for a device, replacing {name}, {Name}, {axisNum}, {station}, etc.
+ * {name} and {Name} are both the device's PascalCase name (device.name is already PascalCase
+ * per SDC convention); {Name} is an alias to keep pattern strings readable where the
+ * guide writes "{Name}Ready", etc.
+ * {station} requires extras.stationNumber (the SM's stationNumber) to be padded 2-digit.
  */
 function resolvePattern(pattern, device, extras = {}) {
+  const stationNum = extras.stationNumber ?? device._stationNumber ?? 1;
+  const axisNum = device.axisNumber ?? extras.axisNumber ?? 1;
   return pattern
     .replace(/\{name\}/g, device.name)
-    .replace(/\{axisNum\}/g, String(device.axisNumber ?? '01').padStart(2, '0'))
+    .replace(/\{Name\}/g, device.name)
+    .replace(/\{axisNum\}/g, String(axisNum).padStart(2, '0'))
+    .replace(/\{station\}/g, String(stationNum).padStart(2, '0'))
     .replace(/\{positionName\}/g, extras.positionName ?? '')
     .replace(/\{setpointName\}/g, extras.setpointName ?? '')
     .replace(/\{step\}/g, extras.step ?? '0')
@@ -37,14 +45,18 @@ function resolvePattern(pattern, device, extras = {}) {
 /**
  * Get all tags generated for a device (for tag declarations in L5X)
  * Returns array of { name, usage, dataType, description, preMs }
+ *
+ * @param {object} device - device definition
+ * @param {object} [context] - { stationNumber } to resolve {station} in tag patterns
  */
-export function getDeviceTags(device) {
+export function getDeviceTags(device, context = {}) {
   const type = DEVICE_TYPES[device.type];
   if (!type) return [];
 
   const tags = [];
   const patterns = type.tagPatterns;
   const sensorCount = device.sensorArrangement?.includes('2-sensor') ? 2 : 1;
+  const extras = { stationNumber: context.stationNumber ?? device._stationNumber ?? 1 };
 
   switch (device.type) {
     case 'PneumaticLinearActuator':
@@ -207,49 +219,98 @@ export function getDeviceTags(device) {
       });
       break;
 
-    case 'ServoAxis':
-      // Axis tag — AXIS_CIP_DRIVE, Usage InOut (references controller-scoped axis)
+    case 'ServoAxis': {
+      // SDC Guide §15.4: Servo architecture.
+      // Program scope carries an InOut alias to the controller-scope AXIS_CIP_DRIVE tag,
+      // a ServoOverall HMI block, and all motion instruction + support tags per axis.
+      // The controller-scope axis tag (a{NN}_S{station}{name}) is emitted separately
+      // from exportToL5X — NOT here.
+
+      // iq_{name} InOut alias to controller-scope axis.
       tags.push({
-        name: resolvePattern(patterns.axisTag, device),
+        name: resolvePattern(patterns.axisInOut, device, extras),
         usage: 'InOut',
         dataType: 'AXIS_CIP_DRIVE',
-        description: `${device.displayName} - CIP Axis`,
+        description: `${device.displayName} - CIP Axis (controller-scope alias)`,
         isAxis: true,
+        // Record the controller-scope target so the exporter can wire the alias.
+        axisControllerTag: resolvePattern(patterns.axisTag, device, extras),
       });
-      // MAM control tag  (e.g. PNPZAxis_MAM)
+
+      // HMI_{name} — ServoOverall UDT (HMI-visible Status/Control/Parameters/Momentary).
       tags.push({
-        name: resolvePattern(patterns.mamControl, device),
-        usage: 'Local',
-        dataType: 'MOTION_INSTRUCTION',
-        description: `${device.displayName} - MAM motion instruction`,
+        name: resolvePattern(patterns.hmiTag, device, extras),
+        usage: 'Public',
+        dataType: 'ServoOverall',
+        description: `${device.displayName} - HMI block`,
       });
-      // Motion parameters UDT  (e.g. PNPZAxisMotionParameters)
-      tags.push({
-        name: resolvePattern(patterns.motionParam, device),
-        usage: 'Local',
-        dataType: 'MAMParam',
-        description: `${device.displayName} - Motion Parameters`,
-      });
-      // Position parameters and per-position Range Check tags
-      if (device.positions) {
-        for (const pos of device.positions) {
-          tags.push({
-            name: resolvePattern(patterns.positionParam, device, { positionName: pos.name }),
-            usage: pos.isRecipe ? 'Public' : 'Local',
-            dataType: 'REAL',
-            description: `${device.displayName} - ${pos.name} position${pos.isRecipe ? ' (recipe)' : ''}`,
-            defaultValue: pos.defaultValue ?? 0.0,
-          });
-          // Per-position AOI_RangeCheck instance  (e.g. PNPZAxisPickRC)
-          tags.push({
-            name: resolvePattern(patterns.positionRC, device, { positionName: pos.name }),
-            usage: 'Local',
-            dataType: 'AOI_RangeCheck',
-            description: `${device.displayName} - At ${pos.name} Position`,
-          });
-        }
+
+      // Motion instruction instances (MOTION_INSTRUCTION, Local).
+      const motionInstPatterns = [
+        { key: 'msoInst',     desc: 'MSO - Servo On' },
+        { key: 'msfInst',     desc: 'MSF - Servo Off' },
+        { key: 'mafrInst',    desc: 'MAFR - Axis Fault Reset' },
+        { key: 'masrInst',    desc: 'MASR - Shutdown Reset' },
+        { key: 'majInst',     desc: 'MAJ - Jog' },
+        { key: 'masJogInst',  desc: 'MAS - Stop Jog' },
+        { key: 'masAllInst',  desc: 'MAS - Stop All' },
+        { key: 'mahInst',     desc: 'MAH - Home' },
+        { key: 'mamAutoInst', desc: 'MAM - Auto Move' },
+        { key: 'mamInchInst', desc: 'MAM - Inch' },
+      ];
+      for (const m of motionInstPatterns) {
+        const patt = patterns[m.key];
+        if (!patt) continue;
+        tags.push({
+          name: resolvePattern(patt, device, extras),
+          usage: 'Local',
+          dataType: 'MOTION_INSTRUCTION',
+          description: `${device.displayName} - ${m.desc}`,
+        });
+      }
+
+      // Per-axis support tags. Data type noted per-tag.
+      const supportPatterns = [
+        { key: 'readyTag',            desc: 'Ready',               dataType: 'BOOL' },
+        { key: 'enableDelayTag',      desc: 'Enable Debounce',     dataType: 'TIMER' },
+        { key: 'onsTag',              desc: 'ONS Bits',            dataType: 'DINT' },
+        { key: 'permissiveTag',       desc: 'Motion Permissive',   dataType: 'BOOL' },
+        { key: 'autoEnableTag',       desc: 'Auto Enable',         dataType: 'BOOL' },
+        { key: 'jogDirectionTag',     desc: 'Jog Direction',       dataType: 'DINT' },
+        { key: 'inchAmountTag',       desc: 'Inch Amount',         dataType: 'REAL' },
+        { key: 'homeConfirmedTag',    desc: 'Home Confirmed',      dataType: 'BOOL' },  // sic
+        { key: 'homeConfirmDelayTag', desc: 'Home Confirm Delay',  dataType: 'TIMER' },
+        { key: 'homeRequestedTag',    desc: 'Home Requested',      dataType: 'BOOL' },
+        { key: 'homeSelectTag',       desc: 'Home Select',         dataType: 'BOOL' },
+        { key: 'torqueHomeTag',       desc: 'Torque Home AOI',     dataType: 'AOI_TorqueHome' },
+        { key: 'manMoveTrigTag',      desc: 'Manual Move Trigger', dataType: 'BOOL' },
+        { key: 'motionParamsTag',     desc: 'MAM Parameters',      dataType: 'MAMParam' },
+      ];
+      for (const s of supportPatterns) {
+        const patt = patterns[s.key];
+        if (!patt) continue;
+        tags.push({
+          name: resolvePattern(patt, device, extras),
+          usage: 'Local',
+          dataType: s.dataType,
+          description: `${device.displayName} - ${s.desc}`,
+        });
+      }
+
+      // Per-position REAL parameter tags — p_{name}{positionName}. Engineer
+      // references these directly in MAM position-select rungs (no array indirection).
+      for (const pos of (device.positions ?? [])) {
+        if (!pos?.name) continue;
+        tags.push({
+          name: resolvePattern(patterns.positionParam, device, { positionName: pos.name }),
+          usage: 'Local',
+          dataType: 'REAL',
+          description: `${device.displayName} - ${pos.name} position setpoint`,
+          defaultValue: pos.value ?? 0.0,
+        });
       }
       break;
+    }
 
     case 'Timer':
       tags.push({
