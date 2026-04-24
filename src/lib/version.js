@@ -4,10 +4,22 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.24.20';
+export const APP_VERSION = '1.24.22';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.24.22',
+    date: '2026-04-24',
+    time: '15:30',
+    author: 'Dan Belliveau',
+    changes: [
+      'Servo L5X fixes after engineer review (Jason Perry, 2026-04-24): "errors importing the servo axis data types" + "leftover servo code in the state logic routine" — both addressed.',
+      'R03_StateLogic no longer emits servo motion rungs. Position Select / MAM Execute / AOI_RangeCheck now live EXCLUSIVELY in R04/R05 per-axis routines (SDC Guide §15.4). The duplicate emission in R03 was causing Studio 5000 import conflicts and leaving stale logic the engineer had to hand-clean after every import.',
+      'AXIS_CIP_DRIVE controller tags now carry the full Rockwell default AxisParameters block (~85 attributes, copied verbatim from engineer reference S05_ServoPNP.L5X — only MotionModule and AxisID vary per axis). Previously emitting ~30 attributes, which Studio 5000 rejected as an incomplete axis data type. Import errors should be gone.',
+      'Smoke test confirms: R03 has 0 MAM / 0 RangeCheck, R04/R05 per axis has 2 MAM / 2 RangeCheck, MotorCatalogNumber + CIPAxisExceptionAction markers present. Output is ~163 KB for the 2-axis PNP test case (up from ~147 KB pre-fix).',
+    ],
+  },
   {
     version: '1.24.20',
     date: '2026-04-24',
