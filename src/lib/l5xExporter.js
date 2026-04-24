@@ -2732,97 +2732,12 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
     }
   }
 
-  // ── ServoAxis motion commands (engineer's 3-rung pattern per axis) ───────
-  // Per reference S01_SDCServoPNP, servo motion lives entirely in R03 — no
-  // separate R04 routine. Three rungs per axis: Position Select / MAM / Monitor.
-  {
-    const servoMoveMap = {}; // deviceId -> { device, moves: [{ step, positionName, operation }] }
-
-    for (const node of orderedNodes) {
-      const step = stepMap[node.id];
-      for (const action of node.data.actions ?? []) {
-        const device = devices.find(d => d.id === action.deviceId);
-        if (!device || device.type !== 'ServoAxis') continue;
-        if (action.operation !== 'ServoMove' && action.operation !== 'ServoIncr' && action.operation !== 'ServoIndex') continue;
-
-        if (!servoMoveMap[device.id]) {
-          servoMoveMap[device.id] = { device, moves: [] };
-        }
-        servoMoveMap[device.id].moves.push({ step, positionName: action.positionName ?? '', operation: action.operation });
-      }
-    }
-
-    for (const [, entry] of Object.entries(servoMoveMap)) {
-      const { device, moves } = entry;
-      const sp = DEVICE_TYPES.ServoAxis.tagPatterns;
-      const axNum = String(device.axisNumber ?? 1).padStart(2, '0');
-      const axisTag = sp.axisTag.replace(/\{name\}/g, device.name).replace(/\{axisNum\}/g, axNum);
-      const mamTag = sp.mamAutoInst.replace(/\{name\}/g, device.name).replace(/\{axisNum\}/g, axNum);
-      const motionParamTag = sp.motionParamsTag.replace(/\{name\}/g, device.name).replace(/\{Name\}/g, device.name).replace(/\{axisNum\}/g, axNum);
-
-      // Rung A: Position Selection — conditional MOVE of target position per state
-      if (moves.length > 0) {
-        const moveBranches = moves.map(m => {
-          if (m.operation === 'ServoIncr') {
-            const incrTag = sp.incrementParam.replace(/\{name\}/g, device.name);
-            return `XIC(Status.State[${m.step}]) [MOVE(${incrTag},${motionParamTag}.Position) ,MOVE(1,${motionParamTag}.MoveType) ]`;
-          } else if (m.operation === 'ServoIndex') {
-            const indexTag = sp.indexAngleParam.replace(/\{name\}/g, device.name);
-            return `XIC(Status.State[${m.step}]) [MOVE(${indexTag},${motionParamTag}.Position) ,MOVE(1,${motionParamTag}.MoveType) ]`;
-          } else {
-            const posTag = sp.positionParam
-              .replace(/\{name\}/g, device.name)
-              .replace(/\{positionName\}/g, m.positionName);
-            return `XIC(Status.State[${m.step}]) [MOVE(${posTag},${motionParamTag}.Position) ,MOVE(0,${motionParamTag}.MoveType) ]`;
-          }
-        });
-        rungs.push(
-          buildRung(
-            rungNum++,
-            `${device.displayName} Position Selection`,
-            `[${moveBranches.join(' ,')} ];`
-          )
-        );
-      }
-
-      // Rung B: MAM Execute — triggers on any servo move state for this axis
-      if (moves.length > 0) {
-        const triggerParts = moves.map(m => `XIC(Status.State[${m.step}])`);
-        const triggerText = triggerParts.length === 1
-          ? triggerParts[0]
-          : `[${triggerParts.join(' ,')}]`;
-
-        rungs.push(
-          buildRung(
-            rungNum++,
-            `${device.displayName} Motion Command`,
-            `${triggerText}MAM(${axisTag},${mamTag},${motionParamTag}.MoveType,${motionParamTag}.Position,${motionParamTag}.Speed,Units per sec,${motionParamTag}.Accel,Units per sec2,${motionParamTag}.Decel,Units per sec2,Trapezoidal,0,0,Units per sec3,Disabled,0,0,None,0,0);`
-          )
-        );
-      }
-
-      // Rung C: Range Checks — AOI_RangeCheck per position (continuous monitoring)
-      const positions = device.positions ?? [];
-      if (positions.length > 0) {
-        const rcBranches = positions.map(pos => {
-          const rcTag = sp.positionRC
-            .replace(/\{name\}/g, device.name)
-            .replace(/\{positionName\}/g, pos.name);
-          const posTag = sp.positionParam
-            .replace(/\{name\}/g, device.name)
-            .replace(/\{positionName\}/g, pos.name);
-          return `AOI_RangeCheck(${rcTag},${posTag},0.5,${axisTag}.ActualPosition,5.0)`;
-        });
-        rungs.push(
-          buildRung(
-            rungNum++,
-            `${device.displayName} Position Monitoring`,
-            `[${rcBranches.join(' ,')} ];`
-          )
-        );
-      }
-    }
-  }
+  // ── ServoAxis motion commands — owned exclusively by R04/R05_{axis}Servo ──
+  // Per SDC Guide §15.4 and engineer review 2026-04-24: servo position select,
+  // MAM execute, and range-check monitoring live in the per-axis R04/R05
+  // routines (see generateServoAxisRoutine). R03 must NOT emit any servo
+  // motion rungs — duplicate MAM calls cause Studio import conflicts and
+  // leave stale logic the engineer has to manually clean up.
 
   // ── Analog Sensor AOI_RangeCheck continuous monitoring ────────────────────
   {
@@ -4873,16 +4788,286 @@ ${programXml}
 // AxisParameters are SDC defaults — CE tunes motor catalog / scaling / limits
 // post-export.
 function generateControllerTagsXml(sm, servoDevices) {
-  // Per-axis default AxisParameters block. Attributes match the structure of
-  // a newly-created AXIS_CIP_DRIVE; numeric values (motor specs, tuning) are
-  // left as Rockwell defaults and CE reconfigures after import.
-  const axisTags = servoDevices.map(dev => {
-    const axisNum = String(dev.axisNumber ?? 1).padStart(2, '0');
+  // AxisParameters — full Rockwell default set for a newly-created
+  // AXIS_CIP_DRIVE at SoftwareRevision 37.00. Studio 5000 rejects imports
+  // that omit the complete attribute set (engineer report 2026-04-24:
+  // "errors importing the servo axis data types"). Only MotionModule name
+  // and AxisID vary per axis — everything else is the template default CE
+  // reconfigures post-import (motor catalog, tuning, travel limits).
+  const axisTags = servoDevices.map((dev, idx) => {
+    const axisNum = String(dev.axisNumber ?? (idx + 2)).padStart(2, '0');
     const axisTagName = `a${axisNum}_${dev.name}`;
     const moduleName = `sd${axisNum}_${dev.name}`;
+    const axisId = 2640443043 + idx;  // Unique per-axis ID (monotonic, arbitrary)
+    const params = [
+      `MotionGroup="MotionGroup"`,
+      `CIPDriveSetAttrUpdateBits="16#3fff_fe03 16#d000_0380 16#01f1_007e 16#cf80_0000 16#bbf7_fdff 16#a07f_ffff 16#721d_c018 16#c0f4_2075 16#0088_0217 16#0000_0000 16#0000_0000 16#ffff_fff0 16#0000_01ff 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_0000"`,
+      `CIPDriveGetAttrUpdateBits="16#0000_0070 16#ff7b_f76e 16#f3e0_007f 16#0012_0980 16#0c00_0090 16#0000_0603 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_07ff 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_0000"`,
+      `CIPControllerSetAttrUpdateBits="16#3fef_fe1f 16#edbf_ffff 16#fff5_fbff 16#e001_1aff 16#0000_03e1"`,
+      `CIPControllerGetAttrUpdateBits="16#f7ff_ffff 16#30fe_7fbf 16#effb_fdff 16#0000_87ff 16#0000_0000"`,
+      `MotionModule="${escapeXml(moduleName)}:Ch1"`,
+      `ApplicationCatalogNumberInstance="0"`,
+      `ApplicationCatalogNumberVersion="0"`,
+      `AxisConfiguration="Position Loop"`,
+      `FeedbackConfiguration="Motor Feedback"`,
+      `MotorDataSource="Database"`,
+      `MotorCatalogNumber="TLP-A070-040-Dxxx2x"`,
+      `Feedback1Type="Nikon Serial"`,
+      `MotorType="Rotary Permanent Magnet"`,
+      `MotionScalingConfiguration="Control Scaling"`,
+      `ConversionConstant="10000.0"`,
+      `OutputCamExecutionTargets="0"`,
+      `PositionUnits="mm"`,
+      `AverageVelocityTimebase="0.25"`,
+      `PositionUnwind="1000000"`,
+      `HomeMode="Active"`,
+      `HomeDirection="Bi-directional Forward"`,
+      `HomeSequence="Immediate"`,
+      `HomeConfigurationBits="16#0000_0000"`,
+      `HomePosition="0.0"`,
+      `HomeOffset="0.0"`,
+      `HomeSpeed="0.0"`,
+      `HomeReturnSpeed="0.0"`,
+      `MaximumSpeed="425.0"`,
+      `MaximumAcceleration="122772.125"`,
+      `MaximumDeceleration="122772.125"`,
+      `ProgrammedStopMode="Fast Stop"`,
+      `MasterInputConfigurationBits="1"`,
+      `MasterPositionFilterBandwidth="0.1"`,
+      `VelocityFeedforwardGain="0.0"`,
+      `AccelerationFeedforwardGain="0.0"`,
+      `PositionErrorTolerance="8.102869"`,
+      `PositionLockTolerance="0.099999994"`,
+      `VelocityOffset="0.0"`,
+      `TorqueOffset="0.0"`,
+      `FrictionCompensationWindow="0.0"`,
+      `BacklashReversalOffset="0.0"`,
+      `TuningTravelLimit="0.0"`,
+      `TuningSpeed="0.0"`,
+      `TuningTorque="100.0"`,
+      `DampingFactor="1.0"`,
+      `DriveModelTimeConstant="5.06429351e-004"`,
+      `PositionServoBandwidth="19.6418"`,
+      `VelocityServoBandwidth="78.5672"`,
+      `VelocityDroop="0.0"`,
+      `VelocityLimitPositive="1180.0"`,
+      `VelocityLimitNegative="-1180.0"`,
+      `VelocityThreshold="450.0"`,
+      `VelocityStandstillWindow="5.0"`,
+      `TorqueLimitPositive="351.85184"`,
+      `TorqueLimitNegative="-351.85184"`,
+      `TorqueThreshold="316.66666"`,
+      `StoppingTorque="351.85184"`,
+      `StoppingTimeLimit="1.0"`,
+      `LoadInertiaRatio="0.0"`,
+      `RegistrationInputs="2"`,
+      `MaximumAccelerationJerk="35465868.0"`,
+      `MaximumDecelerationJerk="35465868.0"`,
+      `DynamicsConfigurationBits="7"`,
+      `FeedbackUnitRatio="1.0"`,
+      `AccelerationLimit="350777.5"`,
+      `DecelerationLimit="350777.5"`,
+      `RampJerkControl="0.0"`,
+      `PositionIntegratorBandwidth="4.91045"`,
+      `PositionErrorToleranceTime="0.0"`,
+      `PositionIntegratorControl="1"`,
+      `VelocityErrorTolerance="710.57605"`,
+      `VelocityErrorToleranceTime="0.01"`,
+      `VelocityIntegratorControl="1"`,
+      `VelocityLockTolerance="5.0"`,
+      `SystemInertia="0.020061255"`,
+      `TorqueLowPassFilterBandwidth="0.0"`,
+      `TorqueNotchFilterFrequency="0.0"`,
+      `TorqueRateLimit="1000000.0"`,
+      `OvertorqueLimit="200.0"`,
+      `OvertorqueLimitTime="0.0"`,
+      `UndertorqueLimit="10.0"`,
+      `UndertorqueLimitTime="0.0"`,
+      `FluxCurrentReference="0.0"`,
+      `CurrentError="0.0"`,
+      `TorqueLoopBandwidth="1000.0"`,
+      `FluxLoopBandwidth="1000.0"`,
+      `StoppingAction="Current Decel Disable"`,
+      `MechanicalBrakeControl="Automatic"`,
+      `MechanicalBrakeReleaseDelay="0.0"`,
+      `MechanicalBrakeEngageDelay="0.0"`,
+      `PowerLossThreshold="0.0"`,
+      `InverterCapacity="0.0"`,
+      `ConverterCapacity="0.0"`,
+      `InverterOverloadAction="None"`,
+      `MotorOverloadAction="None"`,
+      `CIPAxisExceptionAction="Unsupported Unsupported Disable Disable Disable Disable Unsupported Disable Disable Disable Disable Disable Unsupported Disable Disable Disable Unsupported Unsupported Disable Unsupported Disable Disable Unsupported Disable Unsupported Disable Unsupported Unsupported Unsupported Disable Disable Disable Unsupported Disable Disable Disable Unsupported Unsupported Unsupported Unsupported Unsupported Disable Unsupported Disable Disable Disable Disable Disable Unsupported Disable Disable Disable Unsupported Unsupported Disable Disable Disable Disable Unsupported Unsupported Unsupported Disable Unsupported Unsupported"`,
+      `CIPAxisExceptionActionRA="Unsupported Disable Disable Unsupported Unsupported Disable Alarm Disable Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Disable Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Disable Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported"`,
+      `MotorOverspeedUserLimit="120.0"`,
+      `MotorThermalOverloadUserLimit="110.0"`,
+      `InverterThermalOverloadUserLimit="110.0"`,
+      `PositionLeadLagFilterBandwidth="0.0"`,
+      `PositionLeadLagFilterGain="0.0"`,
+      `PositionNotchFilterFrequency="0.0"`,
+      `VelocityNegativeFeedforwardGain="0.0"`,
+      `BacklashCompensationWindow="0.0"`,
+      `TorqueLeadLagFilterBandwidth="0.0"`,
+      `TorqueLeadLagFilterGain="1.0"`,
+      `CommutationSelfSensingCurrent="100.0"`,
+      `MotorDeviceCode="16#0000_143b"`,
+      `MotorUnit="Rev"`,
+      `MotorPolarity="Inverted"`,
+      `MotorRatedVoltage="230.0"`,
+      `MotorRatedContinuousCurrent="2.7"`,
+      `MotorRatedPeakCurrent="9.5"`,
+      `MotorRatedOutputPower="0.4"`,
+      `MotorOverloadLimit="100.0"`,
+      `MotorIntegralThermalSwitch="false"`,
+      `MotorMaxWindingTemperature="105.0"`,
+      `MotorWindingToAmbientCapacitance="597.0"`,
+      `MotorWindingToAmbientResistance="1.2676"`,
+      `PMMotorResistance="3.28"`,
+      `PMMotorInductance="0.00698"`,
+      `RotaryMotorPoles="10"`,
+      `RotaryMotorInertia="0.000045"`,
+      `RotaryMotorRatedSpeed="3000.0"`,
+      `RotaryMotorMaxSpeed="6000.0"`,
+      `PMMotorRatedTorque="1.27"`,
+      `PMMotorTorqueConstant="0.522"`,
+      `PMMotorRotaryVoltageConstant="31.557966"`,
+      `Feedback1Unit="Rev"`,
+      `Feedback1Polarity="Inverted"`,
+      `Feedback1StartupMethod="Absolute"`,
+      `Feedback1CycleResolution="16777216"`,
+      `Feedback1CycleInterpolation="1"`,
+      `Feedback1Turns="65536"`,
+      `Feedback1VelocityFilterBandwidth="260759.45"`,
+      `Feedback1AccelFilterBandwidth="0.0"`,
+      `PMMotorFluxSaturation="100.0 91.3 86.5 82.3 78.9 77.0 75.1 73.5"`,
+      `Feedback1VelocityFilterTaps="1"`,
+      `Feedback1AccelFilterTaps="1"`,
+      `CyclicReadUpdateList="TorqueNotchFilterFrequencyEstimate TorqueNotchFilterMagnitudeEstimate"`,
+      `CyclicWriteUpdateList="TorqueLimitNegative TorqueLimitPositive"`,
+      `ScalingSource="From Calculator"`,
+      `LoadType="Linear Actuator"`,
+      `ActuatorType="Screw"`,
+      `TravelMode="Limited"`,
+      `PositionScalingNumerator="1.0"`,
+      `PositionScalingDenominator="1.0"`,
+      `PositionUnwindNumerator="1.0"`,
+      `PositionUnwindDenominator="1.0"`,
+      `TravelRange="1000.0"`,
+      `MotionResolution="10000"`,
+      `MotionPolarity="Normal"`,
+      `MotorTestResistance="0.0"`,
+      `MotorTestInductance="0.0"`,
+      `TuneFriction="0.0"`,
+      `TuneLoadOffset="0.0"`,
+      `TotalInertia="0.000045"`,
+      `TuningSelect="Total Inertia"`,
+      `TuningDirection="Uni-directional Forward"`,
+      `ApplicationType="Custom"`,
+      `LoopResponse="Medium"`,
+      `FeedbackCommutationAligned="Motor Offset"`,
+      `FrictionCompensationSliding="0.0"`,
+      `FrictionCompensationStatic="0.0"`,
+      `FrictionCompensationViscous="0.0"`,
+      `PositionLoopBandwidth="19.6418"`,
+      `VelocityLoopBandwidth="78.5672"`,
+      `VelocityIntegratorBandwidth="0.0"`,
+      `FeedbackSignalLossUserLimit="100.0"`,
+      `FeedbackDataLossUserLimit="4"`,
+      `Feedback1BatteryAbsolute="true"`,
+      `MotionExceptionAction="Unsupported Disable Disable Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported"`,
+      `SoftTravelLimitChecking="false"`,
+      `LoadRatio="0.0"`,
+      `TuneInertiaMass="0.0"`,
+      `SoftTravelLimitPositive="0.0"`,
+      `SoftTravelLimitNegative="0.0"`,
+      `GainTuningConfigurationBits="16#0013"`,
+      `CommutationOffset="0.0"`,
+      `SystemBandwidth="0.0"`,
+      `VelocityLowPassFilterBandwidth="0.0"`,
+      `TransmissionRatioInput="1"`,
+      `TransmissionRatioOutput="1"`,
+      `ActuatorLead="10.0"`,
+      `ActuatorLeadUnit="Millimeter/Rev"`,
+      `ActuatorDiameter="1.0"`,
+      `ActuatorDiameterUnit="Millimeter"`,
+      `SystemAccelerationBase="4984.733"`,
+      `DriveModelTimeConstantBase="0.000505819"`,
+      `DriveRatedPeakCurrent="9.5"`,
+      `HookupTestDistance="1.0"`,
+      `HookupTestFeedbackChannel="Feedback 1"`,
+      `LoadCoupling="Rigid"`,
+      `SystemDamping="1.0"`,
+      `CurrentVectorLimit="351.85184"`,
+      `CommutationPolarity="Normal"`,
+      `LoadObserverConfiguration="Load Observer with Velocity Estimate"`,
+      `LoadObserverBandwidth="314.2688"`,
+      `LoadObserverIntegratorBandwidth="0.0"`,
+      `LoadObserverFeedbackGain="0.5"`,
+      `AxisID="${axisId}"`,
+      `InterpolatedPositionConfiguration="16#0000_0002"`,
+      `AxisUpdateSchedule="Base"`,
+      `ProvingConfiguration="Disabled"`,
+      `TorqueProveCurrent="0.0"`,
+      `BrakeTestTorque="0.0"`,
+      `BrakeSlipTolerance="0.0"`,
+      `ZeroSpeed="1.0"`,
+      `ZeroSpeedTime="0.0"`,
+      `AdaptiveTuningConfiguration="Tracking Notch"`,
+      `TorqueNotchFilterHighFrequencyLimit="4000.0"`,
+      `TorqueNotchFilterLowFrequencyLimit="377.12256"`,
+      `TorqueNotchFilterTuningThreshold="5.0"`,
+      `CoastingTimeLimit="0.0"`,
+      `BusOvervoltageOperationalLimit="0.0"`,
+      `ConnectionLossStoppingAction="Current Decel Disable"`,
+      `VerticalLoadControl="Disabled"`,
+      `CurrentLoopBandwidthScalingFactor="1.0"`,
+      `CurrentLoopBandwidth="1000.0"`,
+      `DriveRatedVoltage="230.0"`,
+      `MaxOutputFrequency="590.0"`,
+      `MotorTestDataValid="False"`,
+      `CommandNotchFilterFrequency="0.0"`,
+      `CommandNotchFilterWidth="0.707"`,
+      `CommandNotchFilterDepth="0.0"`,
+      `CommandNotchFilterGain="1.0"`,
+      `CommandNotchFilter2Frequency="0.0"`,
+      `CommandNotchFilter2Width="0.707"`,
+      `CommandNotchFilter2Depth="0.0"`,
+      `CommandNotchFilter2Gain="1.0"`,
+      `TorqueNotchFilter2Frequency="0.0"`,
+      `TorqueNotchFilter3Frequency="0.0"`,
+      `TorqueNotchFilter4Frequency="0.0"`,
+      `TorqueNotchFilterWidth="0.707"`,
+      `TorqueNotchFilterDepth="0.0"`,
+      `TorqueNotchFilterGain="1.0"`,
+      `TorqueNotchFilter2Width="0.707"`,
+      `TorqueNotchFilter2Depth="0.0"`,
+      `TorqueNotchFilter2Gain="1.0"`,
+      `TorqueNotchFilter3Width="0.707"`,
+      `TorqueNotchFilter3Depth="0.0"`,
+      `TorqueNotchFilter3Gain="1.0"`,
+      `TorqueNotchFilter4Width="0.707"`,
+      `TorqueNotchFilter4Depth="0.0"`,
+      `TorqueNotchFilter4Gain="1.0"`,
+      `AdaptiveTuningTrackingNotchFilters="4"`,
+      `AdaptiveTuningGainScalingFactorMin="0.1"`,
+      `TorqueLowPassFilterBandwidthMin="157.1344"`,
+      `TorqueNotchFilterWidthMin="0.707"`,
+      `TorqueNotchFilterWidthMax="0.707"`,
+      `HookupTestSpeed="0.0"`,
+      `TorqueEstimateCrossoverSpeed="100.0"`,
+      `TorqueEstimateNotch1Frequency="100.0"`,
+      `TorqueEstimateNotch1Width="1.0"`,
+      `TorqueEstimateNotch1Depth="0.0"`,
+      `TorqueEstimateNotch1Gain="0.0"`,
+      `TorqueEstimateNotch2Frequency="0.0"`,
+      `TorqueEstimateNotch2Width="0.707"`,
+      `TorqueEstimateNotch2Depth="0.0"`,
+      `TorqueEstimateNotch2Gain="1.0"`,
+      `TestModeConfiguration="Controller Loop Back"`,
+      `TestModeEnable="Disabled"`,
+    ].join(' ');
     return `<Tag Name="${escapeXml(axisTagName)}" Class="Standard" TagType="Base" DataType="AXIS_CIP_DRIVE" ExternalAccess="Read/Write" OpcUaAccess="None">
 <Data Format="Axis">
-<AxisParameters MotionGroup="MotionGroup" MotionModule="${escapeXml(moduleName)}:Ch1" AxisConfiguration="Position Loop" FeedbackConfiguration="Motor Feedback" MotorDataSource="Database" ConversionConstant="10000.0" OutputCamExecutionTargets="0" PositionUnits="mm" AverageVelocityTimebase="0.25" PositionUnwind="1000000" HomeMode="Active" HomeDirection="Bi-directional Forward" HomeSequence="Immediate" HomeConfigurationBits="16#0000_0000" HomePosition="0.0" HomeOffset="0.0" HomeSpeed="0.0" HomeReturnSpeed="0.0" MaximumSpeed="0.0" MaximumAcceleration="0.0" MaximumDeceleration="0.0" ProgrammedStopMode="Fast Stop" AxisUpdateSchedule="Base" ScalingSource="From Calculator" LoadType="Linear Actuator" ActuatorType="Screw" TravelMode="Limited" PositionScalingNumerator="1.0" PositionScalingDenominator="1.0" TravelRange="1000.0" MotionResolution="10000" MotionPolarity="Normal"/>
+<AxisParameters ${params}/>
 </Data>
 </Tag>`;
   }).join('\n');
