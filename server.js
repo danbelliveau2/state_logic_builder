@@ -96,7 +96,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
           lastModified: stat.mtimeMs,
           smCount: Array.isArray(data.stateMachines) ? data.stateMachines.length : 0,
         };
-      } catch { return { filename, name: filename, lastModified: 0, smCount: 0 }; }
+      } catch (e) { console.warn('[projects] Parse failed for', filename, ':', e.message); return { filename, name: filename, lastModified: 0, smCount: 0 }; }
     });
     sendJson(res, 200, list);
   }
@@ -245,8 +245,9 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     let fp = path.join(DIST_DIR_, reqPath === '/' ? 'index.html' : reqPath);
     if (!path.extname(fp) || !fs.existsSync(fp)) fp = path.join(DIST_DIR_, 'index.html');
     if (!fs.existsSync(fp)) { res.writeHead(404); return res.end('Not found'); }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(fp)] || 'application/octet-stream' });
-    res.end(fs.readFileSync(fp));
+    const content = fs.readFileSync(fp);
+    res.writeHead(200, { 'Content-Type': MIME[path.extname(fp)] || 'application/octet-stream', 'Content-Length': content.length });
+    res.end(content);
   }
 
   const server = http.createServer(async (req, res) => {

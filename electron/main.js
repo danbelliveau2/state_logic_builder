@@ -152,7 +152,14 @@ app.whenReady().then(async () => {
     try { fs.mkdirSync(LOCAL_STANDARDS_DIR, { recursive: true }); } catch (_) {}
   }
 
-  const { startServer } = require(serverScript);
+  let startServer;
+  try {
+    ({ startServer } = require(serverScript));
+  } catch (err) {
+    dialog.showErrorBox('Startup Error', `Failed to load server module:\n${err.message}`);
+    app.quit();
+    return;
+  }
   const server = startServer({ port: PORT, dataDir, standardsDir, distDir });
 
   await new Promise((resolve, reject) => {
@@ -243,7 +250,12 @@ app.whenReady().then(async () => {
         if (canceled) return; // user cancelled save dialog — keep app open
         savePath = filePath;
       }
-      try { fs.writeFileSync(savePath, state.projectJson, 'utf8'); } catch (_) {}
+      try {
+        fs.writeFileSync(savePath, state.projectJson, 'utf8');
+      } catch (writeErr) {
+        dialog.showErrorBox('Save Failed', `Could not save "${state.projectName}":\n${writeErr.message}`);
+        return; // keep app open so user can try again
+      }
     }
 
     // "Don't Save" or save completed — close for real
