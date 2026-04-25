@@ -4,10 +4,22 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.27';
+export const APP_VERSION = '1.27.1';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.27.1',
+    date: '2026-04-25',
+    time: '14:30',
+    author: 'Dan Belliveau',
+    changes: [
+      'AnalogSensor (probe) subjects now read in probe vocabulary across all Decision-node modes — no more ON/OFF for something that has no on state. A condition pointing at `{name}{setpoint}RC.InPos` is detected as analog and the entire chain rebrands: the conditions-list pill shows `IN TOL` / `OUT` instead of `ON` / `OFF`; the op badge reads `Check & Log` (log) / `Verify In Tol` / `Verify Out` / `Wait In Tol` / `Wait Out` instead of the generic On/Off variants; the verify-text subtitle reads "in tolerance" / "out of tolerance" (and "Log: in tolerance → PT" for log mode); the On/Off switcher popup options say `Verify In Tolerance` / `Verify Out of Tolerance`. Underlying `conditionType` is still `on`/`off` (the BOOL is a BOOL), but every label that touches the user reflects the engineer\'s mental model.',
+      'Subject line on a probe-subject Decision node now embeds the setpoint inline: `ProbeCheck @ Part1` instead of just `ProbeCheck`. The setpoint is the part of the assertion that distinguishes one probe check from another — without it, two log nodes on the same probe with different setpoints look identical at a glance.',
+      'Part Tracking write panel in Log mode relabels the per-truth-state value selectors when the subject is analog: `When IN TOLERANCE writes` / `When OUT OF TOLERANCE writes`, instead of `When TRUE writes` / `When FALSE writes`. Defaults still SUCCESS / FAILURE — flip them in the dropdown if your probe semantics are reversed (e.g., a "should be empty" check where in-tolerance = no part = failure).',
+      'No data-shape changes — purely render-layer relabeling driven by `liveDevice?.type === \'AnalogSensor\'`. Existing log/verify rows on probes pick up the new vocabulary on next render. Build verified clean (vite v6.4.1, 239 modules).',
+    ],
+  },
   {
     version: '1.27',
     date: '2026-04-25',

@@ -28,7 +28,7 @@ import { OUTCOME_COLORS } from '../../lib/outcomeColors.js';
 // Mirrors StateNode's OperationSwitcher UX. Click the Wait On / Verify On pill
 // on a decision node to open this little menu; pick On or Off.
 
-function OnOffSwitcher({ smId, nodeId, currentType, mode, pos, onClose, onUpdate }) {
+function OnOffSwitcher({ smId, nodeId, currentType, mode, pos, onClose, onUpdate, analog = false }) {
   const menuRef = useRef(null);
   const store = useDiagramStore();
   const zoomStyle = useReactFlowZoomScale();
@@ -46,10 +46,13 @@ function OnOffSwitcher({ smId, nodeId, currentType, mode, pos, onClose, onUpdate
     };
   }, [onClose]);
 
-  const verb = mode === 'verify' ? 'Verify' : 'Wait';
+  const verb = mode === 'verify' ? 'Verify' : mode === 'log' ? 'Log' : 'Wait';
+  // Analog probe subjects use in-tolerance vocabulary; everything else uses ON/OFF.
+  const onLabel  = analog ? 'In Tolerance'     : 'On';
+  const offLabel = analog ? 'Out of Tolerance' : 'Off';
   const options = [
-    { value: 'on',  label: `${verb} On`,  color: '#16a34a' },
-    { value: 'off', label: `${verb} Off`, color: '#dc2626' },
+    { value: 'on',  label: `${verb} ${onLabel}`,  color: '#16a34a' },
+    { value: 'off', label: `${verb} ${offLabel}`, color: '#dc2626' },
   ];
 
   return createPortal(
@@ -1321,10 +1324,23 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
                     : 'ANY condition being true will pass.'}
                 </div>
               )}
-              {conditions.map((cond, idx) => (
+              {conditions.map((cond, idx) => {
+                // Analog subjects (AnalogSensor RC.InPos refs) read as
+                // "in tolerance" / "out of tolerance", not "on" / "off".
+                // The underlying conditionType is still 'on' (BOOL true)
+                // / 'off' (BOOL false), but we surface the engineer's
+                // mental model — a probe doesn't have an On state, it
+                // has a setpoint that's either being met or not.
+                const condDevId = (typeof cond.ref === 'string' && cond.ref.includes(':'))
+                  ? cond.ref.split(':')[0] : null;
+                const condDev = condDevId
+                  ? (currentSm?.devices ?? []).find(d => d.id === condDevId)
+                  : null;
+                const condIsAnalog = condDev?.type === 'AnalogSensor';
+                return (
                 <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 0', borderTop: idx > 0 ? '1px solid #e2e8f0' : 'none' }}>
                   {cond.inputType !== 'range' && (
-                    <button className="nodrag" onClick={() => {
+                    <button className="nodrag" title={condIsAnalog ? 'Click to toggle: in-tolerance ↔ out-of-tolerance' : 'Click to toggle ON/OFF'} onClick={() => {
                       const newType = cond.conditionType === 'on' ? 'off' : 'on';
                       setConditions(prev => prev.map((c, i) => i === idx ? { ...c, conditionType: newType } : c));
                       // Sync primary conditionType if it's the first condition
@@ -1332,8 +1348,10 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
                     }}
                       style={{ fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, cursor: 'pointer', border: 'none',
                         background: cond.conditionType === 'off' ? '#dc2626' : '#16a34a',
-                        color: '#fff', flexShrink: 0 }}>
-                      {cond.conditionType === 'off' ? 'OFF' : 'ON'}
+                        color: '#fff', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                      {condIsAnalog
+                        ? (cond.conditionType === 'off' ? 'OUT' : 'IN TOL')
+                        : (cond.conditionType === 'off' ? 'OFF' : 'ON')}
                     </button>
                   )}
                   {cond.inputType === 'range' && (
@@ -1361,7 +1379,8 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
                       style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 11, padding: '0 2px', flexShrink: 0 }}>×</button>
                   )}
                 </div>
-              ))}
+                );
+              })}
               {conditions.length === 0 ? (
                 <>
                   <button className="nodrag" onClick={() => { setAddingCondition(true); setShowBranchConfig(false); }}
@@ -1492,7 +1511,9 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
                 <div style={{ display: 'flex', gap: 6 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 8, color: '#16a34a', fontWeight: 700, marginBottom: 1 }}>
-                      ✓ {isLog ? 'When TRUE writes' : `${exit1Label} writes`}
+                      ✓ {isLog
+                          ? (isAnalogSubject ? 'When IN TOLERANCE writes' : 'When TRUE writes')
+                          : `${exit1Label} writes`}
                     </div>
                     <select className="nodrag" value={ptPassValue} onChange={e => setPtPassValue(e.target.value)}
                       style={{ width: '100%', fontSize: 10, padding: '2px 4px', borderRadius: 3, border: '1px solid #d1d5db', background: '#fff', color: '#1e293b', cursor: 'pointer' }}>
@@ -1502,7 +1523,9 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 8, color: '#dc2626', fontWeight: 700, marginBottom: 1 }}>
-                      ✗ {isLog ? 'When FALSE writes' : `${exit2Label} writes`}
+                      ✗ {isLog
+                          ? (isAnalogSubject ? 'When OUT OF TOLERANCE writes' : 'When FALSE writes')
+                          : `${exit2Label} writes`}
                     </div>
                     <select className="nodrag" value={ptFailValue} onChange={e => setPtFailValue(e.target.value)}
                       style={{ width: '100%', fontSize: 10, padding: '2px 4px', borderRadius: 3, border: '1px solid #d1d5db', background: '#fff', color: '#1e293b', cursor: 'pointer' }}>
@@ -1926,6 +1949,14 @@ export function DecisionBody({ data, smId, nodeId, selected, onClick, onContextM
   const liveConditionName = liveSignal?.name ?? null;
   const liveAxisCount = liveSignal?.number != null ? String(liveSignal.number) : null;
 
+  // Analog probe subject? AnalogSensor refs are `{deviceId}:{setpointName}` and
+  // the underlying tag is `{name}{setpointName}RC.InPos`. Treated as a binary
+  // BOOL semantically — but the engineer's vocabulary is "in tolerance" /
+  // "out of tolerance", not ON/OFF. Detected here so the row + badge + verify
+  // line all read in probe vocabulary instead of generic sensor vocabulary.
+  const isAnalogSubject = liveDevice?.type === 'AnalogSensor';
+  const analogSetpointName = isAnalogSubject ? (refSuffix ?? null) : null;
+
   let effectiveIoType = ioType;
   if (liveSignal?.group === 'DI' || liveSignal?.group === 'DO') {
     effectiveIoType = liveSignal.group;
@@ -1935,7 +1966,9 @@ export function DecisionBody({ data, smId, nodeId, selected, onClick, onContextM
     else if (storedGroup.includes(' DO') || storedGroup === 'Robot DO') effectiveIoType = 'DO';
   }
 
-  const subjectLine = liveDeviceName ?? deviceDisplayLabel ?? (isSensor ? (signalSource || displayName) : displayName);
+  const subjectLine = isAnalogSubject && liveDeviceName && analogSetpointName
+    ? `${liveDeviceName} @ ${analogSetpointName}`
+    : (liveDeviceName ?? deviceDisplayLabel ?? (isSensor ? (signalSource || displayName) : displayName));
   const condName = liveConditionName || conditionDisplayName || '';
   const effectiveAxisCount = liveAxisCount || axisCount;
   const conditionPrefix = (effectiveIoType ?? '') + (effectiveAxisCount ? `[${effectiveAxisCount}]` : '');
@@ -1948,6 +1981,10 @@ export function DecisionBody({ data, smId, nodeId, selected, onClick, onContextM
     opLabel = 'Check & Log'; opColor = '#0d9488';
   } else if (isVerify) {
     if (sensorInputType === 'range') { opLabel = 'Verify Range'; opColor = '#f59e0b'; }
+    else if (isAnalogSubject) {
+      opLabel = isOn ? 'Verify In Tol' : 'Verify Out';
+      opColor = isOn ? '#16a34a' : '#dc2626';
+    }
     else { opLabel = isOn ? 'Verify On' : 'Verify Off'; opColor = isOn ? '#16a34a' : '#dc2626'; }
   } else if (isDecide) {
     opLabel = 'Decide'; opColor = '#7c3aed';
@@ -1955,6 +1992,10 @@ export function DecisionBody({ data, smId, nodeId, selected, onClick, onContextM
     opLabel = 'Vision'; opColor = '#0ea5e9';
   } else if (isSensor) {
     if (sensorInputType === 'range') { opLabel = 'Wait Range'; opColor = '#0ea5e9'; }
+    else if (isAnalogSubject) {
+      opLabel = isOn ? 'Wait In Tol' : 'Wait Out';
+      opColor = isOn ? '#16a34a' : '#dc2626';
+    }
     else { opLabel = isOn ? 'Wait On' : 'Wait Off'; opColor = isOn ? '#16a34a' : '#dc2626'; }
   } else {
     opLabel = isOn ? 'Wait On' : 'Wait Off';
@@ -2000,6 +2041,13 @@ export function DecisionBody({ data, smId, nodeId, selected, onClick, onContextM
     const minStr = rangeMin !== undefined && rangeMin !== '' ? rangeMin : '?';
     const maxStr = rangeMax !== undefined && rangeMax !== '' ? rangeMax : '?';
     verifyText = `Range: ${minStr} – ${maxStr}`;
+  } else if (isAnalogSubject) {
+    // Probe vocabulary: "@ Part1 — in tolerance" instead of "{tag} = ON".
+    // For Log mode, the subtitle reads as "log: Part1 in tolerance" which
+    // matches how engineers describe what the rung does.
+    const sp = analogSetpointName ?? '?';
+    const inOut = isOn ? 'in tolerance' : 'out of tolerance';
+    verifyText = isLog ? `Log: ${sp} ${inOut}` : `${sp} ${inOut}`;
   } else if (isSensor) {
     const tag = multiConditions[0]?.tag || sensorTag;
     const detail = tag
@@ -2155,6 +2203,7 @@ export function DecisionBody({ data, smId, nodeId, selected, onClick, onContextM
           nodeId={nodeId}
           currentType={conditionType}
           mode={nodeMode}
+          analog={isAnalogSubject}
           pos={opSwitcher.pos}
           onClose={() => setOpSwitcher(null)}
           onUpdate={onUpdate}
@@ -2391,6 +2440,11 @@ export function DecisionNode({ data, selected, id }) {
   const liveConditionName = liveSignal?.name ?? null;
   const liveAxisCount = liveSignal?.number != null ? String(liveSignal.number) : null;
 
+  // Analog probe subject? AnalogSensor refs are `{deviceId}:{setpointName}`;
+  // engineer vocabulary is "in tolerance" / "out of tolerance" not ON/OFF.
+  const isAnalogSubject = liveDevice?.type === 'AnalogSensor';
+  const analogSetpointName = isAnalogSubject ? (refSuffix ?? null) : null;
+
   // IO type for display: Robot signals use the signal's group (robot's perspective: DI/DO),
   // not the PLC tag prefix (q_ would wrongly show "DO" for Robot DI signals).
   // Fallback: use stored condition group (e.g. "Robot DI" → "DI").
@@ -2403,8 +2457,12 @@ export function DecisionNode({ data, selected, id }) {
     else if (storedGroup.includes(' DO') || storedGroup === 'Robot DO') effectiveIoType = 'DO';
   }
 
-  // Subject line (big bold) — device name, live from store
-  const subjectLine = liveDeviceName ?? deviceDisplayLabel ?? (isSensor ? (signalSource || displayName) : displayName);
+  // Subject line (big bold) — device name, live from store. For analog probes
+  // include the setpoint name inline ("ProbeCheck @ Part1") so the engineer
+  // sees what they're checking, not just which device.
+  const subjectLine = isAnalogSubject && liveDeviceName && analogSetpointName
+    ? `${liveDeviceName} @ ${analogSetpointName}`
+    : (liveDeviceName ?? deviceDisplayLabel ?? (isSensor ? (signalSource || displayName) : displayName));
 
   // Condition subtitle: "DI[2] - ConditionName" (only for wait/decide sensor nodes)
   // Prefer live-resolved name (Robot signals stay linked after rename)
@@ -2543,6 +2601,10 @@ export function DecisionNode({ data, selected, id }) {
             opLabel = 'Check & Log'; opColor = '#0d9488';
           } else if (isVerify) {
             if (sensorInputType === 'range') { opLabel = 'Verify Range'; opColor = '#f59e0b'; }
+            else if (isAnalogSubject) {
+              opLabel = isOn ? 'Verify In Tol' : 'Verify Out';
+              opColor = isOn ? '#16a34a' : '#dc2626';
+            }
             else { opLabel = isOn ? 'Verify On' : 'Verify Off'; opColor = isOn ? '#16a34a' : '#dc2626'; }
           } else if (isDecide) {
             opLabel = 'Decide'; opColor = '#7c3aed';
@@ -2550,6 +2612,10 @@ export function DecisionNode({ data, selected, id }) {
             opLabel = 'Vision'; opColor = '#0ea5e9';
           } else if (isSensor) {
             if (sensorInputType === 'range') { opLabel = 'Wait Range'; opColor = '#0ea5e9'; }
+            else if (isAnalogSubject) {
+              opLabel = isOn ? 'Wait In Tol' : 'Wait Out';
+              opColor = isOn ? '#16a34a' : '#dc2626';
+            }
             else { opLabel = isOn ? 'Wait On' : 'Wait Off'; opColor = isOn ? '#16a34a' : '#dc2626'; }
           } else {
             // Signal-based waits (state / condition / position) — still binary,
@@ -2595,6 +2661,12 @@ export function DecisionNode({ data, selected, id }) {
             const minStr = rangeMin !== undefined && rangeMin !== '' ? rangeMin : '?';
             const maxStr = rangeMax !== undefined && rangeMax !== '' ? rangeMax : '?';
             verifyText = `Range: ${minStr} – ${maxStr}`;
+          } else if (isAnalogSubject) {
+            // Probe subject — verify-text reads in the engineer's vocabulary.
+            // For Log mode: "Log: in tolerance → SUCCESS / out → FAILURE" (subtle
+            // hint that this records to PT). For Wait/Decide: just the polarity.
+            const inOut = isOn ? 'in tolerance' : 'out of tolerance';
+            verifyText = isLog ? `Log: ${inOut} \u2192 PT` : inOut;
           } else if (isSensor) {
             // Wait on/off sensor: name the exact TAG (preferred) or the specific
             // condition/signal name — never just the device. The condition to
@@ -2727,6 +2799,7 @@ export function DecisionNode({ data, selected, id }) {
           nodeId={id}
           currentType={conditionType}
           mode={nodeMode}
+          analog={isAnalogSubject}
           pos={opSwitcher.pos}
           onClose={() => setOpSwitcher(null)}
         />
