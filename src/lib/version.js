@@ -4,10 +4,26 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.26';
+export const APP_VERSION = '1.27';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.27',
+    date: '2026-04-25',
+    time: '14:00',
+    author: 'Dan Belliveau',
+    changes: [
+      'New Decision-node mode: "Check & Log" (📝, teal #0d9488) joins Wait / Decide / Verify as the fourth mode. Semantics: read the chosen condition NOW, write the result into a Part Tracking field, advance unconditionally on the next scan. No branching, no fault — it\'s a snapshot record. Fits the workflow where you just want to record what a sensor or signal said at a moment in the cycle ("magnet present at pick? log it") without making a flow decision on it.',
+      'PT field is REQUIRED in log mode (no toggle). Picking the mode auto-names the field from the row\'s current subject (e.g., `MagnetPresent_Result`) and pins it to the parent state. The two PT-value selectors that read "Pass writes / Fail writes" in Verify mode now read "When TRUE writes / When FALSE writes" in Log mode, since there is no pass/fail branch — only the BOOL outcome of reading the condition.',
+      'Optional add-on for analog probes: "+ Also store value (REAL)" toggle appears on Log-mode rows whose subject is an `AnalogSensor`. When enabled, a SECOND PT field is created (REAL type, default name `{subject}{setpoint}_Value`) and the L5X exporter emits a `MOV({name}Scaled, PartTracking.{field})` rung gated on the state. Default OFF — pass/fail-only is the standard write; recording the actual reading is the optional second click.',
+      'Single exit only — log mode hides the 1-vs-2 exit toggle entirely. The next-step edge is the only outgoing connection. Exit-count UI is also hidden on log mode.',
+      'PtBadge auto-surfaces on the parent state node. The state node\'s top-corner PT badge is now derived live from `_decision` rows that are PT-enabled or in log mode (in addition to the existing `data.ptAnnotations` array). No manual annotation needed — adding a Log row creates the badge; toggling the value add-on adds a second annotation. Click the badge to see both fields and their write actions.',
+      'L5X exporter: new `partTracking.js` row kinds `decisionPt` (BOOL write) and `decisionLogValue` (REAL copy). R03 emits a rung pair per BOOL field — `XIC(Status.State[N]) XIC(condTag) OTE(PartTracking.field)` and the inverse for the FALSE write — and a single `XIC(Status.State[N]) MOV(srcScaled, PartTracking.field)` for the optional REAL log. Polarity-aware: a "verify off" subject inverts the XIC/XIO between the two writes so the right value is recorded for each truth state.',
+      'Migration on hydrate: any existing single-exit Verify row WITH PT enabled (embedded `_decision` row OR standalone DecisionNode) is auto-promoted to Log mode and stamped `migratedToLog: true` so it doesn\'t re-run. Verify-with-PT semantically WAS log — the new mode is just the explicit version. Verify rows with 2 exits or no PT are left alone.',
+      'Build verified clean (vite v6.4.1, 239 modules, same warnings as 1.26).',
+    ],
+  },
   {
     version: '1.26',
     date: '2026-04-25',

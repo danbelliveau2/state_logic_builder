@@ -4981,6 +4981,45 @@ export const useDiagramStore = create(
                 }
               }
 
+              // v1.27 — single-exit Verify rows that already opt into PT are
+              // semantically the new "Check & Log" mode (read condition, write
+              // PT, advance — no fault, no branch). Promote them so they pick
+              // up the teal styling, the simplified popup UI, and the L5X
+              // log-mode emission. Idempotent via `migratedToLog` stamp.
+              for (const node of (sm.nodes ?? [])) {
+                const actions = node.data?.actions;
+                if (!Array.isArray(actions) || actions.length === 0) continue;
+                for (let i = 0; i < actions.length; i++) {
+                  const action = actions[i];
+                  if (!action || action.deviceId !== '_decision') continue;
+                  if (action.migratedToLog) continue;
+                  if (action.nodeMode !== 'verify') continue;
+                  if ((action.exitCount ?? 1) !== 1) continue;
+                  if (!action.ptEnabled) continue;
+                  actions[i] = {
+                    ...action,
+                    nodeMode: 'log',
+                    operation: 'Log',
+                    migratedToLog: true,
+                  };
+                }
+              }
+              // Same migration for standalone DecisionNodes — verify+single+PT
+              // becomes log.
+              for (const node of (sm.nodes ?? [])) {
+                if (node.type !== 'decisionNode') continue;
+                const d = node.data;
+                if (!d || d.migratedToLog) continue;
+                if (d.nodeMode !== 'verify') continue;
+                if ((d.exitCount ?? 1) !== 1) continue;
+                if (!d.ptEnabled) continue;
+                node.data = {
+                  ...d,
+                  nodeMode: 'log',
+                  migratedToLog: true,
+                };
+              }
+
               // Ensure recipes array exists
               if (!state.project.recipes) state.project.recipes = [];
             }

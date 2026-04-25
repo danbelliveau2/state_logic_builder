@@ -2798,6 +2798,63 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
         }
         continue;
       }
+
+      if (row.kind === 'decisionPt') {
+        // Embedded `_decision` row in a state, OR a standalone DecisionNode
+        // with PT enabled (or in log mode). Resolve the condition's PLC tag
+        // and emit OTE-on-pass / OTU-on-fail at the row's parent state.
+        // ptPassValue/ptFailValue control which way the BOOL is written:
+        //   SUCCESS → OTE (set high) ; FAILURE → OTU (set low)
+        const step = stepMap[row.setAtNodeId];
+        if (step == null) continue;
+        const condRef = row._conditionRef;
+        const condType = row._conditionType;
+        if (!condRef) continue;
+        const condTag = resolveInputRefTag(condRef, devices, allSMs, trackingFields);
+        if (!condTag) continue;
+
+        const passVal = row._decisionSrc?.ptPassValue ?? 'SUCCESS';
+        const failVal = row._decisionSrc?.ptFailValue ?? 'FAILURE';
+        // Polarity: condType 'off' inverts the verify check (XIO instead of XIC)
+        const passInstr = passVal === 'SUCCESS' ? 'OTE' : 'OTU';
+        const failInstr = failVal === 'SUCCESS' ? 'OTE' : 'OTU';
+        const passXi = condType === 'off' ? 'XIO' : 'XIC';
+        const failXi = condType === 'off' ? 'XIC' : 'XIO';
+
+        rungs.push(
+          buildRung(
+            rungNum++,
+            `Part Tracking: ${row.fieldName} (${row.subjectType} TRUE → ${passVal})`,
+            `XIC(Status.State[${step}])${passXi}(${condTag})${passInstr}(${ptTag});`
+          )
+        );
+        rungs.push(
+          buildRung(
+            rungNum++,
+            `Part Tracking: ${row.fieldName} (${row.subjectType} FALSE → ${failVal})`,
+            `XIC(Status.State[${step}])${failXi}(${condTag})${failInstr}(${ptTag});`
+          )
+        );
+        continue;
+      }
+
+      if (row.kind === 'decisionLogValue') {
+        // Log-mode "Also store value" REAL add-on. Copies the source
+        // {name}Scaled tag into the PT REAL field unconditionally while
+        // the row's parent state is active.
+        const step = stepMap[row.setAtNodeId];
+        if (step == null) continue;
+        const src = row._sourceTag;
+        if (!src) continue;
+        rungs.push(
+          buildRung(
+            rungNum++,
+            `Part Tracking: ${row.fieldName} (Log Value)`,
+            `XIC(Status.State[${step}])MOV(${src},${ptTag});`
+          )
+        );
+        continue;
+      }
     }
   }
 

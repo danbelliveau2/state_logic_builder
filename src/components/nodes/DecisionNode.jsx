@@ -191,12 +191,22 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
   const [sensorTag, setSensorTag] = useState(data.sensorTag ?? '');
   const [sensorInputType, setSensorInputType] = useState(data.sensorInputType ?? 'bool'); // 'bool' | 'range'
 
-  // Part tracking: optionally set a PT field on pass/fail branches
+  // Part tracking: optionally set a PT field on pass/fail branches.
+  // For Log mode, ptEnabled is auto-forced TRUE on mode pick — the user
+  // can still untick it if they explicitly don't want a write, but we
+  // surface the dropdown immediately because Log without PT is a no-op.
   const [ptEnabled, setPtEnabled] = useState(data.ptEnabled ?? false);
   const [ptFieldId, setPtFieldId] = useState(data.ptFieldId ?? null);
   const [ptFieldName, setPtFieldName] = useState(data.ptFieldName ?? '');
   const [ptPassValue, setPtPassValue] = useState(data.ptPassValue ?? 'SUCCESS');
   const [ptFailValue, setPtFailValue] = useState(data.ptFailValue ?? 'FAILURE');
+
+  // Log mode "Also store value" add-on: writes the AnalogSensor's raw
+  // {name}Scaled tag to a REAL PT field. Only meaningful when the picked
+  // subject is an AnalogSensor; the toggle stays hidden otherwise.
+  const [valueLogEnabled, setValueLogEnabled] = useState(data.valueLogEnabled ?? false);
+  const [valueFieldId, setValueFieldId]       = useState(data.valueFieldId ?? null);
+  const [valueFieldName, setValueFieldName]   = useState(data.valueFieldName ?? '');
 
   // Retry counter config (only meaningful for 'wait' mode)
   const [retryEnabled, setRetryEnabled] = useState(data.retryEnabled ?? false);
@@ -559,18 +569,28 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
       // Retry counter (available for wait, decide, and verify modes)
       retryEnabled,
       retryMax: retryEnabled ? Number(retryMax) || 3 : undefined,
-      // Part tracking
-      ptEnabled,
-      ptFieldId: ptEnabled ? ptFieldId : undefined,
-      ptFieldName: ptEnabled ? ptFieldName : undefined,
-      ptPassValue: ptEnabled ? ptPassValue : undefined,
-      ptFailValue: ptEnabled ? ptFailValue : undefined,
+      // Part tracking. Log mode forces ptEnabled=true (the entire purpose
+      // of the node is to write a PT field) so callers always see ptEnabled
+      // for log rows even if the local toggle was never flipped.
+      ptEnabled: nodeMode === 'log' ? true : ptEnabled,
+      ptFieldId: (ptEnabled || nodeMode === 'log') ? ptFieldId : undefined,
+      ptFieldName: (ptEnabled || nodeMode === 'log') ? ptFieldName : undefined,
+      ptPassValue: (ptEnabled || nodeMode === 'log') ? ptPassValue : undefined,
+      ptFailValue: (ptEnabled || nodeMode === 'log') ? ptFailValue : undefined,
+      // Log-mode value add-on: copies AnalogSensor's {name}Scaled into a REAL
+      // PT field at the moment of the check. Only persisted in log mode.
+      valueLogEnabled: nodeMode === 'log' ? valueLogEnabled : undefined,
+      valueFieldId: (nodeMode === 'log' && valueLogEnabled) ? valueFieldId : undefined,
+      valueFieldName: (nodeMode === 'log' && valueLogEnabled) ? valueFieldName : undefined,
       // Multi-condition
       conditions: conditions.length > 0 ? conditions : undefined,
       conditionLogic: conditions.length > 1 ? conditionLogic : undefined,
     };
-    // Auto-create PT field if user typed a new name (no existing field selected)
-    if (ptEnabled && ptFieldName && !ptFieldId) {
+    // Auto-create PT field if user typed a new name (no existing field selected).
+    // Log mode counts as ptEnabled even if the local toggle is false — the panel
+    // implicitly treats PT as required.
+    const ptIsActive = ptEnabled || nodeMode === 'log';
+    if (ptIsActive && ptFieldName && !ptFieldId) {
       // Check if a field with this name already exists
       const existing = ptFields.find(f => f.name === ptFieldName);
       if (existing) {
@@ -578,6 +598,17 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
       } else {
         const newId = store.addTrackingField({ name: ptFieldName, dataType: 'boolean', description: `Auto-created from decision node: ${finalSignalName}` });
         updatedData.ptFieldId = newId;
+      }
+    }
+    // Auto-create REAL value field for the optional log-mode "Also store value"
+    // add-on. Same dedup-by-name rule as the BOOL field.
+    if (nodeMode === 'log' && valueLogEnabled && valueFieldName && !valueFieldId) {
+      const existing = ptFields.find(f => f.name === valueFieldName);
+      if (existing) {
+        updatedData.valueFieldId = existing.id;
+      } else {
+        const newId = store.addTrackingField({ name: valueFieldName, dataType: 'real', description: `Auto-created REAL log field for: ${finalSignalName}` });
+        updatedData.valueFieldId = newId;
       }
     }
     // Include outcome labels for multi-outcome mode
@@ -590,7 +621,11 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
       store.updateAction(smId, nodeId, actionId, {
         ...updatedData,
         deviceId: '_decision',
-        operation: nodeMode === 'wait' ? 'Wait' : nodeMode === 'decide' ? 'Decide' : 'Verify',
+        operation: nodeMode === 'wait'   ? 'Wait'
+                 : nodeMode === 'decide' ? 'Decide'
+                 : nodeMode === 'verify' ? 'Verify'
+                 : nodeMode === 'log'    ? 'Log'
+                 : 'Wait',
         autoOpenPopup: false,
       });
       // If this embedded decision is the LAST row AND has 2+ exits, the parent
@@ -684,6 +719,7 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
               : addingCondition ? '+ Add Condition'
               : nodeMode === 'decide' ? 'Decide On…'
               : nodeMode === 'verify' ? 'Verify…'
+              : nodeMode === 'log'    ? 'Check & Log…'
               : 'Wait On…'}
           </span>
           {showBranchConfig ? (
@@ -715,9 +751,10 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
         {/* Mode selector row — always visible so user can switch Wait/Decide/Verify at any step */}
         {editingConditionIdx === null && !addingCondition && (() => {
           const modes = [
-            { key: 'wait',   label: 'Wait',   emoji: '\u23F3', active: '#0072B5', activeBorder: '#3b82f6', tip: 'Pause step until condition is TRUE.' },
-            { key: 'decide', label: 'Decide', emoji: '\u26A1', active: '#7c3aed', activeBorder: '#8b5cf6', tip: 'Read condition NOW and branch — no pause.' },
-            { key: 'verify', label: 'Verify', emoji: '\u2713', active: '#E8A317', activeBorder: '#f59e0b', tip: 'Confirm condition is TRUE; if not, fault.' },
+            { key: 'wait',   label: 'Wait',         emoji: '\u23F3', active: '#0072B5', activeBorder: '#3b82f6', tip: 'Pause step until condition is TRUE.' },
+            { key: 'decide', label: 'Decide',       emoji: '\u26A1', active: '#7c3aed', activeBorder: '#8b5cf6', tip: 'Read condition NOW and branch — no pause.' },
+            { key: 'verify', label: 'Verify',       emoji: '\u2713', active: '#E8A317', activeBorder: '#f59e0b', tip: 'Confirm condition is TRUE; if not, fault.' },
+            { key: 'log',    label: 'Check & Log',  emoji: '\uD83D\uDCDD', active: '#0d9488', activeBorder: '#14b8a6', tip: 'Read condition NOW, write result to Part Tracking, continue. No branch, no fault.' },
           ];
           return (
             <div style={{ padding: '2px 8px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -732,25 +769,39 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
                         setNodeMode(m.key);
                         // Decide always branches; Wait collapses to a single exit UNLESS
                         // it's a multi-condition wait (each condition can own an exit).
+                        // Log is always single exit (read condition, write PT, continue).
                         let nextExitCount = exitCount;
                         if (m.key === 'decide' && exitCount === 1) nextExitCount = 2;
-                        if (m.key === 'wait' && exitCount > 1 && conditions.length <= 1) nextExitCount = 1;
+                        if (m.key === 'wait'   && exitCount > 1 && conditions.length <= 1) nextExitCount = 1;
                         if (m.key === 'verify' && exitCount > 1) nextExitCount = 1;
+                        if (m.key === 'log'    && exitCount > 1) nextExitCount = 1;
                         if (nextExitCount !== exitCount) setExitCount(nextExitCount);
-                        // Live preview: push nodeMode (and matching exitCount)
-                        // to the store immediately so the underlying node/row
-                        // recolors before the user clicks Done. The rest of the
-                        // popup state stays buffered until commit.
+
+                        // Log mode: PT is mandatory — auto-enable so the user
+                        // sees the field picker ready to use.
+                        let nextPtEnabled = ptEnabled;
+                        if (m.key === 'log' && !ptEnabled) {
+                          nextPtEnabled = true;
+                          setPtEnabled(true);
+                          if (!ptFieldName) {
+                            const autoName = signalName?.replace(/\s+/g, '_') ?? 'Result';
+                            setPtFieldName(autoName);
+                          }
+                        }
+
+                        // Live preview: push nodeMode (and matching exitCount /
+                        // ptEnabled) to the store immediately so the underlying
+                        // node/row recolors before the user clicks Done. The
+                        // rest of the popup state stays buffered until commit.
+                        const livePatch = {
+                          nodeMode: m.key,
+                          exitCount: nextExitCount,
+                          ...(m.key === 'log' ? { ptEnabled: nextPtEnabled } : {}),
+                        };
                         if (saveTarget === 'action' && actionId) {
-                          store.updateAction(smId, nodeId, actionId, {
-                            nodeMode: m.key,
-                            exitCount: nextExitCount,
-                          });
+                          store.updateAction(smId, nodeId, actionId, livePatch);
                         } else {
-                          store.updateNodeData(smId, nodeId, {
-                            nodeMode: m.key,
-                            exitCount: nextExitCount,
-                          });
+                          store.updateNodeData(smId, nodeId, livePatch);
                         }
                       }}
                       style={{
@@ -1335,36 +1386,60 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
               )}
             </div>
 
-          {/* ── Part Tracking toggle ── */}
+          {/* ── Part Tracking ── */}
+          {(() => {
+            // Detect AnalogSensor subject (gates the optional "Also store value"
+            // toggle). Reads from local edit state, not data, so it reflects
+            // the in-progress condition pick.
+            const refForType = sensorRef ?? conditions[0]?.ref;
+            const isAnalogSubject = (() => {
+              if (!refForType || typeof refForType !== 'string') return false;
+              const devId = refForType.split(':')[0];
+              if (!devId || devId === '_tracking') return false;
+              const dev = (currentSm?.devices ?? []).find(d => d.id === devId);
+              return dev?.type === 'AnalogSensor';
+            })();
+            // Log mode: PT is the entire purpose of the node — surface the
+            // field picker without a toggle. The check is implicitly required.
+            const isLog = nodeMode === 'log';
+            return (
           <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <label
-                className="nodrag"
-                style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', flex: 1 }}
-                onClick={() => {
-                  const next = !ptEnabled;
-                  setPtEnabled(next);
-                  // Auto-populate field name from signal name when first enabled
-                  if (next && !ptFieldName) {
-                    const autoName = signalName?.replace(/\s+/g, '_') ?? 'Result';
-                    setPtFieldName(autoName);
-                  }
-                }}
-              >
-                <span style={{
-                  width: 14, height: 14, borderRadius: 3, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  background: ptEnabled ? '#16a34a' : '#fff',
-                  border: ptEnabled ? '1px solid #22c55e' : '1px solid #d1d5db',
-                  fontSize: 10, color: '#000', fontWeight: 700,
-                }}>
-                  {ptEnabled ? '\u2713' : ''}
+              {isLog ? (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 1 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: '#0d9488' }}>
+                    📊 Part Tracking write <span style={{ fontWeight: 500, color: '#94a3b8' }}>(required)</span>
+                  </span>
                 </span>
-                <span style={{ fontSize: 10, fontWeight: 600, color: ptEnabled ? '#16a34a' : '#64748b' }}>
-                  📊 Part Tracking
-                </span>
-              </label>
+              ) : (
+                <label
+                  className="nodrag"
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', flex: 1 }}
+                  onClick={() => {
+                    const next = !ptEnabled;
+                    setPtEnabled(next);
+                    // Auto-populate field name from signal name when first enabled
+                    if (next && !ptFieldName) {
+                      const autoName = signalName?.replace(/\s+/g, '_') ?? 'Result';
+                      setPtFieldName(autoName);
+                    }
+                  }}
+                >
+                  <span style={{
+                    width: 14, height: 14, borderRadius: 3, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    background: ptEnabled ? '#16a34a' : '#fff',
+                    border: ptEnabled ? '1px solid #22c55e' : '1px solid #d1d5db',
+                    fontSize: 10, color: '#000', fontWeight: 700,
+                  }}>
+                    {ptEnabled ? '\u2713' : ''}
+                  </span>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: ptEnabled ? '#16a34a' : '#64748b' }}>
+                    📊 Part Tracking
+                  </span>
+                </label>
+              )}
             </div>
-            {ptEnabled && (
+            {(ptEnabled || isLog) && (
               <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {/* Field picker: existing fields or custom name */}
                 <div style={{ fontSize: 9, color: '#94a3b8', lineHeight: 1.3 }}>
@@ -1410,14 +1485,15 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
                     }}
                   />
                 )}
-                {/* PT field writes per branch. Labels use the current branch
-                    vocabulary (exit1Label/exit2Label) — NOT hardcoded "Pass/Fail".
-                    For a binary "Verify On" condition these read "✓ On writes" /
-                    "✗ Off writes"; for a vision decision they read "✓ Pass writes"
-                    / "✗ Fail writes". */}
+                {/* Per-branch / per-result write values.
+                    - wait/decide/verify: each branch writes a value (uses exit1Label/exit2Label).
+                    - log: single exit, condition is read once and written; labels become
+                      "When TRUE writes" / "When FALSE writes" since there are no branches. */}
                 <div style={{ display: 'flex', gap: 6 }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 8, color: '#16a34a', fontWeight: 700, marginBottom: 1 }}>✓ {exit1Label} writes</div>
+                    <div style={{ fontSize: 8, color: '#16a34a', fontWeight: 700, marginBottom: 1 }}>
+                      ✓ {isLog ? 'When TRUE writes' : `${exit1Label} writes`}
+                    </div>
                     <select className="nodrag" value={ptPassValue} onChange={e => setPtPassValue(e.target.value)}
                       style={{ width: '100%', fontSize: 10, padding: '2px 4px', borderRadius: 3, border: '1px solid #d1d5db', background: '#fff', color: '#1e293b', cursor: 'pointer' }}>
                       <option value="SUCCESS">SUCCESS</option>
@@ -1425,7 +1501,9 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
                     </select>
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 8, color: '#dc2626', fontWeight: 700, marginBottom: 1 }}>✗ {exit2Label} writes</div>
+                    <div style={{ fontSize: 8, color: '#dc2626', fontWeight: 700, marginBottom: 1 }}>
+                      ✗ {isLog ? 'When FALSE writes' : `${exit2Label} writes`}
+                    </div>
                     <select className="nodrag" value={ptFailValue} onChange={e => setPtFailValue(e.target.value)}
                       style={{ width: '100%', fontSize: 10, padding: '2px 4px', borderRadius: 3, border: '1px solid #d1d5db', background: '#fff', color: '#1e293b', cursor: 'pointer' }}>
                       <option value="FAILURE">FAILURE</option>
@@ -1433,12 +1511,95 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
                     </select>
                   </div>
                 </div>
+                {/* Log mode + AnalogSensor: optional add-on to ALSO copy the
+                    raw {name}Scaled REAL value into a separate REAL PT field.
+                    Hidden for non-AnalogSensor subjects (no scaled value to read)
+                    and for non-log modes (per-branch writes don't model a
+                    single "value at the moment of check"). */}
+                {isLog && isAnalogSubject && (
+                  <div style={{ marginTop: 4, paddingTop: 6, borderTop: '1px dashed #e2e8f0' }}>
+                    <label
+                      className="nodrag"
+                      style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}
+                      onClick={() => {
+                        const next = !valueLogEnabled;
+                        setValueLogEnabled(next);
+                        if (next && !valueFieldName) {
+                          const base = signalName?.replace(/\s+/g, '_') ?? 'Value';
+                          setValueFieldName(`${base}_Value`);
+                        }
+                      }}
+                    >
+                      <span style={{
+                        width: 14, height: 14, borderRadius: 3, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        background: valueLogEnabled ? '#0d9488' : '#fff',
+                        border: valueLogEnabled ? '1px solid #14b8a6' : '1px solid #d1d5db',
+                        fontSize: 10, color: '#fff', fontWeight: 700,
+                      }}>
+                        {valueLogEnabled ? '\u2713' : ''}
+                      </span>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: valueLogEnabled ? '#0d9488' : '#64748b' }}>
+                        + Also store value (REAL)
+                      </span>
+                    </label>
+                    {valueLogEnabled && (
+                      <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <div style={{ fontSize: 9, color: '#94a3b8', lineHeight: 1.3 }}>
+                          Copies <code>{'{name}'}Scaled</code> into a REAL PT field at the moment of the check.
+                        </div>
+                        {ptFields.filter(f => f.dataType === 'real').length > 0 && (
+                          <select
+                            className="nodrag"
+                            value={valueFieldId ?? ''}
+                            onChange={e => {
+                              const fid = e.target.value;
+                              if (fid === '__new__') {
+                                setValueFieldId(null);
+                                const base = signalName?.replace(/\s+/g, '_') ?? 'Value';
+                                setValueFieldName(`${base}_Value`);
+                                return;
+                              }
+                              const f = ptFields.find(f => f.id === fid);
+                              if (f) { setValueFieldId(f.id); setValueFieldName(f.name); }
+                            }}
+                            style={{
+                              width: '100%', background: '#fff', border: '1px solid #d1d5db',
+                              color: '#1e293b', borderRadius: 4, padding: '4px 6px', fontSize: 11, cursor: 'pointer',
+                            }}
+                          >
+                            <option value="" disabled>Select REAL field…</option>
+                            {ptFields.filter(f => f.dataType === 'real').map(f => (
+                              <option key={f.id} value={f.id}>{f.name}</option>
+                            ))}
+                            <option value="__new__">+ New REAL field…</option>
+                          </select>
+                        )}
+                        {(!valueFieldId || ptFields.filter(f => f.dataType === 'real').length === 0) && (
+                          <input
+                            className="nodrag"
+                            value={valueFieldName}
+                            onChange={e => { setValueFieldName(e.target.value); setValueFieldId(null); }}
+                            placeholder="REAL field name"
+                            style={{
+                              width: '100%', background: '#fff', border: '1px solid #d1d5db',
+                              color: '#1e293b', borderRadius: 4, padding: '4px 6px', fontSize: 11,
+                              boxSizing: 'border-box',
+                            }}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
+            );
+          })()}
 
-          {/* 1 branch -- single exit (wait & verify only — decide always branches) */}
-          {nodeMode !== 'decide' && (
+          {/* 1 branch -- single exit (wait & verify only — decide always branches,
+              log is forced to single exit and the picker would be a no-op) */}
+          {nodeMode !== 'decide' && nodeMode !== 'log' && (
             <button
               className="nodrag"
               onClick={() => { setExitCount(1); setExit1Label(singleLabel); setLabelsCustomized(false); }}
@@ -1459,8 +1620,9 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
               Hidden for wait mode with ≤1 condition: a wait on a single condition
               can't branch — if the condition isn't met, the state just doesn't
               advance (same rule as any other state). Wait only branches when
-              multiple conditions are being watched (one exit per condition). */}
-          {!(nodeMode === 'wait' && conditions.length <= 1) && (
+              multiple conditions are being watched (one exit per condition).
+              Hidden for log mode: log is read-and-record, single exit by definition. */}
+          {!(nodeMode === 'wait' && conditions.length <= 1) && nodeMode !== 'log' && (
             <button
               className="nodrag"
               onClick={() => { setExitCount(2); setExit1Label(dualLabel1); setExit2Label(dualLabel2); setLabelsCustomized(false); }}
@@ -1673,9 +1835,11 @@ export function DecisionBody({ data, smId, nodeId, selected, onClick, onContextM
     || primaryCond?._visionLinked === true;
   const fillColor   = nodeMode === 'verify' ? '#E8A317'
                     : nodeMode === 'decide' ? '#7c3aed'
+                    : nodeMode === 'log'    ? '#0d9488'
                     : '#0072B5';
   const borderColor = nodeMode === 'verify' ? '#b87d0f'
                     : nodeMode === 'decide' ? '#6d28d9'
+                    : nodeMode === 'log'    ? '#0f766e'
                     : '#005a91';
   const isSensor = signalType === 'sensor' || !!sensorRef;
   const isVerify = nodeMode === 'verify';
@@ -1777,9 +1941,12 @@ export function DecisionBody({ data, smId, nodeId, selected, onClick, onContextM
   const conditionPrefix = (effectiveIoType ?? '') + (effectiveAxisCount ? `[${effectiveAxisCount}]` : '');
 
   // Op badge label + color
+  const isLog = nodeMode === 'log';
   const isOn = conditionType !== 'off';
   let opLabel, opColor;
-  if (isVerify) {
+  if (isLog) {
+    opLabel = 'Check & Log'; opColor = '#0d9488';
+  } else if (isVerify) {
     if (sensorInputType === 'range') { opLabel = 'Verify Range'; opColor = '#f59e0b'; }
     else { opLabel = isOn ? 'Verify On' : 'Verify Off'; opColor = isOn ? '#16a34a' : '#dc2626'; }
   } else if (isDecide) {
@@ -2089,12 +2256,14 @@ export function DecisionNode({ data, selected, id }) {
     || (primaryCond?.signalType === 'partTracking' && !primaryCond?._visionLinked)
   );
   // Node color determined by MODE, not signal type.
-  //   Wait   → blue      Decide → purple      Verify → orange
+  //   Wait   → blue      Decide → purple      Verify → orange      Log → teal
   const fillColor   = nodeMode === 'verify' ? '#E8A317'
                     : nodeMode === 'decide' ? '#7c3aed'
+                    : nodeMode === 'log'    ? '#0d9488'
                     : '#0072B5';
   const borderColor = nodeMode === 'verify' ? '#b87d0f'
                     : nodeMode === 'decide' ? '#6d28d9'
+                    : nodeMode === 'log'    ? '#0f766e'
                     : '#005a91';
   const textColor   = '#ffffff';
   const mutedColor  = 'rgba(255,255,255,0.75)';
@@ -2108,6 +2277,7 @@ export function DecisionNode({ data, selected, id }) {
   // Its op badge should still read "Wait On" / "Wait Off", and its on/off toggle
   // should stay usable (canToggleOnOff depends on !isDecide).
   const isDecide = nodeMode === 'decide';
+  const isLog    = nodeMode === 'log';
   // IO type from tag prefix: i_ = DI, q_ = DO
   const ioType = isSensor && sensorInputType !== 'range'
     ? (sensorTag?.startsWith('q_') ? 'DO' : sensorTag?.startsWith('i_') ? 'DI' : null)
@@ -2369,7 +2539,9 @@ export function DecisionNode({ data, selected, id }) {
           // Operation badge: mode + sensor polarity drives label + color
           const isOn = conditionType !== 'off';
           let opLabel, opColor;
-          if (isVerify) {
+          if (isLog) {
+            opLabel = 'Check & Log'; opColor = '#0d9488';
+          } else if (isVerify) {
             if (sensorInputType === 'range') { opLabel = 'Verify Range'; opColor = '#f59e0b'; }
             else { opLabel = isOn ? 'Verify On' : 'Verify Off'; opColor = isOn ? '#16a34a' : '#dc2626'; }
           } else if (isDecide) {
@@ -2560,8 +2732,29 @@ export function DecisionNode({ data, selected, id }) {
         />
       )}
 
-      {/* PT/Signal Badge — always visible when content exists */}
-      <PtBadge nodeId={id} smId={smId} annotations={data.ptAnnotations ?? []} selected={selected} />
+      {/* PT/Signal Badge — always visible when content exists. A standalone
+          DecisionNode in log mode (or any mode with ptEnabled) contributes
+          its own PT field as a derived annotation so the corner badge appears
+          without the user manually wiring data.ptAnnotations. */}
+      {(() => {
+        const derived = [];
+        if ((data.ptEnabled || data.nodeMode === 'log') && (data.ptFieldName || data.ptFieldId)) {
+          derived.push({
+            fieldId: data.ptFieldId ?? `node_${id}`,
+            fieldName: data.ptFieldName ?? '(unnamed)',
+            value: data.ptPassValue ?? 'SUCCESS',
+          });
+          if (data.nodeMode === 'log' && data.valueLogEnabled && (data.valueFieldId || data.valueFieldName)) {
+            derived.push({
+              fieldId: data.valueFieldId ?? `node_${id}_val`,
+              fieldName: data.valueFieldName ?? '(unnamed value)',
+              value: 'SET',
+            });
+          }
+        }
+        const combined = [...(data.ptAnnotations ?? []), ...derived];
+        return <PtBadge nodeId={id} smId={smId} annotations={combined} selected={selected} />;
+      })()}
 
       {/* Connect Menu — direction arrows when handle clicked */}
       <ConnectMenu nodeId={id} nodeType="decisionNode" exitCount={exitCount} signalName={signalName} smId={smId} />

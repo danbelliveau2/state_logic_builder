@@ -165,7 +165,92 @@ export function derivePartTrackingTable(sm, stateMap) {
     }
   }
 
-  // ── 4. Custom rows (user-added) ───────────────────────────────────────
+  // ── 4. Decision-row PT writes (log/verify/decide with PT enabled) ─────
+  // Embedded `_decision` rows on a state — and standalone DecisionNodes in
+  // log mode — write a PT BOOL when the state runs. For Log mode, the row
+  // also optionally writes a REAL `{name}Scaled` value into a separate PT
+  // field. The R03 emitter resolves the BOOL condition tag from the row's
+  // `conditions[0].ref` (or `sensorRef`) and emits OTE/OTU based on the
+  // ptPassValue / ptFailValue selectors.
+  for (const node of nodes) {
+    // Walk both standalone DecisionNodes and StateNodes' embedded rows.
+    let entries = [];
+    if (node.type === 'decisionNode' && (node.data?.ptEnabled || node.data?.nodeMode === 'log')) {
+      entries.push({ owner: node, src: node.data, isStandalone: true });
+    }
+    if (node.type === 'stateNode') {
+      for (const action of node.data?.actions ?? []) {
+        if (action?.deviceId !== '_decision') continue;
+        if (!(action.ptEnabled || action.nodeMode === 'log')) continue;
+        entries.push({ owner: node, src: action, isStandalone: false });
+      }
+    }
+    for (const entry of entries) {
+      const src = entry.src;
+      const fieldName = src.ptFieldName;
+      const fieldId   = src.ptFieldId;
+      if (!fieldName && !fieldId) continue;
+
+      const fieldRaw = sanitizeTag(fieldName ?? `Result_${entry.owner.id.slice(0, 6)}`);
+      // Subject label for the PT table preview UI.
+      const subject = src.signalSource || src.signalName || 'Decision';
+
+      rows.push({
+        id: `row_decisionpt_${entry.owner.id}_${entry.isStandalone ? 'self' : src.id}`,
+        kind: 'decisionPt',
+        fieldNameRaw: fieldRaw,
+        subjectName: subject,
+        subjectType: src.nodeMode === 'log' ? 'Check & Log' : (src.nodeMode === 'verify' ? 'Verify' : 'Decide'),
+        description: src.nodeMode === 'log'
+          ? `Read condition at this state, write ${src.ptPassValue ?? 'SUCCESS'} on TRUE / ${src.ptFailValue ?? 'FAILURE'} on FALSE`
+          : `Decision-row PT write (${src.nodeMode ?? 'verify'})`,
+        setAtNodeId: entry.owner.id,
+        setAtState: getState(entry.owner.id),
+        writeValue: `${src.ptPassValue ?? 'SUCCESS'} / ${src.ptFailValue ?? 'FAILURE'}`,
+        dataType: 'bool',
+        auto: true,
+        enabled: overrides[fieldRaw]?.enabled !== false,
+        // Carry-through metadata the R03 emitter needs to resolve the
+        // condition tag from the row's local condition (sensor/signal ref).
+        _decisionSrc: src,
+        _conditionRef: src.conditions?.[0]?.ref ?? src.sensorRef ?? null,
+        _conditionType: src.conditions?.[0]?.conditionType ?? src.conditionType ?? 'on',
+      });
+
+      // Log-mode "Also store value" add-on — emits a REAL PT field that
+      // copies the AnalogSensor's {name}Scaled tag at the moment of the
+      // check. The condition gate is the same (the state running); the
+      // copy is unconditional once the state is active.
+      if (src.nodeMode === 'log' && src.valueLogEnabled && (src.valueFieldName || src.valueFieldId)) {
+        const valFieldRaw = sanitizeTag(src.valueFieldName ?? `${fieldRaw}_Value`);
+        // Resolve the source REAL tag — only AnalogSensor exposes a Scaled
+        // value, so we look up the device by the condition's ref.
+        const refDevId = entry.src.conditions?.[0]?.ref?.split(':')[0]
+                       ?? entry.src.sensorRef?.split(':')[0];
+        const dev = devices.find(d => d.id === refDevId);
+        const sourceTag = (dev && dev.type === 'AnalogSensor') ? `${dev.name}Scaled` : null;
+        if (sourceTag) {
+          rows.push({
+            id: `row_decisionpt_val_${entry.owner.id}_${entry.isStandalone ? 'self' : src.id}`,
+            kind: 'decisionLogValue',
+            fieldNameRaw: valFieldRaw,
+            subjectName: subject,
+            subjectType: 'Check & Log (value)',
+            description: `Copy ${sourceTag} into PT REAL field at the moment of the check`,
+            setAtNodeId: entry.owner.id,
+            setAtState: getState(entry.owner.id),
+            writeValue: 'REAL',
+            dataType: 'real',
+            auto: true,
+            enabled: overrides[valFieldRaw]?.enabled !== false,
+            _sourceTag: sourceTag,
+          });
+        }
+      }
+    }
+  }
+
+  // ── 5. Custom rows (user-added) ───────────────────────────────────────
   for (const custom of (overrides.customRows ?? [])) {
     if (!custom?.fieldName) continue;
     rows.push({

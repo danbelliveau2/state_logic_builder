@@ -3742,10 +3742,36 @@ export function StateNode({ data, selected, id }) {
         );
       })()}
 
-      {/* PT/Signal Badge — always visible when content exists, add-badge on select */}
-      {sm && !isInitial && !isComplete && !isFault && (
-        <PtBadge nodeId={id} smId={sm.id} annotations={data.ptAnnotations ?? []} selected={selected} />
-      )}
+      {/* PT/Signal Badge — always visible when content exists, add-badge on select.
+          Derive PT annotations from any embedded _decision rows that opt in
+          (verify/decide rows with the PT toggle, all log-mode rows). The
+          badge no longer requires the user to manually add to data.ptAnnotations
+          when they configure a Check & Log node — the row's PT field flows
+          through automatically. */}
+      {sm && !isInitial && !isComplete && !isFault && (() => {
+        const derivedFromDecisions = (actions ?? [])
+          .filter(a => a.deviceId === '_decision'
+            && (a.ptEnabled || a.nodeMode === 'log')
+            && (a.ptFieldName || a.ptFieldId))
+          .flatMap(a => {
+            const out = [{
+              fieldId: a.ptFieldId ?? `dec_${a.id}`,
+              fieldName: a.ptFieldName ?? '(unnamed)',
+              value: a.ptPassValue ?? 'SUCCESS',
+            }];
+            // Log-mode "Also store value" add-on contributes a REAL field too.
+            if (a.nodeMode === 'log' && a.valueLogEnabled && (a.valueFieldId || a.valueFieldName)) {
+              out.push({
+                fieldId: a.valueFieldId ?? `dec_${a.id}_val`,
+                fieldName: a.valueFieldName ?? '(unnamed value)',
+                value: 'SET',
+              });
+            }
+            return out;
+          });
+        const combined = [...(data.ptAnnotations ?? []), ...derivedFromDecisions];
+        return <PtBadge nodeId={id} smId={sm.id} annotations={combined} selected={selected} />;
+      })()}
 
       {/* Connect Menu — direction arrows when handle clicked */}
       {sm && !isComplete && !isFault && (
