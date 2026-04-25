@@ -1,6 +1,58 @@
 /**
- * SDC State Logic Builder - Zustand Store
+ * SDC State Logic Builder — Zustand Store
  * Central state management for all diagrams and UI state.
+ *
+ * ─── TABLE OF CONTENTS ─────────────────────────────────────────────────────
+ *
+ *   Lines       Section                       Key symbols
+ *   ──────────  ────────────────────────────  ──────────────────────────────
+ *      6-  12   Imports
+ *     14- 322   Helpers (private)             _projectFromStandardTemplate,
+ *                                             _updateProject, _mutateNodeInSm,
+ *                                             _uniqueName
+ *    325- 410   Store init / default state    defaultProject, networkConfig
+ *    415- 447   Undo / redo                   _pushHistory, undo, redo
+ *    450- 668   Project actions               loadProject (455),
+ *                                             exportProjectJSON
+ *    670-1745   StateMachine actions          addStateMachine (670),
+ *                                             duplicateStateMachine (907)
+ *   1747-1953   Device actions                addDevice (1747),
+ *                                             updateDevice (1764),
+ *                                             removeDevice
+ *   1955-2776   Node actions                  addNode (1955),
+ *                                             addDecisionBranches (2069),
+ *                                             addDecisionSingleBranch (2220),
+ *                                             syncDecisionExitLabels (2649)
+ *   2779-3074   Edge actions                  addEdge (2779),
+ *                                             updateEdge (2815), removeEdge
+ *   3077-3142   Action (per-state) actions    addAction (3077),
+ *                                             updateAction (3092)
+ *   3144-3242   Network config actions        updateNetworkConfig (3146)
+ *   3244-3437   Part-tracking actions         addTrackingField (3251),
+ *                                             addPartTrackingCustomRole
+ *   3439-3508   Signal actions                addSignal (3439),
+ *                                             updateSignal (3451)
+ *   3510-3812   UI flags / selection / verify setSelectedNode (3510),
+ *                                             openActionModal (3532),
+ *                                             findOrCreateVerifyDevice (3561),
+ *                                             addVerifyCondition (3592),
+ *                                             duplicateNode (3696),
+ *                                             updateNode (3736)
+ *   3815-4021   Recipe actions                setActiveRecipe (3811),
+ *                                             addRecipe (3815),
+ *                                             updateRecipe (3829)
+ *   4022-4774   Project Manager / tabs        addTab, switchProject,
+ *                                             closeTab (4608)
+ *   4778-4873   Persist config                localStorage key, partialize
+ *   4878-4897   Auto-save subscription        Throttled save on store change
+ *
+ * ─── HOW TO USE THIS FILE ──────────────────────────────────────────────────
+ *
+ *   1. Read this header first (`Read` with `limit: 60`).
+ *   2. Jump to a section with `offset` + `limit` — don't read whole file.
+ *   3. For a specific action, `Grep` the symbol first to confirm line.
+ *
+ * See `src/WHERE.md` for the project-wide task → file map.
  */
 
 import { create } from 'zustand';

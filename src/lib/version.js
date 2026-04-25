@@ -4,10 +4,23 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.24.22';
+export const APP_VERSION = '1.25';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.25',
+    date: '2026-04-25',
+    time: '12:00',
+    author: 'Dan Belliveau',
+    changes: [
+      'Dev-experience: navigation infrastructure for AI-assisted sessions. The three biggest files in the repo (`src/store/useDiagramStore.js` ~4,900 lines, `src/lib/l5xExporter.js` ~5,300 lines, `src/components/nodes/StateNode.jsx` ~3,900 lines) cost 30-90 seconds each to read in full and burn huge context. They now have a TABLE OF CONTENTS at the very top mapping every section to its line range, so an agent can `Read limit:80` the ToC, then jump straight to the section it needs with `offset`/`limit` instead of reading the whole file.',
+      'New `src/WHERE.md`: project-wide "phone book" mapping common tasks → file paths, with grep hints for finding the right section inside the big files. Sessions should read this FIRST before probing the codebase. Covers: adding/editing operations, new node types, edge routing, decision/wait/verify nodes, L5X export routines, new device types, project actions, standards library, signals, part tracking, modals, undo/redo, selection.',
+      'New per-folder CLAUDE.md docs: `src/store/CLAUDE.md` (Zustand patterns + atomic helpers), `src/lib/CLAUDE.md` (no-React rule + L5X routine line-number map), `src/components/CLAUDE.md` (handle rules + StateNode component map). Each is intentionally short (~40 lines) — they call out folder-specific gotchas and point at WHERE.md for the global map.',
+      'Root CLAUDE.md gets a new §0 "WORKING IN THIS REPO — READ FIRST" that lists the three big files, points at their ToCs and at WHERE.md, and prescribes the 4-step navigation playbook (WHERE.md → ToC → Grep → Read narrow window) plus when to spawn the Explore sub-agent. No code changes — pure docs/header insertion.',
+      'No runtime impact. Build verified clean (vite v6.4.1, 239 modules, same warnings as 1.24.22 about chunk size). Same bundle output. This is preparation for the planned aggressive file-breakup (slices for the store, per-routine files for the exporter, per-component files for StateNode) — but each file gains a "Planned restructure" pointer so the navigation aids stay correct as the splits land.',
+    ],
+  },
   {
     version: '1.24.22',
     date: '2026-04-24',

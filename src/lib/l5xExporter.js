@@ -12,6 +12,78 @@
  *  - No R04/R20     — fault detection via AOI FaultTime
  *
  * Reference: S01_CoreCoverLoadPNP.L5X (CE gold standard)
+ *
+ * ─── TABLE OF CONTENTS ─────────────────────────────────────────────────────
+ *
+ *   Lines       Section                       Key symbols
+ *   ──────────  ────────────────────────────  ──────────────────────────────
+ *     17-  28   Imports
+ *     30- 165   Tracking-field / input helpers buildEffectiveTrackingFields (38),
+ *                                              resolveInputRefTag (70)
+ *    168- 185   Constants                     SCHEMA_REV, SOFTWARE_REV,
+ *                                             STEP_BASE, STEP_INCREMENT,
+ *                                             DEFAULT_FAULT_TIME,
+ *                                             CONTROLLER_NAME,
+ *                                             RESERVED_STATE_NUMBERS
+ *    189- 360   Step / node helpers           escapeXml (189), cdata (197),
+ *                                             orderNodes (203),
+ *                                             buildStepMap (262),
+ *                                             buildRecoveryStepMap (285),
+ *                                             getVisionSubSteps (303),
+ *                                             getStateDescription (326)
+ *    364- 535   Rung + tag-XML primitives     buildRung (364),
+ *                                             buildTimerTagXml (376),
+ *                                             buildBoolTagXml (397),
+ *                                             buildDintTagXml (412),
+ *                                             buildRealTagXml (427),
+ *                                             buildAxisTagXml (444),
+ *                                             buildMAMParamTagXml (464),
+ *                                             buildAOIInstanceTagXml (487),
+ *                                             buildRangeCheckTagXml (496)
+ *    539- 543   128-bool L5K helpers          generate128BoolL5K,
+ *                                             generate128BoolDecorated
+ *    553- 686   AOI control/status tags       buildControlTagXml (553),
+ *                                             buildStatusTagXml (573),
+ *                                             buildStateEngineTagXml (644),
+ *                                             buildStateHistoryTagXml (663)
+ *    688-1372   generateAllTags               Per-SM tag emit (devices,
+ *                                             timers, signals, robots,
+ *                                             servos, PT, network)
+ *   1374-1414   R00_Main                      3 JSR calls
+ *   1416-1521   R01_Inputs                    Debounce + 1-sensor delay
+ *   1523-1767   Verify conditions             buildVerifyConditions (1523),
+ *                                             buildHomeVerifyConditions (1751)
+ *   1769-2323   R02_StateTransitions          XIC(State[N]) + MOVE + AOI
+ *   2325-2901   R03_StateLogic                OTE/OTL/OTU complementary
+ *   2903-2999   R20_Alarms                    (legacy; AOI handles faults)
+ *   3001-3197   UDT helpers                   bitMember, sintMember,
+ *                                             generateFanucRobotUDTs (3017)
+ *   3199-3499   generateDataTypes             All UDT XML emission
+ *   3501-3627   AOI: RangeCheck               generateAOIRangeCheck
+ *   3629-3839   AOI: State_Engine_128Max      generateAOI (main AOI)
+ *   3841-4038   AOI: ProgramAlarmHandler      generateAOIProgramAlarmHandler
+ *   4040-4138   AOI: RunRobotSeq              generateAOIRunRobotSeq
+ *   4140-4216   AOI: Debounce                 generateAOIDebounce
+ *   4218-4402   AOI: TorqueHome               generateAOITorqueHome
+ *   4404-4592   Servo R04/R05 axis routines   collectServoMovesForAxis,
+ *                                             generateServoAxisRoutine (4433)
+ *   4594-4630   Servo wrappers                generateR04ServoRoutines,
+ *                                             generateServoRangeCheckTags
+ *   4632-4686   Recovery routine              generateRecoveryRoutine
+ *   4688-4735   exportProgramXml              Per-program XML
+ *   4737-4788   exportToL5X                   Per-SM L5X file
+ *   4790-5085   generateControllerTagsXml     Controller-scope tags
+ *   5087-5138   downloadL5X                   Browser-side download
+ *   5140-5279   ZIP packaging                 buildZipBlob, crc32
+ *
+ * ─── HOW TO USE THIS FILE ──────────────────────────────────────────────────
+ *
+ *   1. Read this header first (`Read` with `limit: 80`).
+ *   2. Jump to a section with `offset` + `limit` — don't read whole file.
+ *   3. For specific generation logic, `Grep` the function name first.
+ *
+ * See `src/WHERE.md` for the project-wide task → file map.
+ * Sister exporters: `supervisorL5xExporter.js`, `controllerL5xExporter.js`.
  */
 
 import {

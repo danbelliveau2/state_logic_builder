@@ -4,6 +4,28 @@
 
 ---
 
+## 0. WORKING IN THIS REPO — READ FIRST
+
+**Don't probe the codebase blindly — three files are huge and re-reading them eats your session.**
+
+| File                                  | Lines  |
+|---------------------------------------|--------|
+| `src/store/useDiagramStore.js`        | ~4,900 |
+| `src/lib/l5xExporter.js`              | ~5,300 |
+| `src/components/nodes/StateNode.jsx`  | ~3,900 |
+
+Each has a **TABLE OF CONTENTS at the top** (lines 1-80) mapping every section to a line range. **Always:**
+
+1. **Start with [`src/WHERE.md`](src/WHERE.md)** — the project-wide task → file map. It tells you which file to open. Don't grep blindly.
+2. **For one of the three big files, read the ToC first** with `Read` `limit: 80`. Then jump to the section you need with `offset` + `limit`. Don't read the whole file.
+3. **Use `Grep`** before `Read` when hunting a symbol. Get the line number, then `Read` a 100-line window around it.
+4. **For multi-step searches**, spawn the **`Explore` sub-agent**. It reads files in *its own* context and returns a summary, so the main session never loads them. Example:
+   > *Agent(subagent_type: "Explore", description: "Find decision branch creation", prompt: "Find where decision-node branch nodes are created in the store. Report function name, file path, line range. Thorough.")*
+
+**Reading these files cold costs 30-90 seconds each and consumes huge context.** A ToC read + targeted slice is ~5 seconds and ~5% of the context.
+
+---
+
 ## 1. PROJECT OVERVIEW
 
 A React web app that converts ME flowchart state machine diagrams into Allen Bradley L5X PLC code.

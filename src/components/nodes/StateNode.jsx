@@ -1,9 +1,47 @@
 /**
- * StateNode - Custom React Flow node for state steps.
+ * StateNode — Custom React Flow node for state steps.
  * Headerless: shows only action rows (device + operation).
  * Node outline shape changes per device type (hexagon, octagon, pill, etc.)
  * Inline picker via NodeToolbar for quick action add.
  * Right-click context menu with Duplicate option.
+ *
+ * ─── TABLE OF CONTENTS ─────────────────────────────────────────────────────
+ *
+ *   Lines       Section                       Notes
+ *   ──────────  ────────────────────────────  ──────────────────────────────
+ *      9-  25   Imports
+ *     28-  49   uid + findNodeInSmAcrossContainers
+ *     51-  77   OPERATION_COLORS                Per-op tint map
+ *     79-  87   getOperationColor               Resolves color for any op
+ *     89- 167   <OperationSwitcher>             Dropdown to swap op type
+ *    169- 282   buildActionVerifyText           "Verify At/On/Off" string
+ *    284- 297   DEVICE_NODE_SHAPES              Per-type shape map
+ *    299- 315   getNodeShape                    Picks shape from actions
+ *    317- 354   buildShapePoints                Polygon/SVG path math
+ *    356- 414   <ShapeBackground>               Renders the outline shape
+ *    416- 438   advanceLabel                    Pretty advance-condition text
+ *    440- 605   <AdvanceConditionEditor>        Edit timer/sensor/etc. for action
+ *    607-1021   <ActionRow>                     ★ Single row inside StateNode
+ *   1023-1053   <HomeRow>                       Compact row for Home node
+ *   1055-2826   <InlinePicker>                  ★ Multi-step add/edit flow
+ *                                               (largest sub-component, ~1770
+ *                                               lines — has its own internal
+ *                                               state machine: device → op
+ *                                               → operands → advance cond)
+ *   2828-2944   <ContextMenu>                   Right-click menu (Duplicate)
+ *   2946-3068   <ConfigPill>                    Reusable label+dropdown
+ *   3070-3188   <HomeConfigPills>               Entry-rule + index-sync pills
+ *   3190-3862   <StateNode> (default export)    Top-level node component
+ *
+ * ─── HOW TO USE THIS FILE ──────────────────────────────────────────────────
+ *
+ *   1. Read this header first (`Read` with `limit: 50`).
+ *   2. Jump to a section with `offset` + `limit` — don't read whole file.
+ *   3. For an action-row tweak, you almost always want <ActionRow> (607).
+ *   4. For the "+ Add Action" UI, you want <InlinePicker> (1055) — but
+ *      Grep inside it first; it's nearly 1800 lines.
+ *
+ * See `src/WHERE.md` for the project-wide task → file map.
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
