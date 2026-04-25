@@ -4916,6 +4916,71 @@ export const useDiagramStore = create(
                 }
               }
 
+              // v1.26 — convert legacy AnalogSensor action rows into Verify-mode
+              // Decision (`_decision`) rows. Probes are no longer state-logic
+              // actions; they're declared subjects, referenced via Verify nodes
+              // against per-setpoint `RC.InPos` BOOL bits. Tracking-field carry-
+              // over preserves any PT writes the action had configured.
+              for (const node of (sm.nodes ?? [])) {
+                const actions = node.data?.actions;
+                if (!Array.isArray(actions) || actions.length === 0) continue;
+                for (let i = 0; i < actions.length; i++) {
+                  const action = actions[i];
+                  if (action?.migratedToVerify) continue;
+                  const dev = (sm.devices ?? []).find(dv => dv.id === action.deviceId);
+                  if (!dev || dev.type !== 'AnalogSensor') continue;
+                  // Match legacy ops only — anything else (already-migrated rows,
+                  // future ops) is left alone.
+                  const legacyOp = action.operation === 'CheckRange'
+                                || action.operation === 'VerifyValue'
+                                || action.operation === 'ReadValue';
+                  if (!legacyOp) continue;
+
+                  const spName = action.setpointName ?? (dev.setpoints ?? [])[0]?.name ?? '';
+                  const ref  = `${dev.id}:${spName}`;
+                  const tag  = spName ? `${dev.name}${spName}RC.InPos` : '';
+                  const shortName = spName
+                    ? `${dev.displayName ?? dev.name} @ ${spName}`
+                    : (dev.displayName ?? dev.name);
+                  const ptValue = action.ptValue;
+
+                  actions[i] = {
+                    id: action.id,                 // preserve id for stable refs
+                    deviceId: '_decision',
+                    operation: 'Verify',
+                    nodeMode: 'verify',
+                    decisionType: 'signal',
+                    signalType: 'sensor',
+                    signalName: shortName,
+                    signalSource: dev.displayName ?? dev.name,
+                    signalSmName: sm.name,
+                    signalId: null,
+                    sensorRef: ref,
+                    sensorTag: tag,
+                    sensorInputType: 'bool',
+                    conditionType: 'on',           // verify InPos == ON
+                    exitCount: 1,
+                    conditions: spName ? [{
+                      ref,
+                      tag,
+                      label: shortName,
+                      inputType: 'bool',
+                      conditionType: 'on',
+                      signalType: 'sensor',
+                      group: 'Analog Sensors',
+                    }] : [],
+                    // Carry over part-tracking config so the verify still writes
+                    // the same field on success/failure.
+                    ptEnabled: !!action.trackingFieldId,
+                    ptFieldId: action.trackingFieldId ?? null,
+                    ptFieldName: action.trackingFieldName ?? '',
+                    ptPassValue: ptValue === 'FAILURE' ? 'FAILURE' : 'SUCCESS',
+                    ptFailValue: ptValue === 'FAILURE' ? 'SUCCESS' : 'FAILURE',
+                    migratedToVerify: true,
+                  };
+                }
+              }
+
               // Ensure recipes array exists
               if (!state.project.recipes) state.project.recipes = [];
             }

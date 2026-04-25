@@ -732,9 +732,26 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
                         setNodeMode(m.key);
                         // Decide always branches; Wait collapses to a single exit UNLESS
                         // it's a multi-condition wait (each condition can own an exit).
-                        if (m.key === 'decide' && exitCount === 1) setExitCount(2);
-                        if (m.key === 'wait' && exitCount > 1 && conditions.length <= 1) setExitCount(1);
-                        if (m.key === 'verify' && exitCount > 1) setExitCount(1);
+                        let nextExitCount = exitCount;
+                        if (m.key === 'decide' && exitCount === 1) nextExitCount = 2;
+                        if (m.key === 'wait' && exitCount > 1 && conditions.length <= 1) nextExitCount = 1;
+                        if (m.key === 'verify' && exitCount > 1) nextExitCount = 1;
+                        if (nextExitCount !== exitCount) setExitCount(nextExitCount);
+                        // Live preview: push nodeMode (and matching exitCount)
+                        // to the store immediately so the underlying node/row
+                        // recolors before the user clicks Done. The rest of the
+                        // popup state stays buffered until commit.
+                        if (saveTarget === 'action' && actionId) {
+                          store.updateAction(smId, nodeId, actionId, {
+                            nodeMode: m.key,
+                            exitCount: nextExitCount,
+                          });
+                        } else {
+                          store.updateNodeData(smId, nodeId, {
+                            nodeMode: m.key,
+                            exitCount: nextExitCount,
+                          });
+                        }
                       }}
                       style={{
                         flex: 1, padding: '7px 0', borderRadius: 5, cursor: 'pointer', fontSize: 13, fontWeight: 600,

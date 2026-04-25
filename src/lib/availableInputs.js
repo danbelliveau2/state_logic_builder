@@ -60,9 +60,9 @@ export function buildAvailableInputs(devices, allSMs, currentSmId, trackingField
         inputs.push({ ref: `${d.id}:sensor`, tag: `i_${d.name}`, label: d.displayName, inputType: 'bool', group: 'Sensors' });
         break;
       case 'AnalogSensor':
-        // Raw scaled value — can be used for range comparisons
-        inputs.push({ ref: `${d.id}:value`, tag: `${d.name}Scaled`, label: `${d.displayName} Value`, inputType: 'range', group: 'Analog Sensors' });
-        // Each setpoint as a bool "in range" check
+        // Probes are referenced through their per-setpoint AOI_RangeCheck BOOL bit.
+        // Raw scaled value is intentionally NOT exposed as a verify-input — users
+        // should declare a setpoint and verify against `{name}{setpointName}RC.InPos`.
         for (const sp of (d.setpoints ?? []))
           inputs.push({ ref: `${d.id}:${sp.name}`, tag: `${d.name}${sp.name}RC.InPos`, label: `${d.displayName} @ ${sp.name} (In Range)`, inputType: 'bool', group: 'Analog Sensors' });
         break;

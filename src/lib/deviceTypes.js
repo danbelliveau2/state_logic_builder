@@ -344,10 +344,11 @@ export const DEVICE_TYPES = {
     colorBg: '#eef2ff',
     sides: 14,
     category: 'Sensor',
-    operations: [
-      { value: 'CheckRange', label: 'Check In Range', verb: 'CheckRange', icon: '📊' },
-      { value: 'ReadValue', label: 'Read Value', verb: 'ReadValue', icon: '📏' },
-    ],
+    // No `operations` — probes are not state-logic actions. Declare the device,
+    // declare its setpoints, then reference each setpoint's `RC.InPos` BOOL
+    // through a Verify-mode Decision node. Continuous AOI_RangeCheck monitoring
+    // is emitted in R03 by `l5xExporter.generateAnalogSensorMonitoring`.
+    operations: [],
     tagPatterns: {
       inputTag:        'i_{name}',
       scaledTag:       '{name}Scaled',
@@ -359,18 +360,9 @@ export const DEVICE_TYPES = {
       setpointParam:   'p_{name}{setpointName}',
     },
     defaultTimerPreMs: 10,
-    transitionConditions: {
-      CheckRange: {
-        type: 'analogRange',
-        inRangeTag: '{name}RC.InPos',
-        labelTemplate: "'{deviceName}' In Range",
-      },
-      ReadValue: {
-        type: 'immediate',
-        labelTemplate: "'{deviceName}' Value Read",
-      },
-    },
-    // Setpoints are user-defined per device instance (stored in device.setpoints[])
+    // No transitionConditions — see comment above. Verify-mode pulls per-setpoint
+    // BOOL inputs (`{name}{setpointName}RC.InPos`) via availableInputs.js.
+    // Setpoints are user-defined per device instance (stored in device.setpoints[]).
     // Each setpoint: { name, nominal, tolerance, lowLimit, highLimit }
   },
 

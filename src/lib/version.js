@@ -4,10 +4,25 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.25';
+export const APP_VERSION = '1.26';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.26',
+    date: '2026-04-25',
+    time: '13:00',
+    author: 'Dan Belliveau',
+    changes: [
+      'AnalogSensor (probe) is no longer a state-logic action subject. The "Check In Range" / "Read Value" operation menu is gone — those operations conflated CTA (condition-to-advance) with outcome, which is the same thing every other node already gets right (Extend\'s CTA is "extend done", ServoMove\'s CTA is "axis at target", etc.). Probes now act like sensors: declare the device, declare its setpoints, and reference each setpoint via a Verify-mode Decision node against the per-setpoint `RC.InPos` BOOL bit. Continuous AOI_RangeCheck monitoring in R03 is unchanged — it still emits one rung per declared setpoint regardless of whether any state references it.',
+      'Verify-input picker drops the probe raw-value RANGE entry. The only reason to reach into a probe from a verify is to assert that a named setpoint is in range — exposing the raw `Scaled` value as a free-form RANGE input was confusing and never matched real workflow ("you would never just read the value to read it for fun"). Each declared setpoint still appears as a BOOL `RC.InPos` chip in the Analog Sensors group.',
+      'Decision popup mode buttons are now LIVE. Clicking Wait / Decide / Verify in the popup immediately commits `nodeMode` (and the matching default `exitCount`) to the underlying node or `_decision` row, so the node recolors instantly — blue for Wait, purple for Decide, orange for Verify — instead of staying on the previous color until Done is clicked. The rest of the popup state (signal pick, condition, PT config) remains buffered until commit, so an in-progress edit isn\'t partially saved.',
+      'Migration on hydration: any legacy `CheckRange` / `VerifyValue` / `ReadValue` action row on an AnalogSensor is rewritten in place to a `_decision` row with `nodeMode: \'verify\'`, sensor refs pointing at `{name}{setpointName}RC.InPos`, and any tracking-field write carried over to the new row\'s `ptEnabled` / `ptFieldId` / `ptPassValue` config. Stamped `migratedToVerify: true` so it doesn\'t re-run. Action `id` is preserved.',
+      'L5X exporter: the AnalogSensor R02 verify branch is removed. Verify nodes (`_decision` rows or standalone DecisionNodes) compile their own XIC/XIO conditions through the generic verify-condition path against the same `{name}{setpointName}RC.InPos` tags. R03 continuous monitoring is untouched.',
+      'StateNode subject picker filters out AnalogSensor devices. The "Wait / Decision / Verify" entry in the same picker is unchanged and is the canonical way to bring a probe setpoint into a state machine\'s flow.',
+      'Build verified clean (vite v6.4.1, 239 modules, same warnings as 1.25).',
+    ],
+  },
   {
     version: '1.25',
     date: '2026-04-25',

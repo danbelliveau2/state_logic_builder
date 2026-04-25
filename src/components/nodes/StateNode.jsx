@@ -830,15 +830,6 @@ function ActionRow({ action, devices, onClickName, onClickOp, onClickAdvance, sm
     } else {
       opLabel = action.operation;
     }
-  } else if (device?.type === 'AnalogSensor') {
-    // AnalogSensor: badge shows the operation ("Check Range" / "Read Value");
-    // the setpoint being tested is rendered in the verify line below.
-    if (action.operation === 'ReadValue') {
-      opLabel = 'Read Value';
-    } else {
-      // CheckRange (and legacy 'VerifyValue')
-      opLabel = 'Check Range';
-    }
   } else if (device.type === 'CheckResults') {
     const outs = device.outcomes ?? [];
     if (device._autoVerify && outs.length === 1 && outs[0].label) {
@@ -1164,7 +1155,8 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
   const typeInfo = selectedDevice ? DEVICE_TYPES[selectedDevice.type] : null;
   const operations = typeInfo?.operations ?? [];
   const servoPositions = selectedDevice?.positions ?? [];
-  const analogSetpoints = selectedDevice?.setpoints ?? [];
+  // (analogSetpoints removed — probe setpoint picking lives in the Verify-mode
+  // Decision node now; no action picker step references it.)
 
   // Verify flow: build available inputs from all non-auto-verify devices
   const verifyInputs = buildAvailableInputs(
@@ -1207,18 +1199,11 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
       return;
     }
 
-    // AnalogSensor: show operation picker first (Check In Range / Read Value),
-    // then pick setpoint. A single setpoint + single op auto-completes.
-    if (dev?.type === 'AnalogSensor') {
-      const analogOps = DEVICE_TYPES.AnalogSensor.operations ?? [];
-      if (analogOps.length === 1) {
-        setSelectedOp(analogOps[0].value);
-        setStep('setpoint');
-      } else {
-        setStep('operation');
-      }
-      return;
-    }
+    // AnalogSensor (probe) is no longer addable as an action — probes are
+    // referenced through Verify-mode Decision nodes against their setpoint
+    // RC.InPos bits. Defensive: if a probe device somehow reaches here (e.g.
+    // legacy callsite), silently bail.
+    if (dev?.type === 'AnalogSensor') return;
 
     // VisionSystem: go to job picker (skip operation since only 1)
     if (dev?.type === 'VisionSystem') {
@@ -1257,19 +1242,9 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
       }
       return;
     }
-    // AnalogSensor: both ops (CheckRange / ReadValue) require a setpoint pick next
-    if (dev?.type === 'AnalogSensor') {
-      setSelectedOp(opValue);
-      const setpoints = dev.setpoints ?? [];
-      if (setpoints.length === 1) {
-        const actionData = { deviceId: selectedDeviceId, operation: opValue, setpointName: setpoints[0].name };
-        store.addAction(smId, nodeId, actionData);
-        onClose();
-      } else {
-        setStep('setpoint');
-      }
-      return;
-    }
+    // AnalogSensor: dead branch as of v1.26. Kept as defensive no-op so a
+    // caller can't slip a probe through if state mismatches the picker.
+    if (dev?.type === 'AnalogSensor') return;
     if (dev?.type === 'ServoAxis') {
       setSelectedOp(opValue);
       if (opValue === 'ServoMove') {
@@ -1303,11 +1278,7 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
     finishAdd(selectedDeviceId, selectedOp, posName);
   }
 
-  function selectSetpoint(spName) {
-    const actionData = { deviceId: selectedDeviceId, operation: selectedOp, setpointName: spName };
-    store.addAction(smId, nodeId, actionData);
-    onClose();
-  }
+  // selectSetpoint removed in v1.26 — probes route through Verify-mode Decision nodes.
 
   function finishAdd(deviceId, operation, positionName) {
     const actionData = { deviceId, operation };
@@ -1854,10 +1825,13 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
 
           <div className="inline-picker__divider" />
 
-          {devices.filter(d => !d._autoVerify && !d._autoVision && !d.crossSmId && d.type !== 'Parameter').length === 0 && (
+          {/* AnalogSensor (probe) is filtered out — probes are not state-logic actions.
+              They appear inside Verify-mode Decision node pickers via per-setpoint
+              `RC.InPos` BOOL inputs. */}
+          {devices.filter(d => !d._autoVerify && !d._autoVision && !d.crossSmId && d.type !== 'Parameter' && d.type !== 'AnalogSensor').length === 0 && (
             <div className="inline-picker__empty">No subjects yet. Add one in the sidebar.</div>
           )}
-          {devices.filter(d => !d._autoVerify && !d._autoVision && !d.crossSmId && d.type !== 'Parameter').map(d => {
+          {devices.filter(d => !d._autoVerify && !d._autoVision && !d.crossSmId && d.type !== 'Parameter' && d.type !== 'AnalogSensor').map(d => {
             const isCurrent = editAction && d.id === editAction.deviceId;
             return (
               <button key={d.id}
@@ -2401,56 +2375,11 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
         );
       })()}
 
-      {/* ── Analog sensor setpoint step ───────────────────────────────────── */}
-      {step === 'setpoint' && selectedDevice && (
+      {/* Analog sensor setpoint step removed in v1.26.
+          Setpoint picking now happens inside the Verify-mode Decision node. */}
+      {false && (
         <>
-          <div className="inline-picker__title">
-            {selectedDevice.displayName}
-            {selectedOp && (
-              <span style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', marginLeft: 6 }}>
-                · {selectedOp === 'ReadValue' ? 'Read Value' : 'Check Range'}
-              </span>
-            )}
-          </div>
-          <div style={{ fontSize: 10, color: '#9ca3af', padding: '0 8px 4px' }}>
-            Pick the setpoint to test
-          </div>
-          {analogSetpoints.length === 0 && (
-            <div className="inline-picker__empty">
-              No setpoints defined — edit this sensor in the Subject Library to add them.
-            </div>
-          )}
-          {analogSetpoints.map(sp => {
-            const nominal = sp.nominal ?? sp.defaultValue;
-            const tol = sp.tolerance;
-            let rangeLabel;
-            if (nominal !== undefined && tol !== undefined) {
-              rangeLabel = `${Number(nominal).toFixed(2)} ± ${Number(tol).toFixed(2)}`;
-            } else if (sp.lowLimit !== undefined && sp.highLimit !== undefined) {
-              rangeLabel = `${Number(sp.lowLimit).toFixed(2)} – ${Number(sp.highLimit).toFixed(2)}`;
-            } else {
-              rangeLabel = Number(nominal ?? 0).toFixed(1);
-            }
-            return (
-              <button key={sp.name} className="inline-picker__item inline-picker__item--position"
-                onClick={() => selectSetpoint(sp.name)}>
-                <span className="inline-picker__pos-name">{sp.name}</span>
-                <span className="inline-picker__pos-value">{rangeLabel}</span>
-              </button>
-            );
-          })}
-          <button className="inline-picker__back" onClick={() => {
-            // Back to operation picker if this is the analog sensor flow (both ops available)
-            const analogOps = DEVICE_TYPES.AnalogSensor?.operations ?? [];
-            if (selectedDevice?.type === 'AnalogSensor' && analogOps.length > 1) {
-              setStep('operation');
-              setSelectedOp(null);
-            } else {
-              setStep('device');
-              setSelectedDeviceId(null);
-              setSelectedOp(null);
-            }
-          }}>
+          <button className="inline-picker__back" onClick={() => setStep('device')}>
             ← Back
           </button>
         </>

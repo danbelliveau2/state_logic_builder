@@ -1768,17 +1768,14 @@ function buildVerifyConditions(node, devices, allSMs = [], trackingFields = []) 
         break;
       }
 
-      case 'AnalogSensor': {
-        // VerifyValue: check AOI_RangeCheck .InPos bit for the selected setpoint
-        const spName = action.setpointName ?? '';
-        if (spName) {
-          const rcTag = patterns.rangeCheckInst
-            .replace(/\{name\}/g, device.name)
-            .replace(/\{setpointName\}/g, spName);
-          conditions += `XIC(${rcTag}.InPos)`;
-        }
-        break;
-      }
+      // AnalogSensor R02 verify branch removed in v1.26.
+      // Probes are referenced through Verify-mode Decision nodes (`_decision`
+      // rows on a state, or standalone DecisionNodes) — those rows compile
+      // their own XIC/XIO against `{name}{setpointName}RC.InPos` via the
+      // generic verify-condition path. Probes themselves are no longer
+      // action-bearing devices.
+      // Continuous AOI_RangeCheck monitoring stays in R03 — see
+      // `generateAnalogSensorMonitoring` near line ~2814.
 
       case 'Parameter': {
         // WaitOn → XIC(p_Name), WaitOff → XIO(p_Name)
