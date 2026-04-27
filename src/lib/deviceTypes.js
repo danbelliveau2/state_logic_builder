@@ -249,7 +249,7 @@ export const DEVICE_TYPES = {
       masAllInst:       '{name}_MAS_All',    // Stop-on-permissive-lost
       mahInst:          '{name}_MAH',
       mamAutoInst:      '{name}_MAM',        // Auto-mode MAM
-      mamInchInst:      '{name}_MAM_Inch',   // Inch-mode MAM
+      mamInchInst:      '{name}_Inch',       // Inch-mode MAM (engineer convention: {name}_Inch, not {name}_MAM_Inch — matches rung MAM(axis,{name}_Inch,...))
       // Per-axis support tags.
       readyTag:         '{Name}Ready',
       enableDelayTag:   '{Name}EnableDelay', // TON — debounce Ready→AutoEnable
