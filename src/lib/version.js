@@ -188,6 +188,18 @@ export const CHANGELOG = [
     ],
   },
   {
+    version: '1.24.23',
+    date: '2026-04-25',
+    time: '08:00',
+    author: 'Dan Belliveau',
+    changes: [
+      'Fix all 7 "undefined tags" Jason flagged in his 2026-04-25 import review (DryRun, Lockout, HMI_Toggle, HMI_Momentary, SS_ONS, {axis}_Inch). Rungs in R01_Inputs (HMI_Toggle decode → Lockout/DryRun/SS, SS_OK ONS storage, HMI_Momentary auto-clear) and R04/R05 (MAJ inch instance) were referencing tags that the controller-tags emitter never declared. Added program-scope declarations alongside the existing scaffold tags (CycleRunning, SS, FaultReset, etc.).',
+      'Bug: `mamInchInst` pattern was `{name}_MAM_Inch` in deviceTypes.js but the R04/R05 inch rung calls `MAM(axis,{name}_Inch,...)`. Renamed pattern to `{name}_Inch` to match engineer convention and the rung emission. (Engineer reference S05_ServoPNP.L5X line 3536 confirms `XAxis_Inch` is the standard tag name.)',
+      'Smoke test verifies all 7 tags now have exactly 1 declaration each: Lockout (5 refs), DryRun (3 refs), SS_ONS (2 refs), HMI_Toggle (9 refs), HMI_Momentary (9 refs), PNPXAxis_Inch (2 refs), PNPZAxis_Inch (2 refs).',
+      'Still pending from Jason\'s review: the (2) servo axes do not import properly because the drive modules are not in the project\'s Ethernet/IP list. AxisParameters references `MotionModule="sd{NN}_S{station}{name}:Ch1"` but the L5X export does not embed the drive Module declarations themselves. Approach to be confirmed (placeholder Kinetix modules vs. unreferenced MotionModule vs. project-config-driven catalog).',
+    ],
+  },
+  {
     version: '1.24.22',
     date: '2026-04-24',
     time: '15:30',
