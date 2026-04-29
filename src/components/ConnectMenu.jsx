@@ -107,13 +107,14 @@ export function computePresetWaypoints(preset, src, tgt, handleId, allNodes) {
     }
 
     case 'connectDown': {
+      // SIDE HANDLES (exit-pass/exit-fail): delegate to auto-route.
+      // Pre-computing waypoints with manualRoute:true was freezing the
+      // routing in place — when the user dragged the source node, the stored
+      // waypoints stayed at the old positions, producing parallel-to-edge
+      // segments. Auto-route runs fresh on every render and respects the
+      // perpendicular-out-of-side-handle rule.
       if (isSideHandle) {
-        return {
-          waypoints: [
-            { x: tgt.x, y: src.y },
-          ],
-          manualRoute: true,
-        };
+        return { waypoints: [], manualRoute: false };
       }
       return { waypoints: [], manualRoute: false };
     }
@@ -121,12 +122,7 @@ export function computePresetWaypoints(preset, src, tgt, handleId, allNodes) {
     case 'connectDownLeft': {
       const midY = (src.y + tgt.y) / 2;
       if (isSideHandle) {
-        return {
-          waypoints: [
-            { x: tgt.x, y: src.y },
-          ],
-          manualRoute: true,
-        };
+        return { waypoints: [], manualRoute: false };
       }
       return {
         waypoints: [
@@ -140,12 +136,7 @@ export function computePresetWaypoints(preset, src, tgt, handleId, allNodes) {
     case 'connectDownRight': {
       const midY = (src.y + tgt.y) / 2;
       if (isSideHandle) {
-        return {
-          waypoints: [
-            { x: tgt.x, y: src.y },
-          ],
-          manualRoute: true,
-        };
+        return { waypoints: [], manualRoute: false };
       }
       return {
         waypoints: [
@@ -270,13 +261,6 @@ export function ConnectMenu({ nodeId, nodeType, exitCount, signalName, smId }) {
   // ── Actions ──────────────────────────────────────────────────────────
 
   function handleNewNode(direction) {
-    const offsets = {
-      down:      { x: 0,   y: 150 },
-      downLeft:  { x: -80, y: 150 },
-      downRight: { x: 80,  y: 150 },
-    };
-    const offset = offsets[direction] ?? offsets.down;
-
     const store = useDiagramStore.getState();
     const sm = (store.project?.stateMachines ?? []).find(s => s.id === smId);
     if (!sm) return;
@@ -293,6 +277,24 @@ export function ConnectMenu({ nodeId, nodeType, exitCount, signalName, smId }) {
     const fromNode = sourceNodes.find(n => n.id === nodeId);
     if (!fromNode) return;
 
+    // ── Decide position offset ────────────────────────────────────────────
+    // Side-handle sources (exit-pass / exit-fail) override the user-picked
+    // direction so the new node lands on the same side the user clicked —
+    // matches the auto-spawn geometry (pass left @ -280, fail right @ +280).
+    const isPassHandle = sourceHandle === 'exit-pass';
+    const isFailHandle = sourceHandle === 'exit-fail';
+    let offset;
+    if (isPassHandle)      offset = { x: -280, y: 200 };
+    else if (isFailHandle) offset = { x:  280, y: 200 };
+    else {
+      const offsets = {
+        down:      { x: 0,   y: 150 },
+        downLeft:  { x: -80, y: 150 },
+        downRight: { x: 80,  y: 150 },
+      };
+      offset = offsets[direction] ?? offsets.down;
+    }
+
     const srcW = fromNode.measured?.width ?? fromNode.width ?? 240;
     const newW = 240;
 
@@ -302,6 +304,31 @@ export function ConnectMenu({ nodeId, nodeType, exitCount, signalName, smId }) {
     };
 
     const position = findClearPosition(desired, sourceNodes, newW, nodeId);
+
+    // ── Decide edge data ──────────────────────────────────────────────────
+    // For a side-handle source on a state node with a v2 Branch action,
+    // build proper decision-exit edge data so the new edge renders green/red
+    // with the correct label (matching the auto-spawn behavior). Otherwise
+    // fall back to a plain "Ready" edge.
+    let edgeCond = { conditionType: 'ready', label: 'Ready' };
+    if (isPassHandle || isFailHandle) {
+      const v2BranchAction = (fromNode.data?.actions ?? [])
+        .slice().reverse()
+        .find(a => a?.pickerV2
+          && a?.pickerConfig?.mode === 'decision'
+          && a?.pickerConfig?.subAction === 'branch');
+      if (v2BranchAction) {
+        const labels = v2BranchAction.pickerConfig?.edgeLabels ?? [];
+        const label = isPassHandle ? (labels[0] ?? '') : (labels[1] ?? '');
+        edgeCond = {
+          conditionType: 'custom',
+          label,
+          outcomeLabel: label,
+          isDecisionExit: true,
+          exitColor: isPassHandle ? 'pass' : 'fail',
+        };
+      }
+    }
 
     store._pushHistory();
     let newNodeId;
@@ -317,7 +344,7 @@ export function ConnectMenu({ nodeId, nodeType, exitCount, signalName, smId }) {
           target: newNodeId,
           targetHandle: null,
         },
-        { conditionType: 'ready', label: 'Ready' }
+        edgeCond
       );
     } else {
       newNodeId = store.addNode(smId, { position });
@@ -330,7 +357,7 @@ export function ConnectMenu({ nodeId, nodeType, exitCount, signalName, smId }) {
           target: newNodeId,
           targetHandle: null,
         },
-        { conditionType: 'ready', label: 'Ready' }
+        edgeCond
       );
     }
 

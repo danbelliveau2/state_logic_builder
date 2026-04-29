@@ -569,13 +569,13 @@ export function Canvas() {
         const srcH = rfSource?.measured?.height ?? sourceNode.measured?.height ?? sourceNode.height ?? 120;
         const gap = Number(useDiagramStore.getState().project?.designTheme?.verticalNodeSpacing) || 80;
         const newW = 240;
-        const centerAlignedX = sourceNode.position.x + (srcW - newW) / 2;
         const newY = sourceNode.position.y + srcH + gap;
-        if (existingOutEdges.length > 0) {
-          opts = { ...opts, position: { x: sourceNode.position.x + 300, y: newY } };
-        } else {
-          opts = { ...opts, position: { x: centerAlignedX, y: newY } };
-        }
+        // Top-left aligned with parent (NOT measured-center aligned).
+        // Centers based on momentary measured widths drift visually when
+        // the child's content grows after spawn (e.g. picking a long
+        // action label). Top-left alignment is stable: as either node
+        // grows in width, both extend rightward and stay correlated.
+        opts = { ...opts, position: { x: sourceNode.position.x, y: newY } };
       }
     }
 
@@ -644,10 +644,23 @@ export function Canvas() {
     const sourceNode = sm.nodes.find(n => n.id === sourceNodeId);
     if (!sourceNode) return null;
 
-    // Only handle exit handles from decisionNode or stateNode with vision exits
+    // Recognise the source's "decision flavor":
+    //  - DecisionNode (standalone)
+    //  - StateNode with vision branching (`data.visionExitMode`)
+    //  - StateNode with a v2 picker Branch action (newest path)
     const isDecision = sourceNode.type === 'decisionNode';
     const isVisionExit = sourceNode.type === 'stateNode' && sourceNode.data?.visionExitMode;
-    if (!isDecision && !isVisionExit) return null;
+    // Find the latest v2 Branch action on this state — its edgeLabels drive the
+    // pass/fail label when the user manually re-draws a deleted side branch.
+    const v2BranchAction = sourceNode.type === 'stateNode'
+      ? (sourceNode.data?.actions ?? [])
+          .slice().reverse()
+          .find(a => a?.pickerV2
+            && a?.pickerConfig?.mode === 'decision'
+            && a?.pickerConfig?.subAction === 'branch')
+      : null;
+    const isV2Branch = !!v2BranchAction;
+    if (!isDecision && !isVisionExit && !isV2Branch) return null;
 
     const handle = sourceHandle;
 
@@ -692,6 +705,21 @@ export function Canvas() {
     // Pass / Fail exits: colored with label
     if (handle !== 'exit-pass' && handle !== 'exit-fail') return null;
     const isPass = handle === 'exit-pass';
+
+    // v2 Branch action on a state node — pull the label from the action's
+    // edgeLabels (primary at index 0, fail at 1). Mirrors the auto-spawn
+    // labels so a manually-redrawn branch matches the original visually.
+    if (isV2Branch) {
+      const labels = v2BranchAction.pickerConfig?.edgeLabels ?? [];
+      const label = isPass ? (labels[0] ?? '') : (labels[1] ?? '');
+      return {
+        conditionType: 'custom',
+        label,
+        outcomeLabel: label,
+        isDecisionExit: true,
+        exitColor: isPass ? 'pass' : 'fail',
+      };
+    }
 
     if (isVisionExit) {
       // Vision node: use job name from VisionInspect action
@@ -748,15 +776,24 @@ export function Canvas() {
       edgeCond.firstSegmentAxis = firstSegmentAxis;
       edgeCond.lastSegmentAxis  = lastSegmentAxis;
     } else if (fromNode && toNode) {
-      const handlePos = getSourceHandlePos(fromNode, connection.sourceHandle);
-      const tgtPos = { x: (toNode.position?.x ?? 0) + (toNode.measured?.width ?? 240) / 2, y: toNode.position?.y ?? 0 };
-      const autoWps = computeAutoRoute(handlePos, tgtPos, edgeCond, currentNodes, connection.sourceHandle);
-      if (autoWps && autoWps.length > 0) {
-        edgeCond.waypoints = autoWps;
-        edgeCond.manualRoute = true;
-        const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(handlePos, autoWps, tgtPos);
-        edgeCond.firstSegmentAxis = firstSegmentAxis;
-        edgeCond.lastSegmentAxis  = lastSegmentAxis;
+      // SIDE HANDLE EXITS (exit-pass/exit-fail): do NOT pre-compute waypoints.
+      // Storing them with manualRoute:true freezes the route, so dragging the
+      // source node leaves the edge stuck at the old position. Letting
+      // RoutableEdge auto-route every render keeps the perpendicular-out
+      // L-bend consistent under drag.
+      const isSideHandleSrc = connection.sourceHandle === 'exit-pass'
+        || connection.sourceHandle === 'exit-fail';
+      if (!isSideHandleSrc) {
+        const handlePos = getSourceHandlePos(fromNode, connection.sourceHandle);
+        const tgtPos = { x: (toNode.position?.x ?? 0) + (toNode.measured?.width ?? 240) / 2, y: toNode.position?.y ?? 0 };
+        const autoWps = computeAutoRoute(handlePos, tgtPos, edgeCond, currentNodes, connection.sourceHandle);
+        if (autoWps && autoWps.length > 0) {
+          edgeCond.waypoints = autoWps;
+          edgeCond.manualRoute = true;
+          const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(handlePos, autoWps, tgtPos);
+          edgeCond.firstSegmentAxis = firstSegmentAxis;
+          edgeCond.lastSegmentAxis  = lastSegmentAxis;
+        }
       }
     }
     const edgeId = isRecovery
@@ -952,15 +989,19 @@ export function Canvas() {
       edgeCond.firstSegmentAxis = firstSegmentAxis;
       edgeCond.lastSegmentAxis  = lastSegmentAxis;
     } else if (fromNode && toNode) {
-      const handlePos = getSourceHandlePos(fromNode, fromHandle);
-      const tgtPos = { x: (toNode.position?.x ?? 0) + (toNode.measured?.width ?? 240) / 2, y: toNode.position?.y ?? 0 };
-      const autoWps = computeAutoRoute(handlePos, tgtPos, edgeCond, currentNodes3, fromHandle);
-      if (autoWps && autoWps.length > 0) {
-        edgeCond.waypoints = autoWps;
-        edgeCond.manualRoute = true;
-        const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(handlePos, autoWps, tgtPos);
-        edgeCond.firstSegmentAxis = firstSegmentAxis;
-        edgeCond.lastSegmentAxis  = lastSegmentAxis;
+      // SIDE HANDLE EXITS: skip pre-compute (see same-named comment in onConnect).
+      const isSideHandleSrc = fromHandle === 'exit-pass' || fromHandle === 'exit-fail';
+      if (!isSideHandleSrc) {
+        const handlePos = getSourceHandlePos(fromNode, fromHandle);
+        const tgtPos = { x: (toNode.position?.x ?? 0) + (toNode.measured?.width ?? 240) / 2, y: toNode.position?.y ?? 0 };
+        const autoWps = computeAutoRoute(handlePos, tgtPos, edgeCond, currentNodes3, fromHandle);
+        if (autoWps && autoWps.length > 0) {
+          edgeCond.waypoints = autoWps;
+          edgeCond.manualRoute = true;
+          const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(handlePos, autoWps, tgtPos);
+          edgeCond.firstSegmentAxis = firstSegmentAxis;
+          edgeCond.lastSegmentAxis  = lastSegmentAxis;
+        }
       }
     }
 

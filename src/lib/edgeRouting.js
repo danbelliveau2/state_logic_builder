@@ -173,40 +173,41 @@ export function computeAutoRoute(src, tgt, edgeData, allNodes, sourceHandle) {
   const isSideHandleExit = isDecisionExit
     && (sourceHandle === 'exit-pass' || sourceHandle === 'exit-fail');
 
-  // Side-handle decision exits (pass/fail): route depends on target position.
-  //   Forward (target below): simple L-bend → horizontal out, vertical down
-  //   Backward (target above): U-bend → horizontal out (handle direction),
-  //     vertical up past target, horizontal across, vertical down into target
+  // Side-handle decision exits (pass/fail): always L-bend (horizontal out
+  // from the handle, then vertical to target). Works for forward AND
+  // backward targets as long as the target is on the SAME side the handle
+  // points (pass = left side, fail = right side) — which is the normal case.
+  //
+  // U-bend (route around the diagram) is only triggered when the target is
+  // on the WRONG side of the handle (e.g. user dragged the fail child to the
+  // left of the source). In that case we route locally around source+target
+  // bounds — NOT diagram-wide bounds, which produced wildly long routes when
+  // there were unrelated distant nodes.
   if (isSideHandleExit) {
     const isPassHandle = edgeData?.exitColor === 'pass';  // pass = left handle
-    if (isBackward) {
-      // U-bend from side handle going backward (target is above)
-      // Route outward from the handle side, then up, across, and down
-      const DROP  = 40;
-      const PAD   = 60;
-      // Determine which side to route around based on handle direction
-      // Pass (left handle) → go left; Fail (right handle) → go right
-      let sideX;
-      if (isPassHandle) {
-        // Go left — find left boundary of diagram
-        let leftBound = Infinity;
-        for (const n of allNodes) { leftBound = Math.min(leftBound, n.position?.x ?? 0); }
-        if (!isFinite(leftBound)) leftBound = Math.min(src.x, tgt.x);
-        sideX = leftBound - PAD;
-      } else {
-        // Go right — find right boundary of diagram
-        let rightBound = -Infinity;
-        for (const n of allNodes) { rightBound = Math.max(rightBound, (n.position?.x ?? 0) + NODE_WIDTH); }
-        if (!isFinite(rightBound)) rightBound = Math.max(src.x, tgt.x) + NODE_WIDTH;
-        sideX = rightBound + PAD;
-      }
+    // "Wrong side" check: pass-handle wants tgt to the LEFT; fail-handle wants
+    // tgt to the RIGHT. We check against the source-node's right/left edge
+    // with a small overlap tolerance.
+    const TOL = 20;
+    const wrongSide = isPassHandle
+      ? (tgt.x > src.x + TOL)               // pass handle but target is right of source
+      : (tgt.x + NODE_WIDTH < src.x - TOL); // fail handle but target is left of source
+
+    if (wrongSide) {
+      const DROP = 40;
+      const PAD  = 60;
+      // Local bounds: just go around the source+target pair, not the whole diagram.
+      const sideX = isPassHandle
+        ? Math.min(src.x, tgt.x) - PAD
+        : Math.max(src.x, tgt.x) + NODE_WIDTH + PAD;
       return [
-        { x: sideX, y: src.y },          // horizontal out to side
-        { x: sideX, y: tgt.y - DROP },    // vertical up past target
-        { x: tgt.x, y: tgt.y - DROP },    // horizontal across to target X
+        { x: sideX, y: src.y },
+        { x: sideX, y: tgt.y - DROP },
+        { x: tgt.x, y: tgt.y - DROP },
       ];
     }
-    // Forward side-handle exit: simple L-bend
+    // Normal case: simple L-bend. Horizontal out to tgt.x, vertical to target.
+    // For target above source, vertical segment goes UP — still a clean L.
     return [{ x: tgt.x, y: src.y }];
   }
 

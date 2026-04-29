@@ -8,6 +8,8 @@ import { MachineConfigEditor } from './MachineConfigEditor.jsx';
 import { StandardsProfileEditor } from './StandardsProfileEditor.jsx';
 import { IOMapEditor } from './IOMapEditor.jsx';
 import { DesignSystemEditor } from './DesignSystemEditor.jsx';
+import { PickerGrammarEditor } from './PickerGrammarEditor.jsx';
+import { PickerPreview } from './PickerPreview.jsx';
 import { useDiagramStore } from '../store/useDiagramStore.js';
 
 const TABS = [
@@ -15,6 +17,8 @@ const TABS = [
   { id: 'standards', label: 'Standards Profile' },
   { id: 'iomap', label: 'IO Map' },
   { id: 'design', label: 'Design System' },
+  { id: 'pickerGrammar', label: 'Picker Grammar' },
+  { id: 'pickerPreview', label: 'Picker Preview' },
 ];
 
 export function ProjectSetup() {
@@ -48,6 +52,8 @@ export function ProjectSetup() {
         {activeTab === 'standards' && <StandardsProfileEditor />}
         {activeTab === 'iomap' && <IOMapEditor />}
         {activeTab === 'design' && <DesignSystemEditor />}
+        {activeTab === 'pickerGrammar' && <PickerGrammarEditor />}
+        {activeTab === 'pickerPreview' && <PickerPreview />}
       </div>
     </div>
   );

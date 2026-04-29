@@ -18,6 +18,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useDiagramStore } from '../store/useDiagramStore.js';
 import { DeviceIcon, DEVICE_ICON_COLORS } from './DeviceIcons.jsx';
+import { IconAlternativesPreview } from './IconAlternatives.jsx';
 
 // ── Data: mirrors the app's actual values ────────────────────────────────────
 
@@ -305,6 +306,34 @@ export function DesignSystemEditor() {
           Edit any value — changes are saved to the project file.
         </p>
       </div>
+
+      {/* ── ICON ALTERNATIVES (preview) ─────────────────────────────────── */}
+      <Section title="Icon Alternatives" subtitle="3 options per device type — preview only">
+        <IconAlternativesPreview />
+      </Section>
+
+      {/* ── DISPLAY OPTIONS ─────────────────────────────────────────────── */}
+      <Section title="Display Options" subtitle="On-canvas display preferences">
+        <label style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+          fontSize: 13, color: '#0f172a', cursor: 'pointer',
+        }}>
+          <input
+            type="checkbox"
+            checked={tv('showAdvanceConditions', true)}
+            onChange={e => setThemeVal('showAdvanceConditions', e.target.checked)}
+            style={{ width: 16, height: 16, cursor: 'pointer' }}
+          />
+          <span>
+            <strong>Show advance conditions on action rows</strong>
+            <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+              When ON, each action row shows the verify text below it
+              (e.g. <code>i_VerticalCylinderExtended.ON</code>). Turn OFF for
+              a cleaner diagram view — generation logic is unaffected.
+            </div>
+          </span>
+        </label>
+      </Section>
 
       {/* ── BRAND COLORS ────────────────────────────────────────────────── */}
       <Section title="Brand Colors" subtitle={`${BRAND_COLORS.length} values`}>

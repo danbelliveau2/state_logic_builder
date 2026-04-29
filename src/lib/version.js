@@ -4,10 +4,133 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.27.1';
+export const APP_VERSION = '1.33.0';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.33.0',
+    date: '2026-04-29',
+    time: '17:00',
+    author: 'Dan Belliveau',
+    changes: [
+      'NEW Universal Picker live in the canvas. State-node "+ Add Action" now opens UniversalPicker (Action vs Decision modes; Wait/Check/Branch sub-actions; subject-by-grammar-row filtering) instead of the legacy InlinePicker. New actions store as `pickerV2: true` + `pickerConfig: {...}` and render through PickerV2ActionRow. Old v1 actions still work — both schemas coexist on the same diagram.',
+      'Rotary-pneumatic and v2 Branch decisions auto-spawn child nodes + edges from side handles (exit-pass left, exit-fail right). Dragging the parent node leaves edges as auto-route (no frozen waypoints) so paths recompute every render — branches always exit perpendicular to their side handle.',
+      'Action row v2 layout: ACTION / Move-Type-abbrev (ABS/INCR/INDEX) / icon / SUBJECT / DETAIL (e.g. Pick · 10mm) / CONDITION. Move Type auto-fills from servo position. Optional 2nd-action start-condition chip (After ↑ / ‖ Same time / ⏱ Delay [Timer] / ▼ On input [Subject]) lets you say WHEN a 2nd action in the same state begins.',
+      'Test-Subjects manager + standalone PickerPreview tab in Project Setup. Picker Grammar v5 schema with enum-syntax DETAIL (e.g. `Move Type: Absolute | Incremental | Index`). Auto-migration cleans up legacy signal/parameter/PT rows on load.',
+      'Device icons redesigned (Linear Actuator, Rotary Actuator, Vacuum Generator, Conveyor, Digital Sensor, Analog Sensor, Vision System, Custom Device). Bigger icon size on action rows (14 → 18) and picker subject buttons (14 → 18) for clarity.',
+      'Edge-routing: side-handle exits now ALWAYS L-bend regardless of forward/backward target. Removed diagram-wide-bounds U-bend that was producing wraparound routes when the parent was dragged. Backward + same-side-handle = simple horizontal-out + vertical-up. Local-bounds U-bend kept only for genuine wrong-side cases.',
+      'Properties panel no longer auto-opens on selection — stays collapsed until user explicitly expands. Toggle "Show advance conditions on action rows" added to Design System editor.',
+    ],
+  },
+  {
+    version: '1.32.1',
+    date: '2026-04-26',
+    time: '13:00',
+    author: 'Dan Belliveau',
+    changes: [
+      'Subject buckets are SPLIT and REORDERED to match the user\'s mental model. Old: "Sensors & Devices" lumped cylinders + grippers + servo positions in with digital + analog sensors, and Part Tracking sat near the top. New ordering, top-to-bottom: Devices → Sensors → Vision → Robots → Signals → Part Results → Part Tracking. Devices = cylinders, grippers, vacuum, servo positions (the things you actuate). Sensors = digital sensors and analog probes (the things you observe). Robot is now plural ("Robots") and PT sits at the very bottom since it\'s a project-level concept, not a per-cycle subject. Mental model: every node "starts with the subject" — the user picks WHICH KIND of subject first, then drills in.',
+      'Vision and Signals buckets pick up extra device-pool content. Vision now renders both vision-job signals (high-level "this camera ran job X and it passed") AND the per-camera device inputs (TrigReady / ResultReady / InspPass / numeric outputs from buildAvailableInputs). Signals now renders both project signals (state / position / condition) AND parameter-device inputs (recipe params, cross-SM globals). Both pools were previously orphaned — they existed in availableInputs but had no Stage B home.',
+      'Bucket detection in goToStage() and the inferred-subject helper updated to the new keys. Robot signals route to "robots", Cylinders/Actuators/Grippers/Vacuum/Servo Positions route to "devices", Sensors/Analog Sensors route to "sensors", Vision route to "vision", Parameters route to "signals". TYPE_LABEL and TYPE_LABEL_FOR_STEPPER both regenerated for the new key set so the back-button label and stepper banner show the right bucket name.',
+      'No data-shape changes. Hydration is identical — `conditions[0].group` is the existing static string from buildAvailableInputs, and the bucket-routing logic just re-maps it. Existing decision nodes open in the right bucket without migration. Build verified clean.',
+    ],
+  },
+  {
+    version: '1.32.0',
+    date: '2026-04-26',
+    time: '12:00',
+    author: 'Dan Belliveau',
+    changes: [
+      'Decision-node popup STEPPER is now the navigator. The four pills at the top of the popup (SUBJECT > DETAIL > ACTION > VALUE) are clickable — clicking each pill loads ONLY that stage\'s picker into the body. The redundant body sections (Wait/Check toggle, the standalone CHECK card, the standalone ACTION ON/OFF row) are gone — their content moved into the corresponding stepper-driven stages. One picker visible at a time, navigator on top, outcomes / log / retry pinned below.',
+      'Subject and Detail labels are now DEVICE-TYPE-AWARE. Two patterns: (a) Type-as-subject for multi-check devices — Analog Sensor with a HeightCheck setpoint reads "Subject: Analog Sensor / Detail: HeightCheck" instead of "Subject: Sensors / Detail: ProbeCheck - HeightCheck". Vision picks read "Vision / Link_Orient". Digital sensor reads "Sensor / PartCheck". (b) Device-as-subject for singular devices — a Vertical Cylinder reads "Subject: Vertical Cylinder / Detail: Extended" with NO Value pill (the position already encodes polarity). Same pattern for grippers, vac generators, and servo axes. The Value pill (and its chevron separator) is hidden for these device types.',
+      'Action stage replaces the old Wait/Check toggle row. Three vertical cards — Wait / Check / Decide — let the user pick the verb after they\'ve picked the subject. Each card shows verb + tip. Wait + single condition defaults to exitCount=1 (single-exit branch); Decide defaults to exitCount=2 (fork).',
+      'Value stage replaces the old polarity row. Subject-aware vocabulary: Vision shows PASS / FAIL, Analog probe shows IN TOL / OUT, range conditions show explicit Min / Max number inputs (was previously not visible at all in the popup), and binary signals/sensors show ON / OFF. Updates conditions[0].conditionType + exit1Label / exit2Label on click.',
+      'Stepper pill state is "active vs completed vs pending". A pill is "completed" once its slot has a value — green checkmark + green fill. "Active" when it\'s the currently-open stage — blue ring + blue text. "Pending" when empty and not active — grey. Clicking any pill jumps to that stage; goToStage() syncs the legacy showBranchConfig / subjectTypeView / pickerStage flags so the existing sub-flow handlers keep working without rewrite.',
+    ],
+  },
+  {
+    version: '1.30.3',
+    date: '2026-04-25',
+    time: '19:00',
+    author: 'Dan Belliveau',
+    changes: [
+      'Decision-node popup is MODE-AWARE in section count. Wait mode renders only three sections — SUBJECT → RETRY → OUTCOMES — because a wait is just "sit on this subject until it\'s true; how do we exit?". The CHECK / MEASUREMENT / LOG sections are gone in Wait mode (a wait has nothing to log; the polarity IS the condition that releases the wait, not a separate slot). Check mode adds the missing concepts back in mental-flow order: SUBJECT (what are we observing?) → CHECK (what slot on this subject — `HeightCheck`, `Extended`, etc.) → MEASUREMENT (how are we measuring it — `IN TOL` vs `OUT`, `ON` vs `OFF`) → RETRY → OUTCOMES (how do we exit?) → LOG (what do we record?). Each Check-mode section answers exactly one question; the questions chain.',
+      'CONDITION section split into CHECK and MEASUREMENT. Old CONDITION was doing two jobs — picking the named slot AND picking the polarity — under one header. Now the slot dropdown lives in CHECK ("What are we checking on this subject?") and the polarity buttons live in MEASUREMENT ("How are we measuring it?"). The polarity buttons drop their verb prefix — they used to read "Check IN TOL" / "Wait for OUT", but the verb is already established by the action mode at the top, so the buttons are just "✓ IN TOL" / "✗ OUT" (or ON/OFF for digital). For range-comparison conditions (already a polarity-on-a-curve concept) the MEASUREMENT section hides since the slot itself encodes the polarity.',
+      'SUBJECT button is now "+ Pick Subject" — period. The old label "+ Pick Signal / Sensor / Condition" enumerated three of the seven subject types and was both wrong (missing vision, PT, robot, state) and longer than the actual button. The empty-state hint at the bottom updated to match: "Pick a subject first" instead of "Pick a signal first".',
+      'No data-shape changes. The CHECK/MEASUREMENT split reads from the same `conditions[0]` it always did; LOG/OUTCOMES gating reads `nodeMode`. Existing nodes hydrate identically — Wait nodes just lose three sections from the popup, Check nodes get the same content in two new boxes. Build verified clean — HMR all green.',
+    ],
+  },
+  {
+    version: '1.30.2',
+    date: '2026-04-25',
+    time: '18:30',
+    author: 'Dan Belliveau',
+    changes: [
+      'SUBJECT row strips down to the device name. The label used to mash three concerns together — `ProbeCheck @ HeightCheck (In Range)` — and that broke the user\'s mental model. The subject IS the device. The named check (`HeightCheck`) and how to use it (`IN TOL` / `OUT`) belong to the next concept down. The row now reads just `ProbeCheck` for any device-backed condition; non-device subjects (signals, vision jobs, PT fields) keep their existing label since for those the label IS already the subject.',
+      'NEW CONDITION section between SUBJECT and RETRY. Holds the named check (e.g., `HeightCheck` for an analog probe) AND how to use it (polarity buttons). When the device has multiple inputs — a probe with several setpoints, a 2-sensor cylinder with `ext` + `ret`, a robot with multiple signals — a dropdown picks which one. Single-input devices (digital sensor with one `i_{name}`) skip the dropdown and show only the polarity buttons. Polarity vocabulary follows the subject: analog probe → `IN TOL` / `OUT`, digital → `ON` / `OFF`. Reads from `conditions[0]` directly so it doesn\'t depend on the legacy `sensorRef` state being populated (which was happening inconsistently when picks went through the addingCondition flow).',
+      'Inline polarity pill in the SUBJECT row hides for single-condition mode — the polarity now lives in CONDITION below, no need for two sources of truth. Multi-condition mode (AND/OR) keeps the inline pill since each condition needs its own per-row polarity toggle.',
+      'OUTCOMES branch labels are subject-aware on first pick. Picking an analog probe defaults `Two branches` left/right inputs to `InTol` / `Out` instead of the old `On` / `Off`. Same fix in `derivePrimary` so re-derivations on Done don\'t silently reset analog labels back to On/Off. Plus `handleSensorPick` now seeds the legacy state setters (`sensorRef`, `signalType`, exit labels) when adding the FIRST condition through the addingCondition flow — that path used to leave them stale, which is why CONDITION/TEST FOR was invisible after picking from the new two-stage subject picker.',
+      'LOG label "Log the on/off state (BOOL)" replaced with "Log the result (BOOL)" — the old wording was a literal description of the data type, not a meaningful description of what the user is doing. "Log the result" reads cleanly for any binary subject (digital sensor, signal, vision pass/fail, state-reached) without needing to specialize per type.',
+      'No data-shape changes. All edits are render-layer + state-default fixes. Existing nodes hydrate identically. Build verified clean.',
+    ],
+  },
+  {
+    version: '1.30.1',
+    date: '2026-04-25',
+    time: '18:00',
+    author: 'Dan Belliveau',
+    changes: [
+      'SUBJECT picker is now TWO-STAGE. Stage A shows six big TYPE cards (Vision / Part Results / Part Tracking / Sensors & Devices / Robot / Signals) with a count badge and `›` arrow on each — pick the kind of thing you\'re observing first. Stage B drills into ONLY that type, preserving the existing sensor/robot subgroup nesting. A "← Back · {Type Label}" header returns to Stage A. The old flat list — every category visible simultaneously — is gone. Mental model: pick the SUBJECT (vision job, signal, sensor), then pick the SPECIFIC ITEM inside that subject. TypeCards with zero items hide entirely so the page only shows what\'s actually available in this project.',
+      'ADVANCE section renamed to RETRY. ADVANCE was a fake umbrella for one option (the retry counter) — there is no second "advance" feature today, so the heading was promising structure that didn\'t exist. The box is now labeled "Retry" and the toggle reads "Enable retry counter". When future advance-conditions land (timer hold-off, scan-count gates, etc.) they\'ll get their own clearly-named box rather than getting buried under a generic header.',
+      'LOG section is now SUBJECT-AWARE and the "stamp result" jargon is gone. For an AnalogSensor probe the PRIMARY toggle reads "Log the measured value (REAL)" (sets `valueLogEnabled`) and the SECONDARY toggle reads "Also log pass/fail (BOOL)" (sets `ptEnabled`) — recording the reading is what an engineer actually wants on a probe, with the BOOL pass/fail demoted to optional. For a binary subject the single toggle reads "Log the on/off state (BOOL)" (sets `ptEnabled`). The section subhead now reads "Record the probe reading at this moment in the cycle." (analog) or "Record what this condition evaluated to at this moment in the cycle." (binary). The old "Stamp result to PT field" wording — which made no sense on a measurement — is removed everywhere.',
+      'No data-shape changes. Underlying flags (`ptEnabled`, `valueLogEnabled`, `nodeMode`, exit-count) are unchanged; only labels, picker layout, and section grouping moved. Existing decision rows hydrate identically. Build verified clean — HMR all green, no syntax errors from the picker rebuild.',
+    ],
+  },
+  {
+    version: '1.30',
+    date: '2026-04-25',
+    time: '17:00',
+    author: 'Dan Belliveau',
+    changes: [
+      'Decision-node popup restructured into FIVE explicitly-labeled sections in mental-flow order: SUBJECT → TEST FOR → ADVANCE → LOG → OUTCOMES. SUBJECT moves to the TOP — picking what to observe is the first thing you do, not the third. Each section gets a small uppercase color-coded header (SUBJECT blue, TEST FOR cyan, ADVANCE amber, LOG teal, OUTCOMES purple) so the popup reads like a structured form instead of a wall of unlabeled buttons.',
+      'TEST FOR is now its own dedicated section with a one-line "What polarity counts as a pass" tagline. Polarity is no longer encoded in the outcome button labels — the 1/2/N OUTCOMES buttons read "One path forward" / "Two branches" / "Multiple branches" as raw shape choices, not "One path forward — IN TOL" / "Two branches — On / Off". The polarity decision now lives in exactly one place (TEST FOR), making it a single concept instead of a label that bled into three other places.',
+      'OUTCOMES section gets its own subtle gray box with the header explaining "How this node exits the state." This visually groups the 1/2/N exit-count picker as a distinct concern from the rest of the config — exit shape is structural (does this node fan out?), separate from what condition advances it (TEST FOR) or how it advances (ADVANCE).',
+      'LOG section renamed from "Part Tracking" — the user-facing label avoids PLC jargon. The section header reads "Log" and the field labels read "Stamp result to PT field (required/optional)" instead of the old "Part Tracking write (required) / Part Tracking (optional)". The underlying flag is still `ptEnabled` and the field still goes into Part Tracking — only the human-facing labels changed.',
+      'Subject picker now has the SUBJECT header (blue) and a `(N)` count when conditions.length > 1, making the AND/OR multi-condition mode discoverable as a property of the subject. The header keeps the AND/OR pill controls inline on the right when a second condition is added.',
+      'ADVANCE section header (amber) groups the existing retry-counter UI under a clear label. Today only the retry counter lives here, but the label primes the user for future timer / hold-off advance conditions to land in the same box.',
+      'No data-shape changes — purely a popup layout refactor. Existing nodes hydrate identically; the popup just renders its same controls in a clearer order with explicit section dividers. Build verified clean.',
+    ],
+  },
+  {
+    version: '1.29',
+    date: '2026-04-25',
+    time: '16:15',
+    author: 'Dan Belliveau',
+    changes: [
+      'Decision-node setup is now ONE flow regardless of intent. The popup\'s four mode buttons (Wait / Decide / Verify / Check & Log) collapsed to two ACTIONS — `Wait` (sit on the subject until the condition is true) and `Check` (read the subject NOW and proceed). Decide / Verify / Log were never real modes; they were just `Check` with different outcome counts and an optional log flag. Every decision now follows the same five-step structure: Subject → Action → Condition → Outcomes → Log (optional). Logging is a backend checkbox, not a top-level mode.',
+      'Internal `nodeMode` collapses to `wait | check`. Legacy `decide`/`verify`/`log` strings hydrate through a one-shot migration: decide → check; verify → check + `assert: true`; log → check + `ptEnabled: true`. Migration walks both standalone DecisionNodes and embedded `_decision` rows in StateNode action arrays, stamping `migratedFromVerify`/`migratedFromDecide`/`migratedFromLog` so it can\'t re-run. Existing combinations (verify+PT, decide+PT, etc.) preserve their flag composition — what was already orthogonal in v1.28 is just relabeled in v1.29.',
+      'Outcome buttons (1 / 2 / N) are always visible. The old "Verify forces single-exit" and "Decide forces 2+" gates are gone; any action can have any number of outcomes. The only remaining constraint is structural — Wait + a single condition can\'t branch (if the condition isn\'t met, the state just doesn\'t advance), so the 2-button is hidden in that one case. Everything else composes freely.',
+      'Condition vocabulary follows the SUBJECT, not the mode. Digital sensors → ON/OFF; analog probes (`{name}{setpoint}RC.InPos`) → IN TOL/OUT; vision jobs → PASS/FAIL; project signals → ON/OFF or TRUE/FALSE based on type. The Check ON/OFF preset buttons in the popup detect the analog subject and re-render as `Check IN TOL` / `Check OUT`. The op badge on the row body derives its full label as `<verb> <testWord>[ · Branch][ · Log]` — so a Wait on a probe with logging reads `Wait In Tol · Log`; a Check on a vision job with two branches reads `Check Pass · Branch` (or just `Decide` for the canonical "branch on a result without asserting which way" case).',
+      'Color follows the action: blue (#0072B5) for Wait, teal (#0d9488) for Check. The four-mode color palette (orange Verify, purple Decide, teal Log) is gone — those distinctions live in the verb badge text now, not the node color. This makes scanning the canvas easier: at a glance you can see "this is a wait, this is a check" without parsing four different shades.',
+      'PT panel labels updated to the unified vocabulary. Subject-type labels in `partTracking.js` now read `Wait · Log`, `Check · Log`, `Check · Branch · Log` (composing the action with outcome count and log flag), and `Wait · Value` / `Check · Value` for the AnalogSensor REAL log add-on. The decisionPt rows now gate purely on `ptEnabled` (the legacy `nodeMode === \'log\'` clause is gone — log-mode rows now hydrate as check+ptEnabled and pick up the same gate).',
+      'No data-shape changes beyond the migration. Two new flag stamps (`migratedFromVerify` etc.) are historical markers, not behavior drivers. The embedded `_decision` row and standalone DecisionNode share the same `<DecisionBody>` component (unchanged from v1.28), so both surfaces pick up the new verb derivation, color logic, and subject-aware vocabulary at once.',
+    ],
+  },
+  {
+    version: '1.28',
+    date: '2026-04-25',
+    time: '15:30',
+    author: 'Dan Belliveau',
+    changes: [
+      'Decision-node architecture is now unified on ORTHOGONAL FLAGS instead of four exclusive modes. The four mode buttons (Wait / Decide / Verify / Check & Log) still exist as PRESETS, but `nodeMode` and `ptEnabled` (and `valueLogEnabled`) are now independent flags that compose freely. Combinations the old model couldn\'t express — Verify+Log (gate AND record), Decide+Log (branch AND stamp the chosen path), Wait+Log (gate-and-record-on-release), Verify with multi-branch — are all valid first-class configurations. The verb badge auto-derives a "· Log" suffix when a logging flag is on, so a verify-with-PT row reads "Verify On · Log" or "Verify In Tol · Log" instead of being silently re-classified as a Log node.',
+      'Verify mode no longer clamps to single-exit. Switching a 2-exit row to Verify keeps both exits — engineer can wire pass→continue / fail→fault-recovery (the canonical use of Verify) OR collapse to single-exit with PT logging (the old verify+PT pattern). Both are valid; both render correctly. Decide still defaults to 2 exits, Wait still defaults to 1, Log still forces 1 (a snapshot record can\'t branch).',
+      'Removed the v1.27 verify+PT → log auto-conversion. That migration assumed verify+single+PT was semantically identical to Log mode, but they\'re different: Verify+PT faults on miss AND stamps the result; Log never faults and always advances. Existing rows already promoted to log mode keep that mode (the `migratedToLog` stamp is preserved as a historical marker). New verify+PT rows stay in verify mode. Two-loop migration code in store hydration is gone.',
+      'PT panel UI: non-log modes now read "📊 Part Tracking (optional)" with a checkbox; log mode still reads "📊 Part Tracking write (required)". When PT is enabled in a non-log mode the field-picker hint reads "Stamp the result to a PT field — composes with Verify" (or Decide / Wait), making the orthogonal-flag UX explicit. Auto-create-on-Done logic and field dedup-by-name are unchanged.',
+      'AnalogSensor "Also store value (REAL)" add-on is no longer log-mode-only. Available in any mode whose subject is an AnalogSensor — Verify+value-log captures the reading at the gate, Decide+value-log captures it at the branch decision, Wait+value-log captures it at gate-release, Log+value-log is the original use case. L5X exporter (`partTracking.js`) drops the `nodeMode === \'log\'` gate on the `decisionLogValue` row.',
+      'L5X PT row labels reflect the unified model: subjectType reads `Verify · Log`, `Decide · Log`, `Wait · Log`, or plain `Check & Log` for pure log nodes. Value-log rows read `Verify · Value`, `Decide · Value`, etc. Description text mirrors the same composition. The R03 emission rules are unchanged — what was already correct (`partTracking.js` line 178 already gated on `ptEnabled || nodeMode === \'log\'`) just now picks up Verify+PT and Decide+PT rows automatically.',
+      'No data-shape changes. The unified model was achieved by surgical removal of mode gates that were quietly preventing valid combinations: persistence in the popup\'s Done handler, the Verify→single-exit clamp on mode-switch, the migratedToLog hydration loops, the value-log toggle visibility, and the L5X subject-type derivation. The embedded `_decision` row and standalone DecisionNode share the same `<DecisionBody>` component (already true in v1.27); both pick up every change at once. Build verified clean.',
+    ],
+  },
   {
     version: '1.27.1',
     date: '2026-04-25',

@@ -495,7 +495,9 @@ export function AddDeviceModal() {
   const [setpoints, setSetpoints] = useState(existingDevice?.setpoints ?? []);
 
   function addSetpoint() {
-    setSetpoints(prev => [...prev, { name: `Check${prev.length + 1}`, nominal: 0, tolerance: 0.5, lowLimit: -0.5, highLimit: 0.5 }]);
+    // v1.30.4 — setpoints get a stable id so decision-row refs survive renames.
+    // Existing setpoints get IDs back-filled by the hydration migration.
+    setSetpoints(prev => [...prev, { id: crypto.randomUUID(), name: `Check${prev.length + 1}`, nominal: 0, tolerance: 0.5, lowLimit: -0.5, highLimit: 0.5 }]);
   }
 
   function updateSetpoint(index, field, value) {

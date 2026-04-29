@@ -650,14 +650,10 @@ export function PropertiesPanel() {
   const selectedNode = store.getSelectedNode();
   const selectedEdge = store.getSelectedEdge();
 
-  // Start collapsed; auto-expand when a node or edge is selected.
+  // Start collapsed and STAY collapsed unless the user explicitly clicks
+  // the expand chevron. Selecting a node/edge no longer auto-opens the panel
+  // (was disrupting the canvas-focused workflow).
   const [collapsed, setCollapsed] = useState(true);
-
-  // Auto-expand when something is selected, auto-collapse when deselected
-  const hasSelection = !!selectedNode || !!selectedEdge;
-  useEffect(() => {
-    if (hasSelection) setCollapsed(false);
-  }, [hasSelection]);
 
   if (!sm) return null;
 

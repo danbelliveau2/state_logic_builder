@@ -165,23 +165,23 @@ export function derivePartTrackingTable(sm, stateMap) {
     }
   }
 
-  // ── 4. Decision-row PT writes (log/verify/decide with PT enabled) ─────
-  // Embedded `_decision` rows on a state — and standalone DecisionNodes in
-  // log mode — write a PT BOOL when the state runs. For Log mode, the row
-  // also optionally writes a REAL `{name}Scaled` value into a separate PT
-  // field. The R03 emitter resolves the BOOL condition tag from the row's
+  // ── 4. Decision-row PT writes (any decision with PT enabled) ──────────
+  // v1.29: action collapsed to `wait | check`. Any decision (wait or check)
+  // can opt into PT logging via the orthogonal `ptEnabled` flag, and any
+  // decision can additionally log a REAL value via `valueLogEnabled`. The
+  // R03 emitter resolves the BOOL condition tag from the row's
   // `conditions[0].ref` (or `sensorRef`) and emits OTE/OTU based on the
   // ptPassValue / ptFailValue selectors.
   for (const node of nodes) {
     // Walk both standalone DecisionNodes and StateNodes' embedded rows.
     let entries = [];
-    if (node.type === 'decisionNode' && (node.data?.ptEnabled || node.data?.nodeMode === 'log')) {
+    if (node.type === 'decisionNode' && node.data?.ptEnabled) {
       entries.push({ owner: node, src: node.data, isStandalone: true });
     }
     if (node.type === 'stateNode') {
       for (const action of node.data?.actions ?? []) {
         if (action?.deviceId !== '_decision') continue;
-        if (!(action.ptEnabled || action.nodeMode === 'log')) continue;
+        if (!action.ptEnabled) continue;
         entries.push({ owner: node, src: action, isStandalone: false });
       }
     }
@@ -195,15 +195,20 @@ export function derivePartTrackingTable(sm, stateMap) {
       // Subject label for the PT table preview UI.
       const subject = src.signalSource || src.signalName || 'Decision';
 
+      // v1.29 unified-flag model: action is `wait | check`. Subject-type
+      // label reads as "Wait \u00b7 Log", "Check \u00b7 Log", "Check \u00b7 Branch \u00b7 Log"
+      // depending on outcome count. This drops the legacy verify/decide/log
+      // vocabulary; old data hydrates through the v1.29 migration.
+      const action = src.nodeMode === 'wait' ? 'Wait' : 'Check';
+      const branches = (src.exitCount ?? 1) >= 2;
+      const subjectTypeLabel = `${action}${branches ? ' \u00b7 Branch' : ''} \u00b7 Log`;
       rows.push({
         id: `row_decisionpt_${entry.owner.id}_${entry.isStandalone ? 'self' : src.id}`,
         kind: 'decisionPt',
         fieldNameRaw: fieldRaw,
         subjectName: subject,
-        subjectType: src.nodeMode === 'log' ? 'Check & Log' : (src.nodeMode === 'verify' ? 'Verify' : 'Decide'),
-        description: src.nodeMode === 'log'
-          ? `Read condition at this state, write ${src.ptPassValue ?? 'SUCCESS'} on TRUE / ${src.ptFailValue ?? 'FAILURE'} on FALSE`
-          : `Decision-row PT write (${src.nodeMode ?? 'verify'})`,
+        subjectType: subjectTypeLabel,
+        description: `${action}-row PT write — stamp ${src.ptPassValue ?? 'SUCCESS'} on TRUE / ${src.ptFailValue ?? 'FAILURE'} on FALSE`,
         setAtNodeId: entry.owner.id,
         setAtState: getState(entry.owner.id),
         writeValue: `${src.ptPassValue ?? 'SUCCESS'} / ${src.ptFailValue ?? 'FAILURE'}`,
@@ -217,11 +222,11 @@ export function derivePartTrackingTable(sm, stateMap) {
         _conditionType: src.conditions?.[0]?.conditionType ?? src.conditionType ?? 'on',
       });
 
-      // Log-mode "Also store value" add-on — emits a REAL PT field that
-      // copies the AnalogSensor's {name}Scaled tag at the moment of the
-      // check. The condition gate is the same (the state running); the
-      // copy is unconditional once the state is active.
-      if (src.nodeMode === 'log' && src.valueLogEnabled && (src.valueFieldName || src.valueFieldId)) {
+      // "Also store value" add-on — emits a REAL PT field that copies the
+      // AnalogSensor's {name}Scaled tag at the moment of the check. Works
+      // for any action: Wait+value-log captures at gate-release, Check+
+      // value-log captures at the moment of the read.
+      if (src.valueLogEnabled && (src.valueFieldName || src.valueFieldId)) {
         const valFieldRaw = sanitizeTag(src.valueFieldName ?? `${fieldRaw}_Value`);
         // Resolve the source REAL tag — only AnalogSensor exposes a Scaled
         // value, so we look up the device by the condition's ref.
@@ -235,8 +240,8 @@ export function derivePartTrackingTable(sm, stateMap) {
             kind: 'decisionLogValue',
             fieldNameRaw: valFieldRaw,
             subjectName: subject,
-            subjectType: 'Check & Log (value)',
-            description: `Copy ${sourceTag} into PT REAL field at the moment of the check`,
+            subjectType: `${action} \u00b7 Value`,
+            description: `Copy ${sourceTag} into PT REAL field at the moment of the ${action.toLowerCase()}`,
             setAtNodeId: entry.owner.id,
             setAtState: getState(entry.owner.id),
             writeValue: 'REAL',

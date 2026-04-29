@@ -44,7 +44,7 @@
  * See `src/WHERE.md` for the project-wide task → file map.
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Handle, Position, NodeToolbar } from '@xyflow/react';
 import { createPortal } from 'react-dom';
 import { DEVICE_TYPES } from '../../lib/deviceTypes.js';
@@ -58,6 +58,10 @@ import { useReactFlowZoomScale } from '../../lib/useReactFlowZoomScale.js';
 import { ENTRY_RULES, getEntryRuleMeta, resolveEntryRule, isEntryRuleOverridden } from '../../lib/entryRules.js';
 import { START_CONDITIONS, getStartConditionMeta, resolveIndexSync, isIndexSyncOverridden } from '../../lib/indexSync.js';
 import { PartTrackingPill } from '../PartTrackingPanel.jsx';
+// v2 picker integration
+import { UniversalPicker, GRAMMAR_TO_DEVICE_TYPE } from '../UniversalPicker.jsx';
+import { getProjectSubjects } from '../../lib/pickerSubjectsFromProject.js';
+import { loadGrammar } from '../../lib/pickerGrammar.js';
 import { PtBadge } from './PtBadge.jsx';
 import { ConnectMenu, HandleClickZone } from '../ConnectMenu.jsx';
 import { DecisionEditPopup, DecisionBody } from './DecisionNode.jsx';
@@ -640,9 +644,281 @@ function AdvanceConditionEditor({ action, devices, smId, nodeId, onClose }) {
   );
 }
 
+// ── v2 Picker Action Row ──────────────────────────────────────────────────────
+//
+// New-format actions added via UniversalPicker carry `pickerV2: true` and
+// store the picker's full config under `pickerConfig`. Render is driven
+// from that config — no per-device-type branching here.
+//
+// pickerConfig shape (from UniversalPicker.handleCommit):
+//   { mode, subAction, subjectId, subjectName, grammarRowId, grammarFamily,
+//     actionVerb, condition, detail: {...}, edgeTopology, edgeLabels }
+
+function pickerV2Accent(cfg) {
+  if (cfg.mode === 'action')          return '#0072B5';
+  if (cfg.subAction === 'branch')     return '#16a34a';
+  if (cfg.subAction === 'check')      return '#0891b2';
+  return '#7c3aed'; // wait
+}
+
+function pickerV2ActionLabel(cfg) {
+  if (cfg.mode === 'action') return cfg.actionVerb || '<action>';
+  if (cfg.subAction === 'wait')   return 'Wait';
+  if (cfg.subAction === 'check')  return 'Check';
+  if (cfg.subAction === 'branch') return 'Branch';
+  return '<sub>';
+}
+
+// Short labels for Move Type so the on-node pill stays compact.
+function abbrevMoveType(mt) {
+  if (!mt) return null;
+  const m = String(mt).toLowerCase();
+  if (m.startsWith('abs') || m === 'pos' || m === 'position') return 'ABS';
+  if (m.startsWith('incr')) return 'INCR';
+  if (m.startsWith('idx') || m.startsWith('index')) return 'INDEX';
+  return mt;
+}
+
+// Start-condition for action rows 2+ — when does this action kick off
+// relative to the previous one? Click the chip on a non-first row to cycle.
+// (Local to v2 action rows; distinct from the imported START_CONDITIONS
+// in `lib/indexSync.js` which is for index-sync semantics.)
+const PICKER_V2_START_CONDITIONS = [
+  { id: 'sequential', label: 'After ↑',   tip: 'Wait for previous action to complete' },
+  { id: 'parallel',   label: '‖ Same time', tip: 'Start at the same time as the previous action' },
+  { id: 'delay',      label: '⏱ Delay',    tip: 'Start after a timer (ms) — click again to set' },
+  { id: 'onInput',    label: '▼ On input',  tip: 'Start when an input becomes true — click again to pick' },
+];
+function nextStartCondition(current) {
+  const idx = PICKER_V2_START_CONDITIONS.findIndex(s => s.id === current);
+  return PICKER_V2_START_CONDITIONS[(idx + 1) % PICKER_V2_START_CONDITIONS.length].id;
+}
+function startConditionMeta(id) {
+  return PICKER_V2_START_CONDITIONS.find(s => s.id === id) ?? PICKER_V2_START_CONDITIONS[0];
+}
+
+function PickerV2ActionRow({ action, onClickName, showAdvance = true, grammar, devices, actionIdx = 0, smId, nodeId, subjects = [] }) {
+  const cfg = action.pickerConfig || {};
+  const accent = pickerV2Accent(cfg);
+  const actionLabel = pickerV2ActionLabel(cfg);
+  // Move Type rendered as a separate compact pill (ABS / INCR / INDEX),
+  // NOT folded into the action label.
+  const moveTypeAbbrev = abbrevMoveType(cfg.detail?.['Move Type']);
+  // Detail pill text: skip Move Type (it has its own pill) and append
+  // position value (e.g. "Pick" + 10mm → "Pick · 10mm") so the user sees
+  // the actual setpoint without opening the position editor.
+  const formatDetailEntry = (key, value) => {
+    if (key === 'Position name' && devices && cfg.subjectId) {
+      const device = devices.find(d => d.id === cfg.subjectId);
+      const position = device?.positions?.find(p => p.name === value);
+      if (position?.defaultValue != null && position.defaultValue !== '') {
+        return `${value} · ${position.defaultValue}mm`;
+      }
+    }
+    return value;
+  };
+  const detailText = Object.entries(cfg.detail || {})
+    .filter(([k, v]) => v && k !== 'Move Type')
+    .map(([k, v]) => formatDetailEntry(k, v))
+    .join(' · ');
+  // Order: ACTION / SUBJECT / DETAIL / CONDITION
+  // (Detail before condition reads more naturally: "Check ProbeCheck HeightCheck for In Tolerance")
+  // Tight compact pill base. Move Type (ABS) is tiniest; Detail (Pick·10mm)
+  // is slightly more readable. Both tighter than the action pill.
+  const moveTypePillStyle = {
+    padding: '0 4px', borderRadius: 4,
+    fontSize: 8, fontWeight: 700, lineHeight: '13px',
+    letterSpacing: '0.05em',
+    whiteSpace: 'nowrap', display: 'inline-block',
+  };
+  const detailPillStyle = {
+    padding: '0 5px', borderRadius: 6,
+    fontSize: 9, fontWeight: 600, lineHeight: '14px',
+    whiteSpace: 'nowrap', display: 'inline-block',
+  };
+  // Condition pill color follows SEMANTIC role from grammar.inputs index:
+  //   index 0 = On / Pass / True / Extended / In Tolerance → GREEN
+  //   index 1 = Off / Fail / False / Retracted / Out of Tolerance → RED
+  //   index 2+ → AMBER (retry-style)
+  // Falls back to mode accent only when no match (custom INPUTS list).
+  let conditionColor = accent;
+  if (cfg.condition && grammar) {
+    const grammarRow = grammar.find(r => r.id === cfg.grammarRowId);
+    const inputs = grammarRow?.inputs
+      ? grammarRow.inputs.split(',').map(s => s.trim()).filter(Boolean)
+      : [];
+    const idx = inputs.indexOf(cfg.condition);
+    if      (idx === 0) conditionColor = '#16a34a';
+    else if (idx === 1) conditionColor = '#dc2626';
+    else if (idx >= 2)  conditionColor = '#f59e0b';
+  }
+  return (
+    <div className="action-row-wrap">
+      <div className="action-row" style={{ borderLeftColor: accent, flexWrap: 'nowrap', gap: 3 }}>
+        {/* Start-condition chip — only on action rows 2+ ("when does this
+            action begin?"). Click the LABEL part to cycle:
+              After ↑ → Same time → Delay → On input
+            Delay and On input have inline value editors so the user can
+            set the ms / input name without leaving the row. */}
+        {actionIdx > 0 && (() => {
+          const startId   = action.pickerConfig?.startCondition || 'sequential';
+          const startVal  = action.pickerConfig?.startConditionValue;
+          const meta      = startConditionMeta(startId);
+          const updateCfg = (patch) => {
+            if (!smId || !nodeId) return;
+            useDiagramStore.getState().updateAction(smId, nodeId, action.id, {
+              pickerConfig: { ...(action.pickerConfig || {}), ...patch },
+            });
+          };
+          const stopAndPersist = (e) => e.stopPropagation();
+          // Stacked layout: type label on top, subject dropdown below.
+          // Sequential / Parallel collapse to a single line (no value to set).
+          // Delay / On Input expand to two lines so the picked timer/input
+          // sits beneath the type — easier to read than a single wide row.
+          const splitList = (s) => String(s ?? '').split(/[,·]/).map(x => x.trim()).filter(Boolean);
+          const showValueRow = startId === 'delay' || startId === 'onInput';
+          const valueOptions = startId === 'delay'
+            ? subjects.filter(s => s.grammarRowId === 'timer')
+            : startId === 'onInput'
+              ? subjects.filter(s => {
+                  const g = grammar?.find(r => r.id === s.grammarRowId);
+                  return g && splitList(g.inputs).length > 0;
+                })
+              : [];
+          const valuePlaceholder = startId === 'delay' ? '— pick timer —' : '— pick input —';
+          return (
+            <span
+              className="nodrag"
+              style={{
+                display: 'inline-flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                padding: '1px 4px',
+                background: '#fff', color: '#475569',
+                border: '1px dashed #94a3b8',
+                borderRadius: 4,
+                fontFamily: 'inherit',
+                marginRight: 3,
+                lineHeight: 1.1,
+              }}
+              title={meta.tip}
+            >
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  updateCfg({ startCondition: nextStartCondition(startId) });
+                }}
+                style={{
+                  background: 'none', border: 'none', padding: 0,
+                  fontSize: 8, fontWeight: 700,
+                  color: '#475569', cursor: 'pointer',
+                  fontFamily: 'inherit', letterSpacing: '0.05em',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {meta.label}
+              </button>
+              {showValueRow && (
+                <select
+                  value={startVal ?? ''}
+                  onClick={stopAndPersist}
+                  onMouseDown={stopAndPersist}
+                  onChange={(e) => updateCfg({ startConditionValue: e.target.value || null })}
+                  style={{
+                    marginTop: 1,
+                    height: 12, padding: '0 1px',
+                    border: 'none', background: 'transparent',
+                    fontSize: 8, fontFamily: 'inherit',
+                    color: '#0f172a',
+                    maxWidth: 110, cursor: 'pointer',
+                  }}
+                >
+                  <option value="">{valuePlaceholder}</option>
+                  {valueOptions.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              )}
+            </span>
+          );
+        })()}
+        <span className="action-op" style={{
+          background: accent, color: '#fff', borderColor: accent,
+          whiteSpace: 'nowrap',
+          // Tighter than the default action-op CSS so the row doesn't
+          // run wider than its parent. Keeps the action visually primary
+          // (still bigger than the satellite pills) without dominating.
+          fontSize: 10, padding: '1px 6px', fontWeight: 700,
+        }}>
+          {actionLabel}
+        </span>
+        {moveTypeAbbrev && (
+          <span style={{
+            ...moveTypePillStyle, marginLeft: 0,
+            background: '#1e293b', color: '#fff',
+            border: '1px solid #1e293b',
+          }}>
+            {moveTypeAbbrev}
+          </span>
+        )}
+        {/* Type icon — same SVG used in the picker's subject buttons. */}
+        {GRAMMAR_TO_DEVICE_TYPE[cfg.grammarRowId] && (
+          <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+            <DeviceIcon type={GRAMMAR_TO_DEVICE_TYPE[cfg.grammarRowId]} size={18} />
+          </span>
+        )}
+        <span
+          className={`action-device${onClickName ? ' action-device--clickable nodrag' : ''}`}
+          style={{ fontSize: 11, whiteSpace: 'nowrap' }}
+          onClick={onClickName}
+          title={cfg.grammarFamily || ''}
+        >
+          {cfg.subjectName || '<subject>'}
+        </span>
+        {detailText && (
+          <span style={{
+            ...detailPillStyle, marginLeft: 0,
+            background: '#fff', color: '#0f172a',
+            border: '1px solid #cbd5e1',
+          }}>
+            {detailText}
+          </span>
+        )}
+        {cfg.condition && (
+          <span style={{
+            ...detailPillStyle, marginLeft: 0,
+            background: conditionColor, color: '#fff',
+            border: `1px solid ${conditionColor}`,
+          }}>
+            {cfg.condition}
+          </span>
+        )}
+      </div>
+      {/* No auto-derived "verify ..." line for v2 actions — the heuristic
+          produced unreliable text (e.g. "verify Position (real value)" for
+          servos). v1 actions still honour the showAdvance toggle below. */}
+    </div>
+  );
+}
+
 // ── Action Row ────────────────────────────────────────────────────────────────
 
-function ActionRow({ action, devices, onClickName, onClickOp, onClickAdvance, smId, nodeId, isLast }) {
+function ActionRow({ action, devices, onClickName, onClickOp, onClickAdvance, smId, nodeId, isLast, showAdvance = true, grammar, actionIdx = 0, subjects }) {
+  // v2 picker actions short-circuit the legacy device-type branching.
+  if (action.pickerV2) {
+    return <PickerV2ActionRow
+      action={action}
+      onClickName={onClickName}
+      showAdvance={showAdvance}
+      grammar={grammar}
+      devices={devices}
+      actionIdx={actionIdx}
+      smId={smId}
+      nodeId={nodeId}
+      subjects={subjects}
+    />;
+  }
+
   // Part Tracking action — special rendering
   if (action.deviceId === '_tracking') {
     const fieldName = action.trackingFieldName ?? action.ptFieldName ?? 'Field';
@@ -664,19 +940,20 @@ function ActionRow({ action, devices, onClickName, onClickOp, onClickAdvance, sm
     return (
       <div className="action-row-wrap">
         <div className="action-row" style={{ borderLeftColor: badgeColor }}>
+          {/* Action pill on FAR LEFT — verb reads first, then subject. */}
+          <span className="action-op" style={{
+            background: badgeColor,
+            color: isLight ? '#333' : '#fff',
+            borderColor: badgeColor,
+          }}>{badgeLabel}</span>
           <span className="action-icon" style={{ fontSize: 14 }}>&#x1F4CB;</span>
           <span
             className={`action-device${onClickName ? ' action-device--clickable nodrag' : ''}`}
             style={{ fontSize: 12 }}
             onClick={onClickName}
           >{fieldName}</span>
-          <span className="action-op" style={{
-            background: badgeColor,
-            color: isLight ? '#333' : '#fff',
-            borderColor: badgeColor,
-          }}>{badgeLabel}</span>
         </div>
-        {verifyText && <div className="action-verify-text">{verifyText}</div>}
+        {showAdvance && verifyText && <div className="action-verify-text">{verifyText}</div>}
       </div>
     );
   }
@@ -740,7 +1017,7 @@ function ActionRow({ action, devices, onClickName, onClickOp, onClickAdvance, sm
             borderColor: badgeColor,
           }}>{badgeLabel}</span>
         </div>
-        <div className="action-row__verify">{verifyText}</div>
+        {showAdvance && <div className="action-row__verify">{verifyText}</div>}
       </div>
     );
   }
@@ -860,17 +1137,19 @@ function ActionRow({ action, devices, onClickName, onClickOp, onClickAdvance, sm
   return (
     <div className="action-row-wrap">
       <div className="action-row" style={{ borderLeftColor: opColor }}>
-        <span className="action-icon"><DeviceIcon type={device.type} size={14} /></span>
-        <span
-          className={`action-device${onClickName ? ' action-device--clickable nodrag' : ''}`}
-          style={{ fontSize: nameFontSize }}
-          onClick={onClickName}
-        >{device.displayName}</span>
+        {/* Action pill on FAR LEFT — the verb reads first ("Extend
+            VerticalCylinder"), subject follows. */}
         <span className={`action-op${onClickOp ? ' action-op--clickable nodrag' : ''}`} style={{
           background: opColor,
           color: isLightBg ? '#1e3a5f' : '#fff',
           borderColor: opColor,
         }} onClick={onClickOp}>{opLabel}</span>
+        <span className="action-icon"><DeviceIcon type={device.type} size={18} /></span>
+        <span
+          className={`action-device${onClickName ? ' action-device--clickable nodrag' : ''}`}
+          style={{ fontSize: nameFontSize }}
+          onClick={onClickName}
+        >{device.displayName}</span>
       </div>
       {/* Continuous mode banner */}
       {isVisionInspect && action.continuous && (
@@ -879,7 +1158,7 @@ function ActionRow({ action, devices, onClickName, onClickOp, onClickAdvance, sm
           <span className="vision-continuous-banner__text">Continuous · loops until pass or timeout</span>
         </div>
       )}
-      {verifyText && (
+      {showAdvance && verifyText && (
         <div className="action-verify">{verifyText}</div>
       )}
       {/* Offset source indicator for servo moves — click to remove */}
@@ -1068,20 +1347,113 @@ function HomeRow({ device }) {
 
   return (
     <div className="action-row" style={{ borderLeftColor: opColor }}>
-      <span className="action-icon"><DeviceIcon type={device.type} size={14} /></span>
-      <span className="action-device" style={{ fontSize: nameFontSize }}>{device.displayName}</span>
+      {/* Action pill on FAR LEFT — verb reads first, subject follows. */}
       <span className="action-op" style={{
         background: opColor,
         color: isLightBg ? '#1e3a5f' : '#fff',
         borderColor: opColor,
       }}>{opLabel}</span>
+      <span className="action-icon"><DeviceIcon type={device.type} size={18} /></span>
+      <span className="action-device" style={{ fontSize: nameFontSize }}>{device.displayName}</span>
+    </div>
+  );
+}
+
+// ── Empty-row scaffold ────────────────────────────────────────────────────────
+// Rendered IN PLACE of the "+ Add action" placeholder while the InlinePicker
+// is open. Reads `pickerDraft` (broadcast from InlinePicker via
+// onStepperChange) and live-fills the picked slots. v1.32.8 redesign: a single
+// clean row (not 4 boxed pills) — empty slots are subtle muted placeholders,
+// filled slots take their accent color and bold weight. A chevron divides
+// segments. Mimics the look of a real ActionRow so the user sees the action
+// taking shape, not 4 disconnected stubs.
+
+function DraftScaffold({ draft, onClick }) {
+  const subject = draft?.subject;
+  const detail  = draft?.detail;
+  const action  = draft?.action;
+  const value   = draft?.value;
+  const hideDetail = !!draft?.hideDetail;
+  const hideValue  = !!draft?.hideValue;
+
+  // Build the visible-slot list. Order matches the action sentence:
+  //   ACTION → SUBJECT → DETAIL → VALUE
+  const slots = [
+    { label: 'Action',  value: action,  filled: !!action,  accent: '#1574c4' },
+    { label: 'Subject', value: subject, filled: !!subject, accent: '#0072B5' },
+    !hideDetail && { label: 'Detail', value: detail, filled: !!detail, accent: '#7c3aed' },
+    !hideValue  && { label: 'Value',  value: value,  filled: !!value,  accent: '#16a34a' },
+  ].filter(Boolean);
+
+  // Find the first empty slot — that's the "next pick" target.
+  const nextIdx = slots.findIndex(s => !s.filled);
+
+  return (
+    <div
+      className="state-node__empty state-node__empty--scaffold"
+      onClick={onClick}
+      style={{
+        display: 'flex', alignItems: 'stretch', gap: 0,
+        padding: '6px 8px',
+        cursor: 'pointer',
+        background: 'linear-gradient(180deg, #fbfcfd 0%, #f4f6f9 100%)',
+        border: '1px solid #e2e8f0',
+        borderRadius: 6,
+        boxShadow: 'inset 0 1px 2px rgba(15,23,42,0.04)',
+      }}
+    >
+      {slots.map((s, i) => {
+        const isNext = i === nextIdx;
+        return (
+          <span key={s.label} style={{ display: 'flex', alignItems: 'stretch', flex: 1, minWidth: 0 }}>
+            {i > 0 && (
+              <span style={{
+                alignSelf: 'center',
+                color: '#cbd5e1', fontSize: 11,
+                padding: '0 4px',
+                userSelect: 'none',
+              }}>{'\u203A'}</span>
+            )}
+            <span style={{
+              flex: 1, minWidth: 0,
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              padding: '3px 6px',
+              borderRadius: 5,
+              background: s.filled ? `${s.accent}14` : isNext ? '#ffffff' : 'transparent',
+              border: isNext && !s.filled ? '1px solid #93c5fd' : '1px solid transparent',
+              boxShadow: isNext && !s.filled ? '0 0 0 2px rgba(147,197,253,0.25)' : 'none',
+              transition: 'all .18s',
+            }}>
+              <span style={{
+                fontSize: 8, fontWeight: 800, letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                color: s.filled ? s.accent : isNext ? '#3b82f6' : '#cbd5e1',
+                lineHeight: 1.1,
+              }}>{s.label}</span>
+              <span style={{
+                marginTop: 1,
+                fontSize: 11,
+                fontWeight: s.filled ? 700 : 500,
+                fontStyle: s.filled ? 'normal' : 'italic',
+                color: s.filled ? s.accent : isNext ? '#64748b' : '#cbd5e1',
+                maxWidth: '100%', overflow: 'hidden',
+                textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                lineHeight: 1.2,
+              }}>
+                {s.filled ? s.value : isNext ? 'pick…' : '—'}
+              </span>
+            </span>
+          </span>
+        );
+      })}
     </div>
   );
 }
 
 // ── Inline Picker (NodeToolbar popup) ─────────────────────────────────────────
 
-function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction, initialStep }) {
+function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction, initialStep, onStepperChange }) {
   const store = useDiagramStore();
 
   // All SMs — for cross-SM param browsing
@@ -1102,10 +1474,17 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
   //      | 'tracking-field' | 'tracking-op'
   const [step, setStep] = useState(() => {
     if (initialStep && editAction) return initialStep;
-    return 'device';
+    // Default landing: subject picker. Pills at top drive navigation;
+    // the body shows whatever's relevant to the active stage.
+    return 'subject-picker';
   });
   // Wait/Decision section collapsed by default
   const [waitExpanded, setWaitExpanded] = useState(false);
+  // v1.32 — Universal builder: which subject bucket (Stage B) the user has
+  // drilled into. null = Stage A (bucket cards visible). Cleared when user
+  // hits Back or commits an action. Mirrors DecisionEditPopup's bucket flow
+  // so state-node and decision-node "pick subject" UIs match.
+  const [bucketView, setBucketView] = useState(null);
   const [selectedDeviceId, setSelectedDeviceId] = useState(() => {
     if (initialStep && editAction) return editAction.deviceId;
     return null;
@@ -1138,11 +1517,20 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
   // Current SM nodes (for loop-back targets)
   const currentSm = allSMs.find(s => s.id === smId);
   const smNodes = currentSm?.nodes ?? [];
+  // The node this picker is anchored to — used by the persistent
+  // Cycle Complete / Fault State footer to show which flag is active.
+  const currentNode = smNodes.find(n => n.id === nodeId);
+  const nodeIsComplete = !!currentNode?.data?.isComplete;
+  const nodeIsFault    = !!currentNode?.data?.isFault;
 
   // Part Tracking state
   const [selectedTrackingFieldId, setSelectedTrackingFieldId] = useState(null);
   const [ptExpanded, setPtExpanded] = useState(false);
   const trackingFields = store.project?.partTracking?.fields ?? [];
+  // Project-level signals (state / position / condition) — flat list, not
+  // per-SM. The Signals section in the subject picker shows ALL of these
+  // alongside Parameter-type devices.
+  const projectSignals = store.project?.signals ?? [];
 
   // Servo config state
   const [servoIncrDist, setServoIncrDist] = useState(1.0);
@@ -1199,11 +1587,16 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
       return;
     }
 
-    // AnalogSensor (probe) is no longer addable as an action — probes are
+    // AnalogSensor (probe): advance to setpoint picker. Probes are
     // referenced through Verify-mode Decision nodes against their setpoint
-    // RC.InPos bits. Defensive: if a probe device somehow reaches here (e.g.
-    // legacy callsite), silently bail.
-    if (dev?.type === 'AnalogSensor') return;
+    // RC.InPos bits (per SDC standards §3.1) — picking a setpoint spawns
+    // the Decision node below the current state. v1.32.8 — was previously
+    // a silent bail, which made probe subjects appear unresponsive when
+    // clicked from the picker.
+    if (dev?.type === 'AnalogSensor') {
+      setStep('setpoint');
+      return;
+    }
 
     // VisionSystem: go to job picker (skip operation since only 1)
     if (dev?.type === 'VisionSystem') {
@@ -1681,6 +2074,99 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
     onClose();
   }
 
+  // ── Probe setpoint pick handler ───────────────────────────────────────────
+  // v1.32.8 — When a setpoint is picked from a probe (AnalogSensor) subject,
+  // spawn a Verify-mode Decision node referencing that probe's setpoint
+  // RC.InPos bit (per SDC standards §3.1). If the current state is empty,
+  // replace it with the Decision node; otherwise add the Decision node below
+  // and connect it. Mirrors handleSignalPick but seeds sensor-ref data
+  // (sensorRef, sensorTag, sensorInputType, signalType: 'sensor') so the
+  // Decision node's "Verify" mode renders the probe + setpoint correctly.
+  function handleProbeSetpointPick(setpoint) {
+    const dev = devices.find(d => d.id === selectedDeviceId);
+    if (!dev || dev.type !== 'AnalogSensor') { onClose(); return; }
+    const freshSm = useDiagramStore.getState().project?.stateMachines?.find(s => s.id === smId);
+    const currentNode = freshSm?.nodes?.find(n => n.id === nodeId)
+      ?? (freshSm?.recoverySeqs ?? []).flatMap(r => r.nodes ?? []).find(n => n.id === nodeId);
+    if (!currentNode) { onClose(); return; }
+
+    const isEmpty = !currentNode.data?.actions || currentNode.data.actions.length === 0;
+    const refKey = setpoint.id ?? setpoint.name;
+    const sensorRef = `${dev.id}:${refKey}`;
+    const sensorTag = `${dev.name}${setpoint.name}RC.InPos`;
+
+    const decisionData = {
+      decisionType: 'signal',
+      signalType: 'sensor',
+      signalName: setpoint.name,
+      signalSource: dev.displayName ?? dev.name,
+      signalSmName: null,
+      sensorRef,
+      sensorTag,
+      sensorInputType: 'bool',
+      conditionType: 'on',
+      nodeMode: 'verify',
+      conditions: [{
+        ref: sensorRef,
+        tag: sensorTag,
+        label: `${dev.displayName ?? dev.name} - ${setpoint.name}`,
+        inputType: 'bool',
+        conditionType: 'on',
+        signalType: 'sensor',
+        group: 'Analog Sensors',
+      }],
+      exitCount: 1,
+      exit1Label: 'In Range',
+      exit2Label: 'Out of Range',
+      updatePartTracking: false,
+      autoOpenPopup: true,
+    };
+
+    const recoveryContainer = (freshSm?.recoverySeqs ?? []).find(r =>
+      (r.nodes ?? []).some(n => n.id === nodeId)
+    );
+    const isRecovery = !!recoveryContainer;
+
+    if (isEmpty) {
+      store.replaceNodeWithDecision(smId, nodeId, decisionData);
+    } else {
+      const decisionId = uid();
+      const parentWidth = currentNode.measured?.width ?? currentNode.width ?? 240;
+      const decWidth = 240;
+      const decX = currentNode.position.x + (parentWidth - decWidth) / 2;
+      const position = { x: decX, y: currentNode.position.y + 200 };
+      const fullData = { label: 'Decision', ...decisionData };
+
+      if (isRecovery) {
+        store.addRecoveryNode(smId, recoveryContainer.id, {
+          id: decisionId,
+          type: 'decisionNode',
+          position,
+          data: fullData,
+        });
+        store.addRecoveryEdge(smId, recoveryContainer.id, {
+          source: nodeId,
+          sourceHandle: null,
+          target: decisionId,
+          targetHandle: 'input',
+        }, { conditionType: 'ready', label: '' });
+      } else {
+        store.addDecisionNode(smId, {
+          id: decisionId,
+          position,
+          data: fullData,
+        });
+        store.addEdge(smId, {
+          source: nodeId,
+          sourceHandle: null,
+          target: decisionId,
+          targetHandle: 'input',
+        }, { conditionType: 'ready', label: '' });
+      }
+    }
+    onClose();
+  }
+
   // Block wheel events from reaching React Flow and manually scroll the picker
   // (React Flow calls preventDefault on wheel events, blocking native scroll)
   const pickerRef = useCallback(node => {
@@ -1702,206 +2188,445 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
     }, { passive: false });
   }, []);
 
+  // ── 4-Pill Stepper (v1.32) ───────────────────────────────────────────
+  // Mirrors DecisionEditPopup's stepper: SUBJECT → DETAIL → ACTION → VALUE.
+  // Always visible at the top of the picker. State-action mapping:
+  //   SUBJECT → picked device (selectedDevice.displayName)
+  //   DETAIL  → position name for servo, slot for multi-sensor cyl, etc.
+  //   ACTION  → verb (Extend/Retract/Engage/ServoMove/...)
+  //   VALUE   → setpoint value, offset, recipe param (often null)
+  // Pills are clickable: clicking jumps back to that stage. State actions
+  // for cylinder/gripper/vacuum/digital sensor hide DETAIL+VALUE (only
+  // SUBJECT+ACTION are meaningful for those types).
+  const stepperPicked = selectedDevice;
+  const stepperSubject = stepperPicked ? selectedDevice.displayName : null;
+  const stepperDevType = selectedDevice?.type;
+  // v1.32.8 — AnalogSensor (probe) HAS detail+value (setpoint + In Range
+  // polarity), so it must NOT be in the hide-detail set. Cylinders/grippers/
+  // vacuum/digital sensors stay simple (subject + action only).
+  const stepperHideDetail =
+    stepperDevType === 'PneumaticLinearActuator' ||
+    stepperDevType === 'PneumaticRotaryActuator' ||
+    stepperDevType === 'PneumaticGripper' ||
+    stepperDevType === 'PneumaticVacGenerator' ||
+    stepperDevType === 'DigitalSensor';
+  const stepperHideValue = stepperHideDetail;
+  const stepperDetail = (() => {
+    if (!stepperPicked || stepperHideDetail) return null;
+    if (stepperDevType === 'ServoAxis') return selectedPosName ?? null;
+    if (stepperDevType === 'VisionSystem') return pickerJob?.name ?? null;
+    // AnalogSensor: detail = picked setpoint name (not yet wired into
+    // local state — placeholder until handleProbeSetpointPick runs, at
+    // which point the picker closes and a Decision node owns the data).
+    return null;
+  })();
+  const stepperAction = (() => {
+    if (!selectedOp) return null;
+    const op = operations.find(o => o.value === selectedOp);
+    return op?.label ?? selectedOp;
+  })();
+  const stepperValue = (() => {
+    if (!stepperPicked || stepperHideValue) return null;
+    if (stepperDevType === 'ServoAxis' && servoIncrDist != null && selectedOp === 'ServoIncr') return `${servoIncrDist}`;
+    return null;
+  })();
+
+  const stepperState = (filled, isCurrent) =>
+    isCurrent ? 'active' : filled ? 'completed' : 'pending';
+  const subjectFilled = !!stepperSubject;
+  const detailFilled  = !!stepperDetail;
+  const actionFilled  = !!stepperAction;
+  const valueFilled   = !!stepperValue;
+
+  // v1.32.7 — Live-broadcast the stepper draft to the parent StateNode so it
+  // can populate the empty-action-row scaffold in real time. This is what
+  // turns the node from "+ Add action" into 4 filling slots that mirror the
+  // picker's progress. Cleared by parent on close.
+  useEffect(() => {
+    if (!onStepperChange) return;
+    onStepperChange({
+      subject: stepperSubject,
+      detail:  stepperDetail,
+      action:  stepperAction,
+      value:   stepperValue,
+      hideDetail: stepperHideDetail,
+      hideValue:  stepperHideValue,
+    });
+  }, [stepperSubject, stepperDetail, stepperAction, stepperValue, stepperHideDetail, stepperHideValue, onStepperChange]);
+
+  // step === 'subject-picker' = SUBJECT pill is current (default landing).
+  // step === 'operation' / 'servoMoves' / 'tracking-op' = ACTION pill current.
+  const subjectIsCurrent = step === 'subject-picker';
+  const detailIsCurrent  = (step === 'position' || step === 'visionJob' || step === 'servoIncrPick' || step === 'servoIndexPick' || step === 'setpoint' || step === 'tracking-field')
+    && subjectFilled && !detailFilled;
+  const actionIsCurrent  = step === 'operation' || step === 'tracking-op' || step === 'servoMoves' || step === 'device';
+  const valueIsCurrent   = step === 'visionConfig' || step === 'servoIncrConfig' || step === 'servoIndexConfig';
+
+  const pillStyle = (state) => {
+    // v1.32.6 — pills bumped UP from 9px/4px to 11px/6px so the navigator
+    // is easy to read. Items below stay compact (font 11, pad 4×8) — the
+    // pills should *lead* visually, not the rows.
+    const base = {
+      flex: 1, padding: '6px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700,
+      letterSpacing: '0.04em', textTransform: 'uppercase',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+      transition: 'all .15s', minWidth: 0, cursor: 'pointer',
+      fontFamily: 'inherit', outline: 'none',
+    };
+    if (state === 'active') return {
+      ...base, background: '#dbeafe', color: '#1d4ed8',
+      border: '1px solid #3b82f6', boxShadow: '0 0 0 2px rgba(59,130,246,0.25)',
+    };
+    if (state === 'completed') return {
+      ...base, background: '#16a34a', color: '#fff', border: '1px solid #15803d',
+    };
+    return {
+      ...base, background: '#f1f5f9', color: '#94a3b8', border: '1px solid #e2e8f0',
+    };
+  };
+
+  // v1.32.8 — All 4 stepper pills are clickable for every subject type.
+  // Pills route to the picker page that owns that stage for the current
+  // subject. Universal mapping:
+  //   SUBJECT → 'subject-picker' (always)
+  //   ACTION  → verb page for the subject type
+  //   DETAIL  → operand page (position, job, setpoint, sequence, signal)
+  //   VALUE   → value-config page (offset, distance, recipe)
+  // Pills bounce to subject-picker when prerequisites aren't met.
+  const goToStepper = (target) => {
+    if (target === 'subject') {
+      setSelectedDeviceId(null); setSelectedOp(null); setBucketView(null);
+      setStep('subject-picker');
+      return;
+    }
+    if (!subjectFilled) {
+      // Any target other than SUBJECT requires a subject first.
+      setStep('subject-picker');
+      return;
+    }
+    const dev = devices.find(d => d.id === selectedDeviceId);
+    if (!dev) { setStep('subject-picker'); return; }
+
+    if (target === 'action') {
+      //   ServoAxis → 'servoMoves' (Move/Incr/Index list)
+      //   Robot → 'operation' (RunSequence/SetOutput/WaitInput)
+      //   VisionSystem → 'visionJob' (job = action on the camera)
+      //   AnalogSensor → 'setpoint' (probe verb = pick the setpoint)
+      //   Cylinder/Gripper/Vacuum/DigitalSensor → 'operation'
+      if (dev.type === 'ServoAxis')      { setStep('servoMoves'); return; }
+      if (dev.type === 'VisionSystem')   { setStep('visionJob');  return; }
+      if (dev.type === 'AnalogSensor')   { setStep('setpoint');   return; }
+      setStep('operation');
+      return;
+    }
+    if (target === 'detail') {
+      //   ServoAxis  → 'position' (Move) / 'servoIncrPick' (Incr) / 'servoIndexPick' (Index)
+      //   VisionSystem → 'visionJob'
+      //   AnalogSensor → 'setpoint'
+      //   Robot      → robot-* sub-step that owns the chosen operation
+      //   Cylinder/etc → no detail (hidden) — bounce to action.
+      if (dev.type === 'ServoAxis') {
+        if (selectedOp === 'ServoIncr')  { setStep('servoIncrPick');  return; }
+        if (selectedOp === 'ServoIndex') { setStep('servoIndexPick'); return; }
+        setStep('position');
+        return;
+      }
+      if (dev.type === 'VisionSystem')   { setStep('visionJob'); return; }
+      if (dev.type === 'AnalogSensor')   { setStep('setpoint');  return; }
+      if (dev.type === 'Robot') {
+        if (selectedOp === 'RunSequence') { setStep('robotSequence');  return; }
+        if (selectedOp === 'SetOutput')   { setStep('robotSetOutput'); return; }
+        if (selectedOp === 'WaitInput')   { setStep('robotWaitInput'); return; }
+        setStep('operation');
+        return;
+      }
+      // Detail-less subjects: bounce to action.
+      setStep('operation');
+      return;
+    }
+    if (target === 'value') {
+      //   ServoAxis Move  → 'position' (re-pick with offset toggle)
+      //   ServoAxis Incr  → 'servoIncrConfig'
+      //   ServoAxis Index → 'servoIndexConfig'
+      //   VisionSystem    → 'visionConfig'
+      //   AnalogSensor    → 'setpoint' (polarity is set on the Decision node)
+      //   Others          → no value (hidden) — bounce to action.
+      if (!actionFilled && dev.type !== 'VisionSystem' && dev.type !== 'AnalogSensor') {
+        // Force user through ACTION first when value is gated on op type.
+        if (dev.type === 'ServoAxis')    { setStep('servoMoves'); return; }
+        setStep('operation');
+        return;
+      }
+      if (dev.type === 'ServoAxis') {
+        if (selectedOp === 'ServoIncr')  { setStep('servoIncrConfig');  return; }
+        if (selectedOp === 'ServoIndex') { setStep('servoIndexConfig'); return; }
+        setStep('position');
+        return;
+      }
+      if (dev.type === 'VisionSystem')   { setStep('visionConfig'); return; }
+      if (dev.type === 'AnalogSensor')   { setStep('setpoint');     return; }
+      // Value-less subjects: bounce to action.
+      setStep('operation');
+      return;
+    }
+  };
+
+  const StepPill = ({ name, value, state, target }) => (
+    <button
+      type="button"
+      className="nodrag"
+      onClick={(e) => { e.stopPropagation(); goToStepper(target); }}
+      onMouseDown={(e) => e.stopPropagation()}
+      style={pillStyle(state)}
+      title={`Go to ${name} stage`}
+    >
+      <span style={{ display: 'flex', alignItems: 'center', gap: 3, lineHeight: 1.1 }}>
+        {state === 'completed' && <span>{'\u2713'}</span>}
+        <span>{name}</span>
+      </span>
+      {value && (
+        <span style={{
+          fontSize: 9, fontWeight: 600,
+          color: state === 'completed' ? 'rgba(255,255,255,0.85)' : '#64748b',
+          textTransform: 'none', letterSpacing: 0,
+          maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>{value}</span>
+      )}
+    </button>
+  );
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="inline-picker" ref={pickerRef}>
 
-      {/* ── Step 1: device list ──────────────────────────────────────────── */}
-      {step === 'device' && (
-        <>
-          <div className="inline-picker__title">{editActionId ? 'Change Subject' : 'Select Subject'}</div>
+      {/* 4-pill stepper — always visible at top.
+          Visual order: ACTION | SUBJECT | DETAIL | VALUE. This matches the
+          left-to-right reading order of the rendered action row in the
+          node ("Wait VerticalCylinder Extended On"). Filling order is still
+          subject-first behind the scenes (picking subject determines which
+          verbs are available) — the active highlight just hops backward to
+          ACTION after subject is committed. */}
+      <div style={{
+        flexShrink: 0, padding: '6px 10px',
+        borderBottom: '1px solid #e2e8f0', background: '#f8fafc',
+        display: 'flex', alignItems: 'stretch', gap: 4,
+      }}>
+        <StepPill target="action" name="Action" value={stepperAction}
+                  state={stepperState(actionFilled, actionIsCurrent)} />
+        <span style={{ fontSize: 11, color: '#cbd5e1', alignSelf: 'center' }}>{'\u203A'}</span>
+        <StepPill target="subject" name="Subject" value={stepperSubject}
+                  state={stepperState(subjectFilled, subjectIsCurrent)} />
+        {!stepperHideDetail && (
+          <>
+            <span style={{ fontSize: 11, color: '#cbd5e1', alignSelf: 'center' }}>{'\u203A'}</span>
+            <StepPill target="detail" name="Detail" value={stepperDetail}
+                      state={stepperState(detailFilled, detailIsCurrent)} />
+          </>
+        )}
+        {!stepperHideValue && (
+          <>
+            <span style={{ fontSize: 11, color: '#cbd5e1', alignSelf: 'center' }}>{'\u203A'}</span>
+            <StepPill target="value" name="Value" value={stepperValue}
+                      state={stepperState(valueFilled, valueIsCurrent)} />
+          </>
+        )}
+      </div>
 
-          {/* Cycle Complete card — on a recovery tab, shows Step 124 hint
-              because recovery cycle-complete is pinned to 124 in the PLC.
-              On the main diagram there's no fixed number (DFS assigns it). */}
-          {(() => {
-            const _sm = allSMs.find(s => s.id === smId);
-            const _inRecovery = _sm ? (_sm.recoverySeqs ?? []).some(r => (r.nodes ?? []).some(n => n.id === nodeId)) : false;
-            return (
-              <button
-                className="inline-picker__item inline-picker__item--complete"
-                onClick={() => {
-                  store.updateNodeData(smId, nodeId, { isComplete: true, isFault: false, actions: [] });
-                  onClose();
-                }}
-                style={{ borderLeft: '3px solid #5a9a48', fontWeight: 600 }}
-              >
-                <span style={{ fontSize: 16, color: '#5a9a48' }}>●</span>
-                <span>Cycle Complete</span>
-                {_inRecovery && (
-                  <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9ca3af', fontWeight: 400 }}>Step 124</span>
-                )}
-              </button>
-            );
-          })()}
+      {/* ── UNIVERSAL BUILDER (v1.32.4) ──────────────────────────────────
+          Pills at top drive everything. Body shows whatever's relevant to
+          the active stage. Default landing = SUBJECT pill (subject picker
+          shown). Click ACTION pill to see verbs (Move/Extend/Retract/
+          Wait/Check/Decide — depends on subject). Cycle Complete / Fault
+          State live as a permanent footer at the bottom of the picker. */}
 
-          {/* Fault State card */}
+      {/* ── Subject picker — flat list grouped by TYPE heading.
+            No bucket cards, no drill-in. Every subject is visible at once.
+            Sections render even when empty so the user sees the full
+            taxonomy each time. Items use COMPACT sizing (font 11, pad 4×8,
+            icon 12) — the headings stay readable but the rows pack tight
+            so the whole picker fits on one screen. */}
+      {step === 'subject-picker' && (() => {
+        // AnalogSensor (probes) ARE valid subjects — you can wait/check on
+        // their value-in-range. The old guard hid them because the legacy
+        // action-row could not commit them as an action target; the new
+        // unified picker handles them via wait/check verbs, so they belong
+        // in the SENSORS section alongside DigitalSensor.
+        const _addable = devices.filter(d =>
+          !d._autoVerify && !d._autoVision && !d.crossSmId
+        );
+        const bucketOf = (d) => {
+          if (d.type === 'PneumaticLinearActuator' || d.type === 'PneumaticRotaryActuator'
+              || d.type === 'PneumaticGripper' || d.type === 'PneumaticVacGenerator'
+              || d.type === 'ServoAxis' || d.type === 'Conveyor' || d.type === 'Custom') return 'devices';
+          if (d.type === 'DigitalSensor' || d.type === 'AnalogSensor')  return 'sensors';
+          if (d.type === 'VisionSystem')   return 'vision';
+          if (d.type === 'Robot')          return 'robots';
+          if (d.type === 'Parameter')      return 'signals';
+          return 'devices';
+        };
+        const pools = {
+          devices: _addable.filter(d => bucketOf(d) === 'devices'),
+          sensors: _addable.filter(d => bucketOf(d) === 'sensors'),
+          vision:  _addable.filter(d => bucketOf(d) === 'vision'),
+          robots:  _addable.filter(d => bucketOf(d) === 'robots'),
+          // Signals section combines PROJECT signals (state/condition/position)
+          // and PARAMETER devices into one flat list — they're conceptually the
+          // same: named, project-level boolean/numeric refs you can wait on.
+          signalsParams: _addable.filter(d => bucketOf(d) === 'signals'),
+        };
+        const signalsCount = projectSignals.length + pools.signalsParams.length;
+
+        // Section definitions in display order. Each section renders its
+        // header AND items. `pt` items are tracking fields, not devices.
+        const SECTIONS = [
+          { key: 'devices', label: 'DEVICES',       color: '#1574c4', items: pools.devices },
+          { key: 'sensors', label: 'SENSORS',       color: '#0891b2', items: pools.sensors },
+          { key: 'vision',  label: 'VISION',        color: '#d97706', items: pools.vision  },
+          { key: 'robots',  label: 'ROBOTS',        color: '#7c3aed', items: pools.robots  },
+          // Signals section is rendered with custom logic below; items[] here
+          // is just the parameter-device tail. projectSignals come first.
+          { key: 'signals', label: 'SIGNALS',       color: '#475569', items: pools.signalsParams, isSignals: true },
+          { key: 'pt',      label: 'PART TRACKING', color: '#6366f1', items: trackingFields,        isPt: true },
+        ];
+
+        // Compact row style — used for every item in the flat list. Tight
+        // padding + small icon + 11px text keeps everything on one screen.
+        const ROW_STYLE = {
+          display: 'flex', alignItems: 'center', gap: 6,
+          width: '100%', padding: '4px 8px',
+          border: 'none', background: 'none',
+          borderLeft: '3px solid transparent',
+          cursor: 'pointer', textAlign: 'left',
+          fontSize: 11, color: '#1e293b',
+          borderRadius: 3,
+          fontFamily: 'inherit',
+        };
+
+        const renderPtItem = (item, sec) => (
           <button
-            className="inline-picker__item"
-            onClick={() => {
-              store.updateNodeData(smId, nodeId, { isFault: true, isComplete: false, actions: [] });
-              onClose();
-            }}
-            style={{ borderLeft: '3px solid #dc2626', fontWeight: 600 }}
+            key={item.id}
+            className="nodrag"
+            onClick={() => { setSelectedTrackingFieldId(item.id); setStep('tracking-op'); }}
+            style={{ ...ROW_STYLE, borderLeftColor: sec.color }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
           >
-            <span style={{ fontSize: 16, color: '#dc2626' }}>⚠</span>
-            <span style={{ color: '#dc2626' }}>Fault State</span>
-            <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9ca3af', fontWeight: 400 }}>Step 127</span>
+            <span style={{ fontSize: 11 }}>📋</span>
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
+            <span style={{ fontSize: 8, fontWeight: 700, color: '#9ca3af' }}>
+              {item.type === 'real' ? 'REAL' : 'BOOL'}
+            </span>
           </button>
+        );
 
-          {/* WAIT / DECISION section — collapsed by default, expand on click */}
-          {(() => {
-            // Build vision signals from all SMs
-            const visionSignals = [];
-            for (const sm of allSMs) {
-              for (const device of (sm.devices ?? [])) {
-                if (device.type !== 'VisionSystem') continue;
-                for (const job of (device.jobs ?? [])) {
-                  visionSignals.push({
-                    id: `vision_${sm.id}_${device.id}_${job.name}`,
-                    label: job.name,
-                    sublabel: device.name,
-                    smLabel: sm.name,
-                    decisionType: 'signal',
-                    // FIX 8: store only job name and source separately
-                    signalName: job.name,
-                    signalSource: device.name,
-                    signalType: 'visionJob',
-                    signalSmName: sm.name,
-                    outcomes: job.outcomes ?? ['Pass', 'Fail'],
-                  });
-                }
-              }
-            }
+        const renderDeviceItem = (item, sec) => {
+          const isCurrent = editAction && item.id === editAction.deviceId;
+          return (
+            <button
+              key={item.id}
+              className="nodrag"
+              onClick={() => selectDevice(item.id)}
+              style={{
+                ...ROW_STYLE,
+                borderLeftColor: sec.color,
+                background: isCurrent ? '#f0fdf4' : 'none',
+              }}
+              onMouseEnter={e => { if (!isCurrent) e.currentTarget.style.background = '#f8fafc'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = isCurrent ? '#f0fdf4' : 'none'; }}
+            >
+              <DeviceIcon type={item.type} size={12} />
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.displayName}</span>
+              {isCurrent && (
+                <span style={{ fontSize: 8, fontWeight: 700, color: '#16a34a', background: '#dcfce7', padding: '1px 4px', borderRadius: 3 }}>
+                  current
+                </span>
+              )}
+            </button>
+          );
+        };
 
-            const projectSignals = store.project?.signals ?? [];
-            const typeBadgeMap = {
-              position:  { label: 'POS',   color: '#fcd34d', bg: '#78350f' },
-              state:     { label: 'STATE', color: '#93c5fd', bg: '#1e3a5f' },
-              condition: { label: 'COND',  color: '#d1d5db', bg: '#1f2937' },
-            };
+        // Project signal item — clicking creates a Decision/Wait node wired
+        // to this signal (handled by handleSignalPick).
+        const SIG_TYPE_BADGE = {
+          state:        { label: 'STATE', color: '#1e3a5f', bg: '#dbeafe' },
+          position:     { label: 'POS',   color: '#78350f', bg: '#fef3c7' },
+          condition:    { label: 'COND',  color: '#1f2937', bg: '#e5e7eb' },
+        };
+        const renderProjectSignalItem = (sig, sec) => {
+          const badge = SIG_TYPE_BADGE[sig.type];
+          return (
+            <button
+              key={sig.id}
+              className="nodrag"
+              onClick={() => handleSignalPick(sig)}
+              style={{ ...ROW_STYLE, borderLeftColor: sec.color }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
+            >
+              <span style={{ fontSize: 11 }}>📡</span>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sig.name}</span>
+              {badge && (
+                <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, color: badge.color, background: badge.bg }}>
+                  {badge.label}
+                </span>
+              )}
+            </button>
+          );
+        };
 
-            return (
-              <>
-                <div className="inline-picker__divider" />
-                {/* Wait / Decision / Verify — adds an EMBEDDED action row in the same state.
-                    Matches how adding a second device action works: row appears in the state,
-                    not as a separate node below. Mode/signal are configured by clicking the row. */}
-                <button
-                  className="inline-picker__item"
-                  style={{ borderLeft: '3px solid #f59e0b', fontWeight: 700, color: '#f59e0b' }}
-                  onClick={() => {
-                    // If user is re-opening an existing _decision row, don't duplicate —
-                    // just close the picker so they can click the row to edit in place.
-                    if (editActionId && editAction?.deviceId === '_decision') {
-                      onClose();
-                      return;
-                    }
-                    store.addAction(smId, nodeId, {
-                      deviceId: '_decision',
-                      operation: 'Wait',
-                      decisionType: 'signal',
-                      signalId: null,
-                      signalName: null,
-                      signalSource: null,
-                      signalType: null,
-                      signalSmName: null,
-                      nodeMode: 'wait',        // 'wait' | 'decide' | 'verify'
-                      conditionType: 'sensorOn', // for verify mode
-                      exitCount: 1,
-                      exit1Label: null,
-                      exit2Label: null,
-                      autoOpenPopup: true,
-                    });
-                    onClose();
-                  }}
-                >
-                  <span style={{ fontSize: 14 }}>&#x2B23;</span>
-                  <span style={{ flex: 1, textAlign: 'left' }}>Wait / Decision / Verify</span>
-                </button>
-              </>
-            );
-          })()}
+        return (
+          <div style={{ padding: '4px 0', flex: 1, overflowY: 'auto' }}>
+            {SECTIONS.map(sec => {
+              const itemCount = sec.isSignals ? signalsCount : sec.items.length;
+              return (
+                <div key={sec.key} style={{ marginBottom: 4 }}>
+                  {/* Type heading — always rendered, even when empty */}
+                  <div style={{
+                    fontSize: 9, fontWeight: 800, letterSpacing: '0.08em',
+                    color: sec.color, padding: '5px 10px 2px',
+                    textTransform: 'uppercase',
+                    borderBottom: `1px solid ${sec.color}22`,
+                    marginBottom: 2,
+                  }}>
+                    {sec.label} <span style={{ color: '#cbd5e1', fontWeight: 600 }}>({itemCount})</span>
+                  </div>
 
-          <div className="inline-picker__divider" />
+                  {/* Empty placeholder */}
+                  {itemCount === 0 && (
+                    <div style={{ fontSize: 10, color: '#cbd5e1', padding: '1px 12px 3px', fontStyle: 'italic' }}>
+                      none
+                    </div>
+                  )}
 
-          {/* AnalogSensor (probe) is filtered out — probes are not state-logic actions.
-              They appear inside Verify-mode Decision node pickers via per-setpoint
-              `RC.InPos` BOOL inputs. */}
-          {devices.filter(d => !d._autoVerify && !d._autoVision && !d.crossSmId && d.type !== 'Parameter' && d.type !== 'AnalogSensor').length === 0 && (
-            <div className="inline-picker__empty">No subjects yet. Add one in the sidebar.</div>
-          )}
-          {devices.filter(d => !d._autoVerify && !d._autoVision && !d.crossSmId && d.type !== 'Parameter' && d.type !== 'AnalogSensor').map(d => {
-            const isCurrent = editAction && d.id === editAction.deviceId;
-            return (
-              <button key={d.id}
-                className={`inline-picker__item${isCurrent ? ' inline-picker__item--current' : ''}`}
-                onClick={() => selectDevice(d.id)}>
-                <DeviceIcon type={d.type} size={16} />
-                <span>{d.displayName}</span>
-                {isCurrent && <span className="inline-picker__current-badge">current</span>}
-              </button>
-            );
-          })}
+                  {/* Per-section items */}
+                  {sec.isPt
+                    ? sec.items.map(item => renderPtItem(item, sec))
+                    : sec.isSignals
+                      ? <>
+                          {projectSignals.map(sig => renderProjectSignalItem(sig, sec))}
+                          {pools.signalsParams.map(item => renderDeviceItem(item, sec))}
+                        </>
+                      : sec.items.map(item => renderDeviceItem(item, sec))}
 
-          {/* Reference Positions removed — use DecisionNode instead */}
-
-          {/* SM Outputs removed — use DecisionNode instead */}
-
-          {/* Cross-SM separator — only shown if other SMs have parameters */}
-          {otherSMsWithParams.length > 0 && (
-            <>
-              <div className="inline-picker__divider" />
-              <button className="inline-picker__item inline-picker__item--cross-sm" onClick={openCrossSmFlow}>
-                <span className="inline-picker__cross-sm-icon">⤴</span>
-                <span>Param from other SM…</span>
-              </button>
-            </>
-          )}
-
-          {/* Part Tracking — collapsible, only show if tracking fields exist */}
-          {trackingFields.length > 0 && (
-            <>
-              <div className="inline-picker__divider" />
-              <button
-                className="inline-picker__item"
-                style={{ borderLeft: '3px solid #6366f1', fontWeight: 600, color: '#6366f1', fontSize: 11 }}
-                onClick={() => setPtExpanded(prev => !prev)}
-              >
-                <span style={{ fontSize: 14 }}>📋</span>
-                <span style={{ flex: 1, textAlign: 'left' }}>Part Tracking</span>
-                <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 'auto' }}>{ptExpanded ? '▲' : '▼'}</span>
-              </button>
-              {ptExpanded && trackingFields.map(f => (
-                <button key={f.id} className="inline-picker__item" onClick={() => {
-                  setSelectedTrackingFieldId(f.id);
-                  setStep('tracking-op');
-                }}
-                  style={{ paddingLeft: 24, borderLeft: '3px solid #6366f1' }}
-                >
-                  <span style={{ fontSize: 12 }}>📋</span>
-                  <span>{f.name}</span>
-                  <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 'auto' }}>{f.type === 'real' ? 'REAL' : 'BOOL'}</span>
-                </button>
-              ))}
-            </>
-          )}
-
-          {/* Advanced section - Parameters */}
-          {devices.filter(d => d.type === 'Parameter' && !d._autoVerify && !d._autoVision && !d.crossSmId).length > 0 && (
-            <>
-              <div className="inline-picker__divider" />
-              <div className="inline-picker__group-label" style={{ color: '#9ca3af' }}>Advanced</div>
-              {devices.filter(d => d.type === 'Parameter' && !d._autoVerify && !d._autoVision && !d.crossSmId).map(d => (
-                <button key={d.id} className="inline-picker__item" onClick={() => selectDevice(d.id)}>
-                  <DeviceIcon type={d.type} size={16} />
-                  <span>{d.displayName}</span>
-                </button>
-              ))}
-            </>
-          )}
-        </>
-      )}
+                  {/* Cross-SM params row appended to Signals section */}
+                  {sec.isSignals && otherSMsWithParams.length > 0 && (
+                    <button
+                      className="nodrag"
+                      onClick={openCrossSmFlow}
+                      style={{ ...ROW_STYLE, borderLeftColor: sec.color, color: '#0072B5', fontStyle: 'italic' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
+                    >
+                      <span style={{ fontSize: 11 }}>⤴</span>
+                      <span style={{ flex: 1 }}>Param from other SM…</span>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* ── Step 2a: choose SM (only when 2+ SMs have params) ───────────── */}
       {step === 'cross-sm-list' && (
@@ -2375,15 +3100,45 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
         );
       })()}
 
-      {/* Analog sensor setpoint step removed in v1.26.
-          Setpoint picking now happens inside the Verify-mode Decision node. */}
-      {false && (
-        <>
-          <button className="inline-picker__back" onClick={() => setStep('device')}>
-            ← Back
-          </button>
-        </>
-      )}
+      {/* ── AnalogSensor (probe) setpoint picker ─────────────────────────
+          v1.32.8 — re-introduced. Lists every setpoint declared on the
+          probe device. Picking one calls handleProbeSetpointPick which
+          spawns a Verify-mode Decision node wired to that setpoint's
+          RC.InPos bit (per SDC §3.1). If no setpoints exist yet, prompt
+          the user to add some via the device library. */}
+      {step === 'setpoint' && selectedDevice && selectedDevice.type === 'AnalogSensor' && (() => {
+        const setpoints = selectedDevice.setpoints ?? [];
+        return (
+          <>
+            <div className="inline-picker__title">
+              {selectedDevice.displayName}
+              <span style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', marginLeft: 6 }}>· Pick Setpoint</span>
+            </div>
+            <div style={{ fontSize: 10, color: '#9ca3af', padding: '0 8px 4px' }}>
+              {setpoints.length === 0
+                ? 'No setpoints defined yet — open the Subject Library to add one.'
+                : 'Pick a setpoint to verify against'}
+            </div>
+            {setpoints.map(sp => (
+              <button
+                key={sp.id ?? sp.name}
+                className="inline-picker__item inline-picker__item--position"
+                onClick={() => handleProbeSetpointPick(sp)}
+              >
+                <span className="inline-picker__pos-name">{sp.name}</span>
+                {typeof sp.nominal === 'number' && (
+                  <span className="inline-picker__pos-value">
+                    {sp.nominal}{typeof sp.tolerance === 'number' ? ` ±${sp.tolerance}` : ''}
+                  </span>
+                )}
+              </button>
+            ))}
+            <button className="inline-picker__back" onClick={() => { setSelectedDeviceId(null); setStep('subject-picker'); }}>
+              ← Back
+            </button>
+          </>
+        );
+      })()}
 
       {/* ── Robot: sequence picker ───────────────────────────────────────── */}
       {step === 'robotSequence' && selectedDevice && (() => {
@@ -2786,6 +3541,77 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
         </>
       )}
 
+      {/* ── PERSISTENT FOOTER — Cycle Complete / Fault State ──────────────
+            Always visible at the bottom of the picker, regardless of which
+            stage is active. These are NODE-LEVEL flags (not actions) — they
+            mark the entire state as a terminal Cycle Complete or Fault
+            State. Toggling one clears the other. */}
+      <div style={{
+        flexShrink: 0,
+        borderTop: '1px solid #e2e8f0',
+        background: '#f8fafc',
+        padding: '6px 8px',
+        display: 'flex',
+        gap: 6,
+      }}>
+        <button
+          type="button"
+          className="nodrag"
+          onClick={(e) => {
+            e.stopPropagation();
+            store.updateNodeData(smId, nodeId, {
+              isComplete: !nodeIsComplete,
+              isFault: false,
+            });
+            onClose();
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          title="Mark this state as Cycle Complete (terminal success)"
+          style={{
+            flex: 1, padding: '6px 8px', borderRadius: 5,
+            fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
+            textTransform: 'uppercase', cursor: 'pointer',
+            fontFamily: 'inherit', outline: 'none',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+            background: nodeIsComplete ? '#16a34a' : '#fff',
+            color:      nodeIsComplete ? '#fff'    : '#16a34a',
+            border: `1px solid ${nodeIsComplete ? '#15803d' : '#86efac'}`,
+            transition: 'all .15s',
+          }}
+        >
+          <span>{nodeIsComplete ? '\u2713' : '\u25EF'}</span>
+          <span>Cycle Complete</span>
+        </button>
+        <button
+          type="button"
+          className="nodrag"
+          onClick={(e) => {
+            e.stopPropagation();
+            store.updateNodeData(smId, nodeId, {
+              isFault: !nodeIsFault,
+              isComplete: false,
+            });
+            onClose();
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          title="Mark this state as a Fault State (terminal failure)"
+          style={{
+            flex: 1, padding: '6px 8px', borderRadius: 5,
+            fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
+            textTransform: 'uppercase', cursor: 'pointer',
+            fontFamily: 'inherit', outline: 'none',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+            background: nodeIsFault ? '#dc2626' : '#fff',
+            color:      nodeIsFault ? '#fff'    : '#dc2626',
+            border: `1px solid ${nodeIsFault ? '#b91c1c' : '#fca5a5'}`,
+            transition: 'all .15s',
+          }}
+        >
+          <span>{nodeIsFault ? '\u26A0' : '\u25EF'}</span>
+          <span>Fault State</span>
+        </button>
+      </div>
+
     </div>
   );
 }
@@ -2829,10 +3655,14 @@ function ContextMenu({ x, y, nodeId, smId, onClose }) {
           const currentSm = store.getActiveSm();
           const currentNode = currentSm?.nodes?.find(n => n.id === nodeId);
           if (currentNode && currentSm) {
+            // v1.32.8 — match the inline "+" Add State button: drop the new
+            // node STRAIGHT DOWN at the same X (no 250px sideways offset).
+            // User feedback: "When it creates a new node, it can't be offset.
+            // It's gotta be straight down."
             const newNodeId = store.addNode(smId, {
               position: {
-                x: currentNode.position.x + 250,
-                y: currentNode.position.y + 100,
+                x: currentNode.position.x,
+                y: currentNode.position.y + 200,
               },
             });
             if (newNodeId) {
@@ -2848,7 +3678,7 @@ function ContextMenu({ x, y, nodeId, smId, onClose }) {
           onClose();
         }}
       >
-        ⑂ Add Branch
+        ⬜ Add State
       </button>
       <button
         className="context-menu__item"
@@ -3180,6 +4010,24 @@ export function StateNode({ data, selected, id }) {
     sig.offCondition?.stateNodeId === id
   );
 
+  // v2 picker — subjects derived from project devices/signals/PT fields.
+  // Memoised on identity of the project + sm so the picker doesn't rebuild
+  // its subject grid on every render of an unrelated state.
+  const project = useDiagramStore(s => s.project);
+  const pickerSubjects = useMemo(
+    () => getProjectSubjects(project, sm?.id),
+    [project, sm?.id]
+  );
+  const pickerGrammar = useMemo(() => loadGrammar(), []);
+
+  // Display preference: show "verify ..." advance condition under each
+  // action row? Default true; toggle in Project Setup → Design System →
+  // Display Options. Affects v1 + v2 action rows uniformly. Codegen is
+  // unaffected — this is a view-only setting.
+  const showAdvanceConditions = useDiagramStore(
+    s => s.project?.designTheme?.showAdvanceConditions ?? true
+  );
+
   // For the initial (home) node: show device home positions
   // Fall back to defaultHomePosition from device type if device doesn't have one set
   const homeDevices = isInitial
@@ -3205,6 +4053,10 @@ export function StateNode({ data, selected, id }) {
   const [showPicker, setShowPicker] = useState(false);
   const [editingActionId, setEditingActionId] = useState(null);
   const [pickerInitialStep, setPickerInitialStep] = useState(null);
+  // v1.32.7 — Live preview of the picker's stepper draft. Populates the
+  // 4-slot scaffold rendered inside the empty action row while the picker
+  // is open. Cleared on close.
+  const [pickerDraft, setPickerDraft] = useState(null);
   const [ctxMenu, setCtxMenu] = useState(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [opSwitcher, setOpSwitcher] = useState(null); // { actionId, pos: {top, left} }
@@ -3276,6 +4128,12 @@ export function StateNode({ data, selected, id }) {
     }
   }, [closePickerSignal]);
 
+  // v1.32.7 — clear the live stepper-draft preview whenever the picker
+  // closes (any close path: outside-click, escape, action committed, etc).
+  useEffect(() => {
+    if (!showPicker && pickerDraft) setPickerDraft(null);
+  }, [showPicker]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Determine node border color
   let borderColor = '#64748b';
   if (isInitial || isComplete) borderColor = '#5a9a48';
@@ -3301,15 +4159,21 @@ export function StateNode({ data, selected, id }) {
   const showVisionSingleHandle = hasVisionInspect && visionExitMode === '1-node';
 
   // Embedded decision branching: if the LAST action row is a _decision with
-  // exitCount === 2 (and a chosen signal), the parent state needs pass/fail
-  // side handles so RoutableEdge has endpoints to attach the green/red branches.
-  // Single-exit embedded decisions (exitCount === 1) stay on the default bottom handle.
+  // exitCount === 2 (and a chosen signal), OR a v2 picker Branch action with
+  // edgeTopology >= 2, the parent state needs pass/fail side handles so
+  // RoutableEdge has endpoints to attach the green/red branches. Single-exit
+  // embedded decisions stay on the default bottom handle.
   const lastAction = actions[actions.length - 1];
   const lastIsEmbeddedDecision = lastAction?.deviceId === '_decision';
-  const lastDecisionHasTwoExits = lastIsEmbeddedDecision
-    && lastAction.exitCount === 2
-    && lastAction.signalName
-    && lastAction.signalName !== 'Select Signal...';
+  const lastIsV2Branch = !!lastAction?.pickerV2
+    && lastAction?.pickerConfig?.mode === 'decision'
+    && lastAction?.pickerConfig?.subAction === 'branch'
+    && (lastAction?.pickerConfig?.edgeTopology || 1) >= 2;
+  const lastDecisionHasTwoExits = (lastIsEmbeddedDecision
+      && lastAction.exitCount === 2
+      && lastAction.signalName
+      && lastAction.signalName !== 'Select Signal...')
+    || lastIsV2Branch;
   const lastDecisionHasRetry = lastDecisionHasTwoExits && lastAction.retryEnabled;
   const showDecisionSideHandles = lastDecisionHasTwoExits && !showVisionSideHandles;
 
@@ -3319,12 +4183,33 @@ export function StateNode({ data, selected, id }) {
     setCtxMenu({ x: e.clientX, y: e.clientY });
   }
 
+  // v1.32 — Click anywhere on the node body opens the universal picker.
+  // Action rows / + button have their own onClick with stopPropagation, so
+  // they handle their own UX; this handler only catches "empty body" clicks.
+  // React Flow only fires click on a stationary press-release, so a drag
+  // won't trigger this.
+  function handleNodeBodyClick(e) {
+    // Bail if the click landed on an interactive child (button, handle, etc.)
+    // — those already have their own handlers.
+    const tag = e.target?.tagName?.toLowerCase();
+    if (tag === 'button' || tag === 'input' || tag === 'select' || tag === 'textarea') return;
+    if (e.target?.closest?.('.react-flow__handle')) return;
+    if (e.target?.closest?.('.action-row')) return;
+    if (e.target?.closest?.('.state-node__add-btn')) return;
+    e.stopPropagation();
+    store.setSelectedNode(id);
+    setEditingActionId(null);
+    setPickerInitialStep(null);
+    setShowPicker(true);
+  }
+
   return (
     <div
       ref={nodeRootRef}
       className={`state-node state-node--${shape}${selected ? ' state-node--selected' : ''}${isInitial ? ' state-node--initial' : ''}${isComplete ? ' state-node--complete' : ''}${isFault ? ' state-node--fault' : ''}`}
       style={{ '--node-border': borderColor }}
       onContextMenu={handleContextMenu}
+      onClick={handleNodeBodyClick}
     >
       <Handle
         type="target"
@@ -3488,17 +4373,116 @@ export function StateNode({ data, selected, id }) {
       </div>
 
 
-      {/* NodeToolbar inline picker */}
+      {/* v2 Universal Picker — replaces the old InlinePicker.
+          New actions are stored with `pickerV2: true` + the picker's full
+          config object. ActionRow has a v2 branch at top that renders these.
+          Old (v1) actions still work via the existing render paths.
+          Decision-mode picks also auto-spawn child state nodes + labeled
+          edges (1 for Wait/Check, N for Branch — primary on left, others
+          fanned out to the right). */}
       {showPicker && sm && (
         <NodeToolbar isVisible position="right" offset={8}>
-          <InlinePicker
-            smId={sm.id}
-            nodeId={id}
-            devices={devices}
-            onClose={() => { setShowPicker(false); setEditingActionId(null); setPickerInitialStep(null); }}
-            editActionId={editingActionId}
-            editAction={editingActionId ? actions.find(a => a.id === editingActionId) : null}
-            initialStep={pickerInitialStep}
+          <UniversalPicker
+            grammar={pickerGrammar}
+            subjects={pickerSubjects}
+            editAction={editingActionId
+              ? actions.find(a => a.id === editingActionId) ?? null
+              : null}
+            onPick={(config) => {
+              const store = useDiagramStore.getState();
+              const isEdit = !!config.isEdit && !!editingActionId;
+              const cleanConfig = { ...config };
+              delete cleanConfig.isEdit;
+
+              if (isEdit) {
+                // Edit mode: REPLACE the existing action's pickerConfig in
+                // place. Don't spawn new children or edges — the user is
+                // refining an existing row, not creating a new one. If the
+                // sub-action / edgeTopology changed, downstream graph fix-up
+                // is left to the user (delete unwanted children, click side
+                // handle to redraw missing branches).
+                store.updateAction(sm.id, id, editingActionId, {
+                  pickerV2: true,
+                  pickerConfig: cleanConfig,
+                });
+                setShowPicker(false);
+                setEditingActionId(null);
+                setPickerInitialStep(null);
+                setPickerDraft(null);
+                return;
+              }
+
+              // Add mode: append a new action to the node.
+              store.addAction(sm.id, id, {
+                pickerV2: true,
+                pickerConfig: cleanConfig,
+              });
+
+              // Decision mode: auto-spawn child nodes + edges so the diagram
+              // graph mirrors the sub-action's outgoing topology.
+              //
+              // For Branch (>=2 outputs): edges exit from SIDE handles
+              //   (exit-pass on left = primary/green, exit-fail on right = fail/red).
+              //   Children positioned 280px L/R of parent center so the L-bend
+              //   routing has clear horizontal segments. This matches the old
+              //   addDecisionBranches geometry for visual consistency.
+              if (cleanConfig.mode === 'decision') {
+                const parentNode = sm.nodes.find(n => n.id === id);
+                if (parentNode) {
+                  const labels = (cleanConfig.edgeLabels && cleanConfig.edgeLabels.length)
+                    ? cleanConfig.edgeLabels
+                    : [null];
+                  const count = Math.max(1, cleanConfig.edgeTopology || 1);
+                  // Top-left aligned with parent (NOT measured-center).
+                  // Measured-center spawn produces drift when content
+                  // widths differ between parent and child. Parent.x as
+                  // anchor stays stable as either node grows.
+                  const baseX = parentNode.position.x;
+                  const py = parentNode.position.y;
+                  const baseY = py + 200;
+                  const isBranch = cleanConfig.subAction === 'branch' && count > 1;
+                  // Branch: pass child @ parent.center - 280, fail @ parent.center + 280
+                  // Single child: parent.center (straight down)
+                  const branchOffsets = [-280, 280, 0]; // 3rd would be center for retry
+                  const branchHandles = ['exit-pass', 'exit-fail', 'exit-retry'];
+                  for (let i = 0; i < count; i++) {
+                    const label = labels[i] ?? null;
+                    const offset = isBranch ? (branchOffsets[i] ?? 0) : 0;
+                    const newNodeId = store.addNode(sm.id, {
+                      position: { x: baseX + offset, y: baseY },
+                    });
+                    if (!newNodeId) continue;
+                    const edgeData = isBranch ? {
+                      conditionType: 'custom',
+                      label: label || '',
+                      isDecisionExit: true,
+                      exitColor: i === 0 ? 'pass' : i === 1 ? 'fail' : 'retry',
+                      outcomeLabel: label || '',
+                    } : {
+                      conditionType: 'always',
+                      label: label || '',
+                    };
+                    store.addEdge(sm.id, {
+                      source: id,
+                      sourceHandle: isBranch ? (branchHandles[i] ?? null) : null,
+                      target: newNodeId,
+                      targetHandle: null,
+                    }, edgeData);
+                  }
+                }
+              }
+
+              setShowPicker(false);
+              setEditingActionId(null);
+              setPickerInitialStep(null);
+              setPickerDraft(null);
+            }}
+            onCancel={() => {
+              setShowPicker(false);
+              setEditingActionId(null);
+              setPickerInitialStep(null);
+              setPickerDraft(null);
+            }}
           />
         </NodeToolbar>
       )}
@@ -3604,6 +4588,10 @@ export function StateNode({ data, selected, id }) {
                   smId={sm?.id}
                   nodeId={id}
                   isLast={actionIdx === actions.length - 1}
+                  showAdvance={showAdvanceConditions}
+                  grammar={pickerGrammar}
+                  actionIdx={actionIdx}
+                  subjects={pickerSubjects}
                   onClickAdvance={(act) => {
                     // Toggle — second click on the same chip closes
                     setEditingAdvanceId(prev => prev === act.id ? null : act.id);
@@ -3652,12 +4640,26 @@ export function StateNode({ data, selected, id }) {
                 />
               ))
             ) : (
-              <div
-                className="state-node__empty"
-                onClick={(e) => { e.stopPropagation(); store.setSelectedNode(id); setShowPicker(true); }}
-              >
-                + Add action
-              </div>
+              // v2 picker — slim placeholder while picker is open.
+              // Don't render the v1 DraftScaffold (4-slot wide preview); the
+              // picker shows its own pill preview to the right. Keeping the
+              // node body slim so the edge router can route cleanly.
+              showPicker ? (
+                <div
+                  className="state-node__empty"
+                  style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}
+                  onClick={(e) => { e.stopPropagation(); store.setSelectedNode(id); }}
+                >
+                  Picking action…
+                </div>
+              ) : (
+                <div
+                  className="state-node__empty"
+                  onClick={(e) => { e.stopPropagation(); store.setSelectedNode(id); setShowPicker(true); }}
+                >
+                  + Add action
+                </div>
+              )
             )}
 
             {/* Legacy SM Output badges — shown at end of body for outputs triggered by this node */}
@@ -3743,15 +4745,13 @@ export function StateNode({ data, selected, id }) {
       })()}
 
       {/* PT/Signal Badge — always visible when content exists, add-badge on select.
-          Derive PT annotations from any embedded _decision rows that opt in
-          (verify/decide rows with the PT toggle, all log-mode rows). The
-          badge no longer requires the user to manually add to data.ptAnnotations
-          when they configure a Check & Log node — the row's PT field flows
-          through automatically. */}
+          v1.29: Derive PT annotations from any embedded _decision row that
+          has ptEnabled, regardless of action (wait or check). The optional
+          valueLogEnabled flag contributes a second REAL annotation. */}
       {sm && !isInitial && !isComplete && !isFault && (() => {
         const derivedFromDecisions = (actions ?? [])
           .filter(a => a.deviceId === '_decision'
-            && (a.ptEnabled || a.nodeMode === 'log')
+            && a.ptEnabled
             && (a.ptFieldName || a.ptFieldId))
           .flatMap(a => {
             const out = [{
@@ -3759,8 +4759,8 @@ export function StateNode({ data, selected, id }) {
               fieldName: a.ptFieldName ?? '(unnamed)',
               value: a.ptPassValue ?? 'SUCCESS',
             }];
-            // Log-mode "Also store value" add-on contributes a REAL field too.
-            if (a.nodeMode === 'log' && a.valueLogEnabled && (a.valueFieldId || a.valueFieldName)) {
+            // "Also store value" add-on contributes a REAL field too.
+            if (a.valueLogEnabled && (a.valueFieldId || a.valueFieldName)) {
               out.push({
                 fieldId: a.valueFieldId ?? `dec_${a.id}_val`,
                 fieldName: a.valueFieldName ?? '(unnamed value)',

@@ -4981,43 +4981,138 @@ export const useDiagramStore = create(
                 }
               }
 
-              // v1.27 — single-exit Verify rows that already opt into PT are
-              // semantically the new "Check & Log" mode (read condition, write
-              // PT, advance — no fault, no branch). Promote them so they pick
-              // up the teal styling, the simplified popup UI, and the L5X
-              // log-mode emission. Idempotent via `migratedToLog` stamp.
+              // v1.28 — REMOVED: the v1.27 verify+PT → log auto-conversion.
+              // The unified-flag model treats `nodeMode` and `ptEnabled` as
+              // orthogonal flags: a Verify row can legitimately opt into PT
+              // logging without becoming a Log row, and a Decide can do the
+              // same. The earlier migration assumed verify+single+PT was
+              // semantically identical to Log, which is no longer true:
+              //   - Verify+PT → fault on miss, but stamp the result either way
+              //   - Log      → never fault, always advance
+              // Existing rows already promoted to `nodeMode: 'log'` keep that
+              // mode (the migratedToLog stamp is left in place as a historical
+              // marker; it no longer drives any behavior). New verify+PT rows
+              // stay in verify mode — see DecisionBody's combined-verb badge
+              // (e.g. "Verify On \u00b7 Log") for the surface treatment.
+
+              // v1.29 — collapse legacy nodeMode strings to the unified
+              // `wait | check` action model. The popup no longer offers
+              // Decide/Verify/Log as top-level modes; every non-wait decision
+              // is a "Check" with orthogonal flags carrying the rest:
+              //   - decide → check (branch on result; exitCount already >= 2)
+              //   - verify → check + assert: true (single-exit, fault on miss)
+              //   - log    → check + ptEnabled: true (single-exit, stamp PT)
+              // For decisions embedded inside StateNode action arrays AND
+              // standalone DecisionNodes, walk both surfaces.
+              const migrateDecision = (d) => {
+                if (!d || typeof d !== 'object') return;
+                const m = d.nodeMode;
+                if (m === 'verify') {
+                  d.nodeMode = 'check';
+                  if (d.assert === undefined) d.assert = true;
+                  d.migratedFromVerify = true;
+                } else if (m === 'decide') {
+                  d.nodeMode = 'check';
+                  d.migratedFromDecide = true;
+                } else if (m === 'log') {
+                  d.nodeMode = 'check';
+                  if (d.ptEnabled === undefined) d.ptEnabled = true;
+                  d.migratedFromLog = true;
+                }
+              };
               for (const node of (sm.nodes ?? [])) {
+                if (node.type === 'decisionNode') {
+                  migrateDecision(node.data);
+                }
                 const actions = node.data?.actions;
-                if (!Array.isArray(actions) || actions.length === 0) continue;
-                for (let i = 0; i < actions.length; i++) {
-                  const action = actions[i];
-                  if (!action || action.deviceId !== '_decision') continue;
-                  if (action.migratedToLog) continue;
-                  if (action.nodeMode !== 'verify') continue;
-                  if ((action.exitCount ?? 1) !== 1) continue;
-                  if (!action.ptEnabled) continue;
-                  actions[i] = {
-                    ...action,
-                    nodeMode: 'log',
-                    operation: 'Log',
-                    migratedToLog: true,
-                  };
+                if (Array.isArray(actions)) {
+                  for (const a of actions) {
+                    if (a?.deviceId === '_decision') migrateDecision(a);
+                  }
                 }
               }
-              // Same migration for standalone DecisionNodes — verify+single+PT
-              // becomes log.
+
+              // v1.30.4 — Backfill stable IDs on AnalogSensor setpoints (and
+              // ServoAxis positions). Without IDs, decision-row refs encode
+              // the setpoint NAME — a rename leaves every existing decision row
+              // pointing at a name that no longer exists ("Part1" stuck on a
+              // node when the setpoint was renamed to "HeightCheck"). Once
+              // IDs exist, the ref can carry the ID instead, and the renderer
+              // resolves to the current name every paint.
+              for (const dev of (sm.devices ?? [])) {
+                if (dev.type === 'AnalogSensor' && Array.isArray(dev.setpoints)) {
+                  for (const sp of dev.setpoints) {
+                    if (!sp.id) sp.id = crypto.randomUUID();
+                  }
+                }
+                if (dev.type === 'ServoAxis' && Array.isArray(dev.positions)) {
+                  for (const pos of dev.positions) {
+                    if (!pos.id) pos.id = crypto.randomUUID();
+                  }
+                }
+              }
+
+              // v1.30.4 — Migrate decision condition refs from name-based to
+              // ID-based. Walks every standalone DecisionNode and every
+              // embedded `_decision` action. For refs of shape
+              // `deviceId:setpointName` where deviceId resolves to an
+              // AnalogSensor, looks up the setpoint by current name and
+              // rewrites the ref to `deviceId:setpointId`. Same for ServoAxis
+              // positions. Already-ID-based refs (UUIDs) pass through. If the
+              // name no longer matches any setpoint (the user already renamed
+              // before this migration ran), the ref is left as-is — the
+              // renderer's fallback path will pick the first setpoint of the
+              // device when there's only one, otherwise show the device name
+              // alone and prompt re-pick.
+              const isUuidLike = (s) => typeof s === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}/i.test(s);
+              const migrateConditionRef = (cond, devices) => {
+                if (!cond || typeof cond !== 'object' || !cond.ref) return;
+                const ref = cond.ref;
+                const colonIdx = ref.indexOf(':');
+                if (colonIdx < 0) return;
+                const devId = ref.slice(0, colonIdx);
+                const suffix = ref.slice(colonIdx + 1);
+                if (!suffix || isUuidLike(suffix)) return;  // already migrated
+                if (suffix.includes(':')) return;  // multi-segment refs (vision out, cross-sm) — leave alone
+                const dev = devices.find(d => d.id === devId);
+                if (!dev) return;
+                if (dev.type === 'AnalogSensor') {
+                  const sp = (dev.setpoints ?? []).find(s => s.name === suffix);
+                  if (sp?.id) {
+                    cond.ref = `${devId}:${sp.id}`;
+                    cond.tag = `${dev.name}${sp.name}RC.InPos`;  // refresh tag with current name
+                  }
+                } else if (dev.type === 'ServoAxis') {
+                  const pos = (dev.positions ?? []).find(p => p.name === suffix);
+                  if (pos?.id) {
+                    cond.ref = `${devId}:${pos.id}`;
+                    cond.tag = `${dev.name}${pos.name}.InPos`;
+                  }
+                }
+              };
+              const migrateDecisionRefs = (d, devices) => {
+                if (!d || typeof d !== 'object') return;
+                if (Array.isArray(d.conditions)) {
+                  for (const c of d.conditions) migrateConditionRef(c, devices);
+                }
+                // Also migrate the legacy single-condition fields if present
+                if (d.sensorRef) {
+                  const stub = { ref: d.sensorRef, tag: d.sensorTag };
+                  migrateConditionRef(stub, devices);
+                  d.sensorRef = stub.ref;
+                  d.sensorTag = stub.tag ?? d.sensorTag;
+                }
+              };
               for (const node of (sm.nodes ?? [])) {
-                if (node.type !== 'decisionNode') continue;
-                const d = node.data;
-                if (!d || d.migratedToLog) continue;
-                if (d.nodeMode !== 'verify') continue;
-                if ((d.exitCount ?? 1) !== 1) continue;
-                if (!d.ptEnabled) continue;
-                node.data = {
-                  ...d,
-                  nodeMode: 'log',
-                  migratedToLog: true,
-                };
+                if (node.type === 'decisionNode') {
+                  migrateDecisionRefs(node.data, sm.devices ?? []);
+                }
+                const actions = node.data?.actions;
+                if (Array.isArray(actions)) {
+                  for (const a of actions) {
+                    if (a?.deviceId === '_decision') migrateDecisionRefs(a, sm.devices ?? []);
+                  }
+                }
               }
 
               // Ensure recipes array exists

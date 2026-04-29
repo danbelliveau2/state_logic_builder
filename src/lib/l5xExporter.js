@@ -796,8 +796,18 @@ function generateAllTags(sm, orderedNodes, stepMap, trackingFields = []) {
   // Single step
   addTag(buildBoolTagXml('SS', 'Single Step Active', 'Local'), 'SS');
   addTag(buildBoolTagXml('SS_OK', 'Single Step OK to Advance', 'Local'), 'SS_OK');
+  addTag(buildBoolTagXml('SS_ONS', 'Single Step One-Shot (used by R01 SS_OK rung)', 'Local'), 'SS_ONS');
   addTag(buildBoolTagXml('LocalSS', 'Local Single Step Request', 'Local'), 'LocalSS');
   addTag(buildBoolTagXml('LocalSSONS', 'Local Single Step ONS', 'Local'), 'LocalSSONS');
+
+  // SDC HMI standard (§15.2 fixed bit map: HMI_Toggle.0=Lockout, .1=DryRun, .2=SS).
+  // Engineer review 2026-04-25: these were referenced in R01 rungs but never declared,
+  // causing "undefined tags" import errors. Lockout/DryRun are OTE outputs of the
+  // HMI_Toggle decode rung; HMI_Toggle/HMI_Momentary are the HMI-mapped DINTs.
+  addTag(buildBoolTagXml('Lockout', 'Station Lockout (HMI_Toggle.0 — forces Step=99)', 'Local'), 'Lockout');
+  addTag(buildBoolTagXml('DryRun', 'Dry Run (HMI_Toggle.1 — engineer-defined dry-cycle gate)', 'Local'), 'DryRun');
+  addTag(buildDintTagXml('HMI_Toggle', 'HMI Toggle Bits (.0 Lockout / .1 DryRun / .2 SS — fixed SDC map)'), 'HMI_Toggle');
+  addTag(buildDintTagXml('HMI_Momentary', 'HMI Momentary Bits (auto-cleared each scan; bits assigned per-machine)'), 'HMI_Momentary');
 
   // One-shot and HMI
   addTag(buildDintTagXml('ONS', 'One-Shot Storage Bits'), 'ONS');

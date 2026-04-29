@@ -63,8 +63,12 @@ export function buildAvailableInputs(devices, allSMs, currentSmId, trackingField
         // Probes are referenced through their per-setpoint AOI_RangeCheck BOOL bit.
         // Raw scaled value is intentionally NOT exposed as a verify-input — users
         // should declare a setpoint and verify against `{name}{setpointName}RC.InPos`.
-        for (const sp of (d.setpoints ?? []))
-          inputs.push({ ref: `${d.id}:${sp.name}`, tag: `${d.name}${sp.name}RC.InPos`, label: `${d.displayName} @ ${sp.name} (In Range)`, inputType: 'bool', group: 'Analog Sensors' });
+        // v1.30.4 — ref encodes setpoint ID (stable UUID) so renames propagate.
+        // Hydration migration converts legacy name-based refs to ID-based.
+        for (const sp of (d.setpoints ?? [])) {
+          const refKey = sp.id ?? sp.name;  // pre-migration data may lack id
+          inputs.push({ ref: `${d.id}:${refKey}`, tag: `${d.name}${sp.name}RC.InPos`, label: `${d.displayName} - ${sp.name}`, inputType: 'bool', group: 'Analog Sensors', deviceId: d.id, checkId: sp.id ?? null, checkName: sp.name });
+        }
         break;
       case 'ServoAxis':
         for (const pos of (d.positions ?? []))
