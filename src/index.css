@@ -1131,6 +1131,50 @@ body {
   flex: 1;
 }
 
+/* ── Connect-target picking mode ─────────────────────────────────────────────
+ * Active while `_connectPreset` is set in the store (user clicked "Connect"
+ * in the ConnectMenu and is now picking a target node). Visual feedback so
+ * the user can see "I'm picking a target now" — without it, target nodes
+ * look identical to non-target nodes and feel hard to click.
+ *
+ * IMPORTANT: We target `.state-node` and `.decision-node` (the inner node
+ * components), NOT `.react-flow__node` (the React Flow positioning wrapper).
+ * React Flow already applies `transform: translate(x, y)` on the wrapper
+ * for positioning — adding our `scale(1.06)` there would overwrite the
+ * position and push every node to (0, 0). The inner components have no
+ * conflicting transform, so scale + box-shadow apply cleanly there.
+ *
+ * `!important` overrides .state-node's own `box-shadow: var(--shadow)`
+ * and any selected/hovered border styles. */
+.canvas-wrapper--picking-target .state-node,
+.canvas-wrapper--picking-target .decision-node {
+  cursor: copy !important;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease,
+              border-color 0.12s ease;
+  /* Base: noticeable blue ring on every node (always-on signal "this is a target") */
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.55),
+              0 6px 16px rgba(59, 130, 246, 0.25) !important;
+  border-color: #3b82f6 !important;
+}
+.canvas-wrapper--picking-target .state-node:hover,
+.canvas-wrapper--picking-target .decision-node:hover {
+  /* Hover: scale-up + much stronger ring. Click target is OBVIOUS. */
+  transform: scale(1.08);
+  box-shadow: 0 0 0 5px rgba(59, 130, 246, 1),
+              0 12px 28px rgba(59, 130, 246, 0.5) !important;
+  z-index: 100;
+}
+/* Source node — dimmed and disabled so it's clearly "not a target". JS adds
+ * `connect-source-node` to the React Flow wrapper of the source node when
+ * the preset is set; cleanup removes it when preset clears. */
+.canvas-wrapper--picking-target .connect-source-node .state-node,
+.canvas-wrapper--picking-target .connect-source-node .decision-node {
+  filter: grayscale(0.7) opacity(0.45) !important;
+  cursor: not-allowed !important;
+  transform: none !important;
+  box-shadow: 0 0 0 2px #94a3b8 !important;
+  border-color: #94a3b8 !important;
+}
 
 /* SM title overlay on canvas */
 .canvas-sm-title {
@@ -1769,9 +1813,17 @@ body {
 
 /* ─── State Node ────────────────────────────────────────────────────────── */
 .state-node {
+  /* HARD-CAPPED at exactly 240px so EVERY node in a column has the same
+   * width — visually consistent diagram top to bottom. Content that
+   * would naturally exceed 240px is shrunk by the ShrinkToFit wrapper
+   * (StateNode.PickerV2ActionRow) so nothing gets clipped or overflows.
+   * No `max-content` / no flex grow — the cap is the only width.
+   * Don't relax this without solving the alternate "shrink content to
+   * fit" path; we keep cycling between "nodes wider" and "content cut
+   * off" until BOTH are pinned. */
   min-width: 240px;
-  width: max-content;
-  max-width: 340px;
+  width: 240px;
+  max-width: 240px;
   cursor: pointer;
   position: relative;
   background: #fff;
@@ -1960,10 +2012,15 @@ body {
 }
 
 .state-node__body {
-  padding: 4px 8px 6px;
+  /* Roomier vertical padding so a single-row state has comfortable spacing
+   * (matches what the user expects from a plain "one action" node), and
+   * gap: 7 (was 3) puts that same breathing room BETWEEN rows when a state
+   * has multiple actions stacked. Multi-action states no longer feel
+   * cramped relative to single-action ones. */
+  padding: 8px 8px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 7px;
 }
 
 .state-node__add-btn {
@@ -2234,6 +2291,41 @@ body {
   display: flex;
   flex-direction: column;
   max-width: 100%;
+}
+
+/* Hoverable wrapper — used by v2 rows that expose an inline delete (×).
+ * The button is invisible by default and fades in on row hover so it
+ * doesn't add visual noise to read-only viewing. */
+.action-row-wrap--hoverable {
+  position: relative;
+}
+.action-row-delete {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(220, 38, 38, 0.9);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.action-row-wrap--hoverable:hover .action-row-delete {
+  opacity: 1;
+}
+.action-row-delete:hover {
+  background: #b91c1c;
 }
 
 .action-device--clickable {

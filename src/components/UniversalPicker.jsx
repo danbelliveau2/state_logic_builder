@@ -44,7 +44,8 @@
 
 import { useState, useMemo } from 'react';
 import { GRAMMAR_CATEGORIES, loadGrammar, parseDetailField } from '../lib/pickerGrammar.js';
-import { DeviceIcon } from './DeviceIcons.jsx';
+import { DeviceIcon, CheckContinueIcon, CheckBranchIcon } from './DeviceIcons.jsx';
+import { useDiagramStore } from '../store/useDiagramStore.js';
 
 // Map grammar row id → DeviceIcon type so the subject buttons can render
 // the same SVG icons used elsewhere in the app. Keeps visual identity
@@ -68,10 +69,18 @@ export const GRAMMAR_TO_DEVICE_TYPE = {
   custom:        'Custom',
 };
 
+// Sub-action taxonomy. A branch is conceptually just a check that branches —
+// you can't fork without first observing something. So the picker exposes:
+//   wait    — block until condition becomes true (no log, single exit)
+//   check   — observe + log + always advance (single exit)
+//   branch  — observe + log + fork on the observed value (N exits)
+// "Check & Continue" / "Check & Branch" are the user-facing labels; the
+// internal ids stay short (`check`, `branch`) for storage compactness and
+// to avoid breaking existing pickerConfig data.
 const SUB_ACTIONS = [
-  { id: 'wait',   label: 'Wait',   tagline: 'Block until condition is true' },
-  { id: 'check',  label: 'Check',  tagline: 'Log current state, advance' },
-  { id: 'branch', label: 'Branch', tagline: 'Fork — one edge per INPUTS state' },
+  { id: 'wait',   label: 'Wait',             tagline: 'Block until condition is true' },
+  { id: 'check',  label: 'Check & Continue', tagline: 'Observe, log result, advance',  icon: 'continue' },
+  { id: 'branch', label: 'Check & Branch',   tagline: 'Observe, log result, fork on value', icon: 'branch' },
 ];
 
 const parseList = (s) =>
@@ -107,6 +116,36 @@ export function UniversalPicker({
   const [actionVerb, setActionVerb]   = useState(seed?.actionVerb || null);
   const [condition, setCondition]     = useState(seed?.condition || null);
   const [detailValues, setDetailVals] = useState(seed?.detail ? { ...seed.detail } : {});
+  // Branch sub-action: optional 3rd exit on the bottom handle (`exit-retry`)
+  // for "loop back and try again" patterns. Off by default — most branches
+  // are simple Pass/Fail forks. Toggling this on adds a 3rd label "Retry"
+  // to edgeLabels so the auto-spawn generates the third edge from
+  // `exit-retry` (bottom-center). User wires it back to a previous state
+  // for retry-with-counter logic.
+  const [retryEnabled, setRetryEnabled] = useState(seed?.retryEnabled || false);
+
+  // Log target — Check & Continue and Check & Branch can write the observed
+  // value to a Part-Tracking (PT) field. Defaults to OFF (user's call: most
+  // checks don't need to log; logging is the exception). When toggled on,
+  // user picks an existing field or creates a new one; the PT field is
+  // auto-created on commit by the StateNode caller.
+  const [ptEnabled,  setPtEnabled]  = useState(seed?.ptEnabled  ?? false);
+  const [ptFieldId,  setPtFieldId]  = useState(seed?.ptFieldId  ?? null);
+  const [ptFieldName, setPtFieldName] = useState(seed?.ptFieldName ?? '');
+
+  // Terminal-state shortcut — instead of picking an action, the user can
+  // mark THIS state as Cycle Complete (✓) or Fault (⚠). Selecting one
+  // grays out the rest of the picker; on commit, the StateNode caller
+  // sets `data.isComplete` or `data.isFault` on the node and skips the
+  // addAction step. null = normal action/decision flow.
+  const [terminalType, setTerminalType] = useState(null);
+
+  // Branch count — Check & Branch can have 2 to 5 outgoing edges. Default is
+  // derived from the grammar's INPUTS list (e.g., digital sensor = 2 for On/Off,
+  // analog with 3-way classification = 3). User can increment / decrement
+  // within [2, 5]. Extra branches beyond grammar.inputs.length get auto-labels
+  // like "Branch 4", "Branch 5" — editable per-edge after creation.
+  const [branchCount, setBranchCount] = useState(seed?.branchCount ?? null);
 
   // The currently selected subject instance + its grammar row.
   const subject = useMemo(
@@ -181,6 +220,11 @@ export function UniversalPicker({
     if (grammarRow && !condition) {
       setCondition(parseList(grammarRow.inputs)[0] || null);
     }
+    // Check & Continue auto-enables log — the whole point of "check + continue"
+    // is to record what was observed. Other sub-actions don't auto-enable.
+    if (next === 'check') {
+      setPtEnabled(true);
+    }
   }
 
   function handleSubjectChange(id) {
@@ -206,21 +250,54 @@ export function UniversalPicker({
     if (mode === 'action')      return { topology: 1, labels: [] };
     if (subAction === 'wait')   return { topology: 1, labels: [] };
     if (subAction === 'check')  return { topology: 1, labels: [] };
-    // Branch: one edge per INPUTS state, condition (primary) first
+    // Branch: build labels[] sized by branchCount (default = grammar inputs).
+    //   - First N labels come from grammar inputs, condition (primary) first.
+    //   - Beyond inputs.length, auto-name "Branch <n>" (user can rename per-edge).
     const inputs = parseList(grammarRow.inputs);
-    if (inputs.length < 2) return { topology: 1, labels: inputs };
-    const labels = condition
+    const orderedInputs = condition
       ? [condition, ...inputs.filter(s => s !== condition)]
       : inputs;
-    return { topology: labels.length, labels };
-  }, [grammarRow, mode, subAction, condition]);
 
-  const canCommit = !!subject && !!grammarRow && (
-    mode === 'action' ? !!actionVerb : !!condition
+    // Effective count: user override (clamped to [2, 5]) OR derived from grammar.
+    // Grammar with <2 inputs degenerates to a 1-exit "branch" (functionally a Wait).
+    const grammarCount = Math.max(orderedInputs.length, 1);
+    const requested    = branchCount ?? grammarCount;
+    const count        = Math.max(grammarCount === 1 ? 1 : 2, Math.min(5, requested));
+
+    let labels = [];
+    for (let i = 0; i < count; i++) {
+      labels.push(orderedInputs[i] ?? `Branch ${i + 1}`);
+    }
+    // Retry: append a "Retry" label so the auto-spawn generates a final edge
+    // from `exit-retry` (bottom-center). Independent of branchCount — counts
+    // as a separate "extra" exit on top of whatever you set.
+    if (retryEnabled) {
+      labels = [...labels, 'Retry'];
+    }
+    return { topology: labels.length, labels };
+  }, [grammarRow, mode, subAction, condition, retryEnabled, branchCount]);
+
+  // Terminal-state path commits standalone — no subject/condition needed.
+  const canCommit = !!terminalType || (
+    !!subject && !!grammarRow && (
+      mode === 'action'
+        ? !!actionVerb
+        : (subAction === 'check' || !!condition)
+    )
   );
 
   function handleCommit() {
     if (!canCommit) return;
+    // Terminal-state shortcut: emit a special payload that the caller (StateNode)
+    // detects and uses to flip `data.isComplete` / `data.isFault` on the node
+    // instead of adding an action.
+    if (terminalType) {
+      onPick && onPick({
+        terminalType,           // 'complete' | 'fault'
+        isEdit: !!editAction,
+      });
+      return;
+    }
     // Derive exit state for Action mode — the input we'd verify on advance.
     // Heuristic: pick the input whose name shares a root with the action verb
     // (e.g. "Extend" → "Extended", "Retract" → "Retracted"). Fall back to the
@@ -232,6 +309,12 @@ export function UniversalPicker({
       exitState = inputs.find(i => i.toLowerCase().startsWith(v)) || inputs[0];
     }
 
+    // Log target persists across check sub-actions (continue + branch). Wait
+    // mode never logs (it just blocks), Action mode doesn't have a "result"
+    // to log. The caller (StateNode onPick handler) auto-creates a PT field
+    // if `ptEnabled && !ptFieldId` — using `ptFieldName` (or subject name as
+    // a default) as the new field's name.
+    const isCheck = mode === 'decision' && (subAction === 'check' || subAction === 'branch');
     onPick && onPick({
       mode,
       subAction:    mode === 'decision' ? subAction : null,
@@ -245,6 +328,20 @@ export function UniversalPicker({
       exitState,    // null for Decision mode
       edgeTopology: edgeInfo.topology,
       edgeLabels:   edgeInfo.labels,
+      // Persist retry flag on pickerConfig so re-opening the picker
+      // shows the toggle in the same state. Only meaningful for Branch.
+      retryEnabled: subAction === 'branch' ? retryEnabled : false,
+      // Log target — only for check / branch. The picker stores the user's
+      // explicit choice; the StateNode caller auto-creates the PT field on
+      // commit if no id was selected.
+      ptEnabled:    isCheck ? ptEnabled : false,
+      ptFieldId:    isCheck && ptEnabled ? ptFieldId : null,
+      ptFieldName:  isCheck && ptEnabled
+        ? (ptFieldName || `${subject.name}_Check`)
+        : null,
+      // Branch count override (for Check & Branch only). Stored so re-opening
+      // the picker preserves the user's chosen N.
+      branchCount:  subAction === 'branch' ? (branchCount ?? null) : null,
       // True when the picker was opened to edit an existing action.
       // The caller uses this to choose updateAction vs addAction.
       isEdit:       !!editAction,
@@ -302,10 +399,25 @@ export function UniversalPicker({
           {GRAMMAR_CATEGORIES.map(cat => {
             const subs = subjectsByCategory[cat.id] || [];
             if (subs.length === 0) return null;
+            // When every subject in this section shares ONE grammar family,
+            // use that family name as the section banner (e.g. "SERVO AXIS"
+            // instead of the broader "MOTION") — otherwise the banner is
+            // redundant with the per-chip subtitle that says the same thing.
+            // Multi-family sections (e.g. mixed Servo + Conveyor) keep the
+            // category label and chip subtitles.
+            const families = new Set();
+            subs.forEach(s => {
+              const fam = grammarById[s.grammarRowId]?.family;
+              if (fam) families.add(fam);
+            });
+            const oneFamily   = families.size === 1 ? [...families][0] : null;
+            const bannerText  = oneFamily
+              ? oneFamily.split(/[(/]/)[0].trim()
+              : cat.label;
             return (
               <div key={cat.id} style={{ marginBottom: 6 }}>
                 <div style={{ ...catHeader, background: cat.color }}>
-                  {cat.label}
+                  {bannerText}
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '4px 2px' }}>
                   {subs.map(s => {
@@ -316,9 +428,9 @@ export function UniversalPicker({
                     const isActive = subjectId === s.id;
                     // Pneumatic device names already encode their type
                     // (Cylinder, Gripper, Rotary, Vacuum), so we skip the
-                    // type sub-label there. Everything else benefits from
-                    // a small type hint under the name.
-                    const showTypeHint = cat.id !== 'pneumatic';
+                    // type sub-label there. Single-family sections also skip
+                    // the subtitle — the banner already shows the family.
+                    const showTypeHint = !oneFamily && cat.id !== 'pneumatic';
                     const shortType = (g?.family || '').split(/[(/]/)[0].trim();
                     return (
                       <button
@@ -373,70 +485,11 @@ export function UniversalPicker({
         </div>
       )}
 
-      {/* Action verb (action mode) */}
-      {grammarRow && mode === 'action' && (
-        <>
-          <SectionTitle>Action</SectionTitle>
-          <div style={chipRow}>
-            {parseList(grammarRow.actions).map(v => (
-              <button
-                key={v}
-                onClick={() => setActionVerb(v)}
-                style={pickChip(actionVerb === v, '#0072B5')}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-
-      {/* Condition — universal across all decision sub-actions */}
-      {grammarRow && mode === 'decision' && (
-        <>
-          <SectionTitle>
-            {subAction === 'wait'   ? 'Condition · what to wait for'      :
-             subAction === 'check'  ? 'Condition · what we\'re checking'  :
-             /* branch */             'Condition · primary (left) branch'}
-          </SectionTitle>
-          <div style={chipRow}>
-            {parseList(grammarRow.inputs).map((v, idx) => {
-              // Branch mode: chips are colored by their semantic role —
-              // index 0 = pass (green), 1 = fail (red), 2+ = retry (amber).
-              // Selected chip = filled; others = outlined. The selection
-              // marks which is primary/left.
-              // Wait & Check modes: all chips use the mode accent (purple/cyan).
-              const chipColor = subAction === 'branch'
-                ? (idx === 0 ? '#16a34a' : idx === 1 ? '#dc2626' : '#f59e0b')
-                : accentColor;
-              return (
-                <button
-                  key={v}
-                  onClick={() => setCondition(v)}
-                  style={pickChip(condition === v, chipColor)}
-                >
-                  {v}
-                </button>
-              );
-            })}
-          </div>
-          {subAction === 'check' && (
-            <div style={hintText}>
-              Reads <strong>{subject?.name}</strong>'s current state and
-              logs it to a PT field. Pass = matches <em>{condition}</em>;
-              Fail = anything else. Always advances.
-            </div>
-          )}
-          {subAction === 'branch' && parseList(grammarRow.inputs).length > 1 && (
-            <div style={hintText}>
-              Click a different state above to flip which is the primary
-              (left) branch. Other states auto-spawn outgoing edges to the right.
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Detail */}
+      {/* Detail — moved up here so it sits RIGHT BELOW the subject. The flow
+          is "pick subject → pick the detail of that subject (setpoint name,
+          servo position, vision job…) → THEN pick what condition / action
+          to take." Reads broad → specific. Only renders if the grammar row
+          has detail categories AND we already have a chosen grammar row. */}
       {grammarRow && detailCategories.length > 0 && (() => {
         // "Controlled" categories — those auto-filled by another category's
         // detailValueMeta. Rendered read-only (Move Type follows the chosen
@@ -531,17 +584,209 @@ export function UniversalPicker({
         </>);
       })()}
 
-      {/* Footer */}
+      {/* Action verb (action mode) */}
+      {grammarRow && mode === 'action' && (
+        <>
+          <SectionTitle>Action</SectionTitle>
+          <div style={chipRow}>
+            {parseList(grammarRow.actions).map(v => (
+              <button
+                key={v}
+                onClick={() => setActionVerb(v)}
+                style={pickChip(actionVerb === v, '#0072B5')}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Condition — Wait + Branch only (Check & Continue always advances
+          regardless of value, so no condition picker). The retry/branch-count/
+          log-target rows below this still render for Check & Continue —
+          they're inside the same outer `mode === 'decision'` block but
+          gate on subAction individually. */}
+      {grammarRow && mode === 'decision' && (
+        <>
+          {subAction !== 'check' && (
+            <>
+              <SectionTitle>
+                {subAction === 'wait'
+                  ? 'Condition · what to wait for'
+                  : 'Preferred outcome · straight-down branch'}
+              </SectionTitle>
+              <div style={chipRow}>
+                {parseList(grammarRow.inputs).map((v, idx) => {
+                  const chipColor = subAction === 'branch'
+                    ? (idx === 0 ? '#16a34a' : idx === 1 ? '#dc2626' : '#f59e0b')
+                    : accentColor;
+                  return (
+                    <button
+                      key={v}
+                      onClick={() => setCondition(v)}
+                      style={pickChip(condition === v, chipColor)}
+                    >
+                      {v}
+                    </button>
+                  );
+                })}
+              </div>
+              {subAction === 'branch' && parseList(grammarRow.inputs).length > 1 && (
+                <div style={hintText}>
+                  The selected outcome is the PRIMARY branch — its child node
+                  spawns straight down. Alternates spawn to the right;
+                  the optional Retry exit goes left.
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Compact one-line rows for Branch options. Order:
+                1. Number of branches  (stepper, default from grammar inputs)
+                2. Retry exit          (checkbox; uses the bottom handle)
+              Both render in a single line — no descriptions — to keep the
+              picker window short. The Log-target picker (below) follows the
+              same compact style. */}
+          {subAction === 'branch' && (() => {
+            const grammarN     = parseList(grammarRow.inputs).length;
+            const minN         = grammarN <= 1 ? 1 : 2;
+            const maxN         = retryEnabled ? 2 : 3;
+            const current      = branchCount ?? Math.max(grammarN, 2);
+            const retryBlocked = current >= 3;
+            const step = (delta) => {
+              const next = Math.max(minN, Math.min(maxN, current + delta));
+              setBranchCount(next);
+            };
+            return (
+              <>
+                {/* Number of branches — single line, stepper on the right */}
+                <div
+                  style={{
+                    marginTop: 6,
+                    padding: '5px 10px',
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: 6,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}
+                  title="Number of outgoing branches (Retry exit is separate)"
+                >
+                  <span style={{ flex: 1, fontSize: 11, fontWeight: 700, color: '#475569' }}>
+                    Number of branches
+                  </span>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <button
+                      onClick={() => step(-1)}
+                      disabled={current <= minN}
+                      style={stepperBtn(current <= minN)}
+                      title="Remove one branch"
+                    >
+                      −
+                    </button>
+                    <span style={{
+                      fontSize: 13, fontWeight: 700, minWidth: 16, textAlign: 'center',
+                      color: '#0f172a',
+                    }}>
+                      {current}
+                    </span>
+                    <button
+                      onClick={() => step(1)}
+                      disabled={current >= maxN}
+                      style={stepperBtn(current >= maxN)}
+                      title="Add one branch"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                {/* Retry — single line checkbox row, matches Log style */}
+                <div
+                  style={{
+                    marginTop: 6,
+                    padding: '5px 10px',
+                    background: retryEnabled ? '#fef3c7' : '#f8fafc',
+                    border: `1px solid ${retryEnabled ? '#f59e0b' : '#e2e8f0'}`,
+                    borderRadius: 6,
+                    opacity: retryBlocked ? 0.5 : 1,
+                  }}
+                  title={retryBlocked
+                    ? "Drop branch count to 2 to enable retry — only 3 source handles available."
+                    : "Adds an extra exit on the bottom of the node, labeled Retry."}
+                >
+                  <label style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    cursor: retryBlocked ? 'not-allowed' : 'pointer',
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={retryEnabled}
+                      disabled={retryBlocked}
+                      onChange={(e) => setRetryEnabled(e.target.checked)}
+                      style={{ cursor: retryBlocked ? 'not-allowed' : 'pointer' }}
+                    />
+                    <span style={{
+                      fontSize: 11, fontWeight: 700,
+                      color: retryEnabled ? '#92400e' : '#475569',
+                    }}>
+                      Add Retry exit (bottom)
+                    </span>
+                  </label>
+                </div>
+              </>
+            );
+          })()}
+
+          {/* Log-target picker — Check & Continue and Check & Branch. Both
+              "checks" record their observed value to a Part Tracking field by
+              default. The toggle lets the user opt out (rare — usually you
+              want the log). When enabled, picks an existing PT field or
+              creates a new one inline. */}
+          {(subAction === 'check' || subAction === 'branch') && (
+            <LogTargetPicker
+              ptEnabled={ptEnabled}
+              setPtEnabled={setPtEnabled}
+              ptFieldId={ptFieldId}
+              setPtFieldId={setPtFieldId}
+              ptFieldName={ptFieldName}
+              setPtFieldName={setPtFieldName}
+              defaultName={`${subject?.name || 'Result'}_Check`}
+            />
+          )}
+        </>
+      )}
+
+      {/* Footer — terminal-state chips inline with Done.
+          Clicking ✓ Cycle Complete or ⚠ Fault marks this state as terminal
+          (skipping the normal action flow). Click again to deselect; the
+          two are mutually exclusive. Chips push left, Done stays right.
+          Click-outside the picker closes it, so no explicit Cancel button. */}
       <div style={footerRow}>
-        {onCancel && (
-          <button onClick={onCancel} style={btnSecondary}>Cancel</button>
-        )}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginRight: 'auto' }}>
+          <button
+            onClick={() => setTerminalType(t => t === 'complete' ? null : 'complete')}
+            style={terminalChip(terminalType === 'complete', '#16a34a')}
+            title="Mark this state as Cycle Complete (terminal end-of-cycle)"
+          >
+            ✓ Cycle Complete
+          </button>
+          <button
+            onClick={() => setTerminalType(t => t === 'fault' ? null : 'fault')}
+            style={terminalChip(terminalType === 'fault', '#dc2626')}
+            title="Mark this state as a Fault (terminal error)"
+          >
+            ⚠ Fault
+          </button>
+        </div>
         <button
           onClick={handleCommit}
           disabled={!canCommit}
           style={btnPrimary(canCommit)}
         >
-          Use this
+          Done
         </button>
       </div>
     </div>
@@ -559,11 +804,183 @@ function ModeBtn({ label, active, onClick, blurb, color }) {
   );
 }
 
-function SubActionBtn({ id, label, tagline, active, onClick }) {
+// Stepper button style — used for the branch-count +/- controls.
+function terminalChip(active, color) {
+  return {
+    padding: '3px 8px',
+    fontSize: 10,
+    fontWeight: 700,
+    borderRadius: 12,
+    border: `1px solid ${color}`,
+    background: active ? color : '#fff',
+    color: active ? '#fff' : color,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  };
+}
+
+function stepperBtn(disabled) {
+  return {
+    width: 22,
+    height: 22,
+    borderRadius: 4,
+    border: '1px solid #cbd5e1',
+    background: disabled ? '#f1f5f9' : '#fff',
+    color: disabled ? '#cbd5e1' : '#0f172a',
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    padding: 0,
+    lineHeight: 1,
+  };
+}
+
+// Log-target picker — toggle + dropdown (existing PT fields, or create new).
+// Renders inline inside the picker for Check & Continue / Check & Branch.
+//   - Toggle "Log result to PT field" (default ON)
+//   - When ON: dropdown of project's PT fields, plus "+ New field" entry
+//   - "+ New field" reveals a text input pre-seeded with `defaultName`
+//   - The actual PT field is created on commit by the StateNode caller (this
+//     keeps the picker free of side effects until the user clicks "Use this")
+function LogTargetPicker({
+  ptEnabled, setPtEnabled,
+  ptFieldId, setPtFieldId,
+  ptFieldName, setPtFieldName,
+  defaultName,
+}) {
+  const ptFields = useDiagramStore(s => s.project?.partTracking?.fields ?? []);
+  const isCreatingNew = ptEnabled && !ptFieldId && !!ptFieldName;
+
+  return (
+    <div
+      style={{
+        marginTop: 6,
+        padding: '5px 10px',
+        background: ptEnabled ? '#ecfdf5' : '#f8fafc',
+        border: `1px solid ${ptEnabled ? '#10b981' : '#e2e8f0'}`,
+        borderRadius: 6,
+      }}
+      title="Records the observed value to a Part Tracking field for later analysis."
+    >
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+        <input
+          type="checkbox"
+          checked={ptEnabled}
+          onChange={(e) => setPtEnabled(e.target.checked)}
+          style={{ cursor: 'pointer' }}
+        />
+        <span style={{ fontSize: 11, fontWeight: 700, color: ptEnabled ? '#065f46' : '#475569' }}>
+          Log result to PT field
+        </span>
+      </label>
+
+      {ptEnabled && (
+        <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 6 }}>
+          {!isCreatingNew ? (
+            <select
+              value={ptFieldId ?? ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === '__new__') {
+                  setPtFieldId(null);
+                  setPtFieldName(defaultName);
+                } else if (v === '') {
+                  setPtFieldId(null);
+                  setPtFieldName('');
+                } else {
+                  const f = ptFields.find(x => x.id === v);
+                  if (f) {
+                    setPtFieldId(f.id);
+                    setPtFieldName(f.name);
+                  }
+                }
+              }}
+              style={{
+                flex: 1,
+                fontSize: 11,
+                padding: '3px 4px',
+                border: '1px solid #cbd5e1',
+                borderRadius: 4,
+                background: '#fff',
+                cursor: 'pointer',
+              }}
+            >
+              <option value="">— pick existing field —</option>
+              {ptFields.map(f => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+              <option value="__new__">+ New field…</option>
+            </select>
+          ) : (
+            <>
+              <input
+                type="text"
+                value={ptFieldName}
+                onChange={(e) => setPtFieldName(e.target.value)}
+                placeholder={defaultName}
+                style={{
+                  flex: 1,
+                  fontSize: 11,
+                  padding: '3px 6px',
+                  border: '1px solid #10b981',
+                  borderRadius: 4,
+                  background: '#fff',
+                }}
+                autoFocus
+              />
+              <button
+                onClick={() => { setPtFieldId(null); setPtFieldName(''); }}
+                style={{
+                  fontSize: 10,
+                  padding: '2px 6px',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: 4,
+                  background: '#fff',
+                  cursor: 'pointer',
+                  color: '#475569',
+                }}
+                title="Cancel new field"
+              >
+                ↶
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {ptEnabled && isCreatingNew && (
+        <div style={{ fontSize: 9, color: '#10b981', marginTop: 3, fontStyle: 'italic' }}>
+          New field will be created on save.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SubActionBtn({ id, label, tagline, icon, active, onClick }) {
+  // Topology icon — same SVG used on the canvas action pill so the picker
+  // and the resulting node look consistent. Color follows the button text
+  // (white when active, slate when inactive).
+  const iconColor = active ? '#fff' : '#475569';
+  const iconNode  = icon === 'continue' ? <CheckContinueIcon size={18} color={iconColor} />
+                  : icon === 'branch'   ? <CheckBranchIcon   size={26} color={iconColor} />
+                  : null;
   return (
     <button onClick={onClick} style={subActionBtnStyle(active)}>
-      <div style={{ fontSize: 12, fontWeight: 700 }}>{label}</div>
-      <div style={{ fontSize: 9, color: active ? '#cbd5e1' : '#64748b', marginTop: 1 }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        justifyContent: 'flex-start',
+      }}>
+        {iconNode && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
+            {iconNode}
+          </span>
+        )}
+        <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.1 }}>{label}</div>
+      </div>
+      <div style={{ fontSize: 9, color: active ? '#cbd5e1' : '#64748b', marginTop: 2 }}>
         {tagline}
       </div>
     </button>

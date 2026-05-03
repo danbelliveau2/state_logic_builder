@@ -601,6 +601,41 @@ export function DesignSystemEditor() {
               Gap stays constant regardless of node height. Live: {Number(tv('verticalNodeSpacing', 80))}px
             </div>
           </div>
+
+          {/* Snap-to-vertical threshold — used by Canvas.onNodeDragStop. When
+              a dropped node lands within this many pixels of a connected
+              node's center X, it snaps to align (so the edge between them
+              is a clean straight line). 0 disables the snap. Default 20. */}
+          <div className="ds__canvas-spacing-row" style={{ marginTop: 16 }}>
+            <div className="ds__canvas-spacing-info">
+              <div className="ds__color-name">Snap-to-Straight Threshold</div>
+              <div className="ds__color-desc">
+                When you drop a node within this many pixels of a connected
+                node's center X, it snaps to align — keeping the edge
+                between them a clean straight line (no Z-bend). Default 20.
+                Set 0 to disable.
+              </div>
+            </div>
+            <div className="ds__canvas-spacing-controls">
+              <SpacingNumberInput
+                value={Number(tv('snapStraightThreshold', 20))}
+                onCommit={n => setThemeVal('snapStraightThreshold', n)}
+                min={0}
+                max={100}
+                step={1}
+              />
+              <span style={{ fontSize: 12, color: '#5a6a7e' }}>px</span>
+              <button
+                onClick={() => setThemeVal('snapStraightThreshold', 20)}
+                style={{
+                  fontSize: 11, padding: '4px 10px', border: '1px solid #cbd5e1',
+                  background: '#f8fafc', borderRadius: 4, cursor: 'pointer',
+                }}
+              >
+                Reset to 20
+              </button>
+            </div>
+          </div>
         </div>
       </Section>
 

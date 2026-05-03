@@ -327,3 +327,67 @@ export function DeviceIcon({ type, size = 24, color }) {
 
   return <IconComponent size={size} color={iconColor} />;
 }
+
+// ─── Topology icons for v2 picker sub-actions ──────────────────────────────
+// Mini-diagrams showing the source NODE + its exit pattern. Used in both
+// the picker button (UniversalPicker.SubActionBtn) and the canvas action
+// pill (StateNode.PickerV2ActionRow). Living here in DeviceIcons.jsx
+// breaks the circular dep that would arise if either component owned them.
+//
+//   CheckContinueIcon → small node + single arrow STRAIGHT DOWN out the
+//                       bottom (one path forward).
+//   CheckBranchIcon   → small node + L-shaped exits going OUT PERPENDICULAR
+//                       (left + right sides), then DOWN, with arrowheads —
+//                       mimics how branch edges actually leave a state on
+//                       the canvas (side handles, then vertical to target).
+//
+// `currentColor` lets the icon inherit text color from its container so the
+// same SVG works on a colored pill (white text → white strokes) and a plain
+// button (slate text → slate strokes).
+
+export function CheckContinueIcon({ size = 16, color = 'currentColor' }) {
+  const w = size;
+  const h = Math.round(size * (18 / 16));
+  return (
+    <svg width={w} height={h} viewBox="0 0 16 18" fill="none" aria-hidden="true">
+      {/* node — rounded rectangle at top */}
+      <rect x="3" y="1" width="10" height="5" rx="1.5"
+            stroke={color} strokeWidth="1.5" fill="none" />
+      {/* vertical line out the bottom of the node */}
+      <path d="M8 6 L8 14"
+            stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+      {/* arrowhead */}
+      <path d="M5 11 L8 14.5 L11 11"
+            stroke={color} strokeWidth="1.8"
+            strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </svg>
+  );
+}
+
+export function CheckBranchIcon({ size = 22, color = 'currentColor' }) {
+  const w = size;
+  const h = Math.round(size * (18 / 22));
+  return (
+    <svg width={w} height={h} viewBox="0 0 22 18" fill="none" aria-hidden="true">
+      {/* node — rounded rectangle, centered at top */}
+      <rect x="7" y="1" width="8" height="5" rx="1.5"
+            stroke={color} strokeWidth="1.5" fill="none" />
+      {/* left exit: out the left side, then turn 90° and go straight down */}
+      <path d="M7 3.5 L3 3.5 L3 14"
+            stroke={color} strokeWidth="1.8"
+            strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      {/* right exit: out the right side, then turn 90° and go straight down */}
+      <path d="M15 3.5 L19 3.5 L19 14"
+            stroke={color} strokeWidth="1.8"
+            strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      {/* left arrowhead */}
+      <path d="M0.5 11 L3 14.5 L5.5 11"
+            stroke={color} strokeWidth="1.8"
+            strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      {/* right arrowhead */}
+      <path d="M16.5 11 L19 14.5 L21.5 11"
+            stroke={color} strokeWidth="1.8"
+            strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </svg>
+  );
+}

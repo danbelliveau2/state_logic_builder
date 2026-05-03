@@ -164,14 +164,25 @@ export function computeBackwardWaypoints(src, tgt, allNodes) {
  * @param {Array} allNodes — all React Flow node objects (needed for backward U-route)
  * @param {string} sourceHandle — source handle id ('exit-pass', 'exit-fail', 'exit-single', etc.)
  */
-export function computeAutoRoute(src, tgt, edgeData, allNodes, sourceHandle) {
+export function computeAutoRoute(src, tgt, edgeData, allNodes, sourceHandle, snapStraightThreshold = 0) {
   const isBackward     = tgt.y < src.y - 30;
-  const isSideways     = Math.abs(src.x - tgt.x) > 10;
+  // SNAP-TO-STRAIGHT — when X offset is below snapStraightThreshold, render
+  // as a single straight line (slight diagonal), NOT a Z-bend. This eliminates
+  // the visible kink for "nearly aligned" nodes (1-2px positional rounding
+  // from auto-spawn).
+  // CALLER CONTRACT:
+  //   - At rest:  pass the user-configured threshold (default 20px).
+  //   - In drag:  pass 0 — every pixel of offset must produce a perpendicular
+  //               Z-bend so the source stub always exits perpendicularly,
+  //               otherwise the user sees a diagonal stub at drag start.
+  const isSideways     = Math.abs(src.x - tgt.x) > snapStraightThreshold;
   const isDecisionExit = edgeData?.isDecisionExit === true;
-  // Only true side handles (exit-pass / exit-fail) get L-bend routing.
-  // Bottom handles (exit-single, exit-retry, null) route like normal edges.
+  // v1.34 — handle positions changed: exit-pass moved to Bottom (primary
+  // outcome goes straight down), exit-retry moved to Left (loop-back).
+  // Side handles now: exit-fail (right), exit-retry (left).
+  // Bottom handles: exit-pass (primary), exit-single, null.
   const isSideHandleExit = isDecisionExit
-    && (sourceHandle === 'exit-pass' || sourceHandle === 'exit-fail');
+    && (sourceHandle === 'exit-fail' || sourceHandle === 'exit-retry');
 
   // Side-handle decision exits (pass/fail): always L-bend (horizontal out
   // from the handle, then vertical to target). Works for forward AND
@@ -184,20 +195,21 @@ export function computeAutoRoute(src, tgt, edgeData, allNodes, sourceHandle) {
   // bounds — NOT diagram-wide bounds, which produced wildly long routes when
   // there were unrelated distant nodes.
   if (isSideHandleExit) {
-    const isPassHandle = edgeData?.exitColor === 'pass';  // pass = left handle
-    // "Wrong side" check: pass-handle wants tgt to the LEFT; fail-handle wants
-    // tgt to the RIGHT. We check against the source-node's right/left edge
-    // with a small overlap tolerance.
+    // v1.34 layout: exit-fail = right, exit-retry = left. Determine which
+    // side this handle exits from so we can detect "wrong-side" targets.
+    const isLeftHandle = sourceHandle === 'exit-retry';   // retry = left handle
+    // "Wrong side" check: left-handle wants tgt to the LEFT; right-handle
+    // (exit-fail) wants tgt to the RIGHT. Tolerance for slight overlap.
     const TOL = 20;
-    const wrongSide = isPassHandle
-      ? (tgt.x > src.x + TOL)               // pass handle but target is right of source
-      : (tgt.x + NODE_WIDTH < src.x - TOL); // fail handle but target is left of source
+    const wrongSide = isLeftHandle
+      ? (tgt.x > src.x + TOL)               // left handle but target is right of source
+      : (tgt.x + NODE_WIDTH < src.x - TOL); // right handle but target is left of source
 
     if (wrongSide) {
       const DROP = 40;
       const PAD  = 60;
       // Local bounds: just go around the source+target pair, not the whole diagram.
-      const sideX = isPassHandle
+      const sideX = isLeftHandle
         ? Math.min(src.x, tgt.x) - PAD
         : Math.max(src.x, tgt.x) + NODE_WIDTH + PAD;
       return [
@@ -207,7 +219,6 @@ export function computeAutoRoute(src, tgt, edgeData, allNodes, sourceHandle) {
       ];
     }
     // Normal case: simple L-bend. Horizontal out to tgt.x, vertical to target.
-    // For target above source, vertical segment goes UP — still a clean L.
     return [{ x: tgt.x, y: src.y }];
   }
 
@@ -261,7 +272,8 @@ export function adjustTerminalRuns(waypoints, src, tgt, sourceHandle) {
 
   const wps  = waypoints.map(wp => ({ ...wp }));
   const orig = waypoints; // untouched reference for comparisons
-  const isSideHandle = sourceHandle === 'exit-pass' || sourceHandle === 'exit-fail';
+  // v1.34: side handles = exit-fail (right), exit-retry (left). Bottom = exit-pass / null / exit-single.
+  const isSideHandle = sourceHandle === 'exit-fail' || sourceHandle === 'exit-retry';
 
   // ── Source end ──
   if (isSideHandle) {
@@ -357,9 +369,16 @@ export function enforceNodeClearance(wps, src, tgt, allNodes, sourceHandle = nul
   // BELOW its source, so force the push direction DOWN for that case. Same idea
   // for side handles (push outward from handle face) and for the target end
   // (top handle → last segment is above target → force UP).
-  const srcIsPassHandle   = sourceHandle === 'exit-pass';
-  const srcIsFailHandle   = sourceHandle === 'exit-fail';
-  const srcIsBottomHandle = !srcIsPassHandle && !srcIsFailHandle; // null, exit-single, exit-retry
+  // v1.34: side handles are exit-fail (right) and exit-retry (left).
+  // exit-pass moved to bottom — treated like other bottom handles for stub direction.
+  const srcIsLeftHandle   = sourceHandle === 'exit-retry';
+  const srcIsRightHandle  = sourceHandle === 'exit-fail';
+  const srcIsSideHandle   = srcIsLeftHandle || srcIsRightHandle;
+  const srcIsBottomHandle = !srcIsSideHandle; // null, exit-pass, exit-single
+  // Aliases kept for reference within this function (used in the push-direction
+  // logic below — historically named srcIsPassHandle / srcIsFailHandle).
+  const srcIsPassHandle   = srcIsLeftHandle;
+  const srcIsFailHandle   = srcIsRightHandle;
 
   const lastSegIdx = result.length - 2; // segment index for wp[last-1]→wp[last]
 

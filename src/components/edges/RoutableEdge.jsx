@@ -41,6 +41,7 @@ import {
 
 export function RoutableEdge({
   id,
+  source, target,
   sourceX, sourceY,
   targetX, targetY,
   sourceHandleId: sourceHandle,  // React Flow v12 passes sourceHandleId, not sourceHandle
@@ -55,13 +56,24 @@ export function RoutableEdge({
   const pushHistory = useDiagramStore(s => s._pushHistory);
 
   const storedWaypoints = Array.isArray(data?.waypoints) ? data.waypoints : [];
-  const isManual = data?.manualRoute === true && storedWaypoints.length > 0;
+  const isManualStored = data?.manualRoute === true && storedWaypoints.length > 0;
 
   const src = { x: sourceX, y: sourceY };
   const tgt = { x: targetX, y: targetY };
 
   // ── Determine waypoints ─────────────────────────────────────────────────
   const nodes = getNodes();
+  // While ANY node is being dragged (set by Canvas.onNodeDragStart and
+  // cleared by onNodeDragStop), bypass the frozen manualRoute waypoints
+  // and live-route via computeAutoRoute. The per-node `dragging` flag from
+  // React Flow updates async (a tick after the drag actually starts), so
+  // the first frames render with stale waypoints — that's the "stick then
+  // catch up halfway" feel. The store flag flips synchronously with
+  // onNodeDragStart, so the edge follows immediately.
+  const draggingNodeId = useDiagramStore(s => s._draggingNodeId);
+  const eitherDragging = !!draggingNodeId
+    && (draggingNodeId === source || draggingNodeId === target || draggingNodeId === '__any__');
+  const isManual = isManualStored && !eitherDragging;
   let routeWps;
   if (isManual) {
     routeWps = adjustTerminalRuns(storedWaypoints, src, tgt, sourceHandle);
@@ -188,38 +200,63 @@ export function RoutableEdge({
         );
       })}
 
-      {/* Decision exit label pill — placed near the source handle (skip single-exit) */}
+      {/* Decision exit label pill — pass/fail near the source handle (side
+          handles), retry centered on the LONGEST vertical segment (bottom
+          handle). Skip single-exit. */}
       {data?.isDecisionExit && data?.outcomeLabel && sourceHandle !== 'exit-single' && segments.length > 0 && (() => {
         const isPass    = data.exitColor === 'pass';
         const isRetry   = data.exitColor === 'retry';
         const isMulti   = data.exitColor === 'multi';
         const bgColor   = isMulti ? (OUTCOME_COLORS[(data.outcomeIndex ?? 0) % OUTCOME_COLORS.length])
                         : isRetry ? '#f59e0b' : isPass ? '#16a34a' : '#dc2626';
-        // Shorten label: "On_Magnet_Presence" → "On", "Retry_Fail_X" → "Retry-Fail"
+        // Shorten label: "On_Magnet_Presence" → "On". Use the actual stored
+        // label for retry (was hardcoded "Retry-Fail" — that overrode the
+        // user's chosen label and got rendered overlapping the source node).
         const rawLabel  = data.outcomeLabel;
-        const labelText = isRetry ? 'Retry-Fail'
-          : rawLabel.includes('_') ? rawLabel.split('_')[0] : rawLabel;
+        const labelText = rawLabel.includes('_') ? rawLabel.split('_')[0] : rawLabel;
         const charW     = 6.5;
         const pillW     = Math.max(36, labelText.length * charW + 16);
         const pillH     = 18;
         const textColor = isRetry ? '#000' : 'white';
 
-        // Place on the first segment, offset from source handle (pill edge clears handle)
-        const seg = segments[0];
-        const H_OFFSET = 36;
-        const V_OFFSET = 20 + pillH / 2; // clear handle + half pill height
+        // v1.34 layout — handle positions changed:
+        //   exit-pass  → BOTTOM (primary, straight down)
+        //   exit-fail  → RIGHT  (alternate)
+        //   exit-retry → LEFT   (loop-back)
+        // Bottom handles place label at the LONGEST VERTICAL SEGMENT midpoint
+        // (between source and target, not crowded against either). Side
+        //  handles (fail/retry) keep the existing horizontal-offset placement
+        // near the source so it's visually associated with the side handle.
+        const isBottomHandle = sourceHandle === 'exit-pass' || sourceHandle == null;
         let lx, ly;
-        if (seg.isH) {
-          const dir = seg.b.x > seg.a.x ? 1 : -1;
-          lx = seg.a.x + dir * H_OFFSET;
-          ly = seg.a.y;
-        } else {
-          const dir = seg.b.y > seg.a.y ? 1 : -1;
+        if (isBottomHandle) {
+          // Primary down-branch — place label at a FIXED offset below the
+          // source handle, matching how the side handles offset their label
+          // 36px horizontally. Same visual distance from node edge regardless
+          // of how long the vertical run is. Previously used segment-midpoint
+          // which drifted far from the node when target was distant.
+          const seg = segments[0];
+          const V_OFFSET = 36;
           lx = seg.a.x;
-          ly = seg.a.y + dir * V_OFFSET;
+          ly = seg.a.y + V_OFFSET;
+        } else {
+          // Side handle (exit-fail right, exit-retry left). Edge first segment
+          // is horizontal — offset label horizontally from the handle so it
+          // sits beside the source.
+          const seg = segments[0];
+          const H_OFFSET = 36;
+          if (seg.isH) {
+            const dir = seg.b.x > seg.a.x ? 1 : -1;
+            lx = seg.a.x + dir * H_OFFSET;
+            ly = seg.a.y;
+          } else {
+            // Fallback: vertical first segment on a "side" handle —
+            // shouldn't happen, but place at segment midpoint defensively.
+            lx = seg.a.x;
+            ly = (seg.a.y + seg.b.y) / 2;
+          }
         }
 
-        // Always render horizontal pill
         return (
           <g style={{ pointerEvents: 'none' }}>
             <rect x={lx - pillW / 2} y={ly - pillH / 2} width={pillW} height={pillH} rx={9} fill={bgColor} opacity={0.9} />

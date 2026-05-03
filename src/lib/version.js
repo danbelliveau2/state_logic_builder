@@ -4,10 +4,20 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.33.0';
+export const APP_VERSION = '1.34.0';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '1.34.0',
+    date: '2026-05-03',
+    time: '12:00',
+    author: 'Dan Belliveau',
+    changes: [
+      'Universal Picker: Cycle Complete / Fault terminal-state chips moved INLINE with the Done button in the footer (was a separate row above). Clicking a chip marks the state as terminal and skips the addAction flow; click again to deselect; mutually exclusive. "Use this" button renamed to "Done". Cancel button removed — click-outside the picker already closes it.',
+      'Universal Picker: section banner now shows the family name (e.g. "SERVO AXIS") instead of the broader category label (e.g. "MOTION") when every subject in that section shares one grammar family. Multi-family sections (e.g. mixed Servo + Conveyor) still show the category label. Per-chip subtitle is suppressed in single-family sections to avoid duplicating the banner.',
+    ],
+  },
   {
     version: '1.33.0',
     date: '2026-04-29',

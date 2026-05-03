@@ -44,12 +44,12 @@
  * See `src/WHERE.md` for the project-wide task → file map.
  */
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { Handle, Position, NodeToolbar } from '@xyflow/react';
 import { createPortal } from 'react-dom';
 import { DEVICE_TYPES } from '../../lib/deviceTypes.js';
 import { useDiagramStore } from '../../store/useDiagramStore.js';
-import { DeviceIcon } from '../DeviceIcons.jsx';
+import { DeviceIcon, CheckContinueIcon, CheckBranchIcon } from '../DeviceIcons.jsx';
 import { hasSensorForOperation, needsTimerForOperation } from '../../lib/conditionBuilder.js';
 import { getSensorTagForOperation, getDelayTimerForOperation } from '../../lib/tagNaming.js';
 import { OUTCOME_COLORS } from '../../lib/outcomeColors.js';
@@ -61,7 +61,7 @@ import { PartTrackingPill } from '../PartTrackingPanel.jsx';
 // v2 picker integration
 import { UniversalPicker, GRAMMAR_TO_DEVICE_TYPE } from '../UniversalPicker.jsx';
 import { getProjectSubjects } from '../../lib/pickerSubjectsFromProject.js';
-import { loadGrammar } from '../../lib/pickerGrammar.js';
+import { loadGrammar, GRAMMAR_CATEGORIES } from '../../lib/pickerGrammar.js';
 import { PtBadge } from './PtBadge.jsx';
 import { ConnectMenu, HandleClickZone } from '../ConnectMenu.jsx';
 import { DecisionEditPopup, DecisionBody } from './DecisionNode.jsx';
@@ -337,10 +337,16 @@ const DEVICE_NODE_SHAPES = {
   VisionSystem:            'rect',
 };
 
-/** Determine node shape from the primary (first) device action */
+/** Determine node shape from the primary (first) device action.
+ *  Handles both v1 (action.deviceId) and v2 (pickerConfig.subjectId) shapes
+ *  so a v2 "Extend VerticalCylinder" gets the same rect outline as v1. */
 function getNodeShape(actions, devices) {
   if (!actions || actions.length === 0) return 'rounded';
-  const firstDevice = devices?.find(d => d.id === actions[0]?.deviceId);
+  const first = actions[0];
+  // v2 picker actions store the device reference under pickerConfig.subjectId.
+  // v1 actions use action.deviceId. Try v2 first, fall back to v1.
+  const deviceId = first?.pickerV2 ? first.pickerConfig?.subjectId : first?.deviceId;
+  const firstDevice = devices?.find(d => d.id === deviceId);
   if (!firstDevice) return 'rounded';
 
   // CheckResults: only diamond if 2+ outcomes (branching). 1 outcome = stay rounded (linear verify).
@@ -463,6 +469,19 @@ function advanceLabel(ac, devices) {
     const suffix = ac.timerFrom === 'complete' ? ' (from end)' : '';
     return `+${ms}ms${suffix}`;
   }
+  // New unified "On input" type — picks any subject from the project that has
+  // INPUTS in its grammar row, and a condition on that subject. The "value"
+  // qualifier is for inputs that need one (servo "At Position" → position
+  // name; servo "At %" → percentage).
+  if (ac.type === 'onInput') {
+    const subj = ac.subjectName || '?';
+    const inp  = ac.input || '?';
+    const val  = ac.inputValue ? ` ${ac.inputValue}` : '';
+    return `${subj} ${inp}${val}`;
+  }
+  // Legacy types — preserved for old data that hasn't been re-picked yet.
+  // The new editor doesn't expose these as creation options anymore but old
+  // saves still render correctly.
   if (ac.type === 'sensorOn' || ac.type === 'sensorOff') {
     const ref = ac.sensorRef ?? '';
     const [devId, sig] = ref.split(':');
@@ -477,40 +496,119 @@ function advanceLabel(ac, devices) {
 
 // ── Advance Condition Editor ─────────────────────────────────────────────────
 // Small popup anchored to the action row. User picks when the NEXT row starts:
-//   after complete (default) | concurrent | timer | sensor on/off | servo at pos | servo at %
-// Saves via store.updateAction(smId, nodeId, actionId, { advanceCondition: {...} }).
-function AdvanceConditionEditor({ action, devices, smId, nodeId, onClose }) {
+//   after complete (default) | concurrent | timer | onInput
+//
+// "On input" reuses the Universal Picker's Subject grid: pick any subject in
+// the project that exposes INPUTS (digital/analog sensors, signals, vision
+// jobs, servo axes…), then pick the input condition. For inputs that need
+// a value (servo "At Position" → position name; servo "At %" → percent),
+// a small VALUE picker appears scoped to that subject's detail values.
+//
+// Legacy types (sensorOn / sensorOff / servoAtPos / servoAtPct) are still
+// readable in advanceLabel() but the editor no longer exposes them as
+// creation options — old data renders correctly, new data flows through
+// the unified onInput path.
+function AdvanceConditionEditor({ action, devices, smId, nodeId, onClose, subjects = [], grammar = [] }) {
   const ac = action.advanceCondition ?? { type: 'onComplete' };
-  const [type, setType] = useState(ac.type ?? 'onComplete');
-  const [timerMs, setTimerMs] = useState(ac.timerMs ?? 50);
+  // Migrate legacy types into onInput defaults on first render so the user
+  // sees their old pick as the seed of the new picker (rather than empty).
+  const seedType =
+    ac.type === 'sensorOn' || ac.type === 'sensorOff' || ac.type === 'servoAtPos' || ac.type === 'servoAtPct'
+      ? 'onInput'
+      : (ac.type ?? 'onComplete');
+  const [type, setType]           = useState(seedType);
+  const [timerMs, setTimerMs]     = useState(ac.timerMs ?? 50);
   const [timerFrom, setTimerFrom] = useState(ac.timerFrom ?? 'start');
-  const [sensorRef, setSensorRef] = useState(ac.sensorRef ?? '');
-  const [servoPosName, setServoPosName] = useState(ac.servoPosName ?? '');
-  const [servoPct, setServoPct] = useState(ac.servoPct ?? 75);
 
-  // Build sensor list (digital sensors + any bool outputs on devices in this SM)
-  const sensors = [];
-  (devices ?? []).forEach(d => {
-    if (d.type === 'DigitalSensor') {
-      sensors.push({ ref: `${d.id}:value`, label: d.displayName ?? d.name });
-    }
-  });
+  // onInput state — these are the canonical fields going forward.
+  const [inSubjectId, setInSubjectId] = useState(ac.subjectId ?? '');
+  const [inInput,     setInInput]     = useState(ac.input ?? '');
+  const [inValue,     setInValue]     = useState(ac.inputValue ?? '');
 
-  // Servo positions from the device this action operates on (if it's a servo)
-  const actionDevice = devices?.find(d => d.id === action.deviceId);
-  const servoPositions = actionDevice?.type === 'ServoAxis'
-    ? (actionDevice.positions ?? []).map(p => p.name)
+  // Index grammar by id for fast lookup
+  const grammarById = useMemo(() => {
+    const m = {};
+    (grammar ?? []).forEach(r => { m[r.id] = r; });
+    return m;
+  }, [grammar]);
+
+  const parseList = (s) =>
+    String(s ?? '').split(/[,·]/).map(x => x.trim()).filter(Boolean);
+
+  // Subjects that expose at least one input — only these can be advance
+  // triggers. Drops Action-only subjects (parameters, timers, etc.).
+  const inputSubjects = useMemo(() => {
+    return (subjects ?? []).filter(s => {
+      const g = grammarById[s.grammarRowId];
+      return g && parseList(g.inputs).length > 0;
+    });
+  }, [subjects, grammarById]);
+
+  const subjectsByCategory = useMemo(() => {
+    const map = {};
+    GRAMMAR_CATEGORIES.forEach(c => { map[c.id] = []; });
+    inputSubjects.forEach(s => {
+      const g = grammarById[s.grammarRowId];
+      const c = g?.category || 'misc';
+      if (!map[c]) map[c] = [];
+      map[c].push(s);
+    });
+    return map;
+  }, [inputSubjects, grammarById]);
+
+  const pickedSubject = inputSubjects.find(s => s.id === inSubjectId) || null;
+  const pickedGrammar = pickedSubject ? grammarById[pickedSubject.grammarRowId] : null;
+  const inputOptions  = pickedGrammar ? parseList(pickedGrammar.inputs) : [];
+
+  // Detail field — for inputs that need a value (servo "At Position", "At %").
+  // Read the subject's per-instance detailValues if present, else fall back
+  // to a numeric input (the % case) or free text.
+  // Tolerant lookup: try the raw detail name, then strip trailing "(...)"
+  // parenthetical hints. Mirrors the UniversalPicker lookup so a grammar
+  // entry like `Position name (Pickup)` still finds detailValues['Position name'].
+  const stripParens = (s) => String(s ?? '').replace(/\s*\([^)]*\)\s*$/, '').trim();
+  const rawDetailKey = pickedGrammar?.detail?.split(',')[0]?.trim() || null;
+  const detailKey    = rawDetailKey ? stripParens(rawDetailKey) : null;
+  const detailVals   = pickedSubject && detailKey
+    ? (pickedSubject.detailValues?.[rawDetailKey] || pickedSubject.detailValues?.[detailKey] || [])
     : [];
+  // Heuristic: input names containing "%" expect a numeric percentage value;
+  // "Position" or anything with named choices uses the subject's detail list.
+  const inputNeedsValue = !!inInput && (
+    /position/i.test(inInput) ||
+    inInput.includes('%') ||
+    detailVals.length > 0
+  );
+  const inputWantsNumber = !!inInput && inInput.includes('%');
+
+  function handleSubjectChange(id) {
+    setInSubjectId(id);
+    // Auto-select the first input so the user sees something selected
+    const s = inputSubjects.find(x => x.id === id);
+    const g = s ? grammarById[s.grammarRowId] : null;
+    const firstInput = g ? parseList(g.inputs)[0] : '';
+    setInInput(firstInput || '');
+    setInValue('');
+  }
 
   function handleDone() {
     let payload;
-    if (type === 'onComplete') payload = { type: 'onComplete' };
-    else if (type === 'none') payload = { type: 'none' };
-    else if (type === 'timer') payload = { type: 'timer', timerMs: Number(timerMs) || 0, timerFrom };
-    else if (type === 'sensorOn' || type === 'sensorOff') payload = { type, sensorRef };
-    else if (type === 'servoAtPos') payload = { type, servoPosName };
-    else if (type === 'servoAtPct') payload = { type, servoPct: Number(servoPct) || 0 };
-    else payload = { type: 'onComplete' };
+    if      (type === 'onComplete') payload = { type: 'onComplete' };
+    else if (type === 'none')       payload = { type: 'none' };
+    else if (type === 'timer')      payload = { type: 'timer', timerMs: Number(timerMs) || 0, timerFrom };
+    else if (type === 'onInput' && inSubjectId && inInput) {
+      const subj = inputSubjects.find(s => s.id === inSubjectId);
+      payload = {
+        type: 'onInput',
+        subjectId:    inSubjectId,
+        subjectName:  subj?.name ?? '',
+        grammarRowId: subj?.grammarRowId ?? '',
+        input:        inInput,
+        inputValue:   inValue || undefined,
+      };
+    } else {
+      payload = { type: 'onComplete' };
+    }
     useDiagramStore.getState().updateAction(smId, nodeId, action.id, { advanceCondition: payload });
     onClose();
   }
@@ -529,13 +627,41 @@ function AdvanceConditionEditor({ action, devices, smId, nodeId, onClose }) {
     >{label}</button>
   );
 
+  // Compact pickable chip (used for SUBJECT / INPUT / VALUE selectors).
+  const chip = (selected, label, onClick, color = '#475569') => (
+    <button
+      key={label}
+      className="nodrag"
+      onClick={onClick}
+      style={{
+        padding: '4px 8px',
+        borderRadius: 12,
+        fontSize: 10,
+        fontWeight: 600,
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+        background: selected ? color : '#fff',
+        color: selected ? '#fff' : color,
+        border: `1px solid ${selected ? color : '#d1d5db'}`,
+      }}
+    >{label}</button>
+  );
+
   return (
     <div
       className="nodrag nowheel"
       style={{
-        width: 280, background: '#fff', border: '1px solid #d1d5db',
-        borderRadius: 8, boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
-        padding: 12, display: 'flex', flexDirection: 'column', gap: 10,
+        width: type === 'onInput' ? 340 : 280,
+        maxHeight: '70vh',
+        overflowY: 'auto',
+        background: '#fff',
+        border: '1px solid #d1d5db',
+        borderRadius: 8,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+        padding: 12,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
       }}
       onMouseDown={e => e.stopPropagation()}
     >
@@ -548,15 +674,8 @@ function AdvanceConditionEditor({ action, devices, smId, nodeId, onClose }) {
       </div>
       <div style={{ display: 'flex', gap: 4 }}>
         {btn('timer', 'Timer')}
-        {btn('sensorOn', 'Sensor ON')}
-        {btn('sensorOff', 'Sensor OFF')}
+        {btn('onInput', 'On input')}
       </div>
-      {servoPositions.length > 0 && (
-        <div style={{ display: 'flex', gap: 4 }}>
-          {btn('servoAtPos', 'At position')}
-          {btn('servoAtPct', 'At %')}
-        </div>
-      )}
 
       {type === 'timer' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -589,40 +708,108 @@ function AdvanceConditionEditor({ action, devices, smId, nodeId, onClose }) {
         </div>
       )}
 
-      {(type === 'sensorOn' || type === 'sensorOff') && (
-        <select
-          className="nodrag"
-          value={sensorRef}
-          onChange={e => setSensorRef(e.target.value)}
-          style={{ padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 12 }}
-        >
-          <option value="">Pick a sensor...</option>
-          {sensors.map(s => <option key={s.ref} value={s.ref}>{s.label}</option>)}
-        </select>
-      )}
+      {type === 'onInput' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {/* SUBJECT — categorized grid, same shape as UniversalPicker */}
+          <div style={{ fontSize: 9, fontWeight: 700, color: '#64748b', letterSpacing: '0.06em' }}>
+            SUBJECT
+          </div>
+          {inputSubjects.length === 0 ? (
+            <div style={{
+              fontSize: 10, color: '#94a3b8', fontStyle: 'italic',
+              padding: '6px 8px', background: '#f8fafc', borderRadius: 4,
+            }}>
+              No subjects with inputs available — add a sensor / signal / servo
+              first.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {GRAMMAR_CATEGORIES.map(cat => {
+                const subs = subjectsByCategory[cat.id] || [];
+                if (subs.length === 0) return null;
+                return (
+                  <div key={cat.id}>
+                    <div style={{
+                      fontSize: 8, fontWeight: 700,
+                      padding: '2px 6px', borderRadius: 3,
+                      background: cat.color, color: '#fff',
+                      letterSpacing: '0.05em', display: 'inline-block',
+                      marginBottom: 3,
+                    }}>
+                      {cat.label}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                      {subs.map(s => chip(
+                        inSubjectId === s.id,
+                        s.name,
+                        () => handleSubjectChange(s.id),
+                        cat.color,
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
-      {type === 'servoAtPos' && (
-        <select
-          className="nodrag"
-          value={servoPosName}
-          onChange={e => setServoPosName(e.target.value)}
-          style={{ padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 12 }}
-        >
-          <option value="">Pick position...</option>
-          {servoPositions.map(p => <option key={p} value={p}>{p}</option>)}
-        </select>
-      )}
+          {/* INPUT — chips for the picked subject's grammar inputs */}
+          {pickedSubject && inputOptions.length > 0 && (
+            <>
+              <div style={{ fontSize: 9, fontWeight: 700, color: '#64748b', letterSpacing: '0.06em' }}>
+                INPUT
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                {inputOptions.map(v => chip(
+                  inInput === v,
+                  v,
+                  () => { setInInput(v); setInValue(''); },
+                  '#0072B5',
+                ))}
+              </div>
+            </>
+          )}
 
-      {type === 'servoAtPct' && (
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <input
-            className="nodrag"
-            type="number"
-            value={servoPct}
-            onChange={e => setServoPct(e.target.value)}
-            style={{ width: 80, padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 12 }}
-          />
-          <span style={{ fontSize: 11, color: '#64748b' }}>% of move</span>
+          {/* VALUE — only when the picked input requires one (servo position
+              / percent / setpoint name). Auto-renders the right control:
+              named-choices → chips, percentage → number input, fallback → text. */}
+          {pickedSubject && inInput && inputNeedsValue && (
+            <>
+              <div style={{ fontSize: 9, fontWeight: 700, color: '#64748b', letterSpacing: '0.06em' }}>
+                VALUE
+              </div>
+              {inputWantsNumber ? (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input
+                    className="nodrag"
+                    type="number"
+                    value={inValue}
+                    onChange={e => setInValue(e.target.value)}
+                    placeholder="0–100"
+                    style={{ width: 80, padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 12 }}
+                  />
+                  <span style={{ fontSize: 11, color: '#64748b' }}>% of move</span>
+                </div>
+              ) : detailVals.length > 0 ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                  {detailVals.map(v => chip(
+                    inValue === v,
+                    v,
+                    () => setInValue(v),
+                    '#475569',
+                  ))}
+                </div>
+              ) : (
+                <input
+                  className="nodrag"
+                  type="text"
+                  value={inValue}
+                  onChange={e => setInValue(e.target.value)}
+                  placeholder={`(${(detailKey || 'value').toLowerCase()})`}
+                  style={{ padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 11 }}
+                />
+              )}
+            </>
+          )}
         </div>
       )}
 
@@ -662,11 +849,37 @@ function pickerV2Accent(cfg) {
 }
 
 function pickerV2ActionLabel(cfg) {
-  if (cfg.mode === 'action') return cfg.actionVerb || '<action>';
+  if (cfg.mode === 'action') {
+    let v = cfg.actionVerb || '<action>';
+    // Strip redundant "Servo " prefix — the device icon already identifies
+    // the family (servo axis), so the verb just needs to say WHAT (Move /
+    // Index / Incr). Saves ~30px on the action pill so the row fits one
+    // line: "[Move] [ABS] 🟧 X_Axis Pick·10mm" instead of "[Servo Move]…".
+    if (v.startsWith('Servo ')) v = v.slice(6);
+    return v;
+  }
   if (cfg.subAction === 'wait')   return 'Wait';
+  // Both check sub-actions read "Check" on the pill. The icon (rendered
+  // separately by pickerV2ActionIcon) signals continue-vs-branch:
+  //   ↓  = continues straight down to the next state
+  //   ⫡  = forks into multiple branches
+  // Pre-rename, "Branch" was its own pill text, but conceptually a branch
+  // IS a check that branches — so the verb stays "Check" and the topology
+  // shows up as a glyph (and as the actual outgoing edges on the canvas).
   if (cfg.subAction === 'check')  return 'Check';
-  if (cfg.subAction === 'branch') return 'Branch';
+  if (cfg.subAction === 'branch') return 'Check';
   return '<sub>';
+}
+
+// Topology icon for the v2 action pill — small, INLINE next to the "Check"
+// text so the pill stays single-line height (matches Move/Wait/Action pills
+// in the same node). The bigger versions live on the picker BUTTONS — those
+// have room. Importing from DeviceIcons.jsx (avoids circular dep).
+function pickerV2ActionIcon(cfg) {
+  if (cfg.mode !== 'decision') return null;
+  if (cfg.subAction === 'check')  return <CheckContinueIcon size={10} />;
+  if (cfg.subAction === 'branch') return <CheckBranchIcon   size={14} />;
+  return null;
 }
 
 // Short labels for Move Type so the on-node pill stays compact.
@@ -697,10 +910,310 @@ function startConditionMeta(id) {
   return PICKER_V2_START_CONDITIONS.find(s => s.id === id) ?? PICKER_V2_START_CONDITIONS[0];
 }
 
-function PickerV2ActionRow({ action, onClickName, showAdvance = true, grammar, devices, actionIdx = 0, smId, nodeId, subjects = [] }) {
+// Separator row that appears ABOVE action rows 2+ to show "this action begins
+// when X happens". Visually distinct from action rows (dashed top/bottom,
+// muted text, no left border accent) so the user reads it as "boundary
+// between actions" rather than as an action itself.
+//   sequential → "After ↑"           (default — wait for previous action's verify)
+//   parallel   → "‖ Same time"       (both fire together when state entered)
+//   delay      → "⏱ Delay [Timer]"   (start after timer expires)
+//   onInput    → "▼ On input [X]"    (start when input becomes true)
+// Click the LABEL to cycle through the four modes. Delay / On input expose
+// an inline select for the timer / input subject.
+function StartConditionSeparator({ action, smId, nodeId, grammar, subjects }) {
+  const startId   = action.pickerConfig?.startCondition || 'sequential';
+  const startVal  = action.pickerConfig?.startConditionValue;
+  const meta      = startConditionMeta(startId);
+  const updateCfg = (patch) => {
+    if (!smId || !nodeId) return;
+    useDiagramStore.getState().updateAction(smId, nodeId, action.id, {
+      pickerConfig: { ...(action.pickerConfig || {}), ...patch },
+    });
+  };
+  const stopAndPersist = (e) => e.stopPropagation();
+  const splitList = (s) => String(s ?? '').split(/[,·]/).map(x => x.trim()).filter(Boolean);
+  const showValue = startId === 'delay' || startId === 'onInput';
+  const valueOptions = startId === 'delay'
+    ? subjects.filter(s => s.grammarRowId === 'timer')
+    : startId === 'onInput'
+      ? subjects.filter(s => {
+          const g = grammar?.find(r => r.id === s.grammarRowId);
+          return g && splitList(g.inputs).length > 0;
+        })
+      : [];
+  const valuePlaceholder = startId === 'delay' ? '— pick timer —' : '— pick input —';
+
+  // For onInput: once the user picks a subject, we drill into INPUT (which
+  // condition on that subject) and optionally VALUE (which position / which
+  // setpoint / which percentage). All three are persisted on pickerConfig:
+  //   startConditionValue        = subjectId (kept for back-compat)
+  //   startConditionInput        = the picked input label (e.g. "At Position")
+  //   startConditionInputValue   = the value qualifier (e.g. "Pick" or "75")
+  const startInput      = action.pickerConfig?.startConditionInput || '';
+  const startInputValue = action.pickerConfig?.startConditionInputValue || '';
+  const onInputSubject = startId === 'onInput' && startVal
+    ? subjects.find(s => s.id === startVal) || null
+    : null;
+  const onInputGrammar = onInputSubject
+    ? grammar?.find(r => r.id === onInputSubject.grammarRowId) || null
+    : null;
+  const onInputOptions = onInputGrammar ? splitList(onInputGrammar.inputs) : [];
+  // VALUE — appears when the picked input needs a qualifier (servo at
+  // position / at %; analog setpoint name; etc.). Tolerant lookup mirrors
+  // UniversalPicker (raw key → strip-parens fallback).
+  const stripParens = (s) => String(s ?? '').replace(/\s*\([^)]*\)\s*$/, '').trim();
+  const rawDetailKey = onInputGrammar?.detail?.split(',')[0]?.trim() || null;
+  const detailKey    = rawDetailKey ? stripParens(rawDetailKey) : null;
+  const detailVals   = onInputSubject && detailKey
+    ? (onInputSubject.detailValues?.[rawDetailKey] || onInputSubject.detailValues?.[detailKey] || [])
+    : [];
+  const inputWantsNumber = !!startInput && startInput.includes('%');
+  const inputNeedsValue  = !!startInput && (
+    /position/i.test(startInput) ||
+    inputWantsNumber ||
+    detailVals.length > 0
+  );
+  // Servo subjects collapse the INPUT dropdown — "at position [X]" is the
+  // common case, the row just reads "PNP_ZAxis · Clear". The picker auto-
+  // selects "At Position" on subject change, so behavior is unchanged
+  // behind the scenes — only the chrome is hidden.
+  const skipInputPicker = onInputSubject?.grammarRowId === 'servo';
+
+  return (
+    <div
+      className="nodrag"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 4,
+        padding: '1px 8px',
+        // Symmetric breathing room: 7px gap above (already provided by
+        // state-node__body's `gap: 7px` between this wrap and the previous
+        // action's wrap) + 7px below (margin-bottom) so the separator floats
+        // visually equidistant from its neighbouring action rows. Without
+        // this, the separator was flush against the next action row.
+        margin: '0 0 7px',
+        borderTop: '1px dashed #cbd5e1',
+        borderBottom: '1px dashed #cbd5e1',
+        background: '#f1f5f9',
+        color: '#475569',
+        lineHeight: 1.1,
+        fontSize: 9,
+      }}
+      title={meta.tip}
+      // Stop propagation so clicking the separator doesn't fire the parent
+      // action-row's onClickName (which would open the picker for the
+      // wrong action).
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          updateCfg({ startCondition: nextStartCondition(startId) });
+        }}
+        style={{
+          background: 'none', border: 'none', padding: 0,
+          fontSize: 9, fontWeight: 700,
+          color: '#475569', cursor: 'pointer',
+          letterSpacing: '0.05em',
+          whiteSpace: 'nowrap',
+          fontFamily: 'inherit',
+        }}
+      >
+        {meta.label}
+      </button>
+      {showValue && (
+        <select
+          value={startVal ?? ''}
+          onClick={stopAndPersist}
+          onMouseDown={stopAndPersist}
+          onChange={(e) => {
+            const newSubj = e.target.value || null;
+            // Auto-pick the first input on subject change so the user sees
+            // a complete pick rather than an empty state.
+            const subj = subjects.find(s => s.id === newSubj);
+            const g    = subj ? grammar?.find(r => r.id === subj.grammarRowId) : null;
+            const firstInput = g ? splitList(g.inputs)[0] || '' : '';
+            updateCfg({
+              startConditionValue:      newSubj,
+              startConditionInput:      newSubj ? firstInput : '',
+              startConditionInputValue: '',
+            });
+          }}
+          style={{
+            height: 14,
+            padding: '0 2px',
+            border: 'none',
+            background: 'transparent',
+            fontSize: 9,
+            fontFamily: 'inherit',
+            color: '#0f172a',
+            maxWidth: 140,
+            cursor: 'pointer',
+          }}
+        >
+          <option value="">{valuePlaceholder}</option>
+          {valueOptions.map(s => (
+            <option key={s.id} value={s.id}>{s.name}</option>
+          ))}
+        </select>
+      )}
+      {/* INPUT dropdown — onInput + subject picked + NOT a servo (servos
+          collapse to subject + value only since "At Position [X]" is the
+          common case). Lists the subject's grammar.inputs (e.g., "On / Off"
+          for digital sensor, "In Tolerance / Out of Tolerance" for analog). */}
+      {startId === 'onInput' && onInputSubject && onInputOptions.length > 0 && !skipInputPicker && (
+        <>
+          <span style={{ color: '#cbd5e1' }}>·</span>
+          <select
+            value={startInput}
+            onClick={stopAndPersist}
+            onMouseDown={stopAndPersist}
+            onChange={(e) => updateCfg({
+              startConditionInput:      e.target.value || '',
+              startConditionInputValue: '',
+            })}
+            style={{
+              height: 14,
+              padding: '0 2px',
+              border: 'none',
+              background: 'transparent',
+              fontSize: 9,
+              fontFamily: 'inherit',
+              color: '#0f172a',
+              maxWidth: 110,
+              cursor: 'pointer',
+            }}
+          >
+            <option value="">— input —</option>
+            {onInputOptions.map(v => (
+              <option key={v} value={v}>{v}</option>
+            ))}
+          </select>
+        </>
+      )}
+      {/* VALUE picker — only when the input needs a qualifier. For "%", a
+          numeric input. For inputs with subject-level detail values (servo
+          positions, analog setpoints), a select. */}
+      {startId === 'onInput' && onInputSubject && startInput && inputNeedsValue && (
+        <>
+          <span style={{ color: '#cbd5e1' }}>·</span>
+          {inputWantsNumber ? (
+            <input
+              type="number"
+              value={startInputValue}
+              onClick={stopAndPersist}
+              onMouseDown={stopAndPersist}
+              onChange={(e) => updateCfg({ startConditionInputValue: e.target.value })}
+              placeholder="0–100"
+              style={{
+                width: 44, height: 14, padding: '0 2px',
+                border: '1px solid #cbd5e1', borderRadius: 3,
+                background: '#fff', fontSize: 9, fontFamily: 'inherit',
+                color: '#0f172a',
+              }}
+            />
+          ) : detailVals.length > 0 ? (
+            <select
+              value={startInputValue}
+              onClick={stopAndPersist}
+              onMouseDown={stopAndPersist}
+              onChange={(e) => updateCfg({ startConditionInputValue: e.target.value || '' })}
+              style={{
+                height: 14, padding: '0 2px',
+                border: 'none', background: 'transparent',
+                fontSize: 9, fontFamily: 'inherit',
+                color: '#0f172a', maxWidth: 100, cursor: 'pointer',
+              }}
+            >
+              <option value="">— value —</option>
+              {detailVals.map(v => (
+                <option key={v} value={v}>{v}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="text"
+              value={startInputValue}
+              onClick={stopAndPersist}
+              onMouseDown={stopAndPersist}
+              onChange={(e) => updateCfg({ startConditionInputValue: e.target.value })}
+              placeholder={(detailKey || 'value').toLowerCase()}
+              style={{
+                width: 80, height: 14, padding: '0 2px',
+                border: '1px solid #cbd5e1', borderRadius: 3,
+                background: '#fff', fontSize: 9, fontFamily: 'inherit',
+                color: '#0f172a',
+              }}
+            />
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── ShrinkToFit ────────────────────────────────────────────────────────────
+// Wrap a row of inline content. Measures naturalWidth vs containerWidth on
+// every render via useLayoutEffect. If content is wider, scales the inner
+// box down with CSS `transform: scale(N)` so EVERYTHING shrinks
+// proportionally — text, pills, icons. Row stays single-line; nothing
+// gets clipped down to a minScale floor.
+//
+// scrollWidth is unaffected by transform (transform is purely visual, not
+// layout), so we don't need to reset transform before measuring. setScale
+// is gated by a 0.01 threshold so float jitter can't cause render loops.
+function ShrinkToFit({ children, minScale = 0.55 }) {
+  const outerRef = useRef(null);
+  const innerRef = useRef(null);
+  const [scale, setScale] = useState(1);
+
+  useLayoutEffect(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return;
+    const innerW = inner.scrollWidth;
+    const outerW = outer.clientWidth;
+    if (innerW <= 0 || outerW <= 0) return;
+    const wanted = innerW > outerW ? Math.max(minScale, outerW / innerW) : 1;
+    setScale(prev => (Math.abs(prev - wanted) > 0.01 ? wanted : prev));
+  }); // no deps — runs every render so content changes get measured
+
+  return (
+    <div
+      ref={outerRef}
+      style={{
+        flex: '1 1 auto',
+        minWidth: 0,
+        // Height matches scaled visual so the row doesn't get padded by the
+        // unscaled inner box. Inner.offsetHeight × scale ≈ visible height.
+        // overflow:hidden ensures we never bleed past the clip-mask if a
+        // content edge goes a fraction past the scaled width.
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        ref={innerRef}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 3,
+          whiteSpace: 'nowrap',
+          transform: `scale(${scale})`,
+          transformOrigin: 'left center',
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function PickerV2ActionRow({ action, onClickName, onDelete, showAdvance = true, grammar, devices, actionIdx = 0, smId, nodeId, subjects = [] }) {
   const cfg = action.pickerConfig || {};
   const accent = pickerV2Accent(cfg);
   const actionLabel = pickerV2ActionLabel(cfg);
+  const actionIcon  = pickerV2ActionIcon(cfg);
   // Move Type rendered as a separate compact pill (ABS / INCR / INDEX),
   // NOT folded into the action label.
   const moveTypeAbbrev = abbrevMoveType(cfg.detail?.['Move Type']);
@@ -736,121 +1249,101 @@ function PickerV2ActionRow({ action, onClickName, showAdvance = true, grammar, d
     fontSize: 9, fontWeight: 600, lineHeight: '14px',
     whiteSpace: 'nowrap', display: 'inline-block',
   };
-  // Condition pill color follows SEMANTIC role from grammar.inputs index:
-  //   index 0 = On / Pass / True / Extended / In Tolerance → GREEN
-  //   index 1 = Off / Fail / False / Retracted / Out of Tolerance → RED
-  //   index 2+ → AMBER (retry-style)
-  // Falls back to mode accent only when no match (custom INPUTS list).
+  // Condition pill — for Check & Branch, show ALL of the subject's inputs
+  // as a joined pill so the user sees the full value space at a glance
+  // ("On │ Off"). The PREFERRED outcome (the one the picker stored in
+  // `cfg.condition`, which goes down the primary branch) gets a ✓ checkmark
+  // prefix and a filled green background. Alternates render outlined / muted.
+  // Skipped for Check & Continue (cfg.subAction === 'check') — that mode
+  // always advances regardless of value, so no condition is meaningful.
+  // Skipped for Wait too (legacy single-condition rendering preserved below).
+  const grammarRow   = grammar?.find(r => r.id === cfg.grammarRowId) || null;
+  const grammarInputs = grammarRow?.inputs
+    ? grammarRow.inputs.split(',').map(s => s.trim()).filter(Boolean)
+    : [];
+  const showAllInputs = cfg.mode === 'decision'
+    && cfg.subAction === 'branch'
+    && grammarInputs.length > 0;
+  const showSingleCondition = cfg.mode === 'decision'
+    && cfg.subAction === 'wait'
+    && !!cfg.condition;
+  // Single-condition color (for Wait pill — Branch uses per-chip colors below).
   let conditionColor = accent;
-  if (cfg.condition && grammar) {
-    const grammarRow = grammar.find(r => r.id === cfg.grammarRowId);
-    const inputs = grammarRow?.inputs
-      ? grammarRow.inputs.split(',').map(s => s.trim()).filter(Boolean)
-      : [];
-    const idx = inputs.indexOf(cfg.condition);
+  if (showSingleCondition) {
+    const idx = grammarInputs.indexOf(cfg.condition);
     if      (idx === 0) conditionColor = '#16a34a';
     else if (idx === 1) conditionColor = '#dc2626';
     else if (idx >= 2)  conditionColor = '#f59e0b';
   }
   return (
-    <div className="action-row-wrap">
-      <div className="action-row" style={{ borderLeftColor: accent, flexWrap: 'nowrap', gap: 3 }}>
-        {/* Start-condition chip — only on action rows 2+ ("when does this
-            action begin?"). Click the LABEL part to cycle:
-              After ↑ → Same time → Delay → On input
-            Delay and On input have inline value editors so the user can
-            set the ms / input name without leaving the row. */}
-        {actionIdx > 0 && (() => {
-          const startId   = action.pickerConfig?.startCondition || 'sequential';
-          const startVal  = action.pickerConfig?.startConditionValue;
-          const meta      = startConditionMeta(startId);
-          const updateCfg = (patch) => {
-            if (!smId || !nodeId) return;
-            useDiagramStore.getState().updateAction(smId, nodeId, action.id, {
-              pickerConfig: { ...(action.pickerConfig || {}), ...patch },
-            });
-          };
-          const stopAndPersist = (e) => e.stopPropagation();
-          // Stacked layout: type label on top, subject dropdown below.
-          // Sequential / Parallel collapse to a single line (no value to set).
-          // Delay / On Input expand to two lines so the picked timer/input
-          // sits beneath the type — easier to read than a single wide row.
-          const splitList = (s) => String(s ?? '').split(/[,·]/).map(x => x.trim()).filter(Boolean);
-          const showValueRow = startId === 'delay' || startId === 'onInput';
-          const valueOptions = startId === 'delay'
-            ? subjects.filter(s => s.grammarRowId === 'timer')
-            : startId === 'onInput'
-              ? subjects.filter(s => {
-                  const g = grammar?.find(r => r.id === s.grammarRowId);
-                  return g && splitList(g.inputs).length > 0;
-                })
-              : [];
-          const valuePlaceholder = startId === 'delay' ? '— pick timer —' : '— pick input —';
-          return (
-            <span
-              className="nodrag"
-              style={{
-                display: 'inline-flex',
-                flexDirection: 'column',
-                alignItems: 'flex-start',
-                padding: '1px 4px',
-                background: '#fff', color: '#475569',
-                border: '1px dashed #94a3b8',
-                borderRadius: 4,
-                fontFamily: 'inherit',
-                marginRight: 3,
-                lineHeight: 1.1,
-              }}
-              title={meta.tip}
-            >
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  updateCfg({ startCondition: nextStartCondition(startId) });
-                }}
-                style={{
-                  background: 'none', border: 'none', padding: 0,
-                  fontSize: 8, fontWeight: 700,
-                  color: '#475569', cursor: 'pointer',
-                  fontFamily: 'inherit', letterSpacing: '0.05em',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {meta.label}
-              </button>
-              {showValueRow && (
-                <select
-                  value={startVal ?? ''}
-                  onClick={stopAndPersist}
-                  onMouseDown={stopAndPersist}
-                  onChange={(e) => updateCfg({ startConditionValue: e.target.value || null })}
-                  style={{
-                    marginTop: 1,
-                    height: 12, padding: '0 1px',
-                    border: 'none', background: 'transparent',
-                    fontSize: 8, fontFamily: 'inherit',
-                    color: '#0f172a',
-                    maxWidth: 110, cursor: 'pointer',
-                  }}
-                >
-                  <option value="">{valuePlaceholder}</option>
-                  {valueOptions.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              )}
-            </span>
-          );
-        })()}
+    <div className="action-row-wrap action-row-wrap--hoverable">
+      {/* Per-row delete button — visible on hover only (CSS opacity).
+          Click stops propagation so it doesn't open the picker. */}
+      {onDelete && (
+        <button
+          className="action-row-delete nodrag"
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          onMouseDown={(e) => e.stopPropagation()}
+          title="Delete this action"
+        >
+          ×
+        </button>
+      )}
+      {/* Start-condition separator — only on action rows 2+. Sits ABOVE
+          the action row as its own line ("After ↑", "‖ Same time",
+          "⏱ Delay [Timer]", "▼ On input [Input]"). This is the boundary
+          between sequential actions in the same state, so promoting it
+          to its own row makes the visual grouping explicit:
+              [Servo Move] [ABS] X_Axis Pick·10mm   ← action 1
+              ── After ↑ ──                          ← separator
+              [Branch] PartCheck [On]                ← action 2
+          Previously the chip lived inline at the start of action 2's row,
+          which (a) ate horizontal space the action couldn't afford and
+          (b) hid the temporal relationship inside the action's own pills. */}
+      {actionIdx > 0 && (
+        <StartConditionSeparator
+          action={action}
+          smId={smId}
+          nodeId={nodeId}
+          grammar={grammar}
+          subjects={subjects}
+        />
+      )}
+      <div
+        className="action-row"
+        style={{
+          borderLeftColor: accent,
+          flexWrap: 'nowrap',
+          gap: 3,
+          cursor: onClickName ? 'pointer' : undefined,
+        }}
+        // Clicking ANYWHERE on the row opens the picker in EDIT mode.
+        // Previously only the subject-name span was clickable, so clicks on
+        // the action pill, move-type chip, icon, or detail pill did nothing.
+        // Users would then click "+ Add Action" or trigger another path,
+        // which opened the picker in ADD mode and produced a duplicate row
+        // instead of replacing the original. Children that need their own
+        // click semantics (the start-condition separator, the action-device
+        // span itself) all stopPropagation, so this top-level handler only
+        // fires for "empty" row clicks.
+        onClick={onClickName}
+      >
+       <ShrinkToFit>
         <span className="action-op" style={{
           background: accent, color: '#fff', borderColor: accent,
           whiteSpace: 'nowrap',
-          // Tighter than the default action-op CSS so the row doesn't
-          // run wider than its parent. Keeps the action visually primary
-          // (still bigger than the satellite pills) without dominating.
-          fontSize: 10, padding: '1px 6px', fontWeight: 700,
+          fontSize: 10, fontWeight: 700,
+          padding: '1px 6px',
+          // Inline row — text on the left, optional small topology icon on
+          // the right. Single-line height so the Check pill matches the
+          // Move/Wait/Action pill heights in the same node. The big stacked
+          // versions live on the picker buttons (which have room).
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: actionIcon ? 3 : 0,
         }}>
-          {actionLabel}
+          <span>{actionLabel}</span>
+          {actionIcon}
         </span>
         {moveTypeAbbrev && (
           <span style={{
@@ -875,6 +1368,14 @@ function PickerV2ActionRow({ action, onClickName, showAdvance = true, grammar, d
         >
           {cfg.subjectName || '<subject>'}
         </span>
+        {/* Detail + condition pills stay INLINE in the same flex row.
+            With `flex-wrap: wrap` on the parent, the browser decides when
+            to wrap to a second line based on actual width:
+              - Short content (e.g. "Check PartCheck [On]") stays one line.
+              - Long content (e.g. "Wait ProbeCheck [HeightCheck] [In Tol]")
+                wraps naturally when it would overflow the 240px node cap.
+            The `marginLeft: 'auto'` trick is NOT used — pills sit right after
+            the subject so they read as part of the same phrase. */}
         {detailText && (
           <span style={{
             ...detailPillStyle, marginLeft: 0,
@@ -884,7 +1385,8 @@ function PickerV2ActionRow({ action, onClickName, showAdvance = true, grammar, d
             {detailText}
           </span>
         )}
-        {cfg.condition && (
+        {/* Wait sub-action — single condition pill, semantic color. */}
+        {showSingleCondition && (
           <span style={{
             ...detailPillStyle, marginLeft: 0,
             background: conditionColor, color: '#fff',
@@ -893,22 +1395,103 @@ function PickerV2ActionRow({ action, onClickName, showAdvance = true, grammar, d
             {cfg.condition}
           </span>
         )}
+        {/* Branch sub-action — joined pill of ALL inputs. Each chip keeps
+            its SEMANTIC color (On/Pass/InTol = green, Off/Fail/Out = red,
+            3rd+ = amber) regardless of which is preferred. The preferred
+            outcome (cfg.condition = primary branch) gets a bold ✓ prefix
+            + slightly bolder weight so it's visually picked out without
+            changing the chip color. */}
+        {showAllInputs && (
+          <span style={{
+            display: 'inline-flex',
+            alignItems: 'stretch',
+            borderRadius: 6,
+            overflow: 'hidden',
+            fontSize: 9, lineHeight: '14px',
+            whiteSpace: 'nowrap',
+          }}>
+            {grammarInputs.map((inp, i) => {
+              const isPreferred = inp === cfg.condition;
+              const chipColor = i === 0 ? '#16a34a'    // green (On / Pass / In Tol)
+                              : i === 1 ? '#dc2626'    // red   (Off / Fail / Out)
+                              : '#f59e0b';             // amber (retry-style 3rd+)
+              return (
+                <span
+                  key={inp}
+                  style={{
+                    padding: '0 5px',
+                    background: chipColor,
+                    color:      '#fff',
+                    borderLeft: i > 0 ? '1px solid rgba(255,255,255,0.55)' : 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 3,
+                    fontWeight: isPreferred ? 800 : 600,
+                  }}
+                  title={isPreferred ? 'Preferred outcome (primary branch)' : 'Alternate branch'}
+                >
+                  {isPreferred && (
+                    <span style={{ fontSize: 11, fontWeight: 900, lineHeight: 1 }}>✓</span>
+                  )}
+                  {inp}
+                </span>
+              );
+            })}
+          </span>
+        )}
+       </ShrinkToFit>
       </div>
-      {/* No auto-derived "verify ..." line for v2 actions — the heuristic
-          produced unreliable text (e.g. "verify Position (real value)" for
-          servos). v1 actions still honour the showAdvance toggle below. */}
+      {/* Verify line — uses the SAME buildActionVerifyText helper v1 uses,
+          and the SAME `action-verify` className, so v2 actions look
+          identical to v1 (same font, same position, same content rules).
+          Check/Branch produce no verify text — Check is a log (always
+          advances), Branch's conditions are on the outgoing edges. */}
+      {showAdvance && (() => {
+        let verifyText = null;
+        const device = devices?.find(d => d.id === cfg.subjectId);
+        if (cfg.mode === 'action' && device) {
+          // Map v2 picker config → synthetic v1 action so we can reuse
+          // buildActionVerifyText verbatim (proper PLC tag expressions).
+          const synthAction = {
+            operation:      cfg.actionVerb,
+            positionName:   cfg.detail?.['Position name'],
+            setpointName:   cfg.detail?.['Setpoint name'],
+            jobName:        cfg.detail?.['Job name'],
+            sequenceNumber: cfg.detail?.['Sequence #'] != null ? Number(cfg.detail['Sequence #']) : undefined,
+            signalName:     cfg.detail?.['Signal name'],
+          };
+          verifyText = buildActionVerifyText(synthAction, device);
+        } else if (cfg.mode === 'decision' && cfg.subAction === 'wait' && device) {
+          // Wait until input becomes true → use the matching v1 operation
+          // so buildActionVerifyText produces the right tag expression.
+          const conditionToOp = {
+            'Extended':    'Extend',
+            'Retracted':   'Retract',
+            'Engaged':     'Engage',
+            'Disengaged':  'Disengage',
+            'On':          'WaitOn',
+            'Off':         'WaitOff',
+          };
+          const op = conditionToOp[cfg.condition] || cfg.condition;
+          verifyText = buildActionVerifyText({ operation: op }, device);
+        }
+        return verifyText
+          ? <div className="action-verify">{verifyText}</div>
+          : null;
+      })()}
     </div>
   );
 }
 
 // ── Action Row ────────────────────────────────────────────────────────────────
 
-function ActionRow({ action, devices, onClickName, onClickOp, onClickAdvance, smId, nodeId, isLast, showAdvance = true, grammar, actionIdx = 0, subjects }) {
+function ActionRow({ action, devices, onClickName, onClickOp, onClickAdvance, onDelete, smId, nodeId, isLast, showAdvance = true, grammar, actionIdx = 0, subjects }) {
   // v2 picker actions short-circuit the legacy device-type branching.
   if (action.pickerV2) {
     return <PickerV2ActionRow
       action={action}
       onClickName={onClickName}
+      onDelete={onDelete}
       showAdvance={showAdvance}
       grammar={grammar}
       devices={devices}
@@ -4074,11 +4657,14 @@ export function StateNode({ data, selected, id }) {
     setDecisionPopupPos({ position: 'fixed', top: rect.top, left: rect.right + 8, zIndex: 9999 });
   }, [editingDecisionId]);
 
-  // Auto-open decision editor for newly-added _decision rows (autoOpenPopup flag)
+  // Auto-open UniversalPicker for newly-added _decision rows (autoOpenPopup flag).
+  // Was previously opening the legacy DecisionEditPopup; redirects to the new
+  // picker so every action edit uses the same UX.
   useEffect(() => {
     const auto = actions.find(a => a.deviceId === '_decision' && a.autoOpenPopup);
     if (auto) {
-      setEditingDecisionId(auto.id);
+      setEditingActionId(auto.id);
+      setShowPicker(true);
       // Clear the flag so it doesn't re-trigger
       useDiagramStore.getState().updateAction(sm?.id, id, auto.id, { autoOpenPopup: false });
     }
@@ -4134,12 +4720,14 @@ export function StateNode({ data, selected, id }) {
     if (!showPicker && pickerDraft) setPickerDraft(null);
   }, [showPicker]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Determine node border color
+  // Determine node border color (v1 deviceId or v2 pickerConfig.subjectId)
   let borderColor = '#64748b';
   if (isInitial || isComplete) borderColor = '#5a9a48';
   else if (isFault) borderColor = '#dc2626';
   else if (actions.length > 0) {
-    const firstDev = devices.find(d => d.id === actions[0]?.deviceId);
+    const firstAct = actions[0];
+    const firstDevId = firstAct?.pickerV2 ? firstAct.pickerConfig?.subjectId : firstAct?.deviceId;
+    const firstDev = devices.find(d => d.id === firstDevId);
     if (firstDev?.type === 'CheckResults') borderColor = '#d9d9d9';
     else if (firstDev?.type === 'VisionSystem') borderColor = '#f59e0b';
     else if (firstDev) borderColor = DEVICE_TYPES[firstDev.type]?.color ?? borderColor;
@@ -4174,7 +4762,12 @@ export function StateNode({ data, selected, id }) {
       && lastAction.signalName
       && lastAction.signalName !== 'Select Signal...')
     || lastIsV2Branch;
-  const lastDecisionHasRetry = lastDecisionHasTwoExits && lastAction.retryEnabled;
+  // Retry is read from BOTH places so v1 (_decision) and v2 (picker) actions
+  // both light up the bottom retry handle. v1 stored it on the action root
+  // (`action.retryEnabled`); v2 stores it inside the picker config blob.
+  const lastDecisionHasRetry = lastDecisionHasTwoExits && (
+    lastAction.retryEnabled || lastAction.pickerConfig?.retryEnabled
+  );
   const showDecisionSideHandles = lastDecisionHasTwoExits && !showVisionSideHandles;
 
   function handleContextMenu(e) {
@@ -4391,20 +4984,203 @@ export function StateNode({ data, selected, id }) {
             onPick={(config) => {
               const store = useDiagramStore.getState();
               const isEdit = !!config.isEdit && !!editingActionId;
+
+              // Terminal-state shortcut from picker — set isComplete or
+              // isFault on the node and skip the addAction/edge-spawn flow.
+              // Clears the other terminal flag (mutually exclusive).
+              if (config.terminalType) {
+                store.updateNode(sm.id, id, {
+                  data: {
+                    isComplete: config.terminalType === 'complete',
+                    isFault:    config.terminalType === 'fault',
+                  },
+                });
+                setShowPicker(false);
+                setEditingActionId(null);
+                setPickerInitialStep(null);
+                setPickerDraft(null);
+                return;
+              }
+
               const cleanConfig = { ...config };
               delete cleanConfig.isEdit;
 
+              // Auto-create PT field if logging is enabled and no field id
+              // was selected (user picked "+ New field" or left it blank).
+              // We do this on commit (not on picker mount) so cancelling
+              // the picker doesn't leave orphaned fields in the project.
+              if (cleanConfig.ptEnabled && !cleanConfig.ptFieldId && cleanConfig.ptFieldName) {
+                const newId = store.addTrackingField({
+                  name: cleanConfig.ptFieldName,
+                  dataType: 'boolean',
+                  description: `Logged from ${cleanConfig.subjectName} check`,
+                });
+                cleanConfig.ptFieldId = newId;
+              }
+
+              // ── Helper: ensure the diagram graph mirrors the picker config.
+              // Called from both add-mode AND edit-mode after the action is
+              // saved. It looks at the parent state's outgoing edges and
+              // decides whether to spawn a fan-out, replace a placeholder,
+              // or leave things alone.
+              //
+              // GATE — when do we auto-spawn?
+              //   - User wants a multi-edge branch AND there's no fan-out yet
+              //     (no existing isDecisionExit edges from this state).
+              //   - If there's exactly ONE plain "always-true" placeholder
+              //     edge (conditionType 'always'/'ready', not a fan-out),
+              //     delete it and its empty/unique-target node, then spawn.
+              //   - Otherwise, leave the user's wiring alone.
+              const ensureBranchFanOut = () => {
+                // Store actions are now recovery-aware end-to-end —
+                // addNode/addEdge/deleteNode/deleteEdge auto-route to the
+                // active recovery sequence when one is set. We just need to
+                // read the right CONTAINER to inspect existing edges/nodes.
+                const freshState = useDiagramStore.getState();
+                const freshSm    = freshState.getActiveSm() || sm;
+                if (!freshSm) return;
+                const recoverySeqId = freshState._activeRecoverySeqId ?? null;
+                const activeSeq = recoverySeqId
+                  ? (freshSm.recoverySeqs ?? []).find(r => r.id === recoverySeqId)
+                  : null;
+                const sourceNodes = activeSeq ? (activeSeq.nodes ?? []) : (freshSm.nodes ?? []);
+                const sourceEdges = activeSeq ? (activeSeq.edges ?? []) : (freshSm.edges ?? []);
+
+                const outgoing = sourceEdges.filter(e => e.source === id);
+                const hasFanOut = outgoing.some(e => e.data?.isDecisionExit);
+                const wantsBranch = cleanConfig.mode === 'decision'
+                  && cleanConfig.subAction === 'branch'
+                  && (cleanConfig.edgeTopology || 1) > 1;
+                if (!wantsBranch || hasFanOut) return;
+
+                // Replace a single placeholder edge (if present) with the
+                // new branch fan-out. Store actions handle recovery routing.
+                const placeholderEdge = outgoing.length === 1
+                  && (outgoing[0].data?.conditionType === 'always'
+                      || outgoing[0].data?.conditionType === 'ready')
+                  && !outgoing[0].data?.isDecisionExit
+                  ? outgoing[0]
+                  : null;
+                if (placeholderEdge) {
+                  const ph = placeholderEdge;
+                  const targetNode = sourceNodes.find(n => n.id === ph.target);
+                  const targetActions = targetNode?.data?.actions ?? [];
+                  const targetHasOtherIncoming = sourceEdges.some(e =>
+                    e.target === ph.target && e.id !== ph.id
+                  );
+                  freshState.deleteEdge(freshSm.id, ph.id);
+                  if (targetNode && targetActions.length === 0 && !targetHasOtherIncoming
+                      && !targetNode.data?.isInitial && !targetNode.data?.isComplete) {
+                    freshState.deleteNode(freshSm.id, ph.target);
+                  }
+                } else if (outgoing.length > 1) {
+                  return;
+                }
+
+                // Spawn fan-out — re-read state in case of deletions above.
+                const refreshedState = useDiagramStore.getState();
+                const refreshedSm    = refreshedState.getActiveSm() || freshSm;
+                const refreshedSeq   = recoverySeqId
+                  ? (refreshedSm.recoverySeqs ?? []).find(r => r.id === recoverySeqId)
+                  : null;
+                const refreshedNodes = refreshedSeq ? (refreshedSeq.nodes ?? []) : (refreshedSm.nodes ?? []);
+                const parentNode = refreshedNodes.find(n => n.id === id);
+                if (!parentNode) return;
+
+                const labels = (cleanConfig.edgeLabels && cleanConfig.edgeLabels.length)
+                  ? cleanConfig.edgeLabels
+                  : [null];
+                const count = Math.max(1, cleanConfig.edgeTopology || 1);
+                const baseX = parentNode.position.x;
+                const baseY = parentNode.position.y + 200;
+                // v1.34 layout — primary outcome goes STRAIGHT DOWN, alternates
+                // kick out the side. Matches normal SDC machine flow.
+                //   index 0 → exit-pass at Bottom → child at offset 0 (down)
+                //   index 1 → exit-fail at Right  → child at offset +280
+                //   index 2 → exit-retry at Left  → child at offset -280
+                const branchOffsets = [0, 280, -280];
+                const branchHandles = ['exit-pass', 'exit-fail', 'exit-retry'];
+                for (let i = 0; i < count; i++) {
+                  const label = labels[i] ?? null;
+                  const offset = branchOffsets[i] ?? 0;
+                  const position = { x: baseX + offset, y: baseY };
+                  const newNodeId = refreshedState.addNode(refreshedSm.id, { position });
+                  if (!newNodeId) continue;
+                  refreshedState.addEdge(refreshedSm.id,
+                    {
+                      source: id,
+                      sourceHandle: branchHandles[i] ?? null,
+                      target: newNodeId,
+                      targetHandle: null,
+                    },
+                    {
+                      conditionType: 'custom',
+                      label: label || '',
+                      isDecisionExit: true,
+                      exitColor: i === 0 ? 'pass' : i === 1 ? 'fail' : 'retry',
+                      outcomeLabel: label || '',
+                    },
+                  );
+                }
+              };
+
               if (isEdit) {
-                // Edit mode: REPLACE the existing action's pickerConfig in
-                // place. Don't spawn new children or edges — the user is
-                // refining an existing row, not creating a new one. If the
-                // sub-action / edgeTopology changed, downstream graph fix-up
-                // is left to the user (delete unwanted children, click side
-                // handle to redraw missing branches).
+                // Edit mode: REPLACE the action's config in place, then run
+                // the fan-out helper. If the user changed sub-action from
+                // wait/check/continue → branch, this spawns the missing
+                // branches. If they were already branched, hasFanOut is
+                // true and the helper is a no-op.
                 store.updateAction(sm.id, id, editingActionId, {
                   pickerV2: true,
                   pickerConfig: cleanConfig,
                 });
+
+                // Relabel existing fan-out edges to match the new edgeLabels.
+                // When the user picks a different "preferred outcome" — e.g.
+                // flips from "On" to "Off" — the edge labels need to swap
+                // (down branch should carry the preferred label, right the
+                // alternate). ensureBranchFanOut bails when fan-out exists,
+                // so the relabel has to happen here. Map by sourceHandle:
+                //   exit-pass  → labels[0]  (primary, down)
+                //   exit-fail  → labels[1]  (alternate, right)
+                //   exit-retry → labels[N-1] (retry, left — last entry)
+                if (cleanConfig.subAction === 'branch'
+                    && Array.isArray(cleanConfig.edgeLabels)
+                    && cleanConfig.edgeLabels.length > 0) {
+                  const freshSt = useDiagramStore.getState();
+                  const freshSm = freshSt.getActiveSm();
+                  const recId = freshSt._activeRecoverySeqId;
+                  const seq = recId ? (freshSm?.recoverySeqs ?? []).find(r => r.id === recId) : null;
+                  const edges = seq ? (seq.edges ?? []) : (freshSm?.edges ?? []);
+                  const labels = cleanConfig.edgeLabels;
+                  const handleToLabel = {
+                    'exit-pass':  labels[0] ?? '',
+                    'exit-fail':  labels[1] ?? '',
+                    'exit-retry': labels[labels.length - 1] ?? 'Retry',
+                  };
+                  const exitColorFor = (h) =>
+                    h === 'exit-pass' ? 'pass' :
+                    h === 'exit-fail' ? 'fail' : 'retry';
+                  edges
+                    .filter(e => e.source === id && e.data?.isDecisionExit)
+                    .forEach(e => {
+                      const newLabel = handleToLabel[e.sourceHandle];
+                      if (newLabel === undefined) return;
+                      if (newLabel === e.data?.outcomeLabel) return;
+                      // updateEdge replaces label + data wholesale — preserve
+                      // the existing data shape but swap the label fields.
+                      freshSt.updateEdge(freshSm.id, e.id, {
+                        ...(e.data || {}),
+                        label: newLabel,
+                        outcomeLabel: newLabel,
+                        isDecisionExit: true,
+                        exitColor: exitColorFor(e.sourceHandle),
+                        conditionType: e.data?.conditionType ?? 'custom',
+                      });
+                    });
+                }
+
+                ensureBranchFanOut();
                 setShowPicker(false);
                 setEditingActionId(null);
                 setPickerInitialStep(null);
@@ -4418,15 +5194,20 @@ export function StateNode({ data, selected, id }) {
                 pickerConfig: cleanConfig,
               });
 
-              // Decision mode: auto-spawn child nodes + edges so the diagram
-              // graph mirrors the sub-action's outgoing topology.
-              //
-              // For Branch (>=2 outputs): edges exit from SIDE handles
-              //   (exit-pass on left = primary/green, exit-fail on right = fail/red).
-              //   Children positioned 280px L/R of parent center so the L-bend
-              //   routing has clear horizontal segments. This matches the old
-              //   addDecisionBranches geometry for visual consistency.
-              if (cleanConfig.mode === 'decision') {
+              // For non-branch decision modes (Wait / Check & Continue), keep
+              // the original "spawn a single continuation edge" behavior when
+              // the parent has no outgoing edges yet. Branch mode goes
+              // through ensureBranchFanOut().
+              const outgoing = (sm.edges || []).filter(e => e.source === id);
+              const wantsBranchAdd = cleanConfig.mode === 'decision'
+                && cleanConfig.subAction === 'branch'
+                && (cleanConfig.edgeTopology || 1) > 1;
+              if (wantsBranchAdd) {
+                ensureBranchFanOut();
+              }
+              const hasExistingOutgoing = outgoing.length > 0;
+
+              if (cleanConfig.mode === 'decision' && !hasExistingOutgoing && !wantsBranchAdd) {
                 const parentNode = sm.nodes.find(n => n.id === id);
                 if (parentNode) {
                   const labels = (cleanConfig.edgeLabels && cleanConfig.edgeLabels.length)
@@ -4441,9 +5222,10 @@ export function StateNode({ data, selected, id }) {
                   const py = parentNode.position.y;
                   const baseY = py + 200;
                   const isBranch = cleanConfig.subAction === 'branch' && count > 1;
-                  // Branch: pass child @ parent.center - 280, fail @ parent.center + 280
-                  // Single child: parent.center (straight down)
-                  const branchOffsets = [-280, 280, 0]; // 3rd would be center for retry
+                  // v1.34 layout — primary outcome goes straight down, alternates
+                  // out the side. (Used only for non-branch single-spawn here;
+                  // ensureBranchFanOut handles the multi-edge case.)
+                  const branchOffsets = [0, 280, -280];
                   const branchHandles = ['exit-pass', 'exit-fail', 'exit-retry'];
                   for (let i = 0; i < count; i++) {
                     const label = labels[i] ?? null;
@@ -4499,29 +5281,15 @@ export function StateNode({ data, selected, id }) {
               smId={sm.id}
               nodeId={id}
               onClose={() => setEditingAdvanceId(null)}
+              subjects={pickerSubjects}
+              grammar={pickerGrammar}
             />
           </NodeToolbar>
         );
       })()}
 
-      {/* Embedded-decision row editor — reuses the SAME popup standalone DecisionNodes use.
-          `saveTarget='action'` routes the save through updateAction on this row instead
-          of updateNodeData + branch-node creation. Portal positioned right of the state. */}
-      {editingDecisionId && sm && decisionPopupPos && (() => {
-        const action = actions.find(a => a.id === editingDecisionId);
-        if (!action || action.deviceId !== '_decision') return null;
-        return (
-          <DecisionEditPopup
-            nodeId={id}
-            smId={sm.id}
-            data={action}
-            onClose={() => setEditingDecisionId(null)}
-            style={decisionPopupPos}
-            saveTarget="action"
-            actionId={action.id}
-          />
-        );
-      })()}
+      {/* Legacy DecisionEditPopup REMOVED — all action edits (including
+          v1 _decision) flow through the UniversalPicker NodeToolbar above. */}
 
       {/* Home-node config pills (Entry Rule + Start Condition) */}
       {isInitial && sm && (
@@ -4592,17 +5360,20 @@ export function StateNode({ data, selected, id }) {
                   grammar={pickerGrammar}
                   actionIdx={actionIdx}
                   subjects={pickerSubjects}
+                  onDelete={() => {
+                    if (!sm?.id) return;
+                    useDiagramStore.getState().deleteAction(sm.id, id, action.id);
+                  }}
                   onClickAdvance={(act) => {
                     // Toggle — second click on the same chip closes
                     setEditingAdvanceId(prev => prev === act.id ? null : act.id);
                   }}
                   onClickName={(e) => {
                     e.stopPropagation();
-                    // Embedded _decision row: open the dedicated decision editor, not the picker
-                    if (action.deviceId === '_decision') {
-                      setEditingDecisionId(prev => prev === action.id ? null : action.id);
-                      return;
-                    }
+                    // ALL actions — v1 device, v1 _decision, v1 _tracking, v2 — open the UniversalPicker.
+                    // No more legacy DecisionEditPopup. v1 _decision actions will start
+                    // fresh in the picker; on commit they become v2 (pickerV2: true) with
+                    // proper pickerConfig data.
                     if (editingActionId === action.id && showPicker) {
                       setShowPicker(false); setEditingActionId(null); setPickerInitialStep(null);
                     } else {
@@ -4779,12 +5550,20 @@ export function StateNode({ data, selected, id }) {
       )}
 
       {/* Source handles: vision side exits, embedded decision side exits,
-          single vision exit, or default bottom handle. */}
+          single vision exit, or default bottom handle.
+          v1.34 layout (preferred path goes DOWN, alternates kick out the
+          side — matches how SDC machines flow normally):
+            exit-pass  → Bottom (PRIMARY outcome / preferred path)
+            exit-fail  → Right  (alternate / secondary)
+            exit-retry → Left   (retry / loop-back)
+          Pre-v1.34 had exit-pass=Left / exit-fail=Right / exit-retry=Bottom.
+          Existing edges keep working — only the visual position of each
+          handle moved. Routing logic in edgeRouting.js was updated to match. */}
       {showVisionSideHandles || showDecisionSideHandles ? (
         <>
           <Handle
             type="source"
-            position={Position.Left}
+            position={Position.Bottom}
             id="exit-pass"
             className="sdc-handle sdc-handle--pass"
           />
@@ -4794,11 +5573,12 @@ export function StateNode({ data, selected, id }) {
             id="exit-fail"
             className="sdc-handle sdc-handle--fail"
           />
-          {/* Retry handle for decision with retry enabled — matches DecisionNode pattern */}
+          {/* Retry handle on the LEFT (loop-back direction). Only renders
+              when the action explicitly opts in via `retryEnabled`. */}
           {lastDecisionHasRetry && (
             <Handle
               type="source"
-              position={Position.Bottom}
+              position={Position.Left}
               id="exit-retry"
               className="sdc-handle sdc-handle--retry"
               isConnectable

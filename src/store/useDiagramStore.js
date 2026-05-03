@@ -1994,6 +1994,13 @@ export const useDiagramStore = create(
 
       // ── Node (State Step) actions ─────────────────────────────────────────
       onNodesChange(smId, changes) {
+        // Recovery-aware: when canvas is in a recovery sequence, route to
+        // the recovery counterpart so callers don't need to branch.
+        const seqId = get()._activeRecoverySeqId;
+        if (seqId) {
+          get().onRecoveryNodesChange(smId, seqId, changes);
+          return;
+        }
         if (changes.some(c => c.type === 'remove')) get()._pushHistory();
         set(s => ({
           project: _updateProject(s, sms => sms.map(sm =>
@@ -2005,6 +2012,12 @@ export const useDiagramStore = create(
       },
 
       addNode(smId, options = {}) {
+        // Recovery-aware: in recovery mode, route to addRecoveryNode so the
+        // node lands in the active recovery sequence instead of sm.nodes.
+        const seqId = get()._activeRecoverySeqId;
+        if (seqId) {
+          return get().addRecoveryNode(smId, seqId, options);
+        }
         get()._pushHistory();
         const sm = _getSmArray(get()).find(s => s.id === smId);
         if (!sm) return null;
@@ -2786,6 +2799,13 @@ export const useDiagramStore = create(
       },
 
       deleteNode(smId, nodeId) {
+        // Recovery-aware: in recovery mode, deleteRecoveryNode handles the
+        // active recovery sequence's nodes/edges.
+        const seqId = get()._activeRecoverySeqId;
+        if (seqId) {
+          get().deleteRecoveryNode(smId, seqId, nodeId);
+          return;
+        }
         get()._pushHistory();
         set(s => ({
           project: _updateProject(s, sms => sms.map(sm =>
@@ -2818,6 +2838,11 @@ export const useDiagramStore = create(
 
       // ── Edge (Transition) actions ─────────────────────────────────────────
       onEdgesChange(smId, changes) {
+        const seqId = get()._activeRecoverySeqId;
+        if (seqId) {
+          get().onRecoveryEdgesChange(smId, seqId, changes);
+          return;
+        }
         if (changes.some(c => c.type === 'remove')) get()._pushHistory();
         set(s => ({
           project: _updateProject(s, sms => sms.map(sm =>
@@ -2829,6 +2854,11 @@ export const useDiagramStore = create(
       },
 
       addEdge(smId, connection, conditionData) {
+        // Recovery-aware: route to addRecoveryEdge in recovery mode.
+        const seqId = get()._activeRecoverySeqId;
+        if (seqId) {
+          return get().addRecoveryEdge(smId, seqId, connection, conditionData);
+        }
         get()._pushHistory();
         const id = uid();
         const label = conditionData?.label ?? 'Ready';
@@ -2865,8 +2895,29 @@ export const useDiagramStore = create(
       },
 
       updateEdge(smId, edgeId, conditionData) {
+        // Recovery-aware. We don't have an updateRecoveryEdge action, so
+        // inline a minimal update for the active recovery sequence.
+        const seqId = get()._activeRecoverySeqId;
         get()._pushHistory();
         const label = conditionData?.label ?? 'Ready';
+        if (seqId) {
+          set(s => ({
+            project: _updateProject(s, sms => sms.map(sm =>
+                sm.id !== smId ? sm : {
+                  ...sm,
+                  recoverySeqs: (sm.recoverySeqs ?? []).map(r =>
+                    r.id !== seqId ? r : {
+                      ...r,
+                      edges: r.edges.map(e =>
+                        e.id === edgeId ? { ...e, label, data: conditionData } : e
+                      ),
+                    }
+                  ),
+                }
+              )),
+          }));
+          return;
+        }
         set(s => ({
           project: _updateProject(s, sms => sms.map(sm =>
               sm.id === smId
@@ -2904,6 +2955,11 @@ export const useDiagramStore = create(
       },
 
       deleteEdge(smId, edgeId) {
+        const seqId = get()._activeRecoverySeqId;
+        if (seqId) {
+          get().deleteRecoveryEdge(smId, seqId, edgeId);
+          return;
+        }
         get()._pushHistory();
         set(s => ({
           project: _updateProject(s, sms => sms.map(sm =>

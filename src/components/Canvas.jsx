@@ -194,6 +194,34 @@ export function Canvas() {
   // onConnectEnd, one at the click position from onPaneClick).
   const lastConnectEndAt = useRef(0);
 
+  // Reactive read of the connect-preset state. When the user clicks "Connect"
+  // in the ConnectMenu, `_connectPreset` is set with the source node + handle.
+  // The next node click finalizes the edge. While preset is active, we want
+  // visual feedback on the canvas wrapper so users can see "I'm picking a
+  // target now" — without it, target nodes look identical to non-target nodes
+  // and feel hard to click. The wrapper gets `canvas-wrapper--picking-target`,
+  // and a `data-source-id` attribute so CSS can dim the source node.
+  const connectPreset = useDiagramStore(s => s._connectPreset);
+
+  // Mark the source node's DOM element with `connect-source-node` so the CSS
+  // can dim it (clearly "not a target"). React Flow renders nodes with
+  // `data-id="<nodeId>"`, so we querySelector the matching element and toggle
+  // the class. We do this imperatively because static CSS can't compare a
+  // dynamic attribute (`data-connect-source-id` on the wrapper) with each
+  // node's `data-id`. Cleanup removes the class when preset clears or the
+  // source node changes.
+  useEffect(() => {
+    if (!connectPreset?.sourceNodeId) return;
+    const wrapper = reactFlowWrapper.current;
+    if (!wrapper) return;
+    const sourceNode = wrapper.querySelector(
+      `.react-flow__node[data-id="${connectPreset.sourceNodeId}"]`
+    );
+    if (!sourceNode) return;
+    sourceNode.classList.add('connect-source-node');
+    return () => sourceNode.classList.remove('connect-source-node');
+  }, [connectPreset?.sourceNodeId]);
+
   // ── Auto-save standards-linked tabs back to the library ───────────────────
   // When this project is a standard (isStandard) AND it carries a standardId,
   // any change to the SM's nodes/edges/devices/name/description/category is
@@ -455,34 +483,60 @@ export function Canvas() {
   }, []);
 
   // ── Capture pre-drag snapshot for undo ────────────────────────────────────
-  const onNodeDragStart = useCallback(() => {
+  // Also set a global `_draggingNodeId` flag so RoutableEdge can bypass its
+  // frozen manualRoute waypoints during the drag (see RoutableEdge.jsx for
+  // the why). Cleared in onNodeDragStop below. Without this, the per-node
+  // `dragging` flag from React Flow is async and the first drag deltas
+  // render before it flips → edge appears to stick before catching up.
+  const onNodeDragStart = useCallback((event, node) => {
     useDiagramStore.getState()._pushHistory();
+    useDiagramStore.setState({ _draggingNodeId: node?.id ?? '__any__' });
   }, []);
 
   // ── Snap-to-vertical on drag stop ──────────────────────────────────────────
   // When a node is dropped within 25px of a connected node's X, snap it to align
   const onNodeDragStop = useCallback((event, node) => {
-    const currentSm = useDiagramStore.getState().getActiveSm();
-    if (!currentSm) return;
+    const state = useDiagramStore.getState();
+    const currentSm = state.getActiveSm();
+    // Snap-to-straight threshold — configurable in Setup → Design System →
+    // Canvas Spacing. Default 20px. When the dropped node's center X is
+    // within this distance of any connected node's center X, snap to align
+    // so the edge between them is a clean straight line (no Z-bend).
+    // Set 0 to disable the snap entirely.
+    const themeSnap = state.project?.designTheme?.snapStraightThreshold;
+    const SNAP_THRESHOLD = themeSnap != null ? Number(themeSnap) : 20;
+    if (!currentSm || SNAP_THRESHOLD <= 0) {
+      useDiagramStore.setState({ _draggingNodeId: null });
+      return;
+    }
 
-    const SNAP_THRESHOLD = 50; // px in flow coordinates — strong snap keeps nodes in column
+    // Recovery-aware: nodes/edges live on activeSeq when we're inside a
+    // recovery sequence (Canvas shows "Recovery" mode). Reading sm.nodes/edges
+    // here would silently miss everything — the snap loop would find no
+    // connected nodes and never snap.
+    const recoverySeqId = state._activeRecoverySeqId ?? null;
+    const activeSeq = recoverySeqId
+      ? (currentSm.recoverySeqs ?? []).find(r => r.id === recoverySeqId)
+      : null;
+    const isRecovery = !!activeSeq;
+    const sourceNodes = isRecovery ? (activeSeq.nodes ?? []) : (currentSm.nodes ?? []);
+    const sourceEdges = isRecovery ? (activeSeq.edges ?? []) : (currentSm.edges ?? []);
 
     // Find connected nodes (parent + child via edges)
     const connectedNodeIds = new Set();
-    for (const e of (currentSm.edges ?? [])) {
+    for (const e of sourceEdges) {
       if (e.source === node.id) connectedNodeIds.add(e.target);
       if (e.target === node.id) connectedNodeIds.add(e.source);
     }
 
     // Snap to closest connected node's center X if within threshold
-    // Use measured width to compute center, since nodes can have different widths
     const nodeW = node.measured?.width ?? node.width ?? 240;
     const nodeCenterX = node.position.x + nodeW / 2;
 
     let snapCenterX = null;
     let minDist = SNAP_THRESHOLD;
     for (const nId of connectedNodeIds) {
-      const connected = (currentSm.nodes ?? []).find(n => n.id === nId);
+      const connected = sourceNodes.find(n => n.id === nId);
       if (!connected) continue;
       const connW = connected.measured?.width ?? connected.width ?? 240;
       const connCenterX = connected.position.x + connW / 2;
@@ -496,13 +550,17 @@ export function Canvas() {
     if (snapCenterX !== null) {
       const newX = snapCenterX - nodeW / 2;
       if (Math.abs(newX - node.position.x) > 0.5) {
-        useDiagramStore.getState().onNodesChange(currentSm.id, [{
+        // onNodesChange is recovery-aware in the store — writes route to
+        // the active recovery seq automatically when one is set.
+        state.onNodesChange(currentSm.id, [{
           type: 'position',
           id: node.id,
           position: { x: newX, y: node.position.y },
         }]);
       }
     }
+    // Clear the global drag flag — edges go back to using stored manualRoute.
+    useDiagramStore.setState({ _draggingNodeId: null });
   }, []);
 
   // ── Scroll-wheel zoom: direct viewport control (scroll up = zoom in) ──────
@@ -1360,7 +1418,11 @@ export function Canvas() {
   }
 
   return (
-    <div className="canvas-wrapper" ref={reactFlowWrapper}>
+    <div
+      className={`canvas-wrapper${connectPreset ? ' canvas-wrapper--picking-target' : ''}`}
+      ref={reactFlowWrapper}
+      data-connect-source-id={connectPreset?.sourceNodeId ?? ''}
+    >
       {/* SM title header on canvas */}
       {sm && (
         <div className={`canvas-sm-title${recoveryMode ? ' canvas-sm-title--recovery' : ''}`}>
@@ -1483,6 +1545,12 @@ export function Canvas() {
         onPaneClick={onPaneClick}
         onNodeDragStart={onNodeDragStart}
         onNodeDragStop={onNodeDragStop}
+        // 0 = the node moves on the FIRST pixel of mouse movement.
+        // React Flow's default (1) means small mouse jitter is ignored —
+        // but for our case it makes the edge appear to "stick" at the
+        // start of a drag because the node hasn't moved yet but the
+        // user expected it to.
+        nodeDragThreshold={0}
         onDrop={onDrop}
         onDragOver={onDragOver}
         onMoveEnd={onMoveEnd}
