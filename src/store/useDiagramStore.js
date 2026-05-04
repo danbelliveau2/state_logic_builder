@@ -650,10 +650,6 @@ export const useDiagramStore = create(
       pendingEdgeData: null, // used when connecting two nodes
       openPickerOnNodeId: null, // signals a node to auto-open its inline picker
       _closePickerSignal: 0,   // increment to close all inline pickers
-      _isDrawingConnection: false, // true while user is dragging/clicking waypoints
-      _drawingWaypoints: [],       // waypoints placed by clicking during connection
-      _drawingSource: null,        // { nodeId, handleId } — source of manual draw connection
-      _drawPathMode: false,        // toolbar toggle: treat handle-drag as shift-drag (manual path)
       _connectPreset: null,        // { sourceNodeId, sourceHandle, routeType, smId } — connect menu state
       _connectMenuNodeId: null,    // nodeId whose handle was clicked → show ConnectMenu
       _connectMenuHandleId: null,  // handleId that was clicked to open ConnectMenu
@@ -848,19 +844,6 @@ export const useDiagramStore = create(
               }
             }
           }
-        }
-        // v1.34 — normalize branch primaries so the lower-numbered next
-        // state always uses the primary (straight-down) handle. Migrates
-        // older diagrams that wired Pass/Fail without regard to step
-        // ordering. Pure pass — runs only when something actually needs
-        // reordering (returns the same SM otherwise).
-        {
-          const dt = project.designTheme ?? {};
-          project.stateMachines = (project.stateMachines ?? [])
-            .map(sm => _normalizeBranchPrimariesForSm(sm, {
-              branchYOffset: dt.branchYOffset ?? 200,
-              branchXOffset: dt.branchXOffset ?? 400,
-            }));
         }
         set({
           project,
@@ -3100,15 +3083,26 @@ export const useDiagramStore = create(
 
       renumberSteps(smId) {
         get()._pushHistory();
-        // Renumber all nodes by topological order (or current order)
+        // Renumber all nodes + enforce "lower-numbered next state goes to
+        // the primary (bottom) handle" on every Check & Branch source.
+        // Repositions the children to canonical layout to match. The user
+        // explicitly invoked this action — auto-running it on load was
+        // overriding manual layouts, so it's now Renumber-only.
+        const dt = get().project?.designTheme ?? {};
         set(s => ({
           project: _updateProject(s, sms => sms.map(sm => {
               if (sm.id !== smId) return sm;
-              const nodes = sm.nodes.map((n, i) => ({
-                ...n,
-                data: { ...n.data, stepNumber: i, isInitial: i === 0 },
-              }));
-              return { ...sm, nodes };
+              const renumbered = {
+                ...sm,
+                nodes: sm.nodes.map((n, i) => ({
+                  ...n,
+                  data: { ...n.data, stepNumber: i, isInitial: i === 0 },
+                })),
+              };
+              return _normalizeBranchPrimariesForSm(renumbered, {
+                branchYOffset: dt.branchYOffset ?? 200,
+                branchXOffset: dt.branchXOffset ?? 400,
+              });
             })),
         }));
       },
@@ -3209,25 +3203,38 @@ export const useDiagramStore = create(
         }));
       },
 
-      /** Persist the waypoints array for a routable edge (called on every drag tick). */
-      updateEdgeWaypoints(smId, edgeId, waypoints, manualRoute = false) {
+      /**
+       * Update parametric loop-back tunables on an edge (loopOffset,
+       * loopTopDrop, loopBottomDrop). Auto-route reads them every render
+       * so the loop reshapes without stored waypoints. Called from the
+       * RoutableEdge segment-drag handlers for loop-back edges.
+       */
+      updateLoopParams(smId, edgeId, partial) {
         const seqId = get()._activeRecoverySeqId;
+        const updateEdgeData = (e) => ({ ...e, data: { ...(e.data ?? {}), ...partial } });
         if (seqId) {
-          get().updateRecoveryEdgeWaypoints(smId, seqId, edgeId, waypoints, manualRoute);
-          return;
-        }
-        set(s => ({
-          project: _updateProject(s, sms => sms.map(sm =>
+          set(s => ({
+            project: _updateProject(s, sms => sms.map(sm =>
               sm.id !== smId ? sm : {
                 ...sm,
-                edges: sm.edges.map(e =>
-                  e.id !== edgeId ? e : {
-                    ...e,
-                    data: { ...e.data, waypoints, ...(manualRoute ? { manualRoute: true } : {}) },
+                recoverySeqs: (sm.recoverySeqs ?? []).map(r =>
+                  r.id !== seqId ? r : {
+                    ...r,
+                    edges: (r.edges ?? []).map(e => e.id === edgeId ? updateEdgeData(e) : e),
                   }
                 ),
               }
             )),
+          }));
+          return;
+        }
+        set(s => ({
+          project: _updateProject(s, sms => sms.map(sm =>
+            sm.id !== smId ? sm : {
+              ...sm,
+              edges: (sm.edges ?? []).map(e => e.id === edgeId ? updateEdgeData(e) : e),
+            }
+          )),
         }));
       },
 
@@ -3416,27 +3423,6 @@ export const useDiagramStore = create(
               : sm
           )),
           selectedEdgeId: null,
-        }));
-      },
-
-      updateRecoveryEdgeWaypoints(smId, seqId, edgeId, waypoints, manualRoute = false) {
-        set(s => ({
-          project: _updateProject(s, sms => sms.map(sm =>
-            sm.id !== smId ? sm : {
-              ...sm,
-              recoverySeqs: (sm.recoverySeqs ?? []).map(r =>
-                r.id !== seqId ? r : {
-                  ...r,
-                  edges: r.edges.map(e =>
-                    e.id !== edgeId ? e : {
-                      ...e,
-                      data: { ...e.data, waypoints, ...(manualRoute ? { manualRoute: true } : {}) },
-                    }
-                  ),
-                }
-              ),
-            }
-          )),
         }));
       },
 
@@ -5453,19 +5439,6 @@ export const useDiagramStore = create(
             }
           }
 
-          // v1.34 — normalize branch primaries on rehydrate. Persist
-          // bypasses loadProject, so without this the lower-numbered
-          // next-state rule never gets applied to projects opened
-          // straight from localStorage. Mutates state.project in place
-          // (rehydrate runs before the store is exposed).
-          {
-            const dt = state.project.designTheme ?? {};
-            state.project.stateMachines = (state.project.stateMachines ?? [])
-              .map(sm => _normalizeBranchPrimariesForSm(sm, {
-                branchYOffset: dt.branchYOffset ?? 200,
-                branchXOffset: dt.branchXOffset ?? 400,
-              }));
-          }
         }
       },
     }

@@ -1,22 +1,18 @@
 /**
- * RoutableEdge.jsx — Orthogonal edge routing
+ * RoutableEdge.jsx — Orthogonal edge routing (auto-only).
  *
- * ROUTING RULES:
- *   - Auto-route: computed live from source/target positions.
- *     Forward aligned → straight vertical
- *     Forward offset  → Z-bend at midY
- *     Decision exit   → L-bend (horizontal out, vertical down)
- *     Backward        → U-bend wrapping around diagram edge
+ * Every edge is auto-routed live from source/target positions. There is no
+ * stored waypoint, no manualRoute, no segment drag. Forward edges follow
+ * the perpendicular-out-of-handle rule via `computeAutoRoute`; loop-back
+ * edges read `data.loopSide` to U-route around the chosen side.
  *
- * MANUAL ROUTING (click-to-draw waypoints):
- *   Waypoints are stored as ortho-snapped corner points.
- *   The path is: src → wp[0] → wp[1] → … → wp[n] → tgt
- *   Each consecutive pair should already be axis-aligned (same X or same Y).
- *   If not, we insert one auto-corner to keep things orthogonal.
- *
- * SEGMENT DRAG:
- *   Dragging a segment moves the underlying waypoint(s) — no new waypoints created.
- *   If two adjacent segments become collinear after drag, they merge (waypoint removed).
+ * Visuals:
+ *   - Visible orthogonal path (NO markerEnd — direction is shown by per-
+ *     segment arrows).
+ *   - One arrow per segment, in the middle. Tiny corner segments skipped.
+ *   - Branch label pill on first segment (live from source's PickerV2
+ *     `pickerConfig.edgeLabels`); legacy `Ready` placeholder dropped.
+ *   - Vision / Check-result outcome label on the longest vertical segment.
  */
 
 import { useCallback } from 'react';
@@ -28,71 +24,43 @@ import {
   buildSegments,
   pointsToSvg,
   computeAutoRoute,
-  adjustTerminalRuns,
   enforceNodeClearance,
-  canDragSegment,
-  applySegmentDrag,
   cleanWaypoints,
-  findLabelSegment,
   findLongestVerticalSegment,
+  NODE_WIDTH,
 } from '../../lib/edgeRouting.js';
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export function RoutableEdge({
   id,
-  source, target,
+  source,
   sourceX, sourceY,
   targetX, targetY,
   sourceHandleId: sourceHandle,  // React Flow v12 passes sourceHandleId, not sourceHandle
   data,
   label,                          // top-level edge label (fallback for data.outcomeLabel)
   style,
-  markerEnd,
   selected,
 }) {
   const { getNodes, screenToFlowPosition } = useReactFlow();
-  const smId      = useDiagramStore(s => s.activeSmId);
-  const updateWP  = useDiagramStore(s => s.updateEdgeWaypoints);
+  const smId = useDiagramStore(s => s.activeSmId);
+  const updateLoopParams = useDiagramStore(s => s.updateLoopParams);
   const pushHistory = useDiagramStore(s => s._pushHistory);
-
-  const storedWaypoints = Array.isArray(data?.waypoints) ? data.waypoints : [];
-  // Branch handles (exit-pass / exit-fail / exit-retry) ALWAYS auto-route —
-  // never trust stored waypoints. Locked-in rule: the first segment must
-  // exit perpendicular to the handle face. Stale stored waypoints from
-  // older routing experiments (down-stubs, U-routes) violate that rule
-  // and must be ignored at render time, not just cleaned in the store.
-  const BRANCH_HANDLES = new Set(['exit-pass', 'exit-fail', 'exit-retry']);
-  const isBranchHandle = BRANCH_HANDLES.has(sourceHandle);
-  const isManualStored = data?.manualRoute === true
-                       && storedWaypoints.length > 0
-                       && !isBranchHandle;
 
   const src = { x: sourceX, y: sourceY };
   const tgt = { x: targetX, y: targetY };
 
   // ── Determine waypoints ─────────────────────────────────────────────────
   const nodes = getNodes();
-  // While ANY node is being dragged (set by Canvas.onNodeDragStart and
-  // cleared by onNodeDragStop), bypass the frozen manualRoute waypoints
-  // and live-route via computeAutoRoute. The per-node `dragging` flag from
-  // React Flow updates async (a tick after the drag actually starts), so
-  // the first frames render with stale waypoints — that's the "stick then
-  // catch up halfway" feel. The store flag flips synchronously with
-  // onNodeDragStart, so the edge follows immediately.
-  const draggingNodeId = useDiagramStore(s => s._draggingNodeId);
-  const eitherDragging = !!draggingNodeId
-    && (draggingNodeId === source || draggingNodeId === target || draggingNodeId === '__any__');
-  const isManual = isManualStored && !eitherDragging;
-  let routeWps;
-  if (isManual) {
-    routeWps = adjustTerminalRuns(storedWaypoints, src, tgt, sourceHandle);
-  } else {
-    routeWps = computeAutoRoute(src, tgt, data, nodes, sourceHandle);
+  let routeWps = computeAutoRoute(src, tgt, data, nodes, sourceHandle);
+  // Skip node-clearance for loop-back edges — the user owns the rail
+  // position via `loopOffset`. Clearance would push it away from
+  // source/target nodes (25px minimum) and fight the drag.
+  const isLoopBackForClearance = data?.loopSide === 'left' || data?.loopSide === 'right';
+  if (!isLoopBackForClearance) {
+    routeWps = enforceNodeClearance(routeWps, src, tgt, nodes, sourceHandle);
   }
-
-  // Push any segment that runs too close to a node away with clearance
-  routeWps = enforceNodeClearance(routeWps, src, tgt, nodes, sourceHandle);
 
   // Build the full orthogonal point sequence. cleanWaypoints merges any
   // collinear points so a visually-straight line never gets split into two
@@ -102,65 +70,57 @@ export function RoutableEdge({
   const segments = buildSegments(fullPts);
   const pathD    = pointsToSvg(fullPts);
 
-  // ── Segment drag ────────────────────────────────────────────────────────
-  // Dragging moves ONLY the dragged segment's waypoints. Adjacent segments
-  // stretch/shrink because their shared corner point moved with the drag.
-  // No new waypoints are ever created by a drag — the shape stays intact.
-  // On mouse-up, collinear waypoints are merged.
-  const onSegmentMouseDown = useCallback((e, seg, segIdx) => {
-    e.stopPropagation();
-    e.preventDefault();
-    pushHistory();
-    const startX = e.clientX;
-    const startY = e.clientY;
-
-    // ALWAYS materialize fullPts corners as the working waypoint array.
-    // This is critical: stored waypoints may have fewer entries than fullPts
-    // because buildFullPath inserts auto-corners when consecutive points
-    // aren't axis-aligned. The segment's ptIdxA/ptIdxB reference fullPts
-    // indices, so our drag array must match that indexing (minus src at [0]
-    // and tgt at [end]).
-    const dragWps = fullPts.slice(1, -1).map(p => ({ ...p }));
-
-    function onMove(ev) {
-      const flow0 = screenToFlowPosition({ x: startX, y: startY });
-      const flow1 = screenToFlowPosition({ x: ev.clientX, y: ev.clientY });
-      const dx = flow1.x - flow0.x;
-      const dy = flow1.y - flow0.y;
-      const wps = applySegmentDrag(dragWps, seg, dx, dy);
-      updateWP(smId, id, wps, true);
-    }
-
-    function onUp(ev) {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      // Clean up: merge collinear waypoints
-      const st = useDiagramStore.getState();
-      const currentSm = (st.project?.stateMachines ?? []).find(s => s.id === smId);
-      const edge = (currentSm?.edges ?? []).find(e => e.id === id);
-      const finalWps = edge?.data?.waypoints;
-      if (Array.isArray(finalWps) && finalWps.length > 1) {
-        const cleaned = cleanWaypoints(finalWps);
-        if (cleaned.length !== finalWps.length) {
-          updateWP(smId, id, cleaned, true);
-        }
-      }
-    }
-
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  }, [smId, id, screenToFlowPosition, updateWP, pushHistory, fullPts]);
-
   // ── Styles ──────────────────────────────────────────────────────────────
-  // v1.34 — branch edges (decision exits) are GRAY regardless of stored style.
-  // Older edges have `style.stroke` baked in as green/red from when they were
-  // created; we ignore that for branch edges and use the neutral gray. The
-  // label pill below (and outcomeLabel) carries the branch identity.
+  // Branch edges (decision exits) are GRAY regardless of stored style.
+  // Older edges have `style.stroke` baked in as green/red from when they
+  // were created; we ignore that for branch edges and use neutral gray.
   const isBranchEdge = data?.isDecisionExit === true;
   const strokeColor = selected
     ? '#0072B5'
     : (isBranchEdge ? '#6b7280' : (style?.stroke ?? '#6b7280'));
   const strokeW     = selected ? 3 : (style?.strokeWidth ?? 2);
+
+  // ── Loop-back drag handles ──────────────────────────────────────────────
+  // Every BACKWARD edge (target above source) is parametric: shape comes
+  // from three numbers (loopOffset, loopTopDrop, loopBottomDrop) and a
+  // side flag (loopSide). We render thin invisible overlays on the
+  // three adjustable segments; dragging one updates ONE number via the
+  // store. Auto-route then redraws — same model as node drag. No stored
+  // waypoints, no shape changes, axis-locked.
+  const isBackwardEdge = targetY < sourceY - 30;
+  const isLoopBack = isBackwardEdge;
+  // Side defaults to whatever the auto-route picked: explicit `loopSide`
+  // wins; otherwise target's X relative to source. We pin the side on
+  // first drag so the rail can't flip across the source's mid-X.
+  const loopGoRight = data?.loopSide === 'right'
+                  || (data?.loopSide == null && targetX >= sourceX);
+  const isSideHandleSrc = sourceHandle === 'exit-fail' || sourceHandle === 'exit-retry';
+
+  const onLoopDrag = useCallback((e, paramKey, axis, sign) => {
+    e.stopPropagation();
+    e.preventDefault();
+    pushHistory();
+    const startScreen = { x: e.clientX, y: e.clientY };
+    const startVal = Number(data?.[paramKey] ?? (paramKey === 'loopOffset' ? 60 : 40));
+    // Pin loopSide on the first drag so the rail can't flip if user
+    // drags it past the source's mid-X.
+    const sideToPin = data?.loopSide ?? (loopGoRight ? 'right' : 'left');
+    function onMove(ev) {
+      const a = screenToFlowPosition(startScreen);
+      const b = screenToFlowPosition({ x: ev.clientX, y: ev.clientY });
+      const delta = axis === 'x' ? (b.x - a.x) : (b.y - a.y);
+      const next = Math.max(0, Math.round(startVal + sign * delta));
+      const updates = { [paramKey]: next };
+      if (data?.loopSide == null) updates.loopSide = sideToPin;
+      updateLoopParams(smId, id, updates);
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [smId, id, data, updateLoopParams, pushHistory, screenToFlowPosition, loopGoRight]);
 
   return (
     <>
@@ -174,10 +134,7 @@ export function RoutableEdge({
       />
 
       {/* Visible orthogonal path. NO markerEnd — direction is shown by the
-          per-segment arrows below (one in the middle of each segment). Adding
-          markerEnd here would put an extra arrowhead at the path terminus on
-          top of the last segment's middle arrow, giving 2 arrows on a single
-          straight edge. */}
+          per-segment arrows below (one in the middle of each segment). */}
       <path
         d={pathD}
         fill="none"
@@ -186,10 +143,7 @@ export function RoutableEdge({
         style={{ pointerEvents: 'none' }}
       />
 
-      {/* Direction arrows — one per segment, placed in the MIDDLE of each
-          segment. Tiny ortho-corner segments under MIN are skipped to avoid
-          arrows overlapping at bends. The source-pill check matches the
-          label-render gate below: any branch-handle edge is a candidate. */}
+      {/* Direction arrows — one per segment, in the MIDDLE. */}
       {segments.map((seg, i) => {
         const MIN_SEGMENT_LEN = 24;
         const SIZE = 7;
@@ -201,8 +155,6 @@ export function RoutableEdge({
         const isBranchEdge2 = data?.isDecisionExit === true || BRANCH_HANDLES.has(sourceHandle);
         const hasSourcePill = i === 0 && isBranchEdge2 && sourceHandle !== 'exit-single';
         const PILL_CLEAR = 60;
-        // If a source pill covers the first segment's start, place arrow past it;
-        // skip entirely if the segment can't fit both pill and arrow.
         if (hasSourcePill && segLen < PILL_CLEAR + 14) return null;
         const tDist = hasSourcePill ? PILL_CLEAR : segLen * 0.5;
 
@@ -225,22 +177,58 @@ export function RoutableEdge({
         );
       })}
 
-      {/* Decision exit label pill — pass/fail near the source handle (side
-          handles), retry centered on the LONGEST vertical segment (bottom
-          handle). Skip single-exit. */}
+      {/* Loop-back drag overlays — only render when the edge is a loop-back.
+          Each overlay is an invisible thicker stroke on top of one of the
+          three adjustable segments. Dragging updates ONE numeric field
+          (loopOffset / loopTopDrop / loopBottomDrop) via the store; the
+          shape recomputes via auto-route on next render. Axis-locked
+          cursors signal which direction each segment moves.
+          Bottom-handle U → 5 segments; segments[1]=topH, [2]=sideRail, [3]=botH.
+          Side-handle U   → 4 segments; segments[1]=sideRail, [2]=botH. */}
+      {isLoopBack && (() => {
+        const overlays = [];
+        const mkOverlay = (seg, key, paramKey, axis, sign, cursor) => (
+          <path
+            key={key}
+            d={`M ${seg.a.x} ${seg.a.y} L ${seg.b.x} ${seg.b.y}`}
+            fill="none"
+            stroke="transparent"
+            strokeWidth={14}
+            style={{ cursor, pointerEvents: 'stroke' }}
+            onMouseDown={(e) => onLoopDrag(e, paramKey, axis, sign)}
+          />
+        );
+        if (isSideHandleSrc) {
+          // [1]=sideRail (X-drag), [2]=botH (Y-drag)
+          if (segments[1]) overlays.push(mkOverlay(
+            segments[1], 'loop-rail', 'loopOffset', 'x',
+            loopGoRight ? 1 : -1, 'ew-resize',
+          ));
+          if (segments[2]) overlays.push(mkOverlay(
+            segments[2], 'loop-bot', 'loopBottomDrop', 'y', -1, 'ns-resize',
+          ));
+        } else {
+          // [1]=topH (Y-drag), [2]=sideRail (X-drag), [3]=botH (Y-drag)
+          if (segments[1]) overlays.push(mkOverlay(
+            segments[1], 'loop-top', 'loopTopDrop', 'y', 1, 'ns-resize',
+          ));
+          if (segments[2]) overlays.push(mkOverlay(
+            segments[2], 'loop-rail', 'loopOffset', 'x',
+            loopGoRight ? 1 : -1, 'ew-resize',
+          ));
+          if (segments[3]) overlays.push(mkOverlay(
+            segments[3], 'loop-bot', 'loopBottomDrop', 'y', -1, 'ns-resize',
+          ));
+        }
+        return overlays;
+      })()}
+
+      {/* Decision exit label pill — live from source state's PickerV2 config. */}
       {(() => {
-        // Branch label pill — for any branch-handle edge, derive the label
-        // LIVE from the source state's PickerV2 branch action. That's the
-        // source of truth for "what conditions this state branches on" and
-        // it stays correct after the normalizer reorders handles. Fall back
-        // to whatever the edge has stored if the source action is missing
-        // (e.g. legacy DecisionNode flows). Old edges had `label: 'Ready'`
-        // as a placeholder — we explicitly drop that.
         const BRANCH_HANDLES = new Set(['exit-pass', 'exit-fail', 'exit-retry']);
         const isBranch = data?.isDecisionExit === true || BRANCH_HANDLES.has(sourceHandle);
         if (!isBranch || sourceHandle === 'exit-single' || segments.length === 0) return null;
 
-        // Look up the source node and its branch action.
         const srcNode = getNodes().find(n => n.id === source);
         const branchAct = (srcNode?.data?.actions ?? [])
           .slice().reverse()
@@ -253,46 +241,35 @@ export function RoutableEdge({
                         : sourceHandle === 'exit-retry' ? elabels[elabels.length - 1]
                         : null;
         const stored = data?.outcomeLabel ?? data?.label ?? label ?? '';
-        // Drop the placeholder "Ready" — it's the conditionType='ready'
-        // default from older create paths, never a real branch outcome.
         const cleaned = stored && stored !== 'Ready' ? stored : '';
         const rawLabel = liveLabel || cleaned;
         if (!rawLabel) return null;
-        // v1.34 — branch label pills are GRAY for every outcome. Color is
-        // dropped on edges entirely; the LABEL text still distinguishes
-        // (On / Off / Pass / Fail / Retry / etc.).
-        const bgColor   = '#6b7280';
-        // Shorten label: "On_Magnet_Presence" → "On".
+        // Edge strokes stay gray; only the LABEL pill carries color so the
+        // user can read the outcome at a glance:
+        //   On / Pass / True  → green
+        //   Off / Fail / False → red
+        //   Retry              → amber
+        //   anything else      → gray
         const labelText = rawLabel.includes('_') ? rawLabel.split('_')[0] : rawLabel;
+        const lcLabel = labelText.toLowerCase();
+        const bgColor =
+          lcLabel === 'on' || lcLabel === 'pass' || lcLabel === 'true'  ? '#16a34a'
+        : lcLabel === 'off' || lcLabel === 'fail' || lcLabel === 'false' ? '#dc2626'
+        : lcLabel === 'retry'                                            ? '#f59e0b'
+        : '#6b7280';
         const charW     = 6.5;
         const pillW     = Math.max(36, labelText.length * charW + 16);
         const pillH     = 18;
         const textColor = 'white';
 
-        // v1.34 layout — handle positions changed:
-        //   exit-pass  → BOTTOM (primary, straight down)
-        //   exit-fail  → RIGHT  (alternate)
-        //   exit-retry → LEFT   (loop-back)
-        // Bottom handles place label at the LONGEST VERTICAL SEGMENT midpoint
-        // (between source and target, not crowded against either). Side
-        //  handles (fail/retry) keep the existing horizontal-offset placement
-        // near the source so it's visually associated with the side handle.
         const isBottomHandle = sourceHandle === 'exit-pass' || sourceHandle == null;
         let lx, ly;
         if (isBottomHandle) {
-          // Primary down-branch — place label at a FIXED offset below the
-          // source handle, matching how the side handles offset their label
-          // 36px horizontally. Same visual distance from node edge regardless
-          // of how long the vertical run is. Previously used segment-midpoint
-          // which drifted far from the node when target was distant.
           const seg = segments[0];
           const V_OFFSET = 36;
           lx = seg.a.x;
           ly = seg.a.y + V_OFFSET;
         } else {
-          // Side handle (exit-fail right, exit-retry left). Edge first segment
-          // is horizontal — offset label horizontally from the handle so it
-          // sits beside the source.
           const seg = segments[0];
           const H_OFFSET = 36;
           if (seg.isH) {
@@ -300,8 +277,6 @@ export function RoutableEdge({
             lx = seg.a.x + dir * H_OFFSET;
             ly = seg.a.y;
           } else {
-            // Fallback: vertical first segment on a "side" handle —
-            // shouldn't happen, but place at segment midpoint defensively.
             lx = seg.a.x;
             ly = (seg.a.y + seg.b.y) / 2;
           }
@@ -315,9 +290,8 @@ export function RoutableEdge({
         );
       })()}
 
-      {/* Outcome label for branching edges (CheckResults + VisionInspect) */}
+      {/* Outcome label for vision / check-result edges. */}
       {(data?.conditionType === 'checkResult' || data?.conditionType === 'visionResult') && data?.outcomeLabel && !data?.isDecisionExit && segments.length > 0 && (() => {
-        // Find longest vertical segment for label
         const { segment: labelSeg } = findLongestVerticalSegment(segments);
 
         const outcomeIdx = data.outcomeIndex ?? 0;
@@ -343,26 +317,6 @@ export function RoutableEdge({
           </g>
         );
       })()}
-
-      {/* Segment drag overlays — show on selected edges */}
-      {selected && segments.map((seg, i) => {
-        // First/last segments are locked to node handles — not draggable
-        if (!canDragSegment(seg, fullPts.length)) return null;
-
-        const cursor  = seg.isH ? 'ns-resize' : 'ew-resize';
-        const segPath = `M ${seg.a.x} ${seg.a.y} L ${seg.b.x} ${seg.b.y}`;
-        return (
-          <path
-            key={`seg-${i}`}
-            d={segPath}
-            fill="none"
-            stroke="transparent"
-            strokeWidth={12}
-            style={{ cursor, pointerEvents: 'stroke' }}
-            onMouseDown={(e) => onSegmentMouseDown(e, seg, i)}
-          />
-        );
-      })}
     </>
   );
 }

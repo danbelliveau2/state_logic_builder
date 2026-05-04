@@ -60,51 +60,14 @@ export function computePresetWaypoints(preset, src, tgt, handleId, allNodes) {
   const isSideHandle = handleId === 'exit-pass' || handleId === 'exit-fail';
 
   switch (preset) {
-    case 'loopLeft': {
-      const sideX = leftBound - PAD;
-      if (isSideHandle) {
-        return {
-          waypoints: [
-            { x: sideX, y: src.y },
-            { x: sideX, y: tgt.y - DROP },
-            { x: tgt.x, y: tgt.y - DROP },
-          ],
-          manualRoute: true,
-        };
-      }
-      return {
-        waypoints: [
-          { x: src.x, y: src.y + DROP },
-          { x: sideX,  y: src.y + DROP },
-          { x: sideX,  y: tgt.y - DROP },
-          { x: tgt.x,  y: tgt.y - DROP },
-        ],
-        manualRoute: true,
-      };
-    }
+    // Loop presets store ONLY the user-picked side as `loopSide`. Auto-route
+    // reads it and U's around that side every render — no frozen waypoints,
+    // re-routes cleanly when nodes move.
+    case 'loopLeft':
+      return { waypoints: [], manualRoute: false, loopSide: 'left' };
 
-    case 'loopRight': {
-      const sideX = rightBound + PAD;
-      if (isSideHandle) {
-        return {
-          waypoints: [
-            { x: sideX, y: src.y },
-            { x: sideX, y: tgt.y - DROP },
-            { x: tgt.x, y: tgt.y - DROP },
-          ],
-          manualRoute: true,
-        };
-      }
-      return {
-        waypoints: [
-          { x: src.x, y: src.y + DROP },
-          { x: sideX,  y: src.y + DROP },
-          { x: sideX,  y: tgt.y - DROP },
-          { x: tgt.x,  y: tgt.y - DROP },
-        ],
-        manualRoute: true,
-      };
-    }
+    case 'loopRight':
+      return { waypoints: [], manualRoute: false, loopSide: 'right' };
 
     case 'connectDown': {
       // SIDE HANDLES (exit-pass/exit-fail): delegate to auto-route.

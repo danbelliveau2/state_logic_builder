@@ -45,6 +45,7 @@
 import { useState, useMemo } from 'react';
 import { GRAMMAR_CATEGORIES, loadGrammar, parseDetailField } from '../lib/pickerGrammar.js';
 import { DeviceIcon, CheckContinueIcon, CheckBranchIcon } from './DeviceIcons.jsx';
+import { useDiagramStore } from '../store/useDiagramStore.js';
 
 // Map grammar row id → DeviceIcon type so the subject buttons can render
 // the same SVG icons used elsewhere in the app. Keeps visual identity
@@ -143,6 +144,20 @@ export function UniversalPicker({
   // addAction step. null = normal action/decision flow.
   const [terminalType, setTerminalType] = useState(null);
 
+  // Cross-SM signal: an explicit reference to a signal from a different
+  // SM's device. Hidden behind a "+ From another SM…" chip in the SIGNAL
+  // category — rare flow, kept compact. When set, it replaces normal
+  // subject selection: the picker treats it as a binary signal subject
+  // (On/Off conditions), commit emits the ref under `crossSmRef`.
+  const [crossSmRef, setCrossSmRef] = useState(seed?.crossSmRef || null);
+  const [crossSmDrawerOpen, setCrossSmDrawerOpen] = useState(false);
+  const [crossSmDraft, setCrossSmDraft] = useState(
+    seed?.crossSmRef
+      ? { smId: seed.crossSmRef.smId, deviceId: seed.crossSmRef.deviceId, signalId: seed.crossSmRef.signalId }
+      : { smId: '', deviceId: '', signalId: '' }
+  );
+  const allSMs = useDiagramStore(s => s.project?.stateMachines ?? []);
+
   // Branch count — Check & Branch can have 2 to 5 outgoing edges. Default is
   // derived from the grammar's INPUTS list (e.g., digital sensor = 2 for On/Off,
   // analog with 3-way classification = 3). User can increment / decrement
@@ -151,10 +166,19 @@ export function UniversalPicker({
   const [branchCount, setBranchCount] = useState(seed?.branchCount ?? null);
 
   // The currently selected subject instance + its grammar row.
-  const subject = useMemo(
-    () => subjectList.find(s => s.id === subjectId) || null,
-    [subjectList, subjectId]
-  );
+  // When `crossSmRef` is set, synthesize a virtual subject so the rest
+  // of the picker (condition, branch labels, log target, etc.) treats
+  // it like a normal binary signal pick.
+  const subject = useMemo(() => {
+    if (crossSmRef) {
+      return {
+        id: '__crossSm__',
+        name: crossSmRef.signalName || 'Cross-SM signal',
+        grammarRowId: 'signal',
+      };
+    }
+    return subjectList.find(s => s.id === subjectId) || null;
+  }, [subjectList, subjectId, crossSmRef]);
   const grammarRow = useMemo(
     () => subject ? grammarById[subject.grammarRowId] || null : null,
     [subject, grammarById]
@@ -344,6 +368,11 @@ export function UniversalPicker({
       // Branch count override (for Check & Branch only). Stored so re-opening
       // the picker preserves the user's chosen N.
       branchCount:  subAction === 'branch' ? (branchCount ?? null) : null,
+      // Cross-SM signal reference (rare flow). When set, this signal
+      // lives on a different SM's device — the L5X exporter should
+      // resolve it as a cross-SM tag reference. Stored alongside the
+      // normal pickerConfig so re-opening the picker re-shows it.
+      crossSmRef:   crossSmRef || null,
       // True when the picker was opened to edit an existing action.
       // The caller uses this to choose updateAction vs addAction.
       isEdit:       !!editAction,
@@ -400,7 +429,10 @@ export function UniversalPicker({
         <div style={subjectGrid}>
           {GRAMMAR_CATEGORIES.map(cat => {
             const subs = subjectsByCategory[cat.id] || [];
-            if (subs.length === 0) return null;
+            // Always render the signals section so the "+ From another SM…"
+            // chip is reachable even when the project has no project-level
+            // signals defined yet.
+            if (subs.length === 0 && cat.id !== 'signals') return null;
             // When every subject in this section shares ONE grammar family,
             // use that family name as the section banner (e.g. "SERVO AXIS"
             // instead of the broader "MOTION") — otherwise the banner is
@@ -475,10 +507,33 @@ export function UniversalPicker({
                     );
                   })}
                 </div>
+                {/* Cross-SM signal chip + drawer — only inside the signals
+                    section. Hidden behind a single "From another SM…" chip
+                    until clicked, so the common case stays uncluttered. */}
+                {cat.id === 'signals' && (
+                  <CrossSmSignalRow
+                    allSMs={allSMs}
+                    crossSmRef={crossSmRef}
+                    setCrossSmRef={(ref) => {
+                      setCrossSmRef(ref);
+                      if (ref) {
+                        // Clear the regular subject pick so the picker uses
+                        // the virtual cross-SM subject instead.
+                        setSubjectId(null);
+                        setActionVerb(null);
+                        if (mode === 'decision') setCondition('On');
+                      }
+                    }}
+                    drawerOpen={crossSmDrawerOpen}
+                    setDrawerOpen={setCrossSmDrawerOpen}
+                    draft={crossSmDraft}
+                    setDraft={setCrossSmDraft}
+                  />
+                )}
               </div>
             );
           })}
-          {visibleSubjects.length === 0 && (
+          {visibleSubjects.length === 0 && !crossSmRef && (
             <div style={emptyHint}>
               No subjects match this mode. Add one whose type has{' '}
               {mode === 'action' ? 'a non-empty ACTIONS list' : 'a non-empty INPUTS list'}.
@@ -950,6 +1005,187 @@ function LogTargetPicker({
     </div>
   );
 }
+
+// Cross-SM signal row — collapsed chip until clicked, then expands into a
+// 3-step inline drawer (SM → Device → Signal). The compact path: most flows
+// never need this, so it stays one line of UI; users who DO need cross-SM
+// references click in to dig.
+function CrossSmSignalRow({ allSMs, crossSmRef, setCrossSmRef, drawerOpen, setDrawerOpen, draft, setDraft }) {
+  const sm = (allSMs ?? []).find(s => s.id === draft.smId);
+  // Devices in the picked SM that have at least one signal/IO point.
+  const devicesWithSignals = (sm?.devices ?? []).filter(d =>
+    Array.isArray(d.signals) && d.signals.length > 0
+  );
+  const device = devicesWithSignals.find(d => d.id === draft.deviceId);
+  const deviceSignals = device?.signals ?? [];
+
+  function confirm() {
+    if (!sm || !device) return;
+    const signal = deviceSignals.find(s => s.id === draft.signalId);
+    if (!signal) return;
+    setCrossSmRef({
+      smId: sm.id,
+      smName: sm.displayName ?? sm.name,
+      deviceId: device.id,
+      deviceName: device.displayName ?? device.name,
+      signalId: signal.id,
+      signalName: signal.name,
+    });
+    setDrawerOpen(false);
+  }
+
+  function clear() {
+    setCrossSmRef(null);
+    setDraft({ smId: '', deviceId: '', signalId: '' });
+  }
+
+  if (!drawerOpen && !crossSmRef) {
+    return (
+      <div style={{ padding: '4px 4px 0' }}>
+        <button
+          onClick={() => setDrawerOpen(true)}
+          style={{
+            fontSize: 10, padding: '3px 8px',
+            border: '1px dashed #94a3b8',
+            borderRadius: 6,
+            background: '#fff',
+            color: '#475569',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+          title="Reference a signal on a device in another SM"
+        >
+          + From another SM…
+        </button>
+      </div>
+    );
+  }
+
+  if (crossSmRef && !drawerOpen) {
+    return (
+      <div style={{
+        margin: '4px 2px 0',
+        padding: '4px 8px',
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        fontSize: 10, fontWeight: 600,
+        border: '1px solid #0072B5',
+        background: '#dbeafe',
+        color: '#0f172a',
+        borderRadius: 6,
+      }}>
+        <span>↗ {crossSmRef.smName} · {crossSmRef.deviceName}.{crossSmRef.signalName}</span>
+        <button
+          onClick={() => setDrawerOpen(true)}
+          style={{
+            fontSize: 9, padding: '1px 6px',
+            border: '1px solid #cbd5e1', background: '#fff',
+            borderRadius: 4, cursor: 'pointer', color: '#475569',
+          }}
+          title="Edit"
+        >
+          edit
+        </button>
+        <button
+          onClick={clear}
+          style={{
+            fontSize: 11, padding: 0, width: 16, height: 16,
+            border: 'none', background: 'transparent',
+            cursor: 'pointer', color: '#475569',
+          }}
+          title="Clear"
+        >
+          ×
+        </button>
+      </div>
+    );
+  }
+
+  // Drawer
+  return (
+    <div style={{
+      margin: '4px 2px 0',
+      padding: 8,
+      border: '1px solid #cbd5e1',
+      borderRadius: 6,
+      background: '#f8fafc',
+    }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: '#475569', marginBottom: 6 }}>
+        Pick from another SM
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <select
+          value={draft.smId}
+          onChange={(e) => setDraft({ smId: e.target.value, deviceId: '', signalId: '' })}
+          style={crossSmSelectStyle}
+        >
+          <option value="">— SM —</option>
+          {allSMs.map(s => (
+            <option key={s.id} value={s.id}>{s.displayName ?? s.name}</option>
+          ))}
+        </select>
+        <select
+          value={draft.deviceId}
+          onChange={(e) => setDraft({ ...draft, deviceId: e.target.value, signalId: '' })}
+          disabled={!sm}
+          style={crossSmSelectStyle}
+        >
+          <option value="">— Device —</option>
+          {devicesWithSignals.map(d => (
+            <option key={d.id} value={d.id}>{d.displayName ?? d.name} ({d.type})</option>
+          ))}
+        </select>
+        <select
+          value={draft.signalId}
+          onChange={(e) => setDraft({ ...draft, signalId: e.target.value })}
+          disabled={!device}
+          style={crossSmSelectStyle}
+        >
+          <option value="">— Signal —</option>
+          {deviceSignals.map(s => (
+            <option key={s.id} value={s.id}>
+              {s.name}{s.group ? ` (${s.group})` : ''}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 6 }}>
+        <button
+          onClick={() => setDrawerOpen(false)}
+          style={{
+            fontSize: 11, padding: '3px 10px',
+            border: '1px solid #cbd5e1', background: '#fff',
+            borderRadius: 4, cursor: 'pointer', color: '#0f172a',
+            fontFamily: 'inherit',
+          }}
+        >
+          Cancel
+        </button>
+        <button
+          onClick={confirm}
+          disabled={!draft.smId || !draft.deviceId || !draft.signalId}
+          style={{
+            fontSize: 11, padding: '3px 10px',
+            border: 'none',
+            background: (draft.smId && draft.deviceId && draft.signalId) ? '#0072B5' : '#cbd5e1',
+            color: '#fff',
+            borderRadius: 4,
+            cursor: (draft.smId && draft.deviceId && draft.signalId) ? 'pointer' : 'not-allowed',
+            fontWeight: 700,
+            fontFamily: 'inherit',
+          }}
+        >
+          Use this
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const crossSmSelectStyle = {
+  fontSize: 11, padding: '3px 6px',
+  border: '1px solid #cbd5e1', borderRadius: 4,
+  background: '#fff', fontFamily: 'inherit',
+};
 
 function SubActionBtn({ id, label, tagline, icon, active, onClick }) {
   // Topology icon — same SVG used on the canvas action pill so the picker

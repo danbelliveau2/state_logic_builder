@@ -4,10 +4,26 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '2.1.0';
+export const APP_VERSION = '2.2.0';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '2.2.0',
+    date: '2026-05-03',
+    time: '13:45',
+    author: 'Dan Belliveau',
+    changes: [
+      'Node drag handle: replaced the 6-dots grip with a hand icon at the bottom-right corner; matched the "+" button to the top-right corner so they\'re visually symmetric. Both straddle the node edge by ~10px. React Flow `dragHandle: ".node-drag-handle"` selector means clicks on action rows / pills / labels no longer fight with drag.',
+      'Connect-mode click-through: during connect-target picking, inner node content gets `pointer-events: none` so clicks anywhere on the node body fall through to React Flow\'s wrapper and complete the connect. No more "tried to connect, hit the action row, nothing happened" frustration.',
+      'Signal latch pills inside states now read `{name} = ON` (always green) and `{name} = OFF` (always red) — ON is always green, the colored pill makes the latch state immediately readable from across the canvas.',
+      'Branch label pill colors: On / Pass / True → green; Off / Fail / False → red; Retry → amber; everything else stays neutral gray. Edge stroke + handle dots stay gray throughout — only the label pill carries color, so the canvas reads as gray rails with bright outcome markers.',
+      'SignalModal state-picker fix: state-condition signals (`Step >= N` / `Step == N`) now show every state node sorted by step number with proper labels (`[N] StateName`, `[N] Cycle Complete`, `[N] Fault`, `[1] Home / Initial`). Was rendering "?" for PickerV2 actions because the dropdown was reading `deviceId` which v2 actions don\'t set.',
+      'Cross-SM signal picker (decision mode only): "+ From another SM…" chip in the SIGNAL category opens an inline drawer with three cascading dropdowns (SM → Device → Signal). Selection is captured on `pickerConfig.crossSmRef = { smId, deviceId, signalId, smName, deviceName, signalName }`. Hidden behind a chip so the picker stays uncluttered for the common (same-SM) case. L5X exporter wiring still pending.',
+      'Rotary pneumatic shape: pentagon\'s flat body extends to 85% down before sloping inward (was 62%). Long device names like `Pick_Rotary` no longer get clipped by the slope.',
+      'Picker hardening: signals section always renders so the cross-SM chip is reachable even when the current SM has zero signals. Setting a cross-SM ref clears `subjectId` / `actionVerb` and defaults `condition` to "On" for decision flow.',
+    ],
+  },
   {
     version: '2.1.0',
     date: '2026-05-04',

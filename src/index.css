@@ -1175,6 +1175,31 @@ body {
   box-shadow: 0 0 0 2px #94a3b8 !important;
   border-color: #94a3b8 !important;
 }
+/* Source node entirely unclickable during target picking. */
+.canvas-wrapper--picking-target .connect-source-node {
+  pointer-events: none !important;
+}
+
+/* While picking a target, disable interactions on EVERY child element
+ * inside a node so a click anywhere on the node body falls through to
+ * React Flow's `.react-flow__node` wrapper. The wrapper fires
+ * `onNodeClick` → which calls `finalizePresetConnect(targetId)`. Without
+ * this, inner action rows / chips / labels capture the click via their
+ * own handlers (often with `e.stopPropagation()`) and the connect never
+ * completes — user has to find the small target handle. */
+.canvas-wrapper--picking-target .react-flow__node:not(.connect-source-node) .state-node,
+.canvas-wrapper--picking-target .react-flow__node:not(.connect-source-node) .decision-node {
+  pointer-events: none !important;
+}
+.canvas-wrapper--picking-target .react-flow__node:not(.connect-source-node) .state-node *,
+.canvas-wrapper--picking-target .react-flow__node:not(.connect-source-node) .decision-node * {
+  pointer-events: none !important;
+}
+/* Re-enable on the node wrapper itself so React Flow's click handling
+ * picks up the click and reports it as `onNodeClick`. */
+.canvas-wrapper--picking-target .react-flow__node:not(.connect-source-node) {
+  pointer-events: auto !important;
+}
 
 /* SM title overlay on canvas */
 .canvas-sm-title {
@@ -2024,9 +2049,8 @@ body {
 }
 
 .state-node__add-btn {
-  position: absolute;
-  top: -8px;
-  right: -8px;
+  /* Inset is set by the wrapper div in JSX (top/right inline style) so it
+   * matches the drag-handle's offset. No inset here. */
   width: 20px;
   height: 20px;
   border-radius: 50%;
@@ -2050,6 +2074,35 @@ body {
   border-color: var(--color-primary);
   color: #fff;
   transform: scale(1.2);
+}
+
+/* Drag handle — sits next to the + button, looks like a 6-dot grip.
+ * Only this element initiates a node drag (React Flow `dragHandle` selector). */
+.node-drag-handle {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1.5px solid var(--node-border, #64748b);
+  color: var(--node-border, #64748b);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  padding: 0;
+  z-index: 10;
+  transition: background .15s, transform .1s, border-color .15s, color .15s;
+  box-shadow: 0 1px 3px #00000026;
+  user-select: none;
+}
+.node-drag-handle:hover {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+  transform: scale(1.2);
+}
+.node-drag-handle:active {
+  cursor: grabbing;
 }
 
 .state-node__step-num {

@@ -374,7 +374,9 @@ function buildShapePoints(shape, w, h) {
     case 'rect':
       return `0,0 ${w},0 ${w},${h} 0,${h}`;
     case 'pentagon':
-      return `${cx},0 ${w-cx},0 ${w},${h*0.62} ${w/2},${h} 0,${h*0.62}`;
+      // Slope starts at 85% down so the device name sits in the full-width
+      // body, not the tapered point. Was 62% — clipped longer names.
+      return `${cx},0 ${w-cx},0 ${w},${h*0.85} ${w/2},${h} 0,${h*0.85}`;
     case 'hexagon':
       return `${cx},0 ${w-cx},0 ${w},${h/2} ${w-cx},${h} ${cx},${h} 0,${h/2}`;
     case 'octagon':
@@ -4815,10 +4817,26 @@ export function StateNode({ data, selected, id }) {
         <ShapeBackground shape={shape} borderColor={borderColor} selected={selected} />
       )}
 
-      {/* Floating + button -- opens Select Subject picker directly (no submenu).
-          The picker itself contains Cycle Complete / Fault State / Wait-Decision-Verify
-          / device entries, so the intermediate 3-option menu was redundant. */}
-      <div style={{ position: 'absolute', top: -14, right: -14, zIndex: 10 }} ref={addMenuRef}>
+      {/* Drag handle — bottom-right corner of the node, hand icon. Only
+          this element initiates a node drag (React Flow `dragHandle`
+          selector wired in Canvas). Clicks on any other part of the node
+          go to their normal handlers — no accidental moves. */}
+      <div
+        className="node-drag-handle state-node__drag-handle"
+        style={{ position: 'absolute', bottom: -10, right: -10, zIndex: 10 }}
+        title="Drag to move this node"
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2" />
+          <path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v2" />
+          <path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8" />
+          <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
+        </svg>
+      </div>
+
+      {/* Floating + button — top-right corner, straddles the edge so it
+          mirrors the hand at bottom-right. Opens the Select Subject picker. */}
+      <div style={{ position: 'absolute', top: -10, right: -10, zIndex: 10 }} ref={addMenuRef}>
         <button
           className="state-node__add-btn"
           onClick={(e) => {
@@ -5151,13 +5169,6 @@ export function StateNode({ data, selected, id }) {
                     },
                   );
                 }
-                // Auto-swap on spawn: enforce "lower-numbered next state =
-                // primary handle". For a fresh fan-out into newly created
-                // children this is already correct (children spawn at
-                // offset 0 / +280 / -280 → DFS visits left-to-right →
-                // primary's child gets the lower step number). For edits
-                // that retarget existing nodes, this re-sorts handles.
-                useDiagramStore.getState().normalizeBranchPrimaries(refreshedSm.id);
               };
 
               if (isEdit) {
@@ -5494,8 +5505,6 @@ export function StateNode({ data, selected, id }) {
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: '4px 4px 0' }}>
                 {onSideSignals.map(sig => {
                   const latched = !!sig.offCondition;
-                  const bg = latched ? '#16a34a' : '#0072B5';
-                  const suffix = latched ? ' ON' : '';
                   return (
                     <span
                       key={`sig-on-${sig.id}`}
@@ -5505,13 +5514,13 @@ export function StateNode({ data, selected, id }) {
                       onClick={e => e.stopPropagation()}
                       onMouseDown={e => e.stopPropagation()}
                       style={{
-                        fontSize: 9, fontWeight: 600, background: bg, color: '#fff',
+                        fontSize: 9, fontWeight: 600, background: '#16a34a', color: '#fff',
                         borderRadius: 10, padding: '1px 6px',
                         display: 'inline-flex', alignItems: 'center', gap: 3,
                       }}
                     >
                       <span style={{ fontSize: 8 }}>●</span>
-                      {sig.name}{suffix}
+                      {sig.name} = ON
                     </span>
                   );
                 })}
@@ -5528,7 +5537,7 @@ export function StateNode({ data, selected, id }) {
                     }}
                   >
                     <span style={{ fontSize: 8 }}>●</span>
-                    {sig.name} OFF
+                    {sig.name} = OFF
                   </span>
                 ))}
               </div>

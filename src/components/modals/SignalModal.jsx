@@ -123,6 +123,23 @@ export function SignalModal({ isOpen, onClose, signal }) {
     return computeStateNumbers(selectedOffSm.nodes ?? [], selectedOffSm.edges ?? [], selectedOffSm.devices ?? []).stateMap;
   }, [selectedOffSm]);
 
+  // Sort nodes by computed step number for the dropdown so the user sees
+  // them in the same order they appear on the canvas.
+  const sortedSmNodes = useMemo(() => {
+    return [...smNodes].sort((a, b) => {
+      const aStep = stateNumberMap.get(a.id) ?? Infinity;
+      const bStep = stateNumberMap.get(b.id) ?? Infinity;
+      return aStep - bStep;
+    });
+  }, [smNodes, stateNumberMap]);
+  const sortedOffSmNodes = useMemo(() => {
+    return [...offSmNodes].sort((a, b) => {
+      const aStep = offStateNumberMap.get(a.id) ?? Infinity;
+      const bStep = offStateNumberMap.get(b.id) ?? Infinity;
+      return aStep - bStep;
+    });
+  }, [offSmNodes, offStateNumberMap]);
+
   if (!isOpen) return null;
 
   // ── Helpers for position type ──────────────────────────────────────────────
@@ -178,6 +195,7 @@ export function SignalModal({ isOpen, onClose, signal }) {
   function nodeLabelFor(node, numberMap) {
     const stepNum = numberMap.get(node.id) ?? node.data?.stepNumber ?? node.data?.stateNumber ?? '?';
     if (node.data?.isComplete) return `[${stepNum}] ✓ Cycle Complete`;
+    if (node.data?.isFault)    return `[${stepNum}] ⚠ Fault`;
     if (node.data?.isInitial)  return `[${stepNum}] ⌂ Home / Initial`;
     if (node.type === 'decisionNode') {
       const src = node.data?.signalSource ?? node.data?.signalName ?? 'Decision';
@@ -187,6 +205,24 @@ export function SignalModal({ isOpen, onClose, signal }) {
     const devices = selectedSm?.devices ?? [];
     if (actions.length > 0) {
       const parts = actions.slice(0, 3).map(a => {
+        // PickerV2 actions store identity in pickerConfig, not on top-level
+        // deviceId. Read from there so Check & Branch / Action subjects
+        // render with their actual subject + verb instead of "?".
+        if (a?.pickerV2 && a?.pickerConfig) {
+          const cfg = a.pickerConfig;
+          const subj = cfg.subjectName || '?';
+          if (cfg.mode === 'decision') {
+            const verb = cfg.subAction === 'branch' ? 'Branch'
+                       : cfg.subAction === 'check'  ? 'Check'
+                       : 'Wait';
+            const cond = cfg.condition ? ` · ${cfg.condition}` : '';
+            return `${verb} ${subj}${cond}`;
+          }
+          // action mode
+          const verb = cfg.actionVerb || '';
+          return `${subj}${verb ? ` → ${verb}` : ''}`.trim();
+        }
+        // Legacy v1 action — device + operation
         const dev = devices.find(d => d.id === a.deviceId);
         const devName = dev?.displayName ?? dev?.name ?? '?';
         const pos = a.positionName ? ` (${a.positionName})` : '';
@@ -506,7 +542,7 @@ export function SignalModal({ isOpen, onClose, signal }) {
                   onChange={e => setStateNodeId(e.target.value)}
                 >
                   <option value="">-- Select state --</option>
-                  {smNodes.map(n => (
+                  {sortedSmNodes.map(n => (
                     <option key={n.id} value={n.id}>{nodeLabelFor(n, stateNumberMap)}</option>
                   ))}
                 </select>
@@ -642,7 +678,7 @@ export function SignalModal({ isOpen, onClose, signal }) {
                       onChange={e => setOffStateNodeId(e.target.value)}
                     >
                       <option value="">-- Select state --</option>
-                      {offSmNodes.map(n => (
+                      {sortedOffSmNodes.map(n => (
                         <option key={n.id} value={n.id}>{nodeLabelFor(n, offStateNumberMap)}</option>
                       ))}
                     </select>

@@ -20,13 +20,11 @@ import '@xyflow/react/dist/style.css';
 import { StateNode } from './nodes/StateNode.jsx';
 import { DecisionNode } from './nodes/DecisionNode.jsx';
 import { RoutableEdge } from './edges/RoutableEdge.jsx';
-import { DrawingConnectionLine } from './edges/DrawingConnectionLine.jsx';
-import { ManualDrawOverlay } from './edges/ManualDrawOverlay.jsx';
 import { useDiagramStore } from '../store/useDiagramStore.js';
 import { buildVerifyLabel } from '../lib/conditionBuilder.js';
 import { saveStandard, updateStandard } from '../lib/standardsLibrary.js';
 import { computeStateNumbers } from '../lib/computeStateNumbers.js';
-import { computeExitLabels, computeSegmentAxes, computeAutoRoute } from '../lib/edgeRouting.js';
+import { computeExitLabels, computeAutoRoute } from '../lib/edgeRouting.js';
 import { OUTCOME_COLORS } from '../lib/outcomeColors.js';
 import { computePresetWaypoints } from './ConnectMenu.jsx';
 
@@ -163,7 +161,7 @@ function getSourceHandlePos(fromNode, handleId) {
   return { x, y };
 }
 
-// computeSegmentAxes imported from edgeRouting.js
+// (manual-draw helpers removed — every edge auto-routes)
 // Local call sites resolve handle positions via getSourceHandlePos() first.
 
 export function Canvas() {
@@ -188,11 +186,6 @@ export function Canvas() {
     : null;
   const activeSeqId = activeRecoverySeq?.id ?? null;
   const prevSmIdRef = useRef(null);
-  // Timestamp of the most recent onConnectEnd — used to suppress the pane-click
-  // that React Flow fires on the SAME mouseup as the drag-release. Without this
-  // guard, a single drag-release produces two waypoints (one at the corner from
-  // onConnectEnd, one at the click position from onPaneClick).
-  const lastConnectEndAt = useRef(0);
 
   // Reactive read of the connect-preset state. When the user clicks "Connect"
   // in the ConnectMenu, `_connectPreset` is set with the source node + handle.
@@ -221,16 +214,6 @@ export function Canvas() {
     sourceNode.classList.add('connect-source-node');
     return () => sourceNode.classList.remove('connect-source-node');
   }, [connectPreset?.sourceNodeId]);
-
-  // v1.34 — branch-primary normalization. Runs once whenever the active SM
-  // changes (mount, tab switch, project import). Belt-and-suspenders with
-  // the persist-rehydrate hook in the store: that catches app-boot, this
-  // catches every other path the active SM can change. The store action
-  // is a no-op when nothing needs reordering, so cheap to call repeatedly.
-  useEffect(() => {
-    if (!sm?.id) return;
-    useDiagramStore.getState().normalizeBranchPrimaries(sm.id);
-  }, [sm?.id]);
 
   // ── Auto-save standards-linked tabs back to the library ───────────────────
   // When this project is a standard (isStandard) AND it carries a standardId,
@@ -391,7 +374,7 @@ export function Canvas() {
     prevSmIdRef.current = currentSmId;
   }, [sm?.id]);
 
-  // Sync recovery seq ID into store so RoutableEdge's updateEdgeWaypoints routes correctly
+  // Sync recovery seq ID into store so per-seq actions route correctly
   useEffect(() => {
     useDiagramStore.setState({ _activeRecoverySeqId: recoveryMode ? activeRecoverySeqId : null });
   }, [recoveryMode, activeRecoverySeqId]);
@@ -411,24 +394,12 @@ export function Canvas() {
     }
   }, [sm?.id]);
 
-  // ── Ref for finalizeManualDraw (assigned after definition below) ──────────
-  const finalizeDrawRef = useRef(null);
-
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
   useEffect(() => {
     function handleKeyDown(e) {
-      // Enter: finalize manual draw mode
-      if (e.key === 'Enter') {
-        const { _isDrawingConnection, _drawingSource } = useDiagramStore.getState();
-        if (_isDrawingConnection && _drawingSource && finalizeDrawRef.current) {
-          e.preventDefault();
-          finalizeDrawRef.current();
-          return;
-        }
-      }
-      // Escape: cancel connect menu, connect preset, or manual draw mode
+      // Escape: cancel connect menu or connect preset
       if (e.key === 'Escape') {
-        const { _isDrawingConnection, _drawingSource, _connectPreset, _connectMenuNodeId } = useDiagramStore.getState();
+        const { _connectPreset, _connectMenuNodeId } = useDiagramStore.getState();
         if (_connectMenuNodeId) {
           e.preventDefault();
           useDiagramStore.setState({ _connectMenuNodeId: null, _connectMenuHandleId: null, _connectPreset: null });
@@ -437,11 +408,6 @@ export function Canvas() {
         if (_connectPreset) {
           e.preventDefault();
           useDiagramStore.setState({ _connectPreset: null });
-          return;
-        }
-        if (_isDrawingConnection && _drawingSource) {
-          e.preventDefault();
-          useDiagramStore.setState({ _isDrawingConnection: false, _drawingWaypoints: [], _drawingSource: null });
           return;
         }
       }
@@ -701,10 +667,8 @@ export function Canvas() {
 
   // ── Connection handlers ────────────────────────────────────────────────────
 
-  /** Enter drawing mode when a connection drag begins */
-  const onConnectStart = useCallback(() => {
-    useDiagramStore.setState({ _isDrawingConnection: true, _drawingWaypoints: [] });
-  }, []);
+  /** Connection drag begins — no-op now that manual-draw is gone. */
+  const onConnectStart = useCallback(() => {}, []);
 
   // Build decision/vision-exit edge data when dragging from a decision/vision node's pass/fail/single handle
   const getDecisionExitData = useCallback((sourceNodeId, sourceHandle) => {
@@ -821,49 +785,16 @@ export function Canvas() {
     };
   }, [sm]);
 
+  /** React Flow drag-to-connect: drag from one handle to another. */
   const onConnect = useCallback((connection) => {
     if (!sm) return;
     const curSeqId = useDiagramStore.getState()._activeRecoverySeqId;
     const isRecovery = recoveryMode && !!curSeqId;
     const activeSeq = isRecovery ? (sm.recoverySeqs ?? []).find(r => r.id === curSeqId) : null;
     const currentNodes = isRecovery ? (activeSeq?.nodes ?? []) : (sm.nodes ?? []);
-    // Grab any waypoints placed during the click-to-draw connection
-    const drawingWps = useDiagramStore.getState()._drawingWaypoints;
-    // Check if this is a decision exit edge — if so, use decision styling instead of verify data
     const decExitData = getDecisionExitData(connection.source, connection.sourceHandle);
     const smForVerify = isRecovery ? { ...sm, nodes: currentNodes, edges: activeSeq?.edges ?? [] } : sm;
     const edgeCond = decExitData ?? getVerifyEdgeData(smForVerify, connection.source);
-    const fromNode = currentNodes.find(n => n.id === connection.source);
-    const toNode   = currentNodes.find(n => n.id === connection.target);
-    if (drawingWps && drawingWps.length > 0) {
-      edgeCond.waypoints = drawingWps;
-      edgeCond.manualRoute = true;
-      const handlePos = getSourceHandlePos(fromNode, connection.sourceHandle);
-      const tgtPos = toNode ? { x: (toNode.position?.x ?? 0) + (toNode.measured?.width ?? 240) / 2, y: toNode.position?.y ?? 0 } : null;
-      const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(handlePos, drawingWps, tgtPos);
-      edgeCond.firstSegmentAxis = firstSegmentAxis;
-      edgeCond.lastSegmentAxis  = lastSegmentAxis;
-    } else if (fromNode && toNode) {
-      // SIDE HANDLE EXITS (exit-pass/exit-fail): do NOT pre-compute waypoints.
-      // Storing them with manualRoute:true freezes the route, so dragging the
-      // source node leaves the edge stuck at the old position. Letting
-      // RoutableEdge auto-route every render keeps the perpendicular-out
-      // L-bend consistent under drag.
-      const isSideHandleSrc = connection.sourceHandle === 'exit-pass'
-        || connection.sourceHandle === 'exit-fail';
-      if (!isSideHandleSrc) {
-        const handlePos = getSourceHandlePos(fromNode, connection.sourceHandle);
-        const tgtPos = { x: (toNode.position?.x ?? 0) + (toNode.measured?.width ?? 240) / 2, y: toNode.position?.y ?? 0 };
-        const autoWps = computeAutoRoute(handlePos, tgtPos, edgeCond, currentNodes, connection.sourceHandle);
-        if (autoWps && autoWps.length > 0) {
-          edgeCond.waypoints = autoWps;
-          edgeCond.manualRoute = true;
-          const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(handlePos, autoWps, tgtPos);
-          edgeCond.firstSegmentAxis = firstSegmentAxis;
-          edgeCond.lastSegmentAxis  = lastSegmentAxis;
-        }
-      }
-    }
     const edgeId = isRecovery
       ? store.addRecoveryEdge(sm.id, curSeqId, connection, edgeCond)
       : store.addEdge(sm.id, connection, edgeCond);
@@ -871,85 +802,19 @@ export function Canvas() {
       store.setSelectedEdge(edgeId);
       store.openTransitionModal(edgeId);
     }
-    useDiagramStore.setState({ _isDrawingConnection: false, _drawingWaypoints: [], _drawingSource: null });
   }, [sm, store, getDecisionExitData, recoveryMode]);
 
-  /**
-   * Drag a source handle to empty canvas space → create new node + auto-connect.
-   * Also clears click-to-draw state.
-   */
-  /**
-   * onConnectEnd — when the user releases a handle drag on empty canvas,
-   * enter "manual draw mode" instead of immediately creating a node.
-   * The user can then click multiple times to add ortho-snapped waypoints.
-   * Press Enter to finalize (creates a node at the endpoint), or
-   * click on an existing node to connect to it. Escape cancels.
-   */
+  /** Drag-to-empty-canvas: create a new node at the cursor and connect to it. */
   const onConnectEnd = useCallback((event, connectionState) => {
-    const drawingWps = useDiagramStore.getState()._drawingWaypoints;
-
-    // If it connected to a node normally, clear drawing state and we're done
-    if (connectionState.toNode) {
-      useDiagramStore.setState({ _isDrawingConnection: false, _drawingWaypoints: [], _drawingSource: null });
-      return;
-    }
-    if (!sm) {
-      useDiagramStore.setState({ _isDrawingConnection: false, _drawingWaypoints: [], _drawingSource: null });
-      return;
-    }
-
+    if (connectionState.toNode || !sm) return;
     const fromNode = connectionState.fromNode;
-    if (!fromNode) {
-      useDiagramStore.setState({ _isDrawingConnection: false, _drawingWaypoints: [], _drawingSource: null });
-      return;
-    }
+    if (!fromNode) return;
 
     const fromHandle = connectionState.fromHandle?.id ?? null;
     const cursorFlow = screenToFlowPosition({
       x: event.clientX ?? event.touches?.[0]?.clientX ?? 0,
       y: event.clientY ?? event.touches?.[0]?.clientY ?? 0,
     });
-
-    // ── Shift held OR Draw Path toggle active → enter manual draw mode ────
-    const drawPathModeActive = useDiagramStore.getState()._drawPathMode;
-    if (event.shiftKey || drawPathModeActive) {
-      // Ortho-snap the first waypoint to the CORNER between the source
-      // handle and the release cursor — not the raw cursor. Otherwise the
-      // waypoint sits off-grid and the next click kinks through it.
-      const nodeW = fromNode.measured?.width  ?? fromNode.width  ?? 240;
-      const nodeH = fromNode.measured?.height ?? fromNode.height ?? 80;
-      let handleX = fromNode.position.x + nodeW / 2;
-      let handleY = fromNode.position.y + nodeH;
-      if (fromHandle === 'exit-pass') {
-        handleX = fromNode.position.x;
-        handleY = fromNode.position.y + nodeH / 2;
-      } else if (fromHandle === 'exit-fail') {
-        handleX = fromNode.position.x + nodeW;
-        handleY = fromNode.position.y + nodeH / 2;
-      } else if (fromHandle === 'exit-retry') {
-        handleX = fromNode.position.x + nodeW / 2;
-        handleY = fromNode.position.y + nodeH;
-      }
-      // Determine first segment axis from the HANDLE DIRECTION, not mouse position.
-      // Side handles (exit-pass = left, exit-fail = right) always exit horizontally.
-      // Bottom handles (default, exit-single, exit-retry) always exit vertically.
-      const isSideHandle = fromHandle === 'exit-pass' || fromHandle === 'exit-fail';
-      const firstWp = isSideHandle
-        ? { x: cursorFlow.x, y: handleY }   // horizontal-first → corner at (cursorX, handleY)
-        : { x: handleX, y: cursorFlow.y };  // vertical-first   → corner at (handleX, cursorY)
-      useDiagramStore.setState({
-        _isDrawingConnection: true,
-        _drawingSource: { nodeId: fromNode.id, handleId: fromHandle },
-        _drawingWaypoints: [firstWp],
-      });
-      // Block the pane-click that fires on this same mouseup from adding a
-      // second, off-axis waypoint.
-      lastConnectEndAt.current = Date.now();
-      return;
-    }
-
-    // ── Normal mode: create a new node and connect immediately ────────────
-    useDiagramStore.setState({ _isDrawingConnection: false, _drawingWaypoints: [], _drawingSource: null });
 
     const curSeqId2 = useDiagramStore.getState()._activeRecoverySeqId;
     const isRecovery2 = !!curSeqId2;
@@ -974,15 +839,6 @@ export function Canvas() {
     const currentNodes2 = isRecovery2 ? (activeSeq2?.nodes ?? []) : (sm.nodes ?? []);
     const smForVerify2 = isRecovery2 ? { ...sm, nodes: currentNodes2, edges: currentEdges2 } : sm;
     const edgeCond = decExitData ?? getVerifyEdgeData(smForVerify2, fromNode.id);
-    if (drawingWps && drawingWps.length > 0) {
-      edgeCond.waypoints = drawingWps;
-      edgeCond.manualRoute = true;
-      const handlePos = getSourceHandlePos(fromNode, fromHandle);
-      const tgtPos = { x: position.x + newW / 2, y: position.y };
-      const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(handlePos, drawingWps, tgtPos);
-      edgeCond.firstSegmentAxis = firstSegmentAxis;
-      edgeCond.lastSegmentAxis  = lastSegmentAxis;
-    }
     if (isRecovery2) {
       store.addRecoveryEdge(sm.id, curSeqId2,
         { source: fromNode.id, sourceHandle: fromHandle, target: newNodeId, targetHandle: null },
@@ -997,102 +853,6 @@ export function Canvas() {
 
     store.setOpenPickerOnNode(newNodeId);
   }, [sm, store, screenToFlowPosition, getDecisionExitData]);
-
-  /**
-   * Finalize manual draw: create edge (and optionally a new target node).
-   * Called when user presses Enter or clicks a node during draw mode.
-   */
-  const finalizeManualDraw = useCallback((targetNodeId = null) => {
-    const { _drawingSource, _drawingWaypoints } = useDiagramStore.getState();
-    if (!_drawingSource || !sm) {
-      useDiagramStore.setState({ _isDrawingConnection: false, _drawingWaypoints: [], _drawingSource: null });
-      return;
-    }
-
-    const fromNodeId = _drawingSource.nodeId;
-    const fromHandle = _drawingSource.handleId;
-    const wps = _drawingWaypoints ?? [];
-
-    const curSeqId3 = useDiagramStore.getState()._activeRecoverySeqId;
-    const isRecovery3 = !!curSeqId3;
-    const activeSeq3 = isRecovery3 ? (sm.recoverySeqs ?? []).find(r => r.id === curSeqId3) : null;
-    const currentNodes3 = isRecovery3 ? (activeSeq3?.nodes ?? []) : (sm.nodes ?? []);
-    const currentEdges3 = isRecovery3 ? (activeSeq3?.edges ?? []) : (sm.edges ?? []);
-
-    let actualTarget = targetNodeId;
-
-    if (!actualTarget && wps.length > 0) {
-      const lastWp = wps[wps.length - 1];
-      const fromNode = currentNodes3.find(n => n.id === fromNodeId);
-      const existingOutEdges = currentEdges3.filter(e => e.source === fromNodeId);
-      const position = {
-        x: existingOutEdges.length > 0 ? lastWp.x : (fromNode?.position?.x ?? lastWp.x),
-        y: lastWp.y,
-      };
-      actualTarget = isRecovery3
-        ? store.addRecoveryNode(sm.id, curSeqId3, { position })
-        : store.addNode(sm.id, { position });
-      if (!actualTarget) {
-        useDiagramStore.setState({ _isDrawingConnection: false, _drawingWaypoints: [], _drawingSource: null });
-        return;
-      }
-      store.setOpenPickerOnNode(actualTarget);
-    } else if (!actualTarget) {
-      useDiagramStore.setState({ _isDrawingConnection: false, _drawingWaypoints: [], _drawingSource: null });
-      return;
-    }
-
-    const decExitData = getDecisionExitData(fromNodeId, fromHandle);
-    const smForVerify3 = isRecovery3 ? { ...sm, nodes: currentNodes3, edges: currentEdges3 } : sm;
-    const edgeCond = decExitData ?? getVerifyEdgeData(smForVerify3, fromNodeId);
-
-    const fromNode = currentNodes3.find(n => n.id === fromNodeId);
-    const toNode   = currentNodes3.find(n => n.id === actualTarget);
-    if (wps.length > 0) {
-      edgeCond.waypoints = wps;
-      edgeCond.manualRoute = true;
-      const handlePos = getSourceHandlePos(fromNode, fromHandle);
-      const tgtPos = toNode ? { x: (toNode.position?.x ?? 0) + (toNode.measured?.width ?? 240) / 2, y: toNode.position?.y ?? 0 } : null;
-      const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(handlePos, wps, tgtPos);
-      edgeCond.firstSegmentAxis = firstSegmentAxis;
-      edgeCond.lastSegmentAxis  = lastSegmentAxis;
-    } else if (fromNode && toNode) {
-      // SIDE HANDLE EXITS: skip pre-compute (see same-named comment in onConnect).
-      const isSideHandleSrc = fromHandle === 'exit-pass' || fromHandle === 'exit-fail';
-      if (!isSideHandleSrc) {
-        const handlePos = getSourceHandlePos(fromNode, fromHandle);
-        const tgtPos = { x: (toNode.position?.x ?? 0) + (toNode.measured?.width ?? 240) / 2, y: toNode.position?.y ?? 0 };
-        const autoWps = computeAutoRoute(handlePos, tgtPos, edgeCond, currentNodes3, fromHandle);
-        if (autoWps && autoWps.length > 0) {
-          edgeCond.waypoints = autoWps;
-          edgeCond.manualRoute = true;
-          const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(handlePos, autoWps, tgtPos);
-          edgeCond.firstSegmentAxis = firstSegmentAxis;
-          edgeCond.lastSegmentAxis  = lastSegmentAxis;
-        }
-      }
-    }
-
-    const edgeId = isRecovery3
-      ? store.addRecoveryEdge(sm.id, curSeqId3,
-          { source: fromNodeId, sourceHandle: fromHandle, target: actualTarget, targetHandle: null },
-          edgeCond
-        )
-      : store.addEdge(sm.id,
-          { source: fromNodeId, sourceHandle: fromHandle, target: actualTarget, targetHandle: null },
-          edgeCond
-        );
-
-    if (!decExitData && edgeId) {
-      store.setSelectedEdge(edgeId);
-      store.openTransitionModal(edgeId);
-    }
-
-    useDiagramStore.setState({ _isDrawingConnection: false, _drawingWaypoints: [], _drawingSource: null });
-  }, [sm, store, getDecisionExitData]);
-
-  // Assign ref so keyboard handler can call finalizeManualDraw
-  finalizeDrawRef.current = finalizeManualDraw;
 
   // ── Click handlers ────────────────────────────────────────────────────────
 
@@ -1120,7 +880,7 @@ export function Canvas() {
     const tgtNodeW = toNode.measured?.width ?? toNode.width ?? 240;
     const tgtPos = { x: toNode.position.x + tgtNodeW / 2, y: toNode.position.y };
 
-    const { waypoints, manualRoute } = computePresetWaypoints(
+    const { loopSide } = computePresetWaypoints(
       routeType, srcPos, tgtPos, sourceHandle, currentNodes4
     );
 
@@ -1128,12 +888,10 @@ export function Canvas() {
     const smForVerify4 = isRecovery4 ? { ...sm, nodes: currentNodes4, edges: activeSeq4?.edges ?? [] } : sm;
     const edgeCond = decExitData ?? getVerifyEdgeData(smForVerify4, sourceNodeId);
 
-    if (waypoints.length > 0) {
-      edgeCond.waypoints = waypoints;
-      edgeCond.manualRoute = manualRoute;
-      const { firstSegmentAxis, lastSegmentAxis } = computeSegmentAxes(srcPos, waypoints, tgtPos);
-      edgeCond.firstSegmentAxis = firstSegmentAxis;
-      edgeCond.lastSegmentAxis = lastSegmentAxis;
+    // Loop presets only set `loopSide` — auto-route reads it on every
+    // render and U's around the chosen side. No frozen waypoints.
+    if (loopSide) {
+      edgeCond.loopSide = loopSide;
     }
 
     const tgtHandle = toNode.type === 'decisionNode' ? 'input' : null;
@@ -1166,19 +924,8 @@ export function Canvas() {
         return;
       }
     }
-
-    // If we're in manual draw mode, clicking a node completes the connection to it
-    const isDrawing = useDiagramStore.getState()._isDrawingConnection;
-    const drawSource = useDiagramStore.getState()._drawingSource;
-    if (isDrawing && drawSource) {
-      // Don't connect to the source node itself
-      if (node.id !== drawSource.nodeId) {
-        finalizeManualDraw(node.id);
-        return;
-      }
-    }
     store.setSelectedNode(node.id);
-  }, [store, finalizeManualDraw, finalizePresetConnect]);
+  }, [store, finalizePresetConnect]);
 
   const onEdgeClick = useCallback((event, edge) => {
     // If Connect Menu preset is active, connect to the edge's target node
@@ -1187,67 +934,24 @@ export function Canvas() {
       finalizePresetConnect(edge.target);
       return;
     }
-
-    // If we're in manual draw mode, clicking an existing edge terminates
-    // the connection into that edge's target node. This gives the user a
-    // bigger hit target — the incoming "branch" of a node counts as the node.
-    const isDrawing = useDiagramStore.getState()._isDrawingConnection;
-    const drawSource = useDiagramStore.getState()._drawingSource;
-    if (isDrawing && drawSource && edge.target && edge.target !== drawSource.nodeId) {
-      finalizeManualDraw(edge.target);
-      return;
-    }
     store.setSelectedEdge(edge.id);
-  }, [store, finalizeManualDraw, finalizePresetConnect]);
+  }, [store, finalizePresetConnect]);
 
   const onEdgeDoubleClick = useCallback((event, edge) => {
     store.setSelectedEdge(edge.id);
     store.openTransitionModal(edge.id);
   }, [store]);
 
-  const onPaneClick = useCallback((event) => {
+  const onPaneClick = useCallback(() => {
     // Close connect menu / preset on pane click
     const { _connectPreset, _connectMenuNodeId } = useDiagramStore.getState();
     if (_connectMenuNodeId || _connectPreset) {
       useDiagramStore.setState({ _connectMenuNodeId: null, _connectMenuHandleId: null, _connectPreset: null });
       return;
     }
-
-    // If we're in drawing-connection mode (handle drag), add an ortho-snapped waypoint
-    const isDrawing = useDiagramStore.getState()._isDrawingConnection;
-    if (isDrawing) {
-      // Drop the pane-click that fires simultaneously with onConnectEnd — the
-      // drag-release already planted the first waypoint at the ortho corner.
-      if (Date.now() - lastConnectEndAt.current < 250) {
-        return;
-      }
-      const flowPos = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-      useDiagramStore.setState(s => {
-        const prev = s._drawingWaypoints;
-        // Snap to orthogonal: alternate V/H from the last waypoint (or source)
-        // Even-index clicks (0, 2, 4…) snap to vertical (keep prev X, use click Y)
-        // Odd-index clicks (1, 3, 5…) snap to horizontal (use click X, keep prev Y)
-        // But first click just records raw position as the first corner
-        if (prev.length === 0) {
-          return { _drawingWaypoints: [{ x: flowPos.x, y: flowPos.y }] };
-        }
-        const last = prev[prev.length - 1];
-        // Determine orientation: if the dominant movement is horizontal, snap to horizontal first
-        const dx = Math.abs(flowPos.x - last.x);
-        const dy = Math.abs(flowPos.y - last.y);
-        if (dx > dy) {
-          // Horizontal move → add corner at (clickX, lastY)
-          return { _drawingWaypoints: [...prev, { x: flowPos.x, y: last.y }] };
-        } else {
-          // Vertical move → add corner at (lastX, clickY)
-          return { _drawingWaypoints: [...prev, { x: last.x, y: flowPos.y }] };
-        }
-      });
-      return; // Don't clear selection while drawing
-    }
     store.clearSelection();
     useDiagramStore.setState(s => ({ _closePickerSignal: s._closePickerSignal + 1 }));
-  }, [store, screenToFlowPosition]);
+  }, [store]);
 
   // ── Drag-from-sidebar drop ────────────────────────────────────────────────
   const onDragOver = useCallback((event) => {
@@ -1279,10 +983,17 @@ export function Canvas() {
   const nodes = useMemo(() => {
     if (!sm) return [];
     return smNodes.map(n => {
+      // dragHandle: only the `.node-drag-handle` element (rendered inside
+      // each StateNode/DecisionNode) initiates a node drag. Clicks on any
+      // other part of the node body go to their normal handlers — no more
+      // accidentally moving a node while clicking an action chip.
+      const dragHandle = '.node-drag-handle';
+
       // DecisionNode: inject stateNumber (same sequence as state nodes)
       if (n.type === 'decisionNode') {
         return {
           ...n,
+          dragHandle,
           data: {
             ...n.data,
             stateNumber: stateNumberMap.get(n.id) ?? 0,
@@ -1304,6 +1015,7 @@ export function Canvas() {
       }
       return {
         ...n,
+        dragHandle,
         data: {
           ...n.data,
           stateNumber: stateNumberMap.get(n.id) ?? 0,
@@ -1538,7 +1250,6 @@ export function Canvas() {
           </div>
         </div>
       )}
-      <ManualDrawOverlay />
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -1548,7 +1259,6 @@ export function Canvas() {
         onConnectStart={onConnectStart}
         onConnectEnd={onConnectEnd}
         connectOnClick={false}
-        connectionLineComponent={DrawingConnectionLine}
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}
         onEdgeDoubleClick={onEdgeDoubleClick}
@@ -1647,10 +1357,6 @@ export function Canvas() {
             </button>
             <span className="canvas-tool__label">Renumber</span>
           </div>
-          <div className="canvas-tool">
-            <DrawPathToggle />
-            <span className="canvas-tool__label">Draw Path</span>
-          </div>
         </div>
         <div className="canvas-bottom-bar__actions">
           <button
@@ -1698,20 +1404,3 @@ export function Canvas() {
   );
 }
 
-// ── Draw Path toggle button (floating on canvas) ───────────────────────────
-function DrawPathToggle() {
-  const active = useDiagramStore(s => s._drawPathMode);
-  const toggle = () => useDiagramStore.setState(s => ({ _drawPathMode: !s._drawPathMode }));
-  return (
-    <button
-      className={`btn btn--circle ${active ? 'btn--primary' : 'btn--ghost'}`}
-      onClick={toggle}
-      title={active
-        ? 'Draw Path mode ON — drag off a node handle, click to place waypoints, click a target node to finish. Click again to exit.'
-        : 'Draw Path: drag off a handle then click waypoints to manually route a connection (same as holding Shift).'}
-      style={{ fontSize: 14 }}
-    >
-      {'\u270E'}
-    </button>
-  );
-}

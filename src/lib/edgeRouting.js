@@ -184,6 +184,62 @@ export function computeAutoRoute(src, tgt, edgeData, allNodes, sourceHandle, sna
   // then down, left handle = left then down. NEVER down-first stub.
   const isSideHandleExit = sourceHandle === 'exit-fail' || sourceHandle === 'exit-retry';
 
+  // Loop-back: user picked Loop Left / Loop Right in the connect popup,
+  // which stored `loopSide` on edge data. For BACKWARD edges (target
+  // above source), route around the chosen side. No frozen waypoints —
+  // re-routes cleanly when nodes move.
+  if (isBackward) {
+    // Every backward edge is parametric. Three tunables read live from
+    // edge data (defaults if unset):
+    //   loopOffset    — how far past the node bounds the side rail sits
+    //   loopTopDrop   — bottom-handle only: vertical drop before turning out
+    //   loopBottomDrop — vertical drop above target before turning in
+    // `loopSide` defaults to the side the target sits on relative to source;
+    // first drag pins it so the rail can't flip across mid-X.
+    const PAD      = edgeData?.loopOffset     ?? 60;
+    const TOP_DROP = edgeData?.loopTopDrop    ?? 40;
+    const BOT_DROP = edgeData?.loopBottomDrop ?? 40;
+    const goRight = edgeData?.loopSide === 'right'
+                 || (edgeData?.loopSide == null && tgt.x >= src.x);
+    // Bounds — handle position determines which edge of the node `src.x` is.
+    const srcCenterX = sourceHandle === 'exit-fail'  ? src.x - NODE_WIDTH / 2
+                     : sourceHandle === 'exit-retry' ? src.x + NODE_WIDTH / 2
+                     : src.x;
+    const srcLeft  = srcCenterX - NODE_WIDTH / 2;
+    const srcRight = srcCenterX + NODE_WIDTH / 2;
+    // Target enters at top-center, so tgt.x IS the center.
+    const tgtLeft  = tgt.x - NODE_WIDTH / 2;
+    const tgtRight = tgt.x + NODE_WIDTH / 2;
+    const sideX = goRight
+      ? Math.max(srcRight, tgtRight) + PAD
+      : Math.min(srcLeft,  tgtLeft)  - PAD;
+    if (isSideHandleExit) {
+      // Side handle: perpendicular out first. 3 waypoints, 4 segments.
+      //   seg 0: src → (sideX, src.y)        — top horizontal (locked to src.y)
+      //   seg 1: → (sideX, tgt.y - botDrop) — SIDE RAIL (drag X → loopOffset)
+      //   seg 2: → (tgt.x, tgt.y - botDrop) — BOTTOM HORIZONTAL (drag Y → loopBottomDrop)
+      //   seg 3: → tgt                      — final vertical (locked to tgt.x)
+      return [
+        { x: sideX, y: src.y },
+        { x: sideX, y: tgt.y - BOT_DROP },
+        { x: tgt.x, y: tgt.y - BOT_DROP },
+      ];
+    }
+    // Bottom handle: perpendicular out (down), then over, up, in. 4 waypoints,
+    // 5 segments.
+    //   seg 0: src → (src.x, src.y + topDrop) — initial vertical (locked to src.x)
+    //   seg 1: → (sideX, src.y + topDrop)     — TOP HORIZONTAL (drag Y → loopTopDrop)
+    //   seg 2: → (sideX, tgt.y - botDrop)     — SIDE RAIL (drag X → loopOffset)
+    //   seg 3: → (tgt.x, tgt.y - botDrop)     — BOTTOM HORIZONTAL (drag Y → loopBottomDrop)
+    //   seg 4: → tgt                          — final vertical (locked to tgt.x)
+    return [
+      { x: src.x, y: src.y + TOP_DROP },
+      { x: sideX, y: src.y + TOP_DROP },
+      { x: sideX, y: tgt.y - BOT_DROP },
+      { x: tgt.x, y: tgt.y - BOT_DROP },
+    ];
+  }
+
   // Side-handle decision exits (pass/fail): always L-bend (horizontal out
   // from the handle, then vertical to target). Works for forward AND
   // backward targets as long as the target is on the SAME side the handle
@@ -226,10 +282,9 @@ export function computeAutoRoute(src, tgt, edgeData, allNodes, sourceHandle, sna
     return [{ x: tgt.x, y: src.y }];
   }
 
-  // Backward edges: U-bend wrapping around diagram edge
-  if (isBackward) {
-    return computeBackwardWaypoints(src, tgt, allNodes);
-  }
+  // (Backward edges handled above — every backward edge goes through
+  //  the parametric loop-back code path, whether or not the user picked
+  //  Loop Left / Loop Right explicitly.)
 
   // Forward offset: Z-bend (down to midpoint, over, down)
   if (isSideways) {
@@ -271,67 +326,6 @@ export function computeAutoRoute(src, tgt, edgeData, allNodes, sourceHandle, sna
  * @param {string} sourceHandle — handle id ('exit-pass', 'exit-fail', or null)
  * @returns {Array} adjusted waypoint array
  */
-export function adjustTerminalRuns(waypoints, src, tgt, sourceHandle) {
-  if (!waypoints || waypoints.length === 0) return waypoints;
-
-  const wps  = waypoints.map(wp => ({ ...wp }));
-  const orig = waypoints; // untouched reference for comparisons
-  // v1.34: side handles = exit-fail (right), exit-retry (left). Bottom = exit-pass / null / exit-single.
-  const isSideHandle = sourceHandle === 'exit-fail' || sourceHandle === 'exit-retry';
-
-  // ── Source end ──
-  if (isSideHandle) {
-    // Side handle → horizontal first segment → shift Y of first horizontal run
-    const origY = orig[0].y;
-    for (let i = 0; i < wps.length - 1; i++) {
-      if (i === 0 || Math.abs(orig[i].y - origY) < 2) {
-        wps[i] = { ...wps[i], y: src.y };
-      } else break;
-    }
-  } else {
-    // Bottom handle → vertical first segment → shift X of first vertical run
-    const origX = orig[0].x;
-    for (let i = 0; i < wps.length - 1; i++) {
-      if (i === 0 || Math.abs(orig[i].x - origX) < 2) {
-        wps[i] = { ...wps[i], x: src.x };
-      } else break;
-    }
-    // Also track Y of the first horizontal run (source departure).
-    // For a U-route: wp[0]=(srcX, srcY+D), wp[1]=(sideX, srcY+D)
-    // When source moves, these Y values should track src.y + offset.
-    if (wps.length >= 2) {
-      const origDepY = orig[0].y;
-      const origSrcY = origDepY; // first wp Y was originally relative to source
-      const deltaY = src.y - (orig.length >= 2 ? orig[0].y - (orig[0].y - src.y) : src.y);
-      // Simpler: compute original offset from source, apply to new source Y
-      // Original offset = orig[0].y - originalSrcY. But we don't have originalSrcY.
-      // Instead: shift all wps sharing the same Y as wp[0] by how much wp[0] moved.
-      const yShift = wps[0].y - orig[0].y; // how much wp[0] already moved (0 for bottom handle)
-      if (Math.abs(yShift) < 1) {
-        // Bottom handle: wp[0].x was shifted but Y didn't change yet.
-        // Nothing to do — Y is fine for bottom handle source departure.
-      }
-    }
-  }
-
-  // ── Target end: shift last vertical run ──
-  // Walk backward: consecutive wps sharing X with the last wp form
-  // the vertical drop into the target. They all shift to targetX.
-  // Stop at index 1 so we don't collide with source-adjusted wp[0].
-  const origLastX = orig[orig.length - 1].x;
-  for (let i = wps.length - 1; i >= 1; i--) {
-    if (Math.abs(orig[i].x - origLastX) < 2) {
-      wps[i] = { ...wps[i], x: tgt.x };
-    } else break;
-  }
-
-  // Single-waypoint L-bend (side handle): adjust both coordinates
-  if (wps.length === 1 && isSideHandle) {
-    wps[0] = { ...wps[0], x: tgt.x };
-  }
-
-  return wps;
-}
 
 // ── Node Clearance ──────────────────────────────────────────────────────────
 
@@ -508,40 +502,6 @@ export function enforceNodeClearance(wps, src, tgt, allNodes, sourceHandle = nul
  * First segment (exits source node) and last segment (enters target node)
  * are never draggable — they're locked to the node handles.
  */
-export function canDragSegment(seg, totalPoints) {
-  const isFirstSeg = seg.ptIdxA === 0;
-  const isLastSeg = seg.ptIdxB === totalPoints - 1;
-  return !isFirstSeg && !isLastSeg;
-}
-
-/**
- * Apply a drag delta to a segment's waypoints.
- * Horizontal segments move vertically (change Y).
- * Vertical segments move horizontally (change X).
- *
- * @param {Array} dragWps — materialized waypoint array (fullPts without src/tgt)
- * @param {Object} seg — segment metadata from buildSegments
- * @param {number} dx — horizontal drag delta in flow coordinates
- * @param {number} dy — vertical drag delta in flow coordinates
- * @returns {Array} new waypoint array with drag applied
- */
-export function applySegmentDrag(dragWps, seg, dx, dy) {
-  const wps = dragWps.map(w => ({ ...w }));
-  const wpIdxA = seg.ptIdxA - 1; // -1 because fullPts[0] = src
-  const wpIdxB = seg.ptIdxB - 1;
-
-  if (seg.isH) {
-    // Horizontal segment → drag vertically
-    if (wpIdxA >= 0 && wpIdxA < wps.length) wps[wpIdxA] = { ...wps[wpIdxA], y: dragWps[wpIdxA].y + dy };
-    if (wpIdxB >= 0 && wpIdxB < wps.length) wps[wpIdxB] = { ...wps[wpIdxB], y: dragWps[wpIdxB].y + dy };
-  } else {
-    // Vertical segment → drag horizontally
-    if (wpIdxA >= 0 && wpIdxA < wps.length) wps[wpIdxA] = { ...wps[wpIdxA], x: dragWps[wpIdxA].x + dx };
-    if (wpIdxB >= 0 && wpIdxB < wps.length) wps[wpIdxB] = { ...wps[wpIdxB], x: dragWps[wpIdxB].x + dx };
-  }
-
-  return wps;
-}
 
 /**
  * Remove collinear waypoints — adjacent points on the same axis that can merge.
@@ -579,48 +539,6 @@ export function cleanWaypoints(pts) {
  * @param {Object} handlePos — source handle {x, y}
  * @param {Array} waypoints — drawn waypoint array
  * @param {Object} tgtPos — target handle {x, y} (optional — used for accurate last axis detection)
- */
-export function computeSegmentAxes(handlePos, waypoints, tgtPos) {
-  if (!waypoints || waypoints.length === 0) return { firstSegmentAxis: 'vertical', lastSegmentAxis: 'vertical' };
-
-  // First segment: handle → wp[0]
-  const wp0 = waypoints[0];
-  const dx0 = Math.abs(handlePos.x - wp0.x);
-  const dy0 = Math.abs(handlePos.y - wp0.y);
-  let firstSegmentAxis;
-  if (dx0 < ALIGN_THRESHOLD && dy0 >= ALIGN_THRESHOLD) firstSegmentAxis = 'vertical';
-  else if (dy0 < ALIGN_THRESHOLD && dx0 >= ALIGN_THRESHOLD) firstSegmentAxis = 'horizontal';
-  else firstSegmentAxis = dy0 >= dx0 ? 'vertical' : 'horizontal';
-
-  // Last segment: wp[last] → target
-  // Best method: compare last waypoint with actual target position
-  const wpLast = waypoints[waypoints.length - 1];
-  let lastSegmentAxis;
-  if (tgtPos) {
-    const dxL = Math.abs(wpLast.x - tgtPos.x);
-    const dyL = Math.abs(wpLast.y - tgtPos.y);
-    if (dxL < ALIGN_THRESHOLD && dyL >= ALIGN_THRESHOLD) lastSegmentAxis = 'vertical';
-    else if (dyL < ALIGN_THRESHOLD && dxL >= ALIGN_THRESHOLD) lastSegmentAxis = 'horizontal';
-    else lastSegmentAxis = dxL <= dyL ? 'vertical' : 'horizontal';
-  } else {
-    // Fallback: infer from waypoint pattern (less reliable)
-    if (waypoints.length >= 2) {
-      const wpPrev = waypoints[waypoints.length - 2];
-      const sameX = Math.abs(wpPrev.x - wpLast.x) < ALIGN_THRESHOLD;
-      // If prev→last is vertical (share X), last→tgt is probably horizontal, and vice versa
-      lastSegmentAxis = sameX ? 'horizontal' : 'vertical';
-    } else {
-      lastSegmentAxis = firstSegmentAxis === 'vertical' ? 'horizontal' : 'vertical';
-    }
-  }
-
-  return { firstSegmentAxis, lastSegmentAxis };
-}
-
-// ── Label Placement ──────────────────────────────────────────────────────────
-
-/**
- * Find the best segment for placing a label (the longest one).
  */
 export function findLabelSegment(segments) {
   let best = segments[0];
