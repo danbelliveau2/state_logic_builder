@@ -4,10 +4,30 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '1.34.0';
+export const APP_VERSION = '2.1.0';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '2.1.0',
+    date: '2026-05-04',
+    time: '08:15',
+    author: 'Dan Belliveau',
+    changes: [
+      'Branch routing locked-in: every branch exits perpendicular to its handle face. Right exit = right then down (L-bend, 2 segments). Left exit = left then down. Bottom exit aligned = straight line; bottom exit offset = down → halfway-Y → over → down (Z-bend). Side-handle detection no longer gated on `isDecisionExit` — older edges (SDC PNP init template, manually rewired) now route correctly.',
+      'Branch edges go GRAY across the board: edge stroke, label pill background, source handle dots. Labels keep their text (On / Off / Pass / Fail). In-node colored pills (✓ On / Off inside the Check row, signal latches like Part_Gripped ON) stay colored — those are status indicators, not edges.',
+      'Branch labels read LIVE from the source state\'s PickerV2 `pickerConfig.edgeLabels` via getNodes(), so a Check & Branch on Part_Gripped renders On / Off, never the legacy "Ready" placeholder. Stored data only used as fallback; "Ready" is explicitly dropped.',
+      'Arrow rendering: one arrow per visually-straight segment, placed in the MIDDLE. Removed the `markerEnd` that was adding an extra arrow at the path terminus on top of the last segment\'s middle arrow. `cleanWaypoints` now runs before buildSegments so collinear waypoints don\'t fake-split a straight line into two segments (which previously gave 2 arrows on a straight edge).',
+      'Branch-primary normalizer: detects edges by `sourceHandle in {exit-pass, exit-fail, exit-retry}` OR `data.isDecisionExit` OR source-node-has-Check&Branch-action. Clears stale `manualRoute`/`waypoints` on every branch edge it touches. Repositions children to canonical positions matching their handle role when the swap creates a wrong-side situation. Updates source action\'s `pickerConfig.edgeLabels` + `condition` in lockstep so the picker reopens correctly.',
+      'Branch edges ALWAYS auto-route in RoutableEdge — defensive override that ignores any stored waypoints when sourceHandle is a branch handle. Locks in the perpendicular-out rule at render time.',
+      'PT log UI redesign: drops the "pick existing field" dropdown and the picked-condition framing. "Will log: {Subject}" — generic, doesn\'t reference a primary outcome (Check & Continue has no primary). Field name = bare subject name (e.g. `PartCheck`); extras = `{Subject}_{Extra}`. Auto-create dedupes by name. New `logExtras` grammar field surfaces "Also log:" checkboxes per subject — e.g. analog probe gets `Actual Position` checkbox.',
+      'PT log pills render INSIDE the state node body next to signal-latch pills (blue, 📊 glyph). One pill per active log target. Subjects without extras show no "Also log:" UI.',
+      'ConnectMenu: removed downLeft / downRight buttons — single Down button. New-node spawn for side handles uses the Design-tab Branch X / Y values directly. Spawn distance is the FULL distance (no extra `parent.height` math), so the gap between sequential nodes matches the Branch Y setting exactly.',
+      'ConnectMenu popup is now STICKY: opens on hover (100ms dwell), stays open until click-option / click-outside / Esc. No auto-close-on-mouse-leave timer — kills the "popup closes while I\'m reaching for an option" frustration.',
+      'Design tab additions: Branch Y (down) px setting (default 200), Branch X (over) px setting (default 400), and a 7-case Branch Routing Reference section showing the locked-in rules as ASCII diagrams.',
+      'Bug fixes: handle hit zones back to straddling the node edge (the outside-only shift was creating a 12px visual gap before edges); Universal Picker terminal chips inline with Done; section banner shows family name when single-family; v1.34 normalizer also runs on persist rehydrate (was only firing on loadProject before).',
+    ],
+  },
   {
     version: '1.34.0',
     date: '2026-05-03',

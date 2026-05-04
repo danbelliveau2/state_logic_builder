@@ -5005,17 +5005,44 @@ export function StateNode({ data, selected, id }) {
               const cleanConfig = { ...config };
               delete cleanConfig.isEdit;
 
-              // Auto-create PT field if logging is enabled and no field id
-              // was selected (user picked "+ New field" or left it blank).
-              // We do this on commit (not on picker mount) so cancelling
-              // the picker doesn't leave orphaned fields in the project.
-              if (cleanConfig.ptEnabled && !cleanConfig.ptFieldId && cleanConfig.ptFieldName) {
-                const newId = store.addTrackingField({
-                  name: cleanConfig.ptFieldName,
-                  dataType: 'boolean',
-                  description: `Logged from ${cleanConfig.subjectName} check`,
-                });
-                cleanConfig.ptFieldId = newId;
+              // Auto-create PT field(s) when logging is enabled.
+              // PRIMARY field = the picked Condition (always logged).
+              // EXTRA fields = each entry in ptExtraLogs.
+              // Names are derived ({subject}_{value}) — never user-typed.
+              // We dedupe by name against existing fields so edits don't
+              // produce duplicate PT entries. Done on commit (not picker
+              // mount) so a cancel leaves no orphans.
+              // ptFieldId / ptFieldName remain the PRIMARY field's id and
+              // name, mirrored onto the action so the existing PT-badge
+              // display code in this file keeps working.
+              if (cleanConfig.ptEnabled) {
+                const sName = cleanConfig.subjectName || 'Result';
+                const strip = s => String(s).replace(/\s+/g, '');
+                const existing = store.project?.partTracking?.fields ?? [];
+                const findOrCreate = (name, dataType, description) => {
+                  const hit = existing.find(f => f.name === name);
+                  if (hit) return hit.id;
+                  return store.addTrackingField({ name, dataType, description });
+                };
+                // Primary field = the subject's name. Stores whatever the
+                // subject reads at the moment of the check. No condition
+                // suffix — the value tells you the state, the field name
+                // is just the source. Boolean for digital, vision, branch;
+                // analog primary is also boolean (in-tol vs out-of-tol).
+                const primaryName = sName;
+                cleanConfig.ptFieldId   = findOrCreate(
+                  primaryName, 'boolean',
+                  `Auto-logged state of ${sName}`,
+                );
+                cleanConfig.ptFieldName = primaryName;
+                cleanConfig.ptExtraFieldIds = {};
+                for (const extra of (cleanConfig.ptExtraLogs ?? [])) {
+                  const xName = `${sName}_${strip(extra)}`;
+                  cleanConfig.ptExtraFieldIds[extra] = findOrCreate(
+                    xName, 'real',
+                    `Auto-logged ${extra} from ${sName}`,
+                  );
+                }
               }
 
               // ── Helper: ensure the diagram graph mirrors the picker config.
@@ -5092,18 +5119,20 @@ export function StateNode({ data, selected, id }) {
                   : [null];
                 const count = Math.max(1, cleanConfig.edgeTopology || 1);
                 const baseX = parentNode.position.x;
-                const baseY = parentNode.position.y + 200;
-                // v1.34 layout — primary outcome goes STRAIGHT DOWN, alternates
-                // kick out the side. Matches normal SDC machine flow.
-                //   index 0 → exit-pass at Bottom → child at offset 0 (down)
-                //   index 1 → exit-fail at Right  → child at offset +280
-                //   index 2 → exit-retry at Left  → child at offset -280
-                const branchOffsets = [0, 280, -280];
+                // Direct settings (Design tab → Branch Y / Branch X).
+                // Primary (bottom) at +Y_OFF; alternate / retry at +/-X_OFF, +Y_OFF.
+                const Y_OFF  = Number(refreshedState.project?.designTheme?.branchYOffset ?? 200);
+                const X_OFF  = Number(refreshedState.project?.designTheme?.branchXOffset ?? 400);
+                const branchOffsets = [
+                  { x: 0,       y: Y_OFF },  // primary (bottom)
+                  { x: +X_OFF,  y: Y_OFF },  // alternate (right) — same row
+                  { x: -X_OFF,  y: Y_OFF },  // retry (left) — same row
+                ];
                 const branchHandles = ['exit-pass', 'exit-fail', 'exit-retry'];
                 for (let i = 0; i < count; i++) {
                   const label = labels[i] ?? null;
-                  const offset = branchOffsets[i] ?? 0;
-                  const position = { x: baseX + offset, y: baseY };
+                  const off = branchOffsets[i] ?? { x: 0, y: Y_OFF };
+                  const position = { x: baseX + off.x, y: parentNode.position.y + off.y };
                   const newNodeId = refreshedState.addNode(refreshedSm.id, { position });
                   if (!newNodeId) continue;
                   refreshedState.addEdge(refreshedSm.id,
@@ -5122,6 +5151,13 @@ export function StateNode({ data, selected, id }) {
                     },
                   );
                 }
+                // Auto-swap on spawn: enforce "lower-numbered next state =
+                // primary handle". For a fresh fan-out into newly created
+                // children this is already correct (children spawn at
+                // offset 0 / +280 / -280 → DFS visits left-to-right →
+                // primary's child gets the lower step number). For edits
+                // that retarget existing nodes, this re-sorts handles.
+                useDiagramStore.getState().normalizeBranchPrimaries(refreshedSm.id);
               };
 
               if (isEdit) {
@@ -5220,18 +5256,21 @@ export function StateNode({ data, selected, id }) {
                   // anchor stays stable as either node grows.
                   const baseX = parentNode.position.x;
                   const py = parentNode.position.y;
-                  const baseY = py + 200;
                   const isBranch = cleanConfig.subAction === 'branch' && count > 1;
-                  // v1.34 layout — primary outcome goes straight down, alternates
-                  // out the side. (Used only for non-branch single-spawn here;
-                  // ensureBranchFanOut handles the multi-edge case.)
-                  const branchOffsets = [0, 280, -280];
+                  // Direct settings (Design tab → Branch Y / Branch X).
+                  const Y_OFF  = Number(store.project?.designTheme?.branchYOffset ?? 200);
+                  const X_OFF  = Number(store.project?.designTheme?.branchXOffset ?? 400);
+                  const branchOffsets = [
+                    { x: 0,       y: Y_OFF },
+                    { x: +X_OFF,  y: Y_OFF },
+                    { x: -X_OFF,  y: Y_OFF },
+                  ];
                   const branchHandles = ['exit-pass', 'exit-fail', 'exit-retry'];
                   for (let i = 0; i < count; i++) {
                     const label = labels[i] ?? null;
-                    const offset = isBranch ? (branchOffsets[i] ?? 0) : 0;
+                    const off = isBranch ? (branchOffsets[i] ?? { x: 0, y: Y_OFF }) : { x: 0, y: Y_OFF };
                     const newNodeId = store.addNode(sm.id, {
-                      position: { x: baseX + offset, y: baseY },
+                      position: { x: baseX + off.x, y: py + off.y },
                     });
                     if (!newNodeId) continue;
                     const edgeData = isBranch ? {
@@ -5494,6 +5533,50 @@ export function StateNode({ data, selected, id }) {
                 ))}
               </div>
             )}
+
+            {/* PT log pills — one per active log target on any PickerV2
+                Check action with ptEnabled. Same style as signal pills,
+                blue to distinguish from green signal latches. Clipboard
+                glyph signals "this state writes to a PT field". The
+                state-of-the-subject pill mirrors how signal latches read
+                ("PartCheck" stores PartCheck's value at this step). */}
+            {(() => {
+              const ptPills = (actions ?? [])
+                .filter(a => a?.pickerV2 && a?.pickerConfig?.ptEnabled)
+                .flatMap(a => {
+                  const cfg = a.pickerConfig ?? {};
+                  const subj = cfg.subjectName || 'Result';
+                  const out = [{ name: subj, kind: 'primary' }];
+                  for (const x of (cfg.ptExtraLogs ?? [])) {
+                    out.push({
+                      name: `${subj}_${String(x).replace(/\s+/g, '')}`,
+                      kind: 'extra',
+                    });
+                  }
+                  return out;
+                });
+              if (ptPills.length === 0) return null;
+              return (
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: '0 4px 4px' }}>
+                  {ptPills.map((p, i) => (
+                    <span
+                      key={`pt-${i}-${p.name}`}
+                      title={`Logs ${p.name} to Part Tracking`}
+                      onClick={e => e.stopPropagation()}
+                      onMouseDown={e => e.stopPropagation()}
+                      style={{
+                        fontSize: 9, fontWeight: 600, background: '#0072B5', color: '#fff',
+                        borderRadius: 10, padding: '1px 6px',
+                        display: 'inline-flex', alignItems: 'center', gap: 3,
+                      }}
+                    >
+                      <span style={{ fontSize: 9 }}>📊</span>
+                      {p.name}
+                    </span>
+                  ))}
+                </div>
+              );
+            })()}
           </>
         )}
       </div>

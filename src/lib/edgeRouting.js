@@ -176,13 +176,13 @@ export function computeAutoRoute(src, tgt, edgeData, allNodes, sourceHandle, sna
   //               Z-bend so the source stub always exits perpendicularly,
   //               otherwise the user sees a diagonal stub at drag start.
   const isSideways     = Math.abs(src.x - tgt.x) > snapStraightThreshold;
-  const isDecisionExit = edgeData?.isDecisionExit === true;
-  // v1.34 — handle positions changed: exit-pass moved to Bottom (primary
-  // outcome goes straight down), exit-retry moved to Left (loop-back).
-  // Side handles now: exit-fail (right), exit-retry (left).
-  // Bottom handles: exit-pass (primary), exit-single, null.
-  const isSideHandleExit = isDecisionExit
-    && (sourceHandle === 'exit-fail' || sourceHandle === 'exit-retry');
+  // Side handle = sourceHandle alone is sufficient. Don't gate on
+  // isDecisionExit — older edges (SDC init template, manually wired)
+  // may not have that flag, but if the source handle is exit-fail or
+  // exit-retry the edge MUST exit perpendicular to the side face.
+  // Locked-in rule (Branch Routing Reference): right handle = right
+  // then down, left handle = left then down. NEVER down-first stub.
+  const isSideHandleExit = sourceHandle === 'exit-fail' || sourceHandle === 'exit-retry';
 
   // Side-handle decision exits (pass/fail): always L-bend (horizontal out
   // from the handle, then vertical to target). Works for forward AND
@@ -195,20 +195,24 @@ export function computeAutoRoute(src, tgt, edgeData, allNodes, sourceHandle, sna
   // bounds — NOT diagram-wide bounds, which produced wildly long routes when
   // there were unrelated distant nodes.
   if (isSideHandleExit) {
-    // v1.34 layout: exit-fail = right, exit-retry = left. Determine which
-    // side this handle exits from so we can detect "wrong-side" targets.
-    const isLeftHandle = sourceHandle === 'exit-retry';   // retry = left handle
-    // "Wrong side" check: left-handle wants tgt to the LEFT; right-handle
-    // (exit-fail) wants tgt to the RIGHT. Tolerance for slight overlap.
+    // Side-handle exits are SIMPLE: perpendicular out, then drop.
+    //   exit-fail  (right) → horizontal RIGHT to tgt.x, then vertical DOWN to tgt
+    //   exit-retry (left)  → horizontal LEFT  to tgt.x, then vertical DOWN to tgt
+    // Two segments, one bend. The bend lands at the target's X column so
+    // the second segment is a clean vertical drop into the target's top.
+    const isLeftHandle = sourceHandle === 'exit-retry';
     const TOL = 20;
     const wrongSide = isLeftHandle
-      ? (tgt.x > src.x + TOL)               // left handle but target is right of source
-      : (tgt.x + NODE_WIDTH < src.x - TOL); // right handle but target is left of source
+      ? (tgt.x > src.x + TOL)
+      : (tgt.x + NODE_WIDTH < src.x - TOL);
 
     if (wrongSide) {
+      // Target is on the WRONG side of this handle (e.g. user dragged the
+      // alternate child across the source). We can't go "right then down"
+      // because right takes us away from target — route around the local
+      // source+target bounds, still keeping a perpendicular exit.
       const DROP = 40;
       const PAD  = 60;
-      // Local bounds: just go around the source+target pair, not the whole diagram.
       const sideX = isLeftHandle
         ? Math.min(src.x, tgt.x) - PAD
         : Math.max(src.x, tgt.x) + NODE_WIDTH + PAD;
@@ -218,7 +222,7 @@ export function computeAutoRoute(src, tgt, edgeData, allNodes, sourceHandle, sna
         { x: tgt.x, y: tgt.y - DROP },
       ];
     }
-    // Normal case: simple L-bend. Horizontal out to tgt.x, vertical to target.
+    // Normal case: simple L-bend. Right then down (or left then down).
     return [{ x: tgt.x, y: src.y }];
   }
 

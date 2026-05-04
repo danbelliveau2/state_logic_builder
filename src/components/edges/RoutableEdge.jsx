@@ -46,6 +46,7 @@ export function RoutableEdge({
   targetX, targetY,
   sourceHandleId: sourceHandle,  // React Flow v12 passes sourceHandleId, not sourceHandle
   data,
+  label,                          // top-level edge label (fallback for data.outcomeLabel)
   style,
   markerEnd,
   selected,
@@ -56,7 +57,16 @@ export function RoutableEdge({
   const pushHistory = useDiagramStore(s => s._pushHistory);
 
   const storedWaypoints = Array.isArray(data?.waypoints) ? data.waypoints : [];
-  const isManualStored = data?.manualRoute === true && storedWaypoints.length > 0;
+  // Branch handles (exit-pass / exit-fail / exit-retry) ALWAYS auto-route —
+  // never trust stored waypoints. Locked-in rule: the first segment must
+  // exit perpendicular to the handle face. Stale stored waypoints from
+  // older routing experiments (down-stubs, U-routes) violate that rule
+  // and must be ignored at render time, not just cleaned in the store.
+  const BRANCH_HANDLES = new Set(['exit-pass', 'exit-fail', 'exit-retry']);
+  const isBranchHandle = BRANCH_HANDLES.has(sourceHandle);
+  const isManualStored = data?.manualRoute === true
+                       && storedWaypoints.length > 0
+                       && !isBranchHandle;
 
   const src = { x: sourceX, y: sourceY };
   const tgt = { x: targetX, y: targetY };
@@ -84,8 +94,11 @@ export function RoutableEdge({
   // Push any segment that runs too close to a node away with clearance
   routeWps = enforceNodeClearance(routeWps, src, tgt, nodes, sourceHandle);
 
-  // Build the full orthogonal point sequence
-  const fullPts  = buildFullPath(src, routeWps, tgt);
+  // Build the full orthogonal point sequence. cleanWaypoints merges any
+  // collinear points so a visually-straight line never gets split into two
+  // segments — otherwise each "segment" would render its own arrow on what
+  // looks like one straight run.
+  const fullPts  = cleanWaypoints(buildFullPath(src, routeWps, tgt));
   const segments = buildSegments(fullPts);
   const pathD    = pointsToSvg(fullPts);
 
@@ -139,7 +152,14 @@ export function RoutableEdge({
   }, [smId, id, screenToFlowPosition, updateWP, pushHistory, fullPts]);
 
   // ── Styles ──────────────────────────────────────────────────────────────
-  const strokeColor = selected ? '#0072B5' : (style?.stroke ?? '#6b7280');
+  // v1.34 — branch edges (decision exits) are GRAY regardless of stored style.
+  // Older edges have `style.stroke` baked in as green/red from when they were
+  // created; we ignore that for branch edges and use the neutral gray. The
+  // label pill below (and outcomeLabel) carries the branch identity.
+  const isBranchEdge = data?.isDecisionExit === true;
+  const strokeColor = selected
+    ? '#0072B5'
+    : (isBranchEdge ? '#6b7280' : (style?.stroke ?? '#6b7280'));
   const strokeW     = selected ? 3 : (style?.strokeWidth ?? 2);
 
   return (
@@ -153,32 +173,37 @@ export function RoutableEdge({
         style={{ pointerEvents: 'stroke' }}
       />
 
-      {/* Visible orthogonal path */}
+      {/* Visible orthogonal path. NO markerEnd — direction is shown by the
+          per-segment arrows below (one in the middle of each segment). Adding
+          markerEnd here would put an extra arrowhead at the path terminus on
+          top of the last segment's middle arrow, giving 2 arrows on a single
+          straight edge. */}
       <path
         d={pathD}
         fill="none"
         stroke={strokeColor}
         strokeWidth={strokeW}
-        markerEnd={markerEnd}
         style={{ pointerEvents: 'none' }}
       />
 
-      {/* Direction arrows — one per segment longer than MIN_SEGMENT_LEN.
-          Short connectors between bends don't need arrows. Loops/backward edges
-          get multiple arrows that show flow at each run.
-          First segment skips the area covered by a source pill (if present). */}
+      {/* Direction arrows — one per segment, placed in the MIDDLE of each
+          segment. Tiny ortho-corner segments under MIN are skipped to avoid
+          arrows overlapping at bends. The source-pill check matches the
+          label-render gate below: any branch-handle edge is a candidate. */}
       {segments.map((seg, i) => {
-        const MIN_SEGMENT_LEN = 60;
+        const MIN_SEGMENT_LEN = 24;
         const SIZE = 7;
         const WIDTH = 4;
         const segLen = Math.hypot(seg.b.x - seg.a.x, seg.b.y - seg.a.y);
         if (segLen < MIN_SEGMENT_LEN) return null;
 
-        const hasSourcePill = i === 0 && data?.isDecisionExit && data?.outcomeLabel && sourceHandle !== 'exit-single';
-        const PILL_CLEAR = 84;
+        const BRANCH_HANDLES = new Set(['exit-pass', 'exit-fail', 'exit-retry']);
+        const isBranchEdge2 = data?.isDecisionExit === true || BRANCH_HANDLES.has(sourceHandle);
+        const hasSourcePill = i === 0 && isBranchEdge2 && sourceHandle !== 'exit-single';
+        const PILL_CLEAR = 60;
         // If a source pill covers the first segment's start, place arrow past it;
         // skip entirely if the segment can't fit both pill and arrow.
-        if (hasSourcePill && segLen < PILL_CLEAR + 20) return null;
+        if (hasSourcePill && segLen < PILL_CLEAR + 14) return null;
         const tDist = hasSourcePill ? PILL_CLEAR : segLen * 0.5;
 
         const ux = (seg.b.x - seg.a.x) / segLen;
@@ -203,21 +228,46 @@ export function RoutableEdge({
       {/* Decision exit label pill — pass/fail near the source handle (side
           handles), retry centered on the LONGEST vertical segment (bottom
           handle). Skip single-exit. */}
-      {data?.isDecisionExit && data?.outcomeLabel && sourceHandle !== 'exit-single' && segments.length > 0 && (() => {
-        const isPass    = data.exitColor === 'pass';
-        const isRetry   = data.exitColor === 'retry';
-        const isMulti   = data.exitColor === 'multi';
-        const bgColor   = isMulti ? (OUTCOME_COLORS[(data.outcomeIndex ?? 0) % OUTCOME_COLORS.length])
-                        : isRetry ? '#f59e0b' : isPass ? '#16a34a' : '#dc2626';
-        // Shorten label: "On_Magnet_Presence" → "On". Use the actual stored
-        // label for retry (was hardcoded "Retry-Fail" — that overrode the
-        // user's chosen label and got rendered overlapping the source node).
-        const rawLabel  = data.outcomeLabel;
+      {(() => {
+        // Branch label pill — for any branch-handle edge, derive the label
+        // LIVE from the source state's PickerV2 branch action. That's the
+        // source of truth for "what conditions this state branches on" and
+        // it stays correct after the normalizer reorders handles. Fall back
+        // to whatever the edge has stored if the source action is missing
+        // (e.g. legacy DecisionNode flows). Old edges had `label: 'Ready'`
+        // as a placeholder — we explicitly drop that.
+        const BRANCH_HANDLES = new Set(['exit-pass', 'exit-fail', 'exit-retry']);
+        const isBranch = data?.isDecisionExit === true || BRANCH_HANDLES.has(sourceHandle);
+        if (!isBranch || sourceHandle === 'exit-single' || segments.length === 0) return null;
+
+        // Look up the source node and its branch action.
+        const srcNode = getNodes().find(n => n.id === source);
+        const branchAct = (srcNode?.data?.actions ?? [])
+          .slice().reverse()
+          .find(a => a?.pickerV2
+            && a?.pickerConfig?.mode === 'decision'
+            && a?.pickerConfig?.subAction === 'branch');
+        const elabels = branchAct?.pickerConfig?.edgeLabels ?? [];
+        const liveLabel = sourceHandle === 'exit-pass'  ? elabels[0]
+                        : sourceHandle === 'exit-fail'  ? elabels[1]
+                        : sourceHandle === 'exit-retry' ? elabels[elabels.length - 1]
+                        : null;
+        const stored = data?.outcomeLabel ?? data?.label ?? label ?? '';
+        // Drop the placeholder "Ready" — it's the conditionType='ready'
+        // default from older create paths, never a real branch outcome.
+        const cleaned = stored && stored !== 'Ready' ? stored : '';
+        const rawLabel = liveLabel || cleaned;
+        if (!rawLabel) return null;
+        // v1.34 — branch label pills are GRAY for every outcome. Color is
+        // dropped on edges entirely; the LABEL text still distinguishes
+        // (On / Off / Pass / Fail / Retry / etc.).
+        const bgColor   = '#6b7280';
+        // Shorten label: "On_Magnet_Presence" → "On".
         const labelText = rawLabel.includes('_') ? rawLabel.split('_')[0] : rawLabel;
         const charW     = 6.5;
         const pillW     = Math.max(36, labelText.length * charW + 16);
         const pillH     = 18;
-        const textColor = isRetry ? '#000' : 'white';
+        const textColor = 'white';
 
         // v1.34 layout — handle positions changed:
         //   exit-pass  → BOTTOM (primary, straight down)

@@ -45,7 +45,6 @@
 import { useState, useMemo } from 'react';
 import { GRAMMAR_CATEGORIES, loadGrammar, parseDetailField } from '../lib/pickerGrammar.js';
 import { DeviceIcon, CheckContinueIcon, CheckBranchIcon } from './DeviceIcons.jsx';
-import { useDiagramStore } from '../store/useDiagramStore.js';
 
 // Map grammar row id → DeviceIcon type so the subject buttons can render
 // the same SVG icons used elsewhere in the app. Keeps visual identity
@@ -125,13 +124,17 @@ export function UniversalPicker({
   const [retryEnabled, setRetryEnabled] = useState(seed?.retryEnabled || false);
 
   // Log target — Check & Continue and Check & Branch can write the observed
-  // value to a Part-Tracking (PT) field. Defaults to OFF (user's call: most
-  // checks don't need to log; logging is the exception). When toggled on,
-  // user picks an existing field or creates a new one; the PT field is
-  // auto-created on commit by the StateNode caller.
-  const [ptEnabled,  setPtEnabled]  = useState(seed?.ptEnabled  ?? false);
-  const [ptFieldId,  setPtFieldId]  = useState(seed?.ptFieldId  ?? null);
-  const [ptFieldName, setPtFieldName] = useState(seed?.ptFieldName ?? '');
+  // value to Part-Tracking (PT) fields. The PRIMARY log is whatever you just
+  // checked (the picked Condition) — there's nothing to choose, the system
+  // logs that automatically. Some subjects also expose EXTRA values worth
+  // logging alongside (e.g. an analog probe can also log Actual Position
+  // beyond the in-tol/out-of-tol verdict). Those render as "Also log:"
+  // checkboxes; ptExtraLogs holds the user's selected extras by name.
+  // Default: ON for Check & Continue (set by handleSubActionChange), OFF
+  // otherwise. PT fields are auto-created on commit by the StateNode
+  // caller — names are derived, not user-typed.
+  const [ptEnabled,    setPtEnabled]    = useState(seed?.ptEnabled    ?? false);
+  const [ptExtraLogs,  setPtExtraLogs]  = useState(seed?.ptExtraLogs  ?? []);
 
   // Terminal-state shortcut — instead of picking an action, the user can
   // mark THIS state as Cycle Complete (✓) or Fault (⚠). Selecting one
@@ -310,11 +313,14 @@ export function UniversalPicker({
     }
 
     // Log target persists across check sub-actions (continue + branch). Wait
-    // mode never logs (it just blocks), Action mode doesn't have a "result"
-    // to log. The caller (StateNode onPick handler) auto-creates a PT field
-    // if `ptEnabled && !ptFieldId` — using `ptFieldName` (or subject name as
-    // a default) as the new field's name.
+    // mode never logs (it just blocks); Action mode has no "result" to log.
+    // The PRIMARY log target is the picked condition itself — auto-derived,
+    // not user-typed. EXTRA log targets come from grammarRow.logExtras and
+    // are stored by name in `ptExtraLogs`. The StateNode commit handler
+    // auto-creates one PT field per active log target (primary + extras).
     const isCheck = mode === 'decision' && (subAction === 'check' || subAction === 'branch');
+    const validExtras = parseList(grammarRow.logExtras);
+    const filteredExtras = (ptExtraLogs ?? []).filter(x => validExtras.includes(x));
     onPick && onPick({
       mode,
       subAction:    mode === 'decision' ? subAction : null,
@@ -331,14 +337,10 @@ export function UniversalPicker({
       // Persist retry flag on pickerConfig so re-opening the picker
       // shows the toggle in the same state. Only meaningful for Branch.
       retryEnabled: subAction === 'branch' ? retryEnabled : false,
-      // Log target — only for check / branch. The picker stores the user's
-      // explicit choice; the StateNode caller auto-creates the PT field on
-      // commit if no id was selected.
+      // Log target — only for check / branch. Primary log = the picked
+      // condition (auto). Extras = user-checked items from logExtras.
       ptEnabled:    isCheck ? ptEnabled : false,
-      ptFieldId:    isCheck && ptEnabled ? ptFieldId : null,
-      ptFieldName:  isCheck && ptEnabled
-        ? (ptFieldName || `${subject.name}_Check`)
-        : null,
+      ptExtraLogs:  isCheck && ptEnabled ? filteredExtras : [],
       // Branch count override (for Check & Branch only). Stored so re-opening
       // the picker preserves the user's chosen N.
       branchCount:  subAction === 'branch' ? (branchCount ?? null) : null,
@@ -740,20 +742,20 @@ export function UniversalPicker({
             );
           })()}
 
-          {/* Log-target picker — Check & Continue and Check & Branch. Both
-              "checks" record their observed value to a Part Tracking field by
-              default. The toggle lets the user opt out (rare — usually you
-              want the log). When enabled, picks an existing PT field or
-              creates a new one inline. */}
+          {/* Log-target picker — Check & Continue / Check & Branch.
+              The PRIMARY log is the picked Condition (auto, no chooser).
+              EXTRAS are subject-specific values worth logging alongside —
+              e.g. an analog probe can also log Actual Position. Hidden
+              entirely for subjects with no extras (digital sensors etc.). */}
           {(subAction === 'check' || subAction === 'branch') && (
             <LogTargetPicker
               ptEnabled={ptEnabled}
               setPtEnabled={setPtEnabled}
-              ptFieldId={ptFieldId}
-              setPtFieldId={setPtFieldId}
-              ptFieldName={ptFieldName}
-              setPtFieldName={setPtFieldName}
-              defaultName={`${subject?.name || 'Result'}_Check`}
+              ptExtraLogs={ptExtraLogs}
+              setPtExtraLogs={setPtExtraLogs}
+              condition={condition}
+              extras={parseList(grammarRow?.logExtras)}
+              subjectName={subject?.name}
             />
           )}
         </>
@@ -835,21 +837,31 @@ function stepperBtn(disabled) {
   };
 }
 
-// Log-target picker — toggle + dropdown (existing PT fields, or create new).
-// Renders inline inside the picker for Check & Continue / Check & Branch.
-//   - Toggle "Log result to PT field" (default ON)
-//   - When ON: dropdown of project's PT fields, plus "+ New field" entry
-//   - "+ New field" reveals a text input pre-seeded with `defaultName`
-//   - The actual PT field is created on commit by the StateNode caller (this
-//     keeps the picker free of side effects until the user clicks "Use this")
+// Log-target picker — auto-logs the picked Condition; lets the user opt
+// into additional logs from the subject's `logExtras` list. No name picker
+// — PT field names are derived on commit by the StateNode caller.
+//
+//   master toggle:           "Log result to PT field"
+//   primary log (read-only): "Will log: <Condition>"
+//   extras (when offered):   "Also log:" + checkbox per logExtras entry
+//
+// Subjects with no extras (digital sensors, signals) show only the master
+// toggle and the primary read-out — no checkboxes, no clutter.
 function LogTargetPicker({
   ptEnabled, setPtEnabled,
-  ptFieldId, setPtFieldId,
-  ptFieldName, setPtFieldName,
-  defaultName,
+  ptExtraLogs, setPtExtraLogs,
+  condition,
+  extras,
+  subjectName,
 }) {
-  const ptFields = useDiagramStore(s => s.project?.partTracking?.fields ?? []);
-  const isCreatingNew = ptEnabled && !ptFieldId && !!ptFieldName;
+  const hasExtras = Array.isArray(extras) && extras.length > 0;
+  const toggleExtra = (name) => {
+    setPtExtraLogs(prev => {
+      const set = new Set(prev ?? []);
+      if (set.has(name)) set.delete(name); else set.add(name);
+      return [...set];
+    });
+  };
 
   return (
     <div
@@ -860,7 +872,7 @@ function LogTargetPicker({
         border: `1px solid ${ptEnabled ? '#10b981' : '#e2e8f0'}`,
         borderRadius: 6,
       }}
-      title="Records the observed value to a Part Tracking field for later analysis."
+      title="Records the check result to a Part Tracking field for later analysis."
     >
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
         <input
@@ -875,82 +887,64 @@ function LogTargetPicker({
       </label>
 
       {ptEnabled && (
-        <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 6 }}>
-          {!isCreatingNew ? (
-            <select
-              value={ptFieldId ?? ''}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v === '__new__') {
-                  setPtFieldId(null);
-                  setPtFieldName(defaultName);
-                } else if (v === '') {
-                  setPtFieldId(null);
-                  setPtFieldName('');
-                } else {
-                  const f = ptFields.find(x => x.id === v);
-                  if (f) {
-                    setPtFieldId(f.id);
-                    setPtFieldName(f.name);
-                  }
-                }
-              }}
-              style={{
-                flex: 1,
-                fontSize: 11,
-                padding: '3px 4px',
-                border: '1px solid #cbd5e1',
-                borderRadius: 4,
-                background: '#fff',
-                cursor: 'pointer',
-              }}
-            >
-              <option value="">— pick existing field —</option>
-              {ptFields.map(f => (
-                <option key={f.id} value={f.id}>{f.name}</option>
-              ))}
-              <option value="__new__">+ New field…</option>
-            </select>
-          ) : (
-            <>
-              <input
-                type="text"
-                value={ptFieldName}
-                onChange={(e) => setPtFieldName(e.target.value)}
-                placeholder={defaultName}
-                style={{
-                  flex: 1,
-                  fontSize: 11,
-                  padding: '3px 6px',
-                  border: '1px solid #10b981',
-                  borderRadius: 4,
-                  background: '#fff',
-                }}
-                autoFocus
-              />
-              <button
-                onClick={() => { setPtFieldId(null); setPtFieldName(''); }}
-                style={{
-                  fontSize: 10,
-                  padding: '2px 6px',
-                  border: '1px solid #cbd5e1',
-                  borderRadius: 4,
-                  background: '#fff',
-                  cursor: 'pointer',
-                  color: '#475569',
-                }}
-                title="Cancel new field"
-              >
-                ↶
-              </button>
-            </>
-          )}
-        </div>
-      )}
+        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {/* Primary log — the value being saved is just the subject's
+              current reading (digital → on/off, analog → tolerance result,
+              vision → pass/fail). Field name = subject name. No reference
+              to the picked condition (Check & Continue doesn't pick one). */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
+            <span style={{ color: '#475569', fontWeight: 600 }}>Will log:</span>
+            <span style={{
+              padding: '2px 8px',
+              borderRadius: 10,
+              fontSize: 10,
+              fontWeight: 700,
+              background: '#0072B5',
+              color: '#fff',
+            }}>
+              {subjectName || 'Result'}
+            </span>
+          </div>
 
-      {ptEnabled && isCreatingNew && (
-        <div style={{ fontSize: 9, color: '#10b981', marginTop: 3, fontStyle: 'italic' }}>
-          New field will be created on save.
+          {/* Extras — only render when the subject has any. */}
+          {hasExtras && (
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: '#475569', marginTop: 3 }}>
+                Also log:
+              </span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {extras.map(x => {
+                  const checked = (ptExtraLogs ?? []).includes(x);
+                  return (
+                    <label
+                      key={x}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        padding: '2px 8px',
+                        fontSize: 10,
+                        fontWeight: 600,
+                        border: `1px solid ${checked ? '#10b981' : '#cbd5e1'}`,
+                        borderRadius: 10,
+                        background: checked ? '#10b981' : '#fff',
+                        color: checked ? '#fff' : '#475569',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleExtra(x)}
+                        style={{ cursor: 'pointer', margin: 0 }}
+                      />
+                      {x}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

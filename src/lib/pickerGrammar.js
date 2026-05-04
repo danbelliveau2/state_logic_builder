@@ -167,6 +167,10 @@ export const DEFAULT_GRAMMAR = [
     detail:  'Setpoint name',
     actions: '',
     inputs:  'In Tolerance, Out of Tolerance',
+    // logExtras = additional values that can be logged BEYOND the picked
+    // condition. The condition itself always logs as the primary; extras
+    // render as "Also log:" checkboxes in the picker. Empty = no extras.
+    logExtras: 'Actual Position',
     notes: 'DETAIL = which setpoint to compare against. Decision mode only.',
   },
 
@@ -322,7 +326,7 @@ const LEGACY_FIELDS = [
 ];
 
 // Fields that the current (v5) schema requires.
-const V5_REQUIRED = ['subject', 'detail', 'actions', 'inputs'];
+const V5_REQUIRED = ['subject', 'detail', 'actions', 'inputs', 'logExtras'];
 
 /**
  * Migrate one persisted row to the current v5 schema.

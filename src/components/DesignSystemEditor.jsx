@@ -636,7 +636,163 @@ export function DesignSystemEditor() {
               </button>
             </div>
           </div>
+
+          {/* Branch Y offset — vertical distance from a source state's
+              top-left to its child's top-left. Used for ALL branch children
+              (primary, alternate, retry). Independent of parent height —
+              edit if you want more / less vertical space. */}
+          <div className="ds__canvas-spacing-row" style={{ marginTop: 16 }}>
+            <div className="ds__canvas-spacing-info">
+              <div className="ds__color-name">Branch Y (down)</div>
+              <div className="ds__color-desc">
+                Vertical distance from a source state to its child below
+                (primary), or to the alternate / retry on either side.
+                Default 200.
+              </div>
+            </div>
+            <div className="ds__canvas-spacing-controls">
+              <SpacingNumberInput
+                value={Number(tv('branchYOffset', 200))}
+                onCommit={n => setThemeVal('branchYOffset', n)}
+                min={80}
+                max={600}
+                step={10}
+              />
+              <span style={{ fontSize: 12, color: '#5a6a7e' }}>px</span>
+              <button
+                onClick={() => setThemeVal('branchYOffset', 200)}
+                style={{
+                  fontSize: 11, padding: '4px 10px', border: '1px solid #cbd5e1',
+                  background: '#f8fafc', borderRadius: 4, cursor: 'pointer',
+                }}
+              >
+                Reset to 200
+              </button>
+            </div>
+          </div>
+
+          {/* Branch X offset — horizontal distance from a source state to
+              its alternate (right) or retry (left) child. Set big enough
+              that the side child clears the primary below. */}
+          <div className="ds__canvas-spacing-row" style={{ marginTop: 16 }}>
+            <div className="ds__canvas-spacing-info">
+              <div className="ds__color-name">Branch X (over)</div>
+              <div className="ds__color-desc">
+                Horizontal distance for the alternate (right, +X) and retry
+                (left, -X) children. Set big enough to clear the primary
+                node below — default 400.
+              </div>
+            </div>
+            <div className="ds__canvas-spacing-controls">
+              <SpacingNumberInput
+                value={Number(tv('branchXOffset', 400))}
+                onCommit={n => setThemeVal('branchXOffset', n)}
+                min={120}
+                max={800}
+                step={10}
+              />
+              <span style={{ fontSize: 12, color: '#5a6a7e' }}>px</span>
+              <button
+                onClick={() => setThemeVal('branchXOffset', 400)}
+                style={{
+                  fontSize: 11, padding: '4px 10px', border: '1px solid #cbd5e1',
+                  background: '#f8fafc', borderRadius: 4, cursor: 'pointer',
+                }}
+              >
+                Reset to 400
+              </button>
+            </div>
+          </div>
         </div>
+      </Section>
+
+      {/* ── BRANCH ROUTING REFERENCE ─────────────────────────────────────
+          Locked-in rules for how every branch exits and routes. Build
+          must match these — see feedback memory file
+          `feedback_branch_routing_and_visuals.md`. */}
+      <Section title="Branch Routing Reference" subtitle="How every branch exits and reaches its target">
+        <pre style={{
+          fontFamily: 'ui-monospace, "Cascadia Code", "Source Code Pro", Consolas, monospace',
+          fontSize: 11,
+          lineHeight: 1.4,
+          background: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          borderRadius: 6,
+          padding: 16,
+          color: '#0f172a',
+          whiteSpace: 'pre',
+          overflowX: 'auto',
+        }}>{`1. BOTTOM · New (exits bottom)
+   ┌─────┐
+   │ SRC │
+   └──┬──┘
+      │
+      ▼
+   ┌─────┐
+   │ NEW │
+   └─────┘
+
+2. BOTTOM · Connect — target aligned (exits bottom)
+   ┌─────┐
+   │ SRC │
+   └──┬──┘
+      │
+      ▼
+   ┌─────┐
+   │ TGT │
+   └─────┘
+
+3. BOTTOM · Connect — target offset (exits bottom)
+   ┌─────┐
+   │ SRC │
+   └──┬──┘
+      │       ← drop to halfway Y
+      │
+      └────────┐
+               │
+               ▼
+            ┌─────┐
+            │ TGT │
+            └─────┘
+
+4. RIGHT · New (exits side)        Y = parent height + Vertical Node Gap
+                                   X = 2 × Y  (over far enough to clear primary)
+   ┌─────┐
+   │ SRC ├──────────┐              ← over X
+   └─────┘          │
+                    │              ← down Y (same row as primary)
+                    ▼
+                 ┌─────┐
+                 │ NEW │
+                 └─────┘
+
+5. RIGHT · Connect (exits side)
+   ┌─────┐
+   │ SRC ├────────────┐            ← over to tgt.x
+   └─────┘            │
+                      ▼            ← down to tgt.y
+                   ┌─────┐
+                   │ TGT │
+                   └─────┘
+
+6. LEFT · New (exits side)         X = 2 × Y (same as right, mirrored)
+              ┌─────┐
+   ┌──────────┤ SRC │              ← over X (left)
+   │          └─────┘
+   │                               ← down Y (same row as primary)
+   ▼
+┌─────┐
+│ NEW │
+└─────┘
+
+7. LEFT · Connect (exits side)
+                   ┌─────┐
+       ┌───────────┤ SRC │         ← over (left) to tgt.x
+       │           └─────┘
+       ▼                           ← down to tgt.y
+    ┌─────┐
+    │ TGT │
+    └─────┘`}</pre>
       </Section>
 
       {/* ── SPACING & LAYOUT ────────────────────────────────────────────── */}

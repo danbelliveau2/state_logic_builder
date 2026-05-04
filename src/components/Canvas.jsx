@@ -222,6 +222,16 @@ export function Canvas() {
     return () => sourceNode.classList.remove('connect-source-node');
   }, [connectPreset?.sourceNodeId]);
 
+  // v1.34 — branch-primary normalization. Runs once whenever the active SM
+  // changes (mount, tab switch, project import). Belt-and-suspenders with
+  // the persist-rehydrate hook in the store: that catches app-boot, this
+  // catches every other path the active SM can change. The store action
+  // is a no-op when nothing needs reordering, so cheap to call repeatedly.
+  useEffect(() => {
+    if (!sm?.id) return;
+    useDiagramStore.getState().normalizeBranchPrimaries(sm.id);
+  }, [sm?.id]);
+
   // ── Auto-save standards-linked tabs back to the library ───────────────────
   // When this project is a standard (isStandard) AND it carries a standardId,
   // any change to the SM's nodes/edges/devices/name/description/category is

@@ -2147,18 +2147,18 @@ body {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
 }
 
-/* Color variants */
-.sdc-handle--pass  { --sdc-handle-color: #5a9a48; }
-.sdc-handle--fail  { --sdc-handle-color: #ef4444; }
-.sdc-handle--retry { --sdc-handle-color: #f59e0b; }
-.sdc-handle--multi { --sdc-handle-color: #7c3aed; }
+/* Color variants — branches are gray. */
+.sdc-handle--pass,
+.sdc-handle--fail,
+.sdc-handle--retry,
+.sdc-handle--multi { --sdc-handle-color: #6b7280; }
 
-/* ── Anchor fixes: pull each handle so its outer edge aligns with node edge ── */
-/* Bottom: default is `bottom:0; transform: translate(-50%, 50%)` — shifts handle
- * DOWN by 50% of height, putting its bottom edge at node_bottom + height/2.
- * We remove the Y translate so the handle's bottom edge sits AT node_bottom.
- * Dot is repositioned to the handle's bottom edge so it still visually straddles
- * the node edge. */
+/* ── Anchor fixes: pull each handle so its outer edge aligns with node edge ──
+ * Hit zones STRADDLE the node edge (12px inside / 12px outside). Edges
+ * connect at the handle's center, which sits exactly on the node edge —
+ * so there's no gap between node and edge start. */
+
+/* Bottom: dot anchored at node bottom; hit zone straddles. */
 .react-flow__handle.sdc-handle.react-flow__handle-bottom {
   transform: translateX(-50%) !important;
 }
@@ -2168,9 +2168,7 @@ body {
   transform: translate(-50%, 50%);
 }
 
-/* Left: default is `left:0; transform: translate(-50%, -50%)` — shifts handle
- * LEFT by 50% of width, putting its left edge at node_left - width/2.
- * Remove the X translate so the handle's left edge sits AT node_left. */
+/* Left: dot anchored at node left; hit zone straddles. */
 .react-flow__handle.sdc-handle.react-flow__handle-left {
   transform: translateY(-50%) !important;
 }
@@ -2179,8 +2177,7 @@ body {
   transform: translate(-50%, -50%);
 }
 
-/* Right: default is `right:0; transform: translate(50%, -50%)` — pushes handle
- * RIGHT by 50% of width. Remove X translate so right edge sits AT node_right. */
+/* Right: dot anchored at node right; hit zone straddles. */
 .react-flow__handle.sdc-handle.react-flow__handle-right {
   transform: translateY(-50%) !important;
 }

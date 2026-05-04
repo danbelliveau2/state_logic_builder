@@ -62,6 +62,7 @@ import * as projectApi from '../lib/projectApi.js';
 import { computeExitLabels } from '../lib/edgeRouting.js';
 import { OUTCOME_COLORS } from '../lib/outcomeColors.js';
 import { getStandards as _getStandards } from '../lib/standardsLibrary.js';
+import { computeStateNumbers } from '../lib/computeStateNumbers.js';
 
 // Build a fresh projectData object from a standards library template.
 // Mirrors StandardsView.handleOpen() so the store can recover/re-open
@@ -358,6 +359,243 @@ function _rewireAroundNodeInSm(sm, anchorNodeId, transform) {
 }
 
 /**
+ * Branch-primary normalizer.
+ *
+ * For every Check & Branch source (any node with 2+ outgoing decision-exit
+ * edges) in a `{ nodes, edges }` container, sort its outgoing decision
+ * edges by target step number ascending and reassign sourceHandle in
+ * priority order:
+ *   sorted[0] (lowest step) → 'exit-pass'  (primary, straight down, green)
+ *   sorted[1]               → 'exit-fail'  (alternate, right, red)
+ *   sorted[2]               → 'exit-retry' (third, left, amber)
+ * Rule: the lower-numbered next state should always be the primary
+ * (straight-down) branch.
+ *
+ * Also reorders the source state's pickerConfig.{condition, edgeLabels}
+ * (when the source has a PickerV2 branch action) so reopening the picker
+ * shows the new primary outcome — and the relabel logic in StateNode
+ * doesn't fight back.
+ *
+ * Returns `{ nodes, edges, changed }` — `changed` is false (and the same
+ * arrays are returned) when nothing needed reordering.
+ */
+function _normalizeBranchPrimariesInContainer(nodes, edges, options = {}) {
+  if (!Array.isArray(nodes) || !Array.isArray(edges)) {
+    return { nodes, edges, changed: false };
+  }
+  const { stateMap } = computeStateNumbers(nodes, edges, undefined, options);
+  const HANDLES = ['exit-pass', 'exit-fail', 'exit-retry'];
+  const COLORS  = ['pass',      'fail',      'retry'];
+
+  // Edge counts as a branch exit if any of:
+  //   - data.isDecisionExit set
+  //   - sourceHandle is one of the named branch handles
+  //   - the SOURCE NODE has a Check & Branch action (v2 picker subAction
+  //     === 'branch', or legacy deviceId === '_decision') — covers
+  //     edges from older paths that didn't set isDecisionExit / branch
+  //     handle but still belong to a branch source (SDC PNP init template
+  //     edges with conditionType: 'ready' for example).
+  const BRANCH_HANDLES = new Set(['exit-pass', 'exit-fail', 'exit-retry']);
+  const branchSrcNodes = new Set();
+  nodes.forEach(n => {
+    const acts = n.data?.actions ?? [];
+    const has = acts.some(a =>
+      (a?.pickerV2 && a?.pickerConfig?.subAction === 'branch')
+      || a?.deviceId === '_decision'
+    );
+    if (has) branchSrcNodes.add(n.id);
+  });
+  const bySource = new Map();
+  edges.forEach(e => {
+    const isBranchExit = !!e?.data?.isDecisionExit
+                       || BRANCH_HANDLES.has(e?.sourceHandle)
+                       || branchSrcNodes.has(e?.source);
+    if (!isBranchExit) return;
+    const list = bySource.get(e.source);
+    if (list) list.push(e); else bySource.set(e.source, [e]);
+  });
+
+  let nextEdges = edges;
+  let nextNodes = nodes;
+  let changed = false;
+
+  for (const [sourceId, srcEdges] of bySource) {
+    if (srcEdges.length < 2) continue;
+    const sorted = [...srcEdges].sort((a, b) => {
+      const aStep = stateMap.get(a.target) ?? Infinity;
+      const bStep = stateMap.get(b.target) ?? Infinity;
+      return aStep - bStep;
+    });
+    let handlesAlreadyOk = true;
+    for (let i = 0; i < sorted.length; i++) {
+      if (sorted[i].sourceHandle !== HANDLES[i]) { handlesAlreadyOk = false; break; }
+    }
+    // If handles are already correct, still purge any stale stored
+    // waypoints / manualRoute on every branch edge from this source so
+    // they re-route fresh — the perpendicular-out-of-handle rule depends
+    // on auto-route running, not on stored waypoints from older routing
+    // experiments.
+    if (handlesAlreadyOk) {
+      let purged = false;
+      const ids = new Set(srcEdges.map(e => e.id));
+      nextEdges = nextEdges.map(e => {
+        if (!ids.has(e.id)) return e;
+        const hasStored = e?.data?.manualRoute === true
+                       || (Array.isArray(e?.data?.waypoints) && e.data.waypoints.length > 0);
+        if (!hasStored) return e;
+        purged = true;
+        return {
+          ...e,
+          data: {
+            ...(e.data ?? {}),
+            manualRoute: false,
+            waypoints: [],
+            firstSegmentAxis: undefined,
+            lastSegmentAxis: undefined,
+          },
+        };
+      });
+      if (purged) changed = true;
+      continue;
+    }
+
+    const updates = new Map();
+    sorted.forEach((edge, i) => {
+      updates.set(edge.id, { handle: HANDLES[i], color: COLORS[i] });
+    });
+    nextEdges = nextEdges.map(e => {
+      const u = updates.get(e.id);
+      if (!u) return e;
+      // Clear stored waypoints + manualRoute. Stale waypoints from older
+      // routing experiments cause the path to detour alongside the source
+      // node ("never run the branch along the node face" rule). After
+      // clearing, computeAutoRoute generates a fresh perpendicular path.
+      return {
+        ...e,
+        sourceHandle: u.handle,
+        data: {
+          ...(e.data ?? {}),
+          exitColor: u.color,
+          manualRoute: false,
+          waypoints: [],
+          firstSegmentAxis: undefined,
+          lastSegmentAxis: undefined,
+        },
+      };
+    });
+
+    // Mirror the new ordering into the source state's PickerV2 branch
+    // action so the picker reopens with the right "preferred outcome".
+    const newOrderedLabels = sorted.map(
+      e => e.data?.outcomeLabel ?? e.label ?? ''
+    );
+    nextNodes = nextNodes.map(n => {
+      if (n.id !== sourceId) return n;
+      const actions = n.data?.actions;
+      if (!Array.isArray(actions)) return n;
+      let touched = false;
+      const newActions = actions.map(a => {
+        if (a?.pickerV2
+            && a.pickerConfig?.subAction === 'branch'
+            && Array.isArray(a.pickerConfig.edgeLabels)) {
+          touched = true;
+          return {
+            ...a,
+            pickerConfig: {
+              ...a.pickerConfig,
+              condition:  newOrderedLabels[0] ?? a.pickerConfig.condition,
+              edgeLabels: newOrderedLabels,
+            },
+          };
+        }
+        return a;
+      });
+      return touched ? { ...n, data: { ...n.data, actions: newActions } } : n;
+    });
+
+    // Reposition the children to canonical positions matching their new
+    // handle role. Avoids wrong-side U-routes when the swap would make a
+    // side-handle target sit on the opposite side of the source. Only
+    // moves a child if it's clearly NOT in the right region for its
+    // assigned handle (so manually-positioned-correctly children stay).
+    const srcNode = nextNodes.find(n => n.id === sourceId);
+    if (srcNode) {
+      const baseX = srcNode.position.x;
+      const baseY = srcNode.position.y;
+      // Direct settings (Design tab → Branch Y / Branch X). Alternate / retry
+      // land on SAME ROW as primary, X to the side.
+      const Y_OFF = options.branchYOffset ?? 200;
+      const X_OFF = options.branchXOffset ?? 400;
+      const TOL   = 40;
+      const handleToPos = {
+        'exit-pass':  { x: baseX,         y: baseY + Y_OFF },
+        'exit-fail':  { x: baseX + X_OFF, y: baseY + Y_OFF },
+        'exit-retry': { x: baseX - X_OFF, y: baseY + Y_OFF },
+      };
+      const inRegionFor = (h, pos) => {
+        if (!pos) return false;
+        if (h === 'exit-pass')  return Math.abs(pos.x - baseX) <= TOL && pos.y > baseY;
+        if (h === 'exit-fail')  return pos.x > baseX + TOL && pos.y > baseY;
+        if (h === 'exit-retry') return pos.x < baseX - TOL && pos.y > baseY;
+        return false;
+      };
+      const targetIdToHandle = new Map();
+      sorted.forEach((edge, i) => {
+        targetIdToHandle.set(edge.target, HANDLES[i]);
+      });
+      nextNodes = nextNodes.map(n => {
+        const h = targetIdToHandle.get(n.id);
+        if (!h) return n;
+        if (inRegionFor(h, n.position)) return n;
+        const newPos = handleToPos[h];
+        if (!newPos) return n;
+        return { ...n, position: newPos };
+      });
+    }
+
+    changed = true;
+  }
+
+  return changed
+    ? { nodes: nextNodes, edges: nextEdges, changed: true }
+    : { nodes, edges, changed: false };
+}
+
+/**
+ * SM-level wrapper around `_normalizeBranchPrimariesInContainer`. Walks the
+ * main diagram and every recovery sequence, returning a new `sm` only if
+ * anything actually changed.
+ */
+function _normalizeBranchPrimariesForSm(sm, opts = {}) {
+  if (!sm) return sm;
+  // Pass through branch X / Y settings so the reposition step matches the
+  // user's Design-tab values.
+  const baseOpts = {
+    branchYOffset: opts.branchYOffset,
+    branchXOffset: opts.branchXOffset,
+  };
+  const main = _normalizeBranchPrimariesInContainer(sm.nodes ?? [], sm.edges ?? [], baseOpts);
+  const seqs = sm.recoverySeqs ?? [];
+  let seqsChanged = false;
+  const nextSeqs = seqs.map(r => {
+    const out = _normalizeBranchPrimariesInContainer(
+      r.nodes ?? [], r.edges ?? [],
+      { ...baseOpts, startAt: 100, completeStep: 124 },
+    );
+    if (!out.changed) return r;
+    seqsChanged = true;
+    return { ...r, nodes: out.nodes, edges: out.edges };
+  });
+  if (!main.changed && !seqsChanged) return sm;
+  return {
+    ...sm,
+    nodes: main.changed ? main.nodes : sm.nodes,
+    edges: main.changed ? main.edges : sm.edges,
+    recoverySeqs: seqsChanged ? nextSeqs : sm.recoverySeqs,
+  };
+}
+
+/**
  * Generate a unique PLC tag name for a device across all SMs.
  * e.g. "HeadOpener" → "HeadOpener2" → "HeadOpener3"
  */
@@ -610,6 +848,19 @@ export const useDiagramStore = create(
               }
             }
           }
+        }
+        // v1.34 — normalize branch primaries so the lower-numbered next
+        // state always uses the primary (straight-down) handle. Migrates
+        // older diagrams that wired Pass/Fail without regard to step
+        // ordering. Pure pass — runs only when something actually needs
+        // reordering (returns the same SM otherwise).
+        {
+          const dt = project.designTheme ?? {};
+          project.stateMachines = (project.stateMachines ?? [])
+            .map(sm => _normalizeBranchPrimariesForSm(sm, {
+              branchYOffset: dt.branchYOffset ?? 200,
+              branchXOffset: dt.branchXOffset ?? 400,
+            }));
         }
         set({
           project,
@@ -2279,6 +2530,32 @@ export const useDiagramStore = create(
                 edges: [...edges, passEdge, failEdge],
               }))
             )),
+        }));
+      },
+
+      /**
+       * Normalize branch primaries for a single SM. Reassigns sourceHandle
+       * across each Check & Branch source so the lower-numbered next-state
+       * edge always uses the primary handle (straight-down). Cheap to call
+       * — returns early without history push when nothing changed.
+       *
+       * Call after any operation that creates / retargets / deletes
+       * decision-exit edges (auto-spawn fan-out, edge connect/disconnect,
+       * step-renumbering events).
+       */
+      normalizeBranchPrimaries(smId) {
+        const project = get().project;
+        const sm = (project?.stateMachines ?? []).find(s => s.id === smId);
+        if (!sm) return;
+        const dt = project?.designTheme ?? {};
+        const next = _normalizeBranchPrimariesForSm(sm, {
+          branchYOffset: dt.branchYOffset ?? 200,
+          branchXOffset: dt.branchXOffset ?? 400,
+        });
+        if (next === sm) return; // no-op
+        get()._pushHistory();
+        set(s => ({
+          project: _updateProject(s, sms => sms.map(m => m.id === smId ? next : m)),
         }));
       },
 
@@ -5174,6 +5451,20 @@ export const useDiagramStore = create(
               // Ensure recipes array exists
               if (!state.project.recipes) state.project.recipes = [];
             }
+          }
+
+          // v1.34 — normalize branch primaries on rehydrate. Persist
+          // bypasses loadProject, so without this the lower-numbered
+          // next-state rule never gets applied to projects opened
+          // straight from localStorage. Mutates state.project in place
+          // (rehydrate runs before the store is exposed).
+          {
+            const dt = state.project.designTheme ?? {};
+            state.project.stateMachines = (state.project.stateMachines ?? [])
+              .map(sm => _normalizeBranchPrimariesForSm(sm, {
+                branchYOffset: dt.branchYOffset ?? 200,
+                branchXOffset: dt.branchXOffset ?? 400,
+              }));
           }
         }
       },

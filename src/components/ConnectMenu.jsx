@@ -182,13 +182,16 @@ export function HandleClickZone({ nodeId, handleSelector, handleId }) {
           _connectMenuNodeId: nodeId,
           _connectMenuHandleId: handleId ?? null,
         });
-      }, 120);
+      }, 100);
     }
 
     function onLeave() {
+      // Sticky popup: leaving the handle does NOT close the menu.
+      // Once opened, it stays open until the user clicks an option or
+      // clicks outside (handled at popup level via document mousedown).
+      // Only abort the OPEN timer if we left before it fired.
       clearTimeout(_openTimer);
       _openTimer = null;
-      _startCloseTimer();
     }
 
     handle.addEventListener('mouseenter', onEnter);
@@ -252,6 +255,36 @@ export function ConnectMenu({ nodeId, nodeType, exitCount, signalName, smId }) {
   const clickedHandleId = useDiagramStore(s => s._connectMenuHandleId);
   const isPickingTarget = connectPreset?.sourceNodeId === nodeId;
   const isVisible = showForNode === nodeId || isPickingTarget;
+  const popupRef = useRef(null);
+
+  // Sticky popup: once open, only close on explicit user action —
+  //   - click an option (handled by individual onClick handlers)
+  //   - click outside the popup AND outside any handle dot
+  //   - Esc key
+  // This removes the "popup closes while I'm reaching for an option"
+  // problem that came from the auto-close-on-mouse-leave timer.
+  useEffect(() => {
+    if (!isVisible || isPickingTarget) return;
+    const onDocMouseDown = (e) => {
+      if (popupRef.current && popupRef.current.contains(e.target)) return;
+      // Don't close if clicking a handle dot (lets the user click another
+      // handle to switch the open menu without an extra close-then-open).
+      if (e.target?.closest?.('.react-flow__handle')) return;
+      _cancelClose();
+      useDiagramStore.setState({ _connectMenuNodeId: null, _connectMenuHandleId: null });
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        useDiagramStore.setState({ _connectMenuNodeId: null, _connectMenuHandleId: null });
+      }
+    };
+    document.addEventListener('mousedown', onDocMouseDown, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocMouseDown, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [isVisible, isPickingTarget]);
 
   if (!nodeId || !smId) return null;
   if (!isVisible) return null;
@@ -278,56 +311,68 @@ export function ConnectMenu({ nodeId, nodeType, exitCount, signalName, smId }) {
     if (!fromNode) return;
 
     // ── Decide position offset ────────────────────────────────────────────
-    // Side-handle sources (exit-pass / exit-fail) override the user-picked
-    // direction so the new node lands on the same side the user clicked —
-    // matches the auto-spawn geometry (pass left @ -280, fail right @ +280).
-    const isPassHandle = sourceHandle === 'exit-pass';
-    const isFailHandle = sourceHandle === 'exit-fail';
+    // Direct settings (Design tab → Branch Y / Branch X).
+    // Alternate / retry land on the SAME ROW as the primary, X over.
+    const isPassHandle  = sourceHandle === 'exit-pass';
+    const isFailHandle  = sourceHandle === 'exit-fail';
+    const isRetryHandle = sourceHandle === 'exit-retry';
+    const v2BranchAction = (fromNode.data?.actions ?? [])
+      .slice().reverse()
+      .find(a => a?.pickerV2
+        && a?.pickerConfig?.mode === 'decision'
+        && a?.pickerConfig?.subAction === 'branch');
+    const Y_OFF = Number(store.project?.designTheme?.branchYOffset ?? 200);
+    const X_OFF = Number(store.project?.designTheme?.branchXOffset ?? 400);
     let offset;
-    if (isPassHandle)      offset = { x: -280, y: 200 };
-    else if (isFailHandle) offset = { x:  280, y: 200 };
-    else {
-      const offsets = {
-        down:      { x: 0,   y: 150 },
-        downLeft:  { x: -80, y: 150 },
-        downRight: { x: 80,  y: 150 },
-      };
-      offset = offsets[direction] ?? offsets.down;
+    if (v2BranchAction) {
+      if      (isPassHandle)  offset = { x: 0,        y: Y_OFF };
+      else if (isFailHandle)  offset = { x: +X_OFF,   y: Y_OFF };
+      else if (isRetryHandle) offset = { x: -X_OFF,   y: Y_OFF };
+      else                    offset = { x: 0,        y: Y_OFF };
+    } else if (isPassHandle) {
+      // Legacy verify-mode source: pass handle is the LEFT side. Spawn left.
+      offset = { x: -X_OFF, y: Y_OFF };
+    } else if (isFailHandle) {
+      offset = { x: +X_OFF, y: Y_OFF };
+    } else {
+      // Non-branch state with bottom handle — straight below at the same
+      // distance branch primaries use (Branch Y setting).
+      offset = { x: 0, y: Y_OFF };
     }
 
     const srcW = fromNode.measured?.width ?? fromNode.width ?? 240;
     const newW = 240;
 
+    // Position is offset.x / offset.y added DIRECTLY to source's top-left.
+    // Don't add nodeHeight — offset.y is the full distance to the child's
+    // top, matching the Design-tab Branch Y setting (default 200).
     const desired = {
       x: fromNode.position.x + (srcW - newW) / 2 + offset.x,
-      y: fromNode.position.y + (fromNode.measured?.height ?? fromNode.height ?? 80) + offset.y,
+      y: fromNode.position.y + offset.y,
     };
 
     const position = findClearPosition(desired, sourceNodes, newW, nodeId);
 
     // ── Decide edge data ──────────────────────────────────────────────────
-    // For a side-handle source on a state node with a v2 Branch action,
-    // build proper decision-exit edge data so the new edge renders green/red
-    // with the correct label (matching the auto-spawn behavior). Otherwise
-    // fall back to a plain "Ready" edge.
+    // For a branch-handle source on a state node with a v2 Branch action,
+    // build proper decision-exit edge data so the new edge renders with
+    // the correct color/label (matching the auto-spawn behavior). Falls
+    // back to a plain "Ready" edge for non-branch sources.
     let edgeCond = { conditionType: 'ready', label: 'Ready' };
-    if (isPassHandle || isFailHandle) {
-      const v2BranchAction = (fromNode.data?.actions ?? [])
-        .slice().reverse()
-        .find(a => a?.pickerV2
-          && a?.pickerConfig?.mode === 'decision'
-          && a?.pickerConfig?.subAction === 'branch');
-      if (v2BranchAction) {
-        const labels = v2BranchAction.pickerConfig?.edgeLabels ?? [];
-        const label = isPassHandle ? (labels[0] ?? '') : (labels[1] ?? '');
-        edgeCond = {
-          conditionType: 'custom',
-          label,
-          outcomeLabel: label,
-          isDecisionExit: true,
-          exitColor: isPassHandle ? 'pass' : 'fail',
-        };
-      }
+    if (v2BranchAction && (isPassHandle || isFailHandle || isRetryHandle)) {
+      const labels = v2BranchAction.pickerConfig?.edgeLabels ?? [];
+      const label = isPassHandle  ? (labels[0] ?? '')
+                  : isFailHandle  ? (labels[1] ?? '')
+                  : (labels[labels.length - 1] ?? 'Retry');
+      edgeCond = {
+        conditionType: 'custom',
+        label,
+        outcomeLabel: label,
+        isDecisionExit: true,
+        exitColor: isPassHandle  ? 'pass'
+                 : isFailHandle  ? 'fail'
+                 : 'retry',
+      };
     }
 
     store._pushHistory();
@@ -404,45 +449,26 @@ export function ConnectMenu({ nodeId, nodeType, exitCount, signalName, smId }) {
   // ── Normal mode — show direction options ──────────────────────────────
   return (
     <div
+      ref={popupRef}
       className="connect-menu-popup"
       style={POPUP_STYLE}
-      onMouseEnter={_cancelClose}
-      onMouseLeave={_startCloseTimer}
       onMouseDown={e => e.stopPropagation()}
       onClick={e => e.stopPropagation()}
     >
-      {/* New Node section */}
+      {/* New Node section — single Down option. Side-handle sources spawn
+          at the configured (±X, +X) offset; bottom-handle straight below.
+          User drags the node sideways after if they want offset. */}
       <div className="connect-menu__section">
         <div className="connect-menu__section-label">New Node</div>
         <div className="connect-menu__row">
           <button
-            className="connect-menu__btn"
-            title="New node below-left"
-            onClick={() => handleNewNode('downLeft')}
-          >
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="13" y1="5" x2="5" y2="13" />
-              <polyline points="5,7 5,13 11,13" />
-            </svg>
-          </button>
-          <button
             className="connect-menu__btn connect-menu__btn--primary"
-            title="New node below"
+            title="New node"
             onClick={() => handleNewNode('down')}
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="9" y1="3" x2="9" y2="15" />
               <polyline points="5,11 9,15 13,11" />
-            </svg>
-          </button>
-          <button
-            className="connect-menu__btn"
-            title="New node below-right"
-            onClick={() => handleNewNode('downRight')}
-          >
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="5" y1="5" x2="13" y2="13" />
-              <polyline points="7,13 13,13 13,7" />
             </svg>
           </button>
         </div>
