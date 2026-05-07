@@ -59,7 +59,8 @@ import { ENTRY_RULES, getEntryRuleMeta, resolveEntryRule, isEntryRuleOverridden 
 import { START_CONDITIONS, getStartConditionMeta, resolveIndexSync, isIndexSyncOverridden } from '../../lib/indexSync.js';
 import { PartTrackingPill } from '../PartTrackingPanel.jsx';
 // v2 picker integration
-import { UniversalPicker, GRAMMAR_TO_DEVICE_TYPE } from '../UniversalPicker.jsx';
+import { UniversalPicker } from '../UniversalPicker.jsx';
+import { GRAMMAR_TO_DEVICE_TYPE } from '../../lib/pickerGrammar.js';
 import { getProjectSubjects } from '../../lib/pickerSubjectsFromProject.js';
 import { loadGrammar, GRAMMAR_CATEGORIES } from '../../lib/pickerGrammar.js';
 import { PtBadge } from './PtBadge.jsx';
@@ -1211,8 +1212,79 @@ function ShrinkToFit({ children, minScale = 0.55 }) {
   );
 }
 
-function PickerV2ActionRow({ action, onClickName, onDelete, showAdvance = true, grammar, devices, actionIdx = 0, smId, nodeId, subjects = [] }) {
+// Resolve a wait/check action's robot-signal context. Returns
+//   { deviceName, ioGroup, ioNumber, smName }
+// when the picked subject is a robot signal — same-SM (Robot subject with
+// `Signal name` detail), cross-SM (`crossSmRef` set), or a project signal
+// whose id matches a robot's signal id. Returns `null` when the subject
+// isn't a signal-on-a-device (e.g. plain project signal, position signal,
+// PT field). The wait/check row uses this to surface `DI[3]` next to the
+// signal name and the owning robot as a subtitle, so engineers can see at
+// a glance which physical input is being waited on.
+function resolveSignalContext(cfg, currentSmDevices, allSMs) {
+  if (!cfg) return null;
+  const sms = allSMs ?? [];
+
+  // Cross-SM signal — explicit ref captures everything we need.
+  if (cfg.crossSmRef) {
+    const { smId, deviceId, signalId } = cfg.crossSmRef;
+    const sm = sms.find(s => s.id === smId);
+    const device = sm?.devices?.find(d => d.id === deviceId);
+    const signal = device?.signals?.find(s => s.id === signalId);
+    if (device) {
+      return {
+        deviceName: device.displayName ?? device.name ?? '',
+        ioGroup:   signal?.group ?? null,
+        ioNumber:  signal?.number != null ? String(signal.number) : null,
+        smName:    sm?.displayName ?? sm?.name ?? null,
+      };
+    }
+    return null;
+  }
+
+  // Same-SM Robot subject — Signal Name lives in cfg.detail.
+  if (cfg.grammarRowId === 'robot' && cfg.subjectId) {
+    const device = (currentSmDevices ?? []).find(d => d.id === cfg.subjectId);
+    if (device?.type === 'Robot') {
+      const sigName = cfg.detail?.['Signal name'];
+      const signal  = sigName ? device.signals?.find(s => s.name === sigName) : null;
+      return {
+        deviceName: device.displayName ?? device.name ?? '',
+        ioGroup:   signal?.group ?? null,
+        ioNumber:  signal?.number != null ? String(signal.number) : null,
+        smName:    null,
+      };
+    }
+  }
+
+  // Same-SM signal subject — try to find a matching robot signal across all
+  // devices in all SMs (subjectId may be a device-signal id even though it
+  // got promoted into the picker as a signal subject).
+  if (cfg.grammarRowId === 'signal' && cfg.subjectId) {
+    for (const sm of sms) {
+      for (const device of sm.devices ?? []) {
+        const signal = device.signals?.find(s => s.id === cfg.subjectId);
+        if (signal) {
+          return {
+            deviceName: device.displayName ?? device.name ?? '',
+            ioGroup:   signal.group ?? null,
+            ioNumber:  signal.number != null ? String(signal.number) : null,
+            smName:    sm.displayName ?? sm.name ?? null,
+          };
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+function PickerV2ActionRow({ action, onClickName, onDelete, showAdvance = true, grammar, devices, allSMs, actionIdx = 0, smId, nodeId, subjects = [] }) {
   const cfg = action.pickerConfig || {};
+  const signalCtx = resolveSignalContext(cfg, devices, allSMs);
+  const ioPrefix = signalCtx?.ioGroup
+    ? `${signalCtx.ioGroup}${signalCtx.ioNumber ? `[${signalCtx.ioNumber}]` : ''}`
+    : null;
   const accent = pickerV2Accent(cfg);
   const actionLabel = pickerV2ActionLabel(cfg);
   const actionIcon  = pickerV2ActionIcon(cfg);
@@ -1362,6 +1434,25 @@ function PickerV2ActionRow({ action, onClickName, onDelete, showAdvance = true, 
             <DeviceIcon type={GRAMMAR_TO_DEVICE_TYPE[cfg.grammarRowId]} size={18} />
           </span>
         )}
+        {/* IO prefix — `DI[3]` / `DO[7]` — surfaces the physical input/output
+            when the picked subject is a robot signal (same-SM, cross-SM, or a
+            project signal that resolves to a device-level signal). Without
+            this, two robots with identical signal names are indistinguishable
+            on the canvas. Same vocabulary as the DecisionNode header. */}
+        {ioPrefix && (
+          <span style={{
+            padding: '0 5px', borderRadius: 4,
+            fontSize: 9, fontWeight: 700, lineHeight: '14px',
+            letterSpacing: '0.02em',
+            background: '#1e40af', color: '#fff',
+            border: '1px solid #1e40af',
+            whiteSpace: 'nowrap',
+          }}
+          title={signalCtx?.smName ? `${signalCtx.smName} → ${signalCtx.deviceName}` : signalCtx?.deviceName}
+          >
+            {ioPrefix}
+          </span>
+        )}
         <span
           className={`action-device${onClickName ? ' action-device--clickable nodrag' : ''}`}
           style={{ fontSize: 11, whiteSpace: 'nowrap' }}
@@ -1443,6 +1534,41 @@ function PickerV2ActionRow({ action, onClickName, onDelete, showAdvance = true, 
         )}
        </ShrinkToFit>
       </div>
+      {/* Owner-device subtitle — only when the subject is a robot signal.
+          Reads "from {Robot}" (or "{SM} → {Robot}" for cross-SM). Lets
+          engineers see which physical device owns the signal without
+          opening the picker; pairs with the DI[N] prefix above. */}
+      {signalCtx && signalCtx.deviceName && (
+        <div style={{
+          fontSize: 9,
+          color: '#64748b',
+          marginLeft: 26,
+          marginTop: 1,
+          lineHeight: 1.2,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}>
+          from {signalCtx.smName ? `${signalCtx.smName} → ` : ''}{signalCtx.deviceName}
+        </div>
+      )}
+      {/* Vision-pair indicator — when this row is half of a vision pair
+          (Trigger + Decision), surface it so the user knows the two rows
+          are linked. The L5X exporter expands the pair into 4 sub-states
+          (Trigger / WaitBusy / WaitResult / Branch). */}
+      {cfg.visionPair && (
+        <div style={{
+          fontSize: 9,
+          color: cfg.visionPair.role === 'trigger' ? '#0072B5' : '#7c3aed',
+          marginLeft: 26,
+          marginTop: 1,
+          lineHeight: 1.2,
+          whiteSpace: 'nowrap',
+          fontStyle: 'italic',
+        }}>
+          {cfg.visionPair.role === 'trigger' ? '↓ paired with vision decision below' : '↑ result of vision trigger above'}
+        </div>
+      )}
       {/* Verify line — uses the SAME buildActionVerifyText helper v1 uses,
           and the SAME `action-verify` className, so v2 actions look
           identical to v1 (same font, same position, same content rules).
@@ -1487,7 +1613,7 @@ function PickerV2ActionRow({ action, onClickName, onDelete, showAdvance = true, 
 
 // ── Action Row ────────────────────────────────────────────────────────────────
 
-function ActionRow({ action, devices, onClickName, onClickOp, onClickAdvance, onDelete, smId, nodeId, isLast, showAdvance = true, grammar, actionIdx = 0, subjects }) {
+function ActionRow({ action, devices, allSMs, onClickName, onClickOp, onClickAdvance, onDelete, smId, nodeId, isLast, showAdvance = true, grammar, actionIdx = 0, subjects }) {
   // v2 picker actions short-circuit the legacy device-type branching.
   if (action.pickerV2) {
     return <PickerV2ActionRow
@@ -1497,6 +1623,7 @@ function ActionRow({ action, devices, onClickName, onClickOp, onClickAdvance, on
       showAdvance={showAdvance}
       grammar={grammar}
       devices={devices}
+      allSMs={allSMs}
       actionIdx={actionIdx}
       smId={smId}
       nodeId={nodeId}
@@ -4604,6 +4731,9 @@ export function StateNode({ data, selected, id }) {
     [project, sm?.id]
   );
   const pickerGrammar = useMemo(() => loadGrammar(), []);
+  // All SMs — needed by ActionRow to resolve robot signals (DI[N] prefix)
+  // back to their owning device, including cross-SM references.
+  const allSMs = project?.stateMachines ?? [];
 
   // Display preference: show "verify ..." advance condition under each
   // action row? Default true; toggle in Project Setup → Design System →
@@ -4637,11 +4767,23 @@ export function StateNode({ data, selected, id }) {
 
   const [showPicker, setShowPicker] = useState(false);
   const [editingActionId, setEditingActionId] = useState(null);
+  // v2.3 — also stash editingActionId in a ref. State can lag behind /
+  // get cleared by side-effects between row click and Done click; a ref
+  // doesn't. The commit handler reads from the ref as a final fallback,
+  // so an edit can't accidentally fall through to addAction.
+  const editingActionIdRef = useRef(null);
   const [pickerInitialStep, setPickerInitialStep] = useState(null);
   // v1.32.7 — Live preview of the picker's stepper draft. Populates the
   // 4-slot scaffold rendered inside the empty action row while the picker
   // is open. Cleared on close.
   const [pickerDraft, setPickerDraft] = useState(null);
+  // v2.3 vision-pair flow — when the user commits a vision Action (Trigger
+  // Cam1 / Job Foo), we immediately re-open the picker in Decision mode with
+  // the same camera + job pre-filled so they can pick what to do with the
+  // result (Wait + log / Branch Pass-Fail / etc) WITHOUT navigating away.
+  // The two rows together compile to the 4-state vision sequence.
+  // Shape: { subjectId, subjectName, jobName } | null.
+  const [pendingVisionPair, setPendingVisionPair] = useState(null);
   const [ctxMenu, setCtxMenu] = useState(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [opSwitcher, setOpSwitcher] = useState(null); // { actionId, pos: {top, left} }
@@ -4994,6 +5136,11 @@ export function StateNode({ data, selected, id }) {
       {showPicker && sm && (
         <NodeToolbar isVisible position="right" offset={8}>
           <UniversalPicker
+            // Force re-mount when entering vision-pair step 2 so the picker
+            // re-runs its useState seed initializers and lands in Decision
+            // mode with the camera/job pre-filled. Without this key bump
+            // the picker stays mounted in its previous Action-mode state.
+            key={pendingVisionPair ? `vision-step2-${pendingVisionPair.subjectId}` : 'fresh'}
             grammar={pickerGrammar}
             subjects={pickerSubjects}
             editAction={editingActionId
@@ -5001,7 +5148,38 @@ export function StateNode({ data, selected, id }) {
               : null}
             onPick={(config) => {
               const store = useDiagramStore.getState();
-              const isEdit = !!config.isEdit && !!editingActionId;
+              // v2.3 — edit detection is now anchored to "does the action
+              // we were editing still exist?" rather than the picker's own
+              // isEdit flag. The previous gate (`config.isEdit && editingActionId`)
+              // was firing wrong in some flows, leading to a duplicate row
+              // when the user thought they were editing. Direct lookup is
+              // unambiguous: editingActionId references a real action ⇒ edit.
+              // v2.3 — edit detection comes from the picker's payload, not
+              // from StateNode's editingActionId state. The picker captures
+              // `editActionId` when it opens, and includes it in the commit
+              // payload. This is immune to any transient clear of
+              // editingActionId between row click and Done click (e.g. node
+              // deselect effect, react-flow internals). If the picker says
+              // we're editing, we're editing.
+              // 3-level fallback chain. The picker's payload `editActionId`
+              // is the source of truth — set when the picker opened to edit
+              // a specific row. If absent (older bundle, picker unmounted
+              // weirdly, etc.), fall back to component state, then to a ref
+              // captured at click time. The ref CANNOT go stale because
+              // refs don't track React state lifecycles. Any non-null value
+              // here means "user clicked an existing row to edit; do not
+              // call addAction".
+              const editId = config.editActionId ?? editingActionId ?? editingActionIdRef.current ?? null;
+              const isEdit = !!editId;
+              // Capture the OLD pickerConfig so we can detect topology changes
+              // (branch → wait/check) and clean up the old branch fan-out.
+              const freshSm = useDiagramStore.getState().project?.stateMachines?.find(s => s.id === sm.id);
+              const freshNode = freshSm?.nodes?.find(n => n.id === id);
+              const freshActions = freshNode?.data?.actions ?? [];
+              const targetAction = isEdit
+                ? freshActions.find(a => a.id === editId)
+                : null;
+              const oldCfg = targetAction?.pickerConfig || null;
 
               // Terminal-state shortcut from picker — set isComplete or
               // isFault on the node and skip the addAction/edge-spawn flow.
@@ -5022,41 +5200,49 @@ export function StateNode({ data, selected, id }) {
 
               const cleanConfig = { ...config };
               delete cleanConfig.isEdit;
+              delete cleanConfig.editActionId;  // payload-only, don't store
 
-              // Auto-create PT field(s) when logging is enabled.
-              // PRIMARY field = the picked Condition (always logged).
-              // EXTRA fields = each entry in ptExtraLogs.
-              // Names are derived ({subject}_{value}) — never user-typed.
-              // We dedupe by name against existing fields so edits don't
-              // produce duplicate PT entries. Done on commit (not picker
-              // mount) so a cancel leaves no orphans.
-              // ptFieldId / ptFieldName remain the PRIMARY field's id and
-              // name, mirrored onto the action so the existing PT-badge
-              // display code in this file keeps working.
+              // Auto-create PT field(s) for whatever the user typed in the
+              // CUSTOM LOGS list. v2.3 redesign: no more auto-primary based
+              // on subject name (that produced "Cam1" PT fields that mean
+              // nothing). User explicitly types each field they want
+              // logged — the picker shows a `{Subject}_<your name>` hint
+              // so the resulting PT field is namespaced.
+              //
+              // Each ptCustomLogs entry = { name, dataType }. We map dataType
+              // labels (REAL/DINT/BOOL/STRING) to the partTracking field
+              // dataType keys ('real'/'dint'/'boolean'/'string'). Dedupe by
+              // final field name so repeat commits don't multiply fields.
+              //
+              // Legacy ptExtraLogs (preset checkbox extras) preserved for
+              // back-compat — anything in that list still creates a REAL
+              // field with the old `{Subject}_{Extra}` naming.
               if (cleanConfig.ptEnabled) {
                 const sName = cleanConfig.subjectName || 'Result';
-                const strip = s => String(s).replace(/\s+/g, '');
+                const strip = s => String(s).replace(/[^A-Za-z0-9_]/g, '');
                 const existing = store.project?.partTracking?.fields ?? [];
                 const findOrCreate = (name, dataType, description) => {
                   const hit = existing.find(f => f.name === name);
                   if (hit) return hit.id;
                   return store.addTrackingField({ name, dataType, description });
                 };
-                // Primary field = the subject's name. Stores whatever the
-                // subject reads at the moment of the check. No condition
-                // suffix — the value tells you the state, the field name
-                // is just the source. Boolean for digital, vision, branch;
-                // analog primary is also boolean (in-tol vs out-of-tol).
-                const primaryName = sName;
-                cleanConfig.ptFieldId   = findOrCreate(
-                  primaryName, 'boolean',
-                  `Auto-logged state of ${sName}`,
-                );
-                cleanConfig.ptFieldName = primaryName;
-                cleanConfig.ptExtraFieldIds = {};
+                const typeMap = {
+                  REAL: 'real', DINT: 'dint', BOOL: 'boolean', STRING: 'string',
+                };
+                cleanConfig.ptFieldIds = {};  // map: typed name → field id
+                for (const entry of (cleanConfig.ptCustomLogs ?? [])) {
+                  const name = `${sName}_${strip(entry.name)}`;
+                  const id = findOrCreate(
+                    name,
+                    typeMap[entry.dataType] || 'real',
+                    `Logged from ${sName}: ${entry.name}`,
+                  );
+                  cleanConfig.ptFieldIds[entry.name] = id;
+                }
+                // Back-compat: legacy preset extras (`logExtras` checkbox UI).
                 for (const extra of (cleanConfig.ptExtraLogs ?? [])) {
                   const xName = `${sName}_${strip(extra)}`;
-                  cleanConfig.ptExtraFieldIds[extra] = findOrCreate(
+                  cleanConfig.ptFieldIds[extra] = findOrCreate(
                     xName, 'real',
                     `Auto-logged ${extra} from ${sName}`,
                   );
@@ -5137,20 +5323,26 @@ export function StateNode({ data, selected, id }) {
                   : [null];
                 const count = Math.max(1, cleanConfig.edgeTopology || 1);
                 const baseX = parentNode.position.x;
-                // Direct settings (Design tab → Branch Y / Branch X).
-                // Primary (bottom) at +Y_OFF; alternate / retry at +/-X_OFF, +Y_OFF.
-                const Y_OFF  = Number(refreshedState.project?.designTheme?.branchYOffset ?? 200);
+                // v2.3 — child Y is anchored to the BOTTOM of the parent so
+                // tall nodes (vision pair, multi-row states) don't have
+                // children visually overlapping. branchYOffset is now the
+                // GAP between parent bottom and child top, not the offset
+                // from parent top. Old default 200 (top→top) ≈ 120 gap on
+                // an 80px node, so we keep ~120 as the default gap.
+                const measuredH = parentNode.measured?.height ?? 80;
+                const Y_GAP  = Number(refreshedState.project?.designTheme?.branchYOffset ?? 120);
                 const X_OFF  = Number(refreshedState.project?.designTheme?.branchXOffset ?? 400);
+                const childY = parentNode.position.y + measuredH + Y_GAP;
                 const branchOffsets = [
-                  { x: 0,       y: Y_OFF },  // primary (bottom)
-                  { x: +X_OFF,  y: Y_OFF },  // alternate (right) — same row
-                  { x: -X_OFF,  y: Y_OFF },  // retry (left) — same row
+                  { x: 0      },  // primary (bottom-center)
+                  { x: +X_OFF },  // alternate (right)
+                  { x: -X_OFF },  // retry (left)
                 ];
                 const branchHandles = ['exit-pass', 'exit-fail', 'exit-retry'];
                 for (let i = 0; i < count; i++) {
                   const label = labels[i] ?? null;
-                  const off = branchOffsets[i] ?? { x: 0, y: Y_OFF };
-                  const position = { x: baseX + off.x, y: parentNode.position.y + off.y };
+                  const off = branchOffsets[i] ?? { x: 0 };
+                  const position = { x: baseX + off.x, y: childY };
                   const newNodeId = refreshedState.addNode(refreshedSm.id, { position });
                   if (!newNodeId) continue;
                   refreshedState.addEdge(refreshedSm.id,
@@ -5177,10 +5369,79 @@ export function StateNode({ data, selected, id }) {
                 // wait/check/continue → branch, this spawns the missing
                 // branches. If they were already branched, hasFanOut is
                 // true and the helper is a no-op.
-                store.updateAction(sm.id, id, editingActionId, {
+                store.updateAction(sm.id, id, editId, {
                   pickerV2: true,
                   pickerConfig: cleanConfig,
                 });
+
+                // v2.3 — topology change cleanup.
+                // If the old action was a Branch (multiple outgoing exits)
+                // and the new config is single-exit (Wait, Check & Continue,
+                // or single-exit Branch), the existing fan-out children
+                // (Pass / Fail / Retry) become orphans. Delete the
+                // isDecisionExit edges, then delete each target node iff it
+                // has no other incoming edges, no actions, and isn't a
+                // terminal state. Spawn ONE replacement continuation edge
+                // straight down so the flow keeps going.
+                const wasBranch = oldCfg?.subAction === 'branch'
+                  && (oldCfg?.edgeTopology || 1) > 1;
+                const nowSingle = cleanConfig.mode === 'decision'
+                  && cleanConfig.subAction !== 'branch';
+                const nowSingleBranch = cleanConfig.subAction === 'branch'
+                  && (cleanConfig.edgeTopology || 1) === 1;
+                if (wasBranch && (nowSingle || nowSingleBranch)) {
+                  const stClean = useDiagramStore.getState();
+                  const smClean = stClean.project?.stateMachines?.find(s => s.id === sm.id);
+                  const branchEdges = (smClean?.edges ?? []).filter(e =>
+                    e.source === id && e.data?.isDecisionExit
+                  );
+                  // Track which children to consider deleting AFTER edges drop.
+                  const candidateChildren = branchEdges.map(e => e.target);
+                  branchEdges.forEach(e => stClean.deleteEdge(sm.id, e.id));
+                  // Delete now-orphaned child nodes (no other incoming, empty,
+                  // not terminal). Re-read state after edge deletes.
+                  const stAfterEdges = useDiagramStore.getState();
+                  const smAfterEdges = stAfterEdges.project?.stateMachines?.find(s => s.id === sm.id);
+                  candidateChildren.forEach(childId => {
+                    const child = smAfterEdges?.nodes?.find(n => n.id === childId);
+                    if (!child) return;
+                    const hasOtherIncoming = (smAfterEdges?.edges ?? []).some(e =>
+                      e.target === childId
+                    );
+                    const isTerminal = child.data?.isInitial || child.data?.isComplete || child.data?.isFault;
+                    const isEmpty = (child.data?.actions ?? []).length === 0;
+                    if (!hasOtherIncoming && isEmpty && !isTerminal) {
+                      stAfterEdges.deleteNode(sm.id, childId);
+                    }
+                  });
+                  // Spawn a single straight-down continuation child + edge so
+                  // the flow continues. Skip if the user explicitly wired up
+                  // their own outgoing edge in the meantime.
+                  const stFinal = useDiagramStore.getState();
+                  const smFinal = stFinal.project?.stateMachines?.find(s => s.id === sm.id);
+                  const stillHasOutgoing = (smFinal?.edges ?? []).some(e => e.source === id);
+                  if (!stillHasOutgoing) {
+                    const parentNode = smFinal?.nodes?.find(n => n.id === id);
+                    if (parentNode) {
+                      const measuredH = parentNode.measured?.height ?? 80;
+                      const Y_GAP = Number(stFinal.project?.designTheme?.branchYOffset ?? 120);
+                      const newChildId = stFinal.addNode(sm.id, {
+                        position: {
+                          x: parentNode.position.x,
+                          y: parentNode.position.y + measuredH + Y_GAP,
+                        },
+                      });
+                      if (newChildId) {
+                        stFinal.addEdge(sm.id, {
+                          source: id,
+                          sourceHandle: null,
+                          target: newChildId,
+                          targetHandle: null,
+                        }, { conditionType: 'always', label: '' });
+                      }
+                    }
+                  }
+                }
 
                 // Relabel existing fan-out edges to match the new edgeLabels.
                 // When the user picks a different "preferred outcome" — e.g.
@@ -5230,6 +5491,7 @@ export function StateNode({ data, selected, id }) {
                 ensureBranchFanOut();
                 setShowPicker(false);
                 setEditingActionId(null);
+                editingActionIdRef.current = null;
                 setPickerInitialStep(null);
                 setPickerDraft(null);
                 return;
@@ -5266,22 +5528,25 @@ export function StateNode({ data, selected, id }) {
                   // widths differ between parent and child. Parent.x as
                   // anchor stays stable as either node grows.
                   const baseX = parentNode.position.x;
-                  const py = parentNode.position.y;
+                  const measuredH = parentNode.measured?.height ?? 80;
+                  // v2.3 — child Y anchored to parent BOTTOM + GAP, so tall
+                  // nodes don't have children overlapping. branchYOffset
+                  // reinterpreted as the gap from bottom of parent.
+                  const Y_GAP = Number(store.project?.designTheme?.branchYOffset ?? 120);
+                  const childY = parentNode.position.y + measuredH + Y_GAP;
                   const isBranch = cleanConfig.subAction === 'branch' && count > 1;
-                  // Direct settings (Design tab → Branch Y / Branch X).
-                  const Y_OFF  = Number(store.project?.designTheme?.branchYOffset ?? 200);
                   const X_OFF  = Number(store.project?.designTheme?.branchXOffset ?? 400);
                   const branchOffsets = [
-                    { x: 0,       y: Y_OFF },
-                    { x: +X_OFF,  y: Y_OFF },
-                    { x: -X_OFF,  y: Y_OFF },
+                    { x: 0       },
+                    { x: +X_OFF  },
+                    { x: -X_OFF  },
                   ];
                   const branchHandles = ['exit-pass', 'exit-fail', 'exit-retry'];
                   for (let i = 0; i < count; i++) {
                     const label = labels[i] ?? null;
-                    const off = isBranch ? (branchOffsets[i] ?? { x: 0, y: Y_OFF }) : { x: 0, y: Y_OFF };
+                    const off = isBranch ? (branchOffsets[i] ?? { x: 0 }) : { x: 0 };
                     const newNodeId = store.addNode(sm.id, {
-                      position: { x: baseX + off.x, y: py + off.y },
+                      position: { x: baseX + off.x, y: childY },
                     });
                     if (!newNodeId) continue;
                     const edgeData = isBranch ? {
@@ -5304,17 +5569,99 @@ export function StateNode({ data, selected, id }) {
                 }
               }
 
+              // v2.3 — vision-pair chaining. When the user just committed a
+              // vision Action (Trigger Cam X / Job Y), don't close the picker.
+              // Instead re-open it in Decision mode pre-filled with the same
+              // camera + job so they pick what to do with the RESULT in the
+              // same flow. The two rows together compile to the 4-state
+              // Trigger → WaitBusy → WaitResult → Branch sequence the L5X
+              // exporter knows how to expand.
+              const isVisionActionCommit = !isEdit
+                && cleanConfig.mode === 'action'
+                && cleanConfig.grammarRowId === 'vision'
+                && cleanConfig.subjectId
+                && !pendingVisionPair;  // first commit only — second commit closes
+              // Step 2 commit (the decision half of the pair). Tag it so the
+              // store has both halves linked. The earlier addAction call
+              // already happened with the old cleanConfig, so we patch the
+              // most-recently-added action AFTER the addAction completed.
+              const isVisionPairStep2 = pendingVisionPair && !isEdit
+                && cleanConfig.mode === 'decision'
+                && cleanConfig.grammarRowId === 'vision'
+                && cleanConfig.subjectId === pendingVisionPair.subjectId;
+              if (isVisionPairStep2) {
+                // Find the matching trigger row added moments ago. They share
+                // grammarRowId='vision' and the same subjectId; the trigger is
+                // the action one (mode='action'). Mark both halves so renders
+                // and the L5X exporter can identify the pair.
+                const stFresh = useDiagramStore.getState();
+                const smFresh = stFresh.project?.stateMachines?.find(s => s.id === sm.id);
+                const nodeFresh = smFresh?.nodes?.find(n => n.id === id);
+                const triggerAct = (nodeFresh?.data?.actions ?? []).find(a =>
+                  a.pickerV2 && a.pickerConfig?.mode === 'action'
+                  && a.pickerConfig?.grammarRowId === 'vision'
+                  && a.pickerConfig?.subjectId === pendingVisionPair.subjectId
+                );
+                const decisionAct = (nodeFresh?.data?.actions ?? []).find(a =>
+                  a.pickerV2 && a.pickerConfig?.mode === 'decision'
+                  && a.pickerConfig?.grammarRowId === 'vision'
+                  && a.pickerConfig?.subjectId === pendingVisionPair.subjectId
+                );
+                if (triggerAct && decisionAct) {
+                  stFresh.updateAction(sm.id, id, triggerAct.id, {
+                    pickerConfig: {
+                      ...triggerAct.pickerConfig,
+                      visionPair: { role: 'trigger', partnerActionId: decisionAct.id },
+                    },
+                  });
+                  stFresh.updateAction(sm.id, id, decisionAct.id, {
+                    pickerConfig: {
+                      ...decisionAct.pickerConfig,
+                      visionPair: { role: 'decision', partnerActionId: triggerAct.id },
+                    },
+                  });
+                }
+              }
+              if (isVisionActionCommit) {
+                setPendingVisionPair({
+                  subjectId:   cleanConfig.subjectId,
+                  subjectName: cleanConfig.subjectName,
+                  jobName:     cleanConfig.detail?.['Job name'] || null,
+                });
+                // Keep the picker open — re-renders pick up seedConfig below.
+                setEditingActionId(null);
+                editingActionIdRef.current = null;
+                setPickerInitialStep(null);
+                setPickerDraft(null);
+                return;
+              }
+
               setShowPicker(false);
               setEditingActionId(null);
+              editingActionIdRef.current = null;
               setPickerInitialStep(null);
               setPickerDraft(null);
+              setPendingVisionPair(null);
             }}
             onCancel={() => {
               setShowPicker(false);
               setEditingActionId(null);
+              editingActionIdRef.current = null;
               setPickerInitialStep(null);
               setPickerDraft(null);
+              setPendingVisionPair(null);
             }}
+            seedConfig={pendingVisionPair ? {
+              mode: 'decision',
+              subAction: 'branch',
+              subjectId: pendingVisionPair.subjectId,
+              subjectName: pendingVisionPair.subjectName,
+              grammarRowId: 'vision',
+              detail: pendingVisionPair.jobName ? { 'Job name': pendingVisionPair.jobName } : {},
+            } : null}
+            contextBanner={pendingVisionPair
+              ? `Step 2 of vision node — ${pendingVisionPair.subjectName} / ${pendingVisionPair.jobName ?? '...'} : pick what to do with the result`
+              : null}
           />
         </NodeToolbar>
       )}
@@ -5403,6 +5750,7 @@ export function StateNode({ data, selected, id }) {
                   key={action.id}
                   action={action}
                   devices={devices}
+                  allSMs={allSMs}
                   smId={sm?.id}
                   nodeId={id}
                   isLast={actionIdx === actions.length - 1}
@@ -5424,10 +5772,16 @@ export function StateNode({ data, selected, id }) {
                     // No more legacy DecisionEditPopup. v1 _decision actions will start
                     // fresh in the picker; on commit they become v2 (pickerV2: true) with
                     // proper pickerConfig data.
+                    // v2.3 — defensive: never carry vision-pair pending state
+                    // into an edit. The pair flow only applies to FIRST commits
+                    // of a brand-new vision Action; opening any existing row
+                    // for edit must start with no pending pair so the commit
+                    // handler takes the normal updateAction path.
+                    setPendingVisionPair(null);
                     if (editingActionId === action.id && showPicker) {
-                      setShowPicker(false); setEditingActionId(null); setPickerInitialStep(null);
+                      setShowPicker(false); setEditingActionId(null); editingActionIdRef.current = null; setPickerInitialStep(null);
                     } else {
-                      setEditingActionId(action.id); setPickerInitialStep(null); setShowPicker(true);
+                      setEditingActionId(action.id); editingActionIdRef.current = action.id; setPickerInitialStep(null); setShowPicker(true);
                     }
                   }}
                   onClickOp={(() => {
@@ -5550,16 +5904,28 @@ export function StateNode({ data, selected, id }) {
                 state-of-the-subject pill mirrors how signal latches read
                 ("PartCheck" stores PartCheck's value at this step). */}
             {(() => {
+              // v2.3 — render one pill per user-typed custom-log entry.
+              // No more auto-primary "subject name" pill (it was noise).
+              // Field name displayed = `{Subject}_{typed}` matching how the
+              // PT field is actually stored. Legacy ptExtraLogs (preset
+              // checkbox extras) still rendered for back-compat.
+              const strip = s => String(s).replace(/[^A-Za-z0-9_]/g, '');
               const ptPills = (actions ?? [])
                 .filter(a => a?.pickerV2 && a?.pickerConfig?.ptEnabled)
                 .flatMap(a => {
                   const cfg = a.pickerConfig ?? {};
                   const subj = cfg.subjectName || 'Result';
-                  const out = [{ name: subj, kind: 'primary' }];
+                  const out = [];
+                  for (const e of (cfg.ptCustomLogs ?? [])) {
+                    out.push({
+                      name: `${subj}_${strip(e.name)}`,
+                      type: e.dataType || 'REAL',
+                    });
+                  }
                   for (const x of (cfg.ptExtraLogs ?? [])) {
                     out.push({
-                      name: `${subj}_${String(x).replace(/\s+/g, '')}`,
-                      kind: 'extra',
+                      name: `${subj}_${strip(x)}`,
+                      type: 'REAL',
                     });
                   }
                   return out;
@@ -5570,7 +5936,7 @@ export function StateNode({ data, selected, id }) {
                   {ptPills.map((p, i) => (
                     <span
                       key={`pt-${i}-${p.name}`}
-                      title={`Logs ${p.name} to Part Tracking`}
+                      title={`Logs ${p.name} (${p.type}) to Part Tracking`}
                       onClick={e => e.stopPropagation()}
                       onMouseDown={e => e.stopPropagation()}
                       style={{

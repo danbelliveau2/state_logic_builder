@@ -1,3 +1,26 @@
+// Map from grammar row id → DEVICE_TYPES key. Lives here (not in
+// UniversalPicker.jsx) so picker file can have its own React Fast Refresh
+// boundary — mixing component + non-component exports invalidates HMR
+// fast-swap and forces a full reload on every edit. Keeping this constant
+// in lib/ means picker edits hot-swap cleanly.
+export const GRAMMAR_TO_DEVICE_TYPE = {
+  cylinder:      'PneumaticLinearActuator',
+  rotary:        'PneumaticRotaryActuator',
+  gripper:       'PneumaticGripper',
+  vacuum:        'PneumaticVacGenerator',
+  servo:         'ServoAxis',
+  conveyor:      'Conveyor',
+  digitalSensor: 'DigitalSensor',
+  analogSensor:  'AnalogSensor',
+  vision:        'VisionSystem',
+  robot:         'Robot',
+  signal:        'Signal',
+  partTracking:  'Signal',     // PT reuses signal icon (no dedicated icon)
+  parameter:     'Parameter',
+  timer:         'Timer',
+  custom:        'Custom',
+};
+
 /**
  * pickerGrammar.js — Universal-picker grammar table.
  *

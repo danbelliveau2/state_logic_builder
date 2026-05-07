@@ -4,10 +4,26 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '2.2.0';
+export const APP_VERSION = '2.3.0';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '2.3.0',
+    date: '2026-05-07',
+    time: '11:00',
+    author: 'Dan Belliveau',
+    changes: [
+      'Vision node = ONE visible node, two action rows. Picking a vision Action (Trigger Cam X / Job Y) now auto-chains the picker into a Decision step pre-filled with the same camera/job. Pick what to do with the result (Wait + log / Branch Pass-Fail / Branch 3-way / Check & Continue). Both rows tag each other via `pickerConfig.visionPair = { role, partnerActionId }` so future L5X expansion can compile them into the standard 4 sub-states (Trigger / WaitBusy / WaitResult / Branch).',
+      'Edit-vs-add bug FIXED. Clicking an existing row to edit was sometimes adding a new row instead of replacing. Picker now stamps `editActionId` directly into the commit payload + StateNode keeps a `useRef` fallback. Three-tier resolution chain (payload → state → ref) is immune to React state clearing between row click and Done click.',
+      'PT log redesign — fully manual. Toggle "Log values to Part Tracking" → free-text field name input + dataType dropdown (REAL / DINT / BOOL / STRING) + Add button. Each entry stores as `{Subject}_{your name}`. No more auto-primary log based on subject name. Branch sub-action defaults to PT off (Pass/Fail is already on the edge label, no need to re-log it).',
+      'Topology change cleanup. When you edit a Branch row to single-exit (Wait / Check & Continue), the old Pass/Fail children + edges get removed (only if children are empty + not terminal + no other parents) and ONE fresh continuation child spawns straight down. When you go back to Branch, ensureBranchFanOut detects the placeholder and re-spawns Pass/Fail children with proper edges.',
+      'Child Y-position now anchored to parent BOTTOM + GAP, not parent TOP + offset. Tall nodes (vision pair, multi-row states) no longer have children overlapping their lower edge. branchYOffset reinterpreted as the gap between parent.bottom and child.top (default 120).',
+      'Wait/Check rows now show DI[N] prefix + "from {Robot}" subtitle when the subject resolves to a robot signal (same-SM, cross-SM, or project signal that resolves). PickerV2ActionRow takes a new resolveSignalContext helper that walks all SMs to find the owning device.',
+      'HMR Fast Refresh fixed for UniversalPicker.jsx. The non-component export `GRAMMAR_TO_DEVICE_TYPE` lived alongside the component, which caused Vite to invalidate fast-refresh on every picker edit (the warning "Could not Fast Refresh ... export is incompatible"). The browser kept running stale picker code until a manual page reload — making it look like fixes "weren\'t taking effect". Constant moved to `lib/pickerGrammar.js`; picker now hot-swaps cleanly.',
+      'Rotary device shape: pentagon body extended to 85% down (was 62%) so device names like `Pick_Rotary` no longer get clipped by the slope.',
+    ],
+  },
   {
     version: '2.2.0',
     date: '2026-05-03',

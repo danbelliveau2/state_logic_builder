@@ -43,7 +43,7 @@
  */
 
 import { useState, useMemo } from 'react';
-import { GRAMMAR_CATEGORIES, loadGrammar, parseDetailField } from '../lib/pickerGrammar.js';
+import { GRAMMAR_CATEGORIES, loadGrammar, parseDetailField, GRAMMAR_TO_DEVICE_TYPE } from '../lib/pickerGrammar.js';
 import { DeviceIcon, CheckContinueIcon, CheckBranchIcon } from './DeviceIcons.jsx';
 import { useDiagramStore } from '../store/useDiagramStore.js';
 
@@ -51,23 +51,11 @@ import { useDiagramStore } from '../store/useDiagramStore.js';
 // the same SVG icons used elsewhere in the app. Keeps visual identity
 // consistent between the picker, the device sidebar, and the canvas.
 // Exported so on-node action rows (PickerV2ActionRow) can reuse it.
-export const GRAMMAR_TO_DEVICE_TYPE = {
-  cylinder:      'PneumaticLinearActuator',
-  rotary:        'PneumaticRotaryActuator',
-  gripper:       'PneumaticGripper',
-  vacuum:        'PneumaticVacGenerator',
-  servo:         'ServoAxis',
-  conveyor:      'Conveyor',
-  digitalSensor: 'DigitalSensor',
-  analogSensor:  'AnalogSensor',
-  vision:        'VisionSystem',
-  robot:         'Robot',
-  signal:        'Signal',
-  partTracking:  'Signal',     // PT reuses signal icon (no dedicated icon)
-  parameter:     'Parameter',
-  timer:         'Timer',
-  custom:        'Custom',
-};
+// GRAMMAR_TO_DEVICE_TYPE moved to src/lib/pickerGrammar.js so the picker
+// file is component-only and React Fast Refresh hot-swaps cleanly. Mixing
+// non-component exports here invalidates HMR and forces a full page reload
+// on every edit, which makes development confusing — your "fix is live"
+// claim is wrong because the browser is still running the previous bundle.
 
 // Sub-action taxonomy. A branch is conceptually just a check that branches —
 // you can't fork without first observing something. So the picker exposes:
@@ -96,6 +84,16 @@ export function UniversalPicker({
   // action's pickerConfig and the commit callback receives `isEdit: true`.
   // The caller (StateNode) is responsible for updateAction-vs-addAction.
   editAction = null,
+  // ADD-mode pre-fill. When set (and editAction is not), the picker uses this
+  // as the seed for initial state but stays in ADD mode (commit goes through
+  // addAction, isEdit=false). Used by the vision-pair flow: the parent state
+  // node pre-fills mode='decision', subjectId={cam}, detail['Job name']={job}
+  // so the user lands on the decision step with the camera/job already chosen.
+  seedConfig = null,
+  // Banner copy shown above the mode toggle when set. Lets the parent node
+  // tell the user what this picker invocation is FOR — e.g. "Step 2 of vision
+  // node — pick what to do with the result".
+  contextBanner = null,
 }) {
   const grammarRows = useMemo(() => grammar || loadGrammar(), [grammar]);
   const subjectList = subjects || [];
@@ -107,9 +105,9 @@ export function UniversalPicker({
     return m;
   }, [grammarRows]);
 
-  // Seed initial state from editAction.pickerConfig if present.
-  // Falls back to default empty picks for fresh-add mode.
-  const seed = editAction?.pickerConfig || null;
+  // Seed initial state from editAction.pickerConfig (edit mode) or seedConfig
+  // (add mode pre-fill). Falls back to default empty picks for fresh-add mode.
+  const seed = editAction?.pickerConfig || seedConfig || null;
   const [mode, setMode]               = useState(seed?.mode || initialMode);
   const [subAction, setSubAction]     = useState(seed?.subAction || 'wait');
   const [subjectId, setSubjectId]     = useState(seed?.subjectId || null);
@@ -136,6 +134,10 @@ export function UniversalPicker({
   // caller — names are derived, not user-typed.
   const [ptEnabled,    setPtEnabled]    = useState(seed?.ptEnabled    ?? false);
   const [ptExtraLogs,  setPtExtraLogs]  = useState(seed?.ptExtraLogs  ?? []);
+  // v2.3 — Custom user-typed log fields. Replaces the rigid auto-primary
+  // ("log subject name") + preset extras model with a free-form list.
+  // Shape: [{ name: 'RotationAngle', dataType: 'REAL' }, ...]
+  const [ptCustomLogs, setPtCustomLogs] = useState(seed?.ptCustomLogs ?? []);
 
   // Terminal-state shortcut — instead of picking an action, the user can
   // mark THIS state as Cycle Complete (✓) or Fault (⚠). Selecting one
@@ -322,6 +324,7 @@ export function UniversalPicker({
       onPick && onPick({
         terminalType,           // 'complete' | 'fault'
         isEdit: !!editAction,
+        editActionId: editAction?.id ?? null,
       });
       return;
     }
@@ -365,6 +368,7 @@ export function UniversalPicker({
       // condition (auto). Extras = user-checked items from logExtras.
       ptEnabled:    isCheck ? ptEnabled : false,
       ptExtraLogs:  isCheck && ptEnabled ? filteredExtras : [],
+      ptCustomLogs: isCheck && ptEnabled ? (ptCustomLogs ?? []) : [],
       // Branch count override (for Check & Branch only). Stored so re-opening
       // the picker preserves the user's chosen N.
       branchCount:  subAction === 'branch' ? (branchCount ?? null) : null,
@@ -376,6 +380,13 @@ export function UniversalPicker({
       // True when the picker was opened to edit an existing action.
       // The caller uses this to choose updateAction vs addAction.
       isEdit:       !!editAction,
+      // v2.3 — also include the action id directly in the payload. This
+      // makes StateNode's commit handler immune to any race in its own
+      // editingActionId state — if we got here from an edit, this id
+      // identifies WHICH action to update. Without this, transient state
+      // clears (e.g. node deselect → setEditingActionId(null)) cause edits
+      // to fall through to addAction, producing duplicate rows.
+      editActionId: editAction?.id ?? null,
     });
   }
 
@@ -386,6 +397,23 @@ export function UniversalPicker({
 
   return (
     <div style={pickerWrap}>
+      {/* Context banner — set by the parent node when this picker invocation
+          is part of a multi-step flow (e.g. step 2 of a vision pair). Tells
+          the user what they're picking FOR before they see the mode toggle. */}
+      {contextBanner && (
+        <div style={{
+          background: '#fef3c7',
+          color: '#92400e',
+          border: '1px solid #fcd34d',
+          borderRadius: 6,
+          padding: '6px 10px',
+          fontSize: 11,
+          fontWeight: 600,
+          marginBottom: 8,
+        }}>
+          {contextBanner}
+        </div>
+      )}
       {/* Mode toggle */}
       <div style={sectionRow}>
         <ModeBtn
@@ -798,18 +826,19 @@ export function UniversalPicker({
           })()}
 
           {/* Log-target picker — Check & Continue / Check & Branch.
-              The PRIMARY log is the picked Condition (auto, no chooser).
-              EXTRAS are subject-specific values worth logging alongside —
-              e.g. an analog probe can also log Actual Position. Hidden
-              entirely for subjects with no extras (digital sensors etc.). */}
+              v2.3 redesign: free-text custom field list. User types each
+              field they want to log (e.g. RotationAngle, PositionX) with
+              a dataType selector. No auto-primary — Pass/Fail of a branch
+              is already on the edge label, so re-logging it is noise.
+              Branch sub-action also keeps the toggle off-by-default for
+              the same reason — most branches just decide flow, no logging
+              needed. User must explicitly turn it on AND add field names. */}
           {(subAction === 'check' || subAction === 'branch') && (
             <LogTargetPicker
               ptEnabled={ptEnabled}
               setPtEnabled={setPtEnabled}
-              ptExtraLogs={ptExtraLogs}
-              setPtExtraLogs={setPtExtraLogs}
-              condition={condition}
-              extras={parseList(grammarRow?.logExtras)}
+              ptCustomLogs={ptCustomLogs}
+              setPtCustomLogs={setPtCustomLogs}
               subjectName={subject?.name}
             />
           )}
@@ -892,30 +921,46 @@ function stepperBtn(disabled) {
   };
 }
 
-// Log-target picker — auto-logs the picked Condition; lets the user opt
-// into additional logs from the subject's `logExtras` list. No name picker
-// — PT field names are derived on commit by the StateNode caller.
+// Log-target picker — fully manual, free-text custom fields.
 //
-//   master toggle:           "Log result to PT field"
-//   primary log (read-only): "Will log: <Condition>"
-//   extras (when offered):   "Also log:" + checkbox per logExtras entry
+// Per user feedback: subjects vary too widely to pre-define what to log.
+// Pass/Fail of a branch is already on the edge label — re-logging it adds
+// nothing. The useful logs are values the user wants to capture for trend
+// analysis (rotation angle, position X, score, force reading, etc).
 //
-// Subjects with no extras (digital sensors, signals) show only the master
-// toggle and the primary read-out — no checkboxes, no clutter.
+// Layout:
+//   master toggle:           "Log values to Part Tracking"
+//   field-list:              [ name input ] [ type select ] [ + Add ]
+//                            ──────────────────────────────────────
+//                            • RotationAngle (REAL)  ✕
+//                            • PositionX     (REAL)  ✕
+//
+// Field name shown to user = bare typed name (e.g. "RotationAngle").
+// Stored field name = `{Subject}_{typed}` (e.g. "Cam1_RotationAngle") to
+// keep the PT field list namespaced and avoid collisions across subjects.
+// Stored as `pickerConfig.ptCustomLogs = [{ name, dataType }, ...]`.
 function LogTargetPicker({
   ptEnabled, setPtEnabled,
-  ptExtraLogs, setPtExtraLogs,
-  condition,
-  extras,
+  ptCustomLogs, setPtCustomLogs,
   subjectName,
 }) {
-  const hasExtras = Array.isArray(extras) && extras.length > 0;
-  const toggleExtra = (name) => {
-    setPtExtraLogs(prev => {
-      const set = new Set(prev ?? []);
-      if (set.has(name)) set.delete(name); else set.add(name);
-      return [...set];
-    });
+  const [draftName, setDraftName] = useState('');
+  const [draftType, setDraftType] = useState('REAL');
+  const list = Array.isArray(ptCustomLogs) ? ptCustomLogs : [];
+  const stripName = (s) => String(s).trim().replace(/[^A-Za-z0-9_]/g, '');
+
+  const addEntry = () => {
+    const name = stripName(draftName);
+    if (!name) return;
+    if (list.some(e => e.name === name)) return;
+    setPtCustomLogs([...list, { name, dataType: draftType }]);
+    setDraftName('');
+  };
+  const removeEntry = (name) => {
+    setPtCustomLogs(list.filter(e => e.name !== name));
+  };
+  const updateType = (name, dataType) => {
+    setPtCustomLogs(list.map(e => e.name === name ? { ...e, dataType } : e));
   };
 
   return (
@@ -927,7 +972,7 @@ function LogTargetPicker({
         border: `1px solid ${ptEnabled ? '#10b981' : '#e2e8f0'}`,
         borderRadius: 6,
       }}
-      title="Records the check result to a Part Tracking field for later analysis."
+      title="Capture custom values to Part Tracking fields for trend / outcome analysis."
     >
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
         <input
@@ -937,67 +982,123 @@ function LogTargetPicker({
           style={{ cursor: 'pointer' }}
         />
         <span style={{ fontSize: 11, fontWeight: 700, color: ptEnabled ? '#065f46' : '#475569' }}>
-          Log result to PT field
+          Log values to Part Tracking
         </span>
       </label>
 
       {ptEnabled && (
-        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {/* Primary log — the value being saved is just the subject's
-              current reading (digital → on/off, analog → tolerance result,
-              vision → pass/fail). Field name = subject name. No reference
-              to the picked condition (Check & Continue doesn't pick one). */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
-            <span style={{ color: '#475569', fontWeight: 600 }}>Will log:</span>
-            <span style={{
-              padding: '2px 8px',
-              borderRadius: 10,
-              fontSize: 10,
-              fontWeight: 700,
-              background: '#0072B5',
-              color: '#fff',
-            }}>
-              {subjectName || 'Result'}
-            </span>
+        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {/* Hint — clarifies what the field name will look like in PT. */}
+          <div style={{ fontSize: 9, color: '#64748b', fontStyle: 'italic' }}>
+            Stored field name: <code style={{ background: '#f1f5f9', padding: '0 4px', borderRadius: 3 }}>
+              {(subjectName || 'Subject') + '_<your name>'}
+            </code>
           </div>
 
-          {/* Extras — only render when the subject has any. */}
-          {hasExtras && (
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: '#475569', marginTop: 3 }}>
-                Also log:
-              </span>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                {extras.map(x => {
-                  const checked = (ptExtraLogs ?? []).includes(x);
-                  return (
-                    <label
-                      key={x}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        padding: '2px 8px',
-                        fontSize: 10,
-                        fontWeight: 600,
-                        border: `1px solid ${checked ? '#10b981' : '#cbd5e1'}`,
-                        borderRadius: 10,
-                        background: checked ? '#10b981' : '#fff',
-                        color: checked ? '#fff' : '#475569',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleExtra(x)}
-                        style={{ cursor: 'pointer', margin: 0 }}
-                      />
-                      {x}
-                    </label>
-                  );
-                })}
-              </div>
+          {/* Add row — name input, dataType select, Add button. Pressing
+              Enter in the name field triggers Add. Strips spaces / special
+              chars so the resulting PLC tag stays valid. */}
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <input
+              type="text"
+              placeholder="e.g. RotationAngle"
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); addEntry(); }
+              }}
+              style={{
+                flex: 1, minWidth: 80,
+                fontSize: 11,
+                padding: '3px 6px',
+                border: '1px solid #cbd5e1',
+                borderRadius: 4,
+              }}
+            />
+            <select
+              value={draftType}
+              onChange={(e) => setDraftType(e.target.value)}
+              style={{
+                fontSize: 10, fontWeight: 700,
+                padding: '3px 4px',
+                border: '1px solid #cbd5e1',
+                borderRadius: 4,
+                background: '#fff',
+              }}
+              title="PLC data type for this field"
+            >
+              <option value="REAL">REAL</option>
+              <option value="DINT">DINT</option>
+              <option value="BOOL">BOOL</option>
+              <option value="STRING">STRING</option>
+            </select>
+            <button
+              type="button"
+              onClick={addEntry}
+              disabled={!stripName(draftName)}
+              style={{
+                fontSize: 10, fontWeight: 700,
+                padding: '3px 8px',
+                background: stripName(draftName) ? '#10b981' : '#cbd5e1',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 4,
+                cursor: stripName(draftName) ? 'pointer' : 'not-allowed',
+              }}
+            >
+              + Add
+            </button>
+          </div>
+
+          {/* List of added entries — each row: name pill, type select, X. */}
+          {list.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 2 }}>
+              {list.map(entry => (
+                <div key={entry.name} style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '2px 6px',
+                  background: '#fff',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: 4,
+                  fontSize: 10,
+                }}>
+                  <span style={{ fontWeight: 700, color: '#0f172a', flex: 1 }}>
+                    {entry.name}
+                  </span>
+                  <select
+                    value={entry.dataType}
+                    onChange={(e) => updateType(entry.name, e.target.value)}
+                    style={{
+                      fontSize: 9, fontWeight: 700,
+                      padding: '1px 3px',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: 3,
+                      background: '#f8fafc',
+                    }}
+                  >
+                    <option value="REAL">REAL</option>
+                    <option value="DINT">DINT</option>
+                    <option value="BOOL">BOOL</option>
+                    <option value="STRING">STRING</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => removeEntry(entry.name)}
+                    style={{
+                      fontSize: 11, fontWeight: 700,
+                      padding: '0 5px',
+                      background: 'transparent',
+                      color: '#dc2626',
+                      border: 'none',
+                      cursor: 'pointer',
+                      lineHeight: 1,
+                    }}
+                    title="Remove this log field"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
             </div>
           )}
         </div>
