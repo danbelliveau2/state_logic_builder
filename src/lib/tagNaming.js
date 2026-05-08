@@ -61,22 +61,34 @@ export function getDeviceTags(device, context = {}) {
   switch (device.type) {
     case 'PneumaticLinearActuator':
     case 'PneumaticRotaryActuator':
-      // Extend sensor (always present)
-      if (sensorCount === 2) {
-        tags.push({
-          name: resolvePattern(patterns.inputExt, device),
-          usage: 'Input',
-          dataType: 'BOOL',
-          description: `${device.displayName} - Extend proximity sensor`,
-        });
+      // Sensor arrangement decides which sensor inputs are emitted.
+      //   '2-sensor (Ext + Ret)'  → both inputs
+      //   '1-sensor (Ret only)'   → retract only
+      //   'No sensors'            → neither
+      // Inputs are tied to actual sensors, not the device-type template.
+      {
+        const arrangement = device.sensorArrangement ?? '';
+        const hasBoth   = arrangement.includes('2-sensor');
+        const hasNone   = arrangement.includes('No sensors');
+        const hasExtSensor = hasBoth;
+        const hasRetSensor = hasBoth || (!hasNone && arrangement.includes('Ret'));
+        if (hasExtSensor) {
+          tags.push({
+            name: resolvePattern(patterns.inputExt, device),
+            usage: 'Input',
+            dataType: 'BOOL',
+            description: `${device.displayName} - Extend proximity sensor`,
+          });
+        }
+        if (hasRetSensor) {
+          tags.push({
+            name: resolvePattern(patterns.inputRet, device),
+            usage: 'Input',
+            dataType: 'BOOL',
+            description: `${device.displayName} - Retract proximity sensor`,
+          });
+        }
       }
-      // Retract sensor
-      tags.push({
-        name: resolvePattern(patterns.inputRet, device),
-        usage: 'Input',
-        dataType: 'BOOL',
-        description: `${device.displayName} - Retract proximity sensor`,
-      });
       // Outputs
       tags.push({
         name: resolvePattern(patterns.outputExtend, device),
@@ -125,14 +137,23 @@ export function getDeviceTags(device, context = {}) {
       break;
 
     case 'PneumaticGripper': {
-      const sensorCountG = device.sensorArrangement?.includes('2-sensor') ? 2 : 1;
-      tags.push({
-        name: resolvePattern(patterns.inputEngage, device),
-        usage: 'Input',
-        dataType: 'BOOL',
-        description: `${device.displayName} - Engaged sensor`,
-      });
-      if (sensorCountG === 2) {
+      // Sensor arrangement: 'No sensors' | '1-sensor (Closed only)' | '2-sensor (Closed + Open)'.
+      // Inputs ONLY appear if the gripper actually has a sensor of that
+      // type configured. Sensorless grippers emit zero inputs — was
+      // emitting a phantom i_*Closed even without a sensor, which left
+      // the I/O map showing a tag the device couldn't actually read.
+      const arrangement = device.sensorArrangement ?? '';
+      const hasClosedSensor = arrangement.includes('1-sensor') || arrangement.includes('2-sensor');
+      const hasOpenSensor   = arrangement.includes('2-sensor');
+      if (hasClosedSensor) {
+        tags.push({
+          name: resolvePattern(patterns.inputEngage, device),
+          usage: 'Input',
+          dataType: 'BOOL',
+          description: `${device.displayName} - Engaged sensor`,
+        });
+      }
+      if (hasOpenSensor) {
         tags.push({
           name: resolvePattern(patterns.inputDisengage, device),
           usage: 'Input',

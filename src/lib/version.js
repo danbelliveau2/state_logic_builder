@@ -4,10 +4,30 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '2.3.0';
+export const APP_VERSION = '3.1.0';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '3.1.0',
+    date: '2026-05-08',
+    time: '13:50',
+    author: 'Dan Belliveau',
+    changes: [
+      'I/O MAP SYSTEM — `lib/getProjectIoMap.js` is the single source of truth for every input/output the project will emit (auto-derived from devices used across all SMs; same data the L5X exporter uses). Three views read it: header `◉ I/O` button popup (side-by-side Inputs/Outputs cards, SM filter defaulting to active SM, search, internal-tags toggle, click-outside-closes via capture-phase listener); picker SUBJECT panel adds a `+ Pick I/O point…` chip (Action AND Decision modes) that opens a drawer of every digital tag — pick one and the picker treats it as a virtual signal subject (`pickerConfig.ioRef`). Lets engineers decide off OR drive any tag in the I/O map directly, not just sensor inputs.',
+      'TOOLBAR REDESIGN — replaced the unused project-folder button with the new `◉ I/O` button (bigger, bolder, active-state highlight). Removed the SM dropdown chevron. Killed the dead-space margin so action buttons (undo/redo/exports) sit right after the Recipes dropdown.',
+      'CANVAS-CLEANER ARROW + EDGE rendering: mid-segment arrows on every segment as before, but the first-segment arrow now sits at +90 (past the source-label pill) on long segments and falls back to "near segment end" on short ones (so state-100 → state-106 short branches still get a visible arrow). Edge merge-trim: when two edges target the same node and the source X-column aligns, the secondary edge\'s last vertical drop is dropped — visually merges into the primary path instead of duplicating the bottom segment. Drag the horizontal "rail" of any forward Z-bend up/down (`data.mergeYOffset`).',
+      'BRANCH HANDLING — when committing a Branch action and the source state already has 2+ existing outgoing edges (init-template, manual wiring), the existing edges are relabeled as decision exits with proper Pass/Fail/Retry handles + colors (was bailing without spawning OR labeling). Topology shrink (Branch → Continue) cleans up orphan children + spawns one straight-down continuation. Topology grow (Continue → Branch) runs ensureBranchFanOut against fresh state.',
+      'I/O TAG GENERATION is now configuration-aware: gripper / actuator inputs only emit when the corresponding sensor is configured (`No sensors` / `1-sensor (Ret only)` / `2-sensor (Ext + Ret)`). Sensorless devices emit zero inputs in the I/O map.',
+      'GRIPPER OUTPUT NAMING uses operation verbs: `q_Engage{Name}` / `q_Disengage{Name}` (was `q_Close` / `q_Open`). Matches the operation list the picker exposes; reads as "command this gripper to engage."',
+      'I/O PARAMETER LABELS — replaced "DI" / "DO" badges with full words "Input" / "Output" + thin colored bars on per-row displays. Tag names already start with `q_` / `i_` so badge text is redundant; only kept on section headers in the I/O Map popup.',
+      'STEP COUNTER recognizes v2 vision-pair nodes: a Trigger + paired Decision row consumes 5 sub-state slots (40, 43, 46, 49, 52) — same expansion as the legacy v1 VisionInspect, so a vision pair at step 40 is followed by step 55, not 43.',
+      'RETRY COUNT field on Branch sub-action: when "Add Retry exit (bottom)" is on, a "Max retries: [3]" input shows in the picker. Renders as a small amber `retry=N` pill below the action row. Defaults to 3 for rows that pre-date the field.',
+      'PICKER — outer container scrollable (one scroll surface, no nested confusion); inline drawers stop wheel propagation + use `nowheel` so React Flow doesn\'t swallow scroll. I/O drawer rows stack tag + station/device subtitle vertically with text-overflow ellipsis. Picker hot-swaps cleanly (GRAMMAR_TO_DEVICE_TYPE moved to lib/pickerGrammar.js so picker is component-only).',
+      'EDIT-VS-ADD BUG fully fixed: picker stamps `editActionId` directly into the commit payload + StateNode keeps a `useRef` fallback. Three-tier resolution chain (payload → state → ref) is immune to React state clearing between row click and Done click. Clicking an existing row never adds a new row anymore — the only way to add a row is the `+` button on the node corner.',
+      'ACTION ROW SUBTITLE ("from {SM} → {Device}") shrunk to 7px so it doesn\'t dominate the row.',
+    ],
+  },
   {
     version: '2.3.0',
     date: '2026-05-07',

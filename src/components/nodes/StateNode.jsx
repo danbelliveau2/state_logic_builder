@@ -1225,6 +1225,19 @@ function resolveSignalContext(cfg, currentSmDevices, allSMs) {
   if (!cfg) return null;
   const sms = allSMs ?? [];
 
+  // Raw I/O point reference — direct tag pick from the I/O map. The
+  // subject name IS the tag name (e.g. q_ExtendCyl), so we don't need
+  // the DI/DO prefix from a sensor lookup. Surface device + SM as the
+  // subtitle so the engineer sees which device the tag belongs to.
+  if (cfg.ioRef) {
+    return {
+      deviceName: cfg.ioRef.deviceName ?? '',
+      ioGroup:    cfg.ioRef.group ?? null,
+      ioNumber:   null,  // tag name carries it; no separate DI[N] pill
+      smName:     cfg.ioRef.smName ?? null,
+    };
+  }
+
   // Cross-SM signal — explicit ref captures everything we need.
   if (cfg.crossSmRef) {
     const { smId, deviceId, signalId } = cfg.crossSmRef;
@@ -1282,8 +1295,20 @@ function resolveSignalContext(cfg, currentSmDevices, allSMs) {
 function PickerV2ActionRow({ action, onClickName, onDelete, showAdvance = true, grammar, devices, allSMs, actionIdx = 0, smId, nodeId, subjects = [] }) {
   const cfg = action.pickerConfig || {};
   const signalCtx = resolveSignalContext(cfg, devices, allSMs);
-  const ioPrefix = signalCtx?.ioGroup
-    ? `${signalCtx.ioGroup}${signalCtx.ioNumber ? `[${signalCtx.ioNumber}]` : ''}`
+  // Translate the underlying PLC group ('DI'/'DO') to user-facing
+  // parameter labels ('IN'/'OUT'). These tags are program-side parameters,
+  // not raw hardware DI/DO addresses — the prefix should reflect that.
+  // Other group values (robot signals etc) pass through unchanged.
+  // IO prefix pill — only shown for ROBOT signals where the tag name
+  // (e.g. `MagnetPickClear`) doesn't reveal direction or channel. Robot
+  // signals have an ioNumber; raw I/O picks (q_EngagePart_Gripper) don't,
+  // and showing "Output q_EngagePart_Gripper" would just duplicate the
+  // q_ prefix. Suppress unless we have the channel number to justify it.
+  const ioGroupDisplay = signalCtx?.ioGroup === 'DI' ? 'Input'
+    : signalCtx?.ioGroup === 'DO' ? 'Output'
+    : signalCtx?.ioGroup ?? null;
+  const ioPrefix = (ioGroupDisplay && signalCtx?.ioNumber)
+    ? `${ioGroupDisplay}[${signalCtx.ioNumber}]`
     : null;
   const accent = pickerV2Accent(cfg);
   const actionLabel = pickerV2ActionLabel(cfg);
@@ -1540,11 +1565,11 @@ function PickerV2ActionRow({ action, onClickName, onDelete, showAdvance = true, 
           opening the picker; pairs with the DI[N] prefix above. */}
       {signalCtx && signalCtx.deviceName && (
         <div style={{
-          fontSize: 9,
-          color: '#64748b',
+          fontSize: 7,
+          color: '#94a3b8',
           marginLeft: 26,
-          marginTop: 1,
-          lineHeight: 1.2,
+          marginTop: 0,
+          lineHeight: 1.1,
           whiteSpace: 'nowrap',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
@@ -1567,6 +1592,25 @@ function PickerV2ActionRow({ action, onClickName, onDelete, showAdvance = true, 
           fontStyle: 'italic',
         }}>
           {cfg.visionPair.role === 'trigger' ? '↓ paired with vision decision below' : '↑ result of vision trigger above'}
+        </div>
+      )}
+      {/* Retry count pill — small amber pill below the action row so the
+          retry budget is glanceable. Format: `retry=3`. Defaults to 3
+          when the row pre-dates the count field. */}
+      {cfg.mode === 'decision' && cfg.subAction === 'branch' && cfg.retryEnabled && (
+        <div style={{ padding: '0 4px 2px 26px' }}>
+          <span style={{
+            display: 'inline-block',
+            padding: '1px 6px',
+            borderRadius: 10,
+            fontSize: 9,
+            fontWeight: 700,
+            background: '#f59e0b',
+            color: '#fff',
+            whiteSpace: 'nowrap',
+          }}>
+            retry={cfg.retryCount ?? 3}
+          </span>
         </div>
       )}
       {/* Verify line — uses the SAME buildActionVerifyText helper v1 uses,
@@ -5305,7 +5349,81 @@ export function StateNode({ data, selected, id }) {
                     freshState.deleteNode(freshSm.id, ph.target);
                   }
                 } else if (outgoing.length > 1) {
-                  return;
+                  // Multiple existing outgoing edges — common case: the
+                  // init template wired the state to two next states, OR
+                  // the user manually wired branches before adding the
+                  // Branch action. Instead of bailing (which left the
+                  // edges unlabeled and the user with no visible Pass/Fail
+                  // markers), CONVERT the existing edges to decision exits
+                  // matching the new branch labels. Sort by target X so
+                  // the leftmost target gets the primary (exit-pass)
+                  // label, next gets exit-fail, etc — matches the
+                  // primary-down / alternate-right layout.
+                  const labels = (cleanConfig.edgeLabels && cleanConfig.edgeLabels.length)
+                    ? cleanConfig.edgeLabels
+                    : [null];
+                  const handles = ['exit-pass', 'exit-fail', 'exit-retry'];
+                  const sortedOut = [...outgoing].sort((a, b) => {
+                    const ta = sourceNodes.find(n => n.id === a.target);
+                    const tb = sourceNodes.find(n => n.id === b.target);
+                    return (ta?.position?.x ?? 0) - (tb?.position?.x ?? 0);
+                  });
+                  // Decide which outgoing maps to which handle:
+                  //   exit-pass goes to the target most directly below
+                  //   the source (smallest |dx|), so the primary edge
+                  //   is the straight-down one.
+                  const srcNode = sourceNodes.find(n => n.id === id);
+                  const srcCenterX = (srcNode?.position?.x ?? 0)
+                    + ((srcNode?.measured?.width ?? 240) / 2);
+                  const ranked = sortedOut
+                    .map(e => {
+                      const t = sourceNodes.find(n => n.id === e.target);
+                      const tx = (t?.position?.x ?? 0)
+                        + ((t?.measured?.width ?? 240) / 2);
+                      return { edge: e, dx: tx - srcCenterX };
+                    })
+                    .sort((a, b) => Math.abs(a.dx) - Math.abs(b.dx));
+                  const assignments = [];
+                  // Primary first (smallest |dx| → exit-pass)
+                  if (ranked[0]) assignments.push({ edge: ranked[0].edge, handle: handles[0], label: labels[0] ?? '' });
+                  // Alternate(s) sorted left-to-right
+                  const others = ranked.slice(1)
+                    .sort((a, b) => a.dx - b.dx);
+                  others.forEach((o, i) => {
+                    assignments.push({ edge: o.edge, handle: handles[i + 1] ?? null, label: labels[i + 1] ?? '' });
+                  });
+                  // Apply
+                  for (const { edge, handle, label } of assignments) {
+                    const exitColor = handle === 'exit-pass' ? 'pass'
+                      : handle === 'exit-fail' ? 'fail'
+                      : 'retry';
+                    freshState.updateEdge(freshSm.id, edge.id, {
+                      ...(edge.data ?? {}),
+                      label: label || '',
+                      outcomeLabel: label || '',
+                      isDecisionExit: true,
+                      exitColor,
+                      conditionType: 'custom',
+                    });
+                    // Also need to swap sourceHandle on the edge.
+                    // updateEdge only touches data — we need a separate
+                    // helper. Use the store's edges array directly via
+                    // setState for the handle swap (no dedicated action).
+                    useDiagramStore.setState(s => ({
+                      project: {
+                        ...s.project,
+                        stateMachines: s.project.stateMachines.map(sm =>
+                          sm.id !== freshSm.id ? sm : {
+                            ...sm,
+                            edges: sm.edges.map(e =>
+                              e.id === edge.id ? { ...e, sourceHandle: handle } : e
+                            ),
+                          }
+                        ),
+                      },
+                    }));
+                  }
+                  return;  // edges relabeled — no need to spawn new ones
                 }
 
                 // Spawn fan-out — re-read state in case of deletions above.

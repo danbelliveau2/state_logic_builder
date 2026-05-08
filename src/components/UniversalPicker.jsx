@@ -44,6 +44,7 @@
 
 import { useState, useMemo } from 'react';
 import { GRAMMAR_CATEGORIES, loadGrammar, parseDetailField, GRAMMAR_TO_DEVICE_TYPE } from '../lib/pickerGrammar.js';
+import { getDigitalIoPoints } from '../lib/getProjectIoMap.js';
 import { DeviceIcon, CheckContinueIcon, CheckBranchIcon } from './DeviceIcons.jsx';
 import { useDiagramStore } from '../store/useDiagramStore.js';
 
@@ -121,6 +122,11 @@ export function UniversalPicker({
   // `exit-retry` (bottom-center). User wires it back to a previous state
   // for retry-with-counter logic.
   const [retryEnabled, setRetryEnabled] = useState(seed?.retryEnabled || false);
+  // Max retries before the state faults / gives up. Stored alongside
+  // retryEnabled so the rung that increments + tests the retry counter
+  // has a concrete bound at L5X-export time. Default 3 — adjustable per
+  // state. Only meaningful when retryEnabled is true.
+  const [retryCount, setRetryCount] = useState(Number(seed?.retryCount ?? 3));
 
   // Log target — Check & Continue and Check & Branch can write the observed
   // value to Part-Tracking (PT) fields. The PRIMARY log is whatever you just
@@ -152,6 +158,12 @@ export function UniversalPicker({
   // subject selection: the picker treats it as a binary signal subject
   // (On/Off conditions), commit emits the ref under `crossSmRef`.
   const [crossSmRef, setCrossSmRef] = useState(seed?.crossSmRef || null);
+  // Raw I/O point reference — Decision mode only. Same shape pattern as
+  // crossSmRef: when set, picker treats it as a virtual signal subject.
+  // L5X export resolves directly to the raw tag (e.g. q_ExtendCyl). Lets
+  // engineers decide off ANY tag in the I/O map, not just sensor inputs.
+  const [ioRef, setIoRef] = useState(seed?.ioRef || null);
+  const [ioDrawerOpen, setIoDrawerOpen] = useState(false);
   const [crossSmDrawerOpen, setCrossSmDrawerOpen] = useState(false);
   const [crossSmDraft, setCrossSmDraft] = useState(
     seed?.crossSmRef
@@ -179,8 +191,15 @@ export function UniversalPicker({
         grammarRowId: 'signal',
       };
     }
+    if (ioRef) {
+      return {
+        id: '__ioRef__',
+        name: ioRef.tagName || 'I/O point',
+        grammarRowId: 'signal',
+      };
+    }
     return subjectList.find(s => s.id === subjectId) || null;
-  }, [subjectList, subjectId, crossSmRef]);
+  }, [subjectList, subjectId, crossSmRef, ioRef]);
   const grammarRow = useMemo(
     () => subject ? grammarById[subject.grammarRowId] || null : null,
     [subject, grammarById]
@@ -364,6 +383,7 @@ export function UniversalPicker({
       // Persist retry flag on pickerConfig so re-opening the picker
       // shows the toggle in the same state. Only meaningful for Branch.
       retryEnabled: subAction === 'branch' ? retryEnabled : false,
+      retryCount:   subAction === 'branch' && retryEnabled ? retryCount : null,
       // Log target — only for check / branch. Primary log = the picked
       // condition (auto). Extras = user-checked items from logExtras.
       ptEnabled:    isCheck ? ptEnabled : false,
@@ -377,6 +397,10 @@ export function UniversalPicker({
       // resolve it as a cross-SM tag reference. Stored alongside the
       // normal pickerConfig so re-opening the picker re-shows it.
       crossSmRef:   crossSmRef || null,
+      // Raw I/O point reference. When set, the L5X exporter resolves the
+      // decision condition to read directly from `ioRef.tagName`
+      // (e.g. q_ExtendVerticalCylinder) instead of a device-derived sensor.
+      ioRef:        ioRef || null,
       // True when the picker was opened to edit an existing action.
       // The caller uses this to choose updateAction vs addAction.
       isEdit:       !!editAction,
@@ -396,7 +420,10 @@ export function UniversalPicker({
   const noSubjects = subjectList.length === 0;
 
   return (
-    <div style={pickerWrap}>
+    <div
+      className="nowheel nodrag"
+      style={pickerWrap}
+    >
       {/* Context banner — set by the parent node when this picker invocation
           is part of a multi-step flow (e.g. step 2 of a vision pair). Tells
           the user what they're picking FOR before they see the mode toggle. */}
@@ -556,6 +583,29 @@ export function UniversalPicker({
                     setDrawerOpen={setCrossSmDrawerOpen}
                     draft={crossSmDraft}
                     setDraft={setCrossSmDraft}
+                  />
+                )}
+                {/* Raw I/O point chip + drawer — visible in BOTH Action and
+                    Decision modes (was decision-only). In Action mode this
+                    means "directly drive this output" (OTL / OTU on commit);
+                    in Decision mode it means "decide based on this tag's
+                    value". Either way you're working with a tag straight
+                    out of the project's I/O map. */}
+                {cat.id === 'signals' && (
+                  <RawIoPointRow
+                    project={allSMs.length > 0 ? { stateMachines: allSMs } : null}
+                    ioRef={ioRef}
+                    setIoRef={(ref) => {
+                      setIoRef(ref);
+                      if (ref) {
+                        setSubjectId(null);
+                        setActionVerb(null);
+                        setCrossSmRef(null);
+                        if (mode === 'decision') setCondition('On');
+                      }
+                    }}
+                    drawerOpen={ioDrawerOpen}
+                    setDrawerOpen={setIoDrawerOpen}
                   />
                 )}
               </div>
@@ -820,6 +870,39 @@ export function UniversalPicker({
                       Add Retry exit (bottom)
                     </span>
                   </label>
+                  {/* Retry count — bounds the retry counter for L5X export
+                      and shows on the state node below the action row, so
+                      engineers see at a glance how many attempts before the
+                      retry path is taken. Only renders when retry is on. */}
+                  {retryEnabled && (
+                    <div style={{
+                      marginTop: 6, display: 'flex', alignItems: 'center', gap: 6,
+                      fontSize: 11, color: '#92400e',
+                    }}>
+                      <span style={{ fontWeight: 600 }}>Max retries:</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={99}
+                        value={retryCount}
+                        onChange={(e) => setRetryCount(
+                          Math.max(1, Math.min(99, Number(e.target.value) || 1))
+                        )}
+                        style={{
+                          width: 50,
+                          fontSize: 11, fontWeight: 700,
+                          padding: '2px 6px',
+                          border: '1px solid #f59e0b',
+                          borderRadius: 4,
+                          background: '#fff',
+                          color: '#92400e',
+                        }}
+                      />
+                      <span style={{ fontStyle: 'italic', color: '#a16207' }}>
+                        before fault / take retry path
+                      </span>
+                    </div>
+                  )}
                 </div>
               </>
             );
@@ -1399,6 +1482,16 @@ const pickerWrap = {
   width: 360,
   maxWidth: 360,
   boxSizing: 'border-box',
+  // Cap height so the popup can never overflow the viewport when an inline
+  // drawer expands (raw I/O list, cross-SM drawer). Vertical scroll lets
+  // the user reach long lists; the inline drawers also scroll internally.
+  // overscrollBehavior: 'contain' prevents wheel events from chaining up to
+  // the page when the picker (or its inner scrollable lists) hits its
+  // scroll boundary — without this, scrolling inside the I/O list would
+  // also scroll the canvas behind the picker.
+  maxHeight: 'calc(100vh - 80px)',
+  overflowY: 'auto',
+  overscrollBehavior: 'contain',
 };
 
 const sectionRow = {
@@ -1556,3 +1649,197 @@ const btnSecondary = {
   background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1',
   borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit',
 };
+
+// ── Raw I/O point row ────────────────────────────────────────────────────────
+//
+// Hidden behind a "+ I/O point" chip in the SIGNAL category (Decision mode
+// only). Click → drawer opens with a flat list of every digital I/O point
+// the project will emit (`getDigitalIoPoints` reads `getProjectIoMap`, the
+// same data backing the toolbar popup and the canvas I/O Map tab — so what
+// you can pick from here is exactly what gets emitted to Studio 5000).
+// On pick, the picker treats it as a virtual signal subject; commit emits
+// `pickerConfig.ioRef = { tagName, group, deviceId, smId, smName }`.
+function RawIoPointRow({ project, ioRef, setIoRef, drawerOpen, setDrawerOpen }) {
+  const ioPoints = useMemo(() => {
+    if (!project) return [];
+    return getDigitalIoPoints(project);
+  }, [project]);
+
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('all');  // all | inputs | outputs
+  const filtered = useMemo(() => {
+    let list = ioPoints;
+    if (filter === 'inputs')  list = list.filter(p => p.section === 'digitalInput');
+    if (filter === 'outputs') list = list.filter(p => p.section === 'digitalOutput');
+    if (!search) return list;
+    const q = search.toLowerCase();
+    return list.filter(p =>
+      p.tagName.toLowerCase().includes(q) ||
+      p.deviceName.toLowerCase().includes(q)
+    );
+  }, [ioPoints, search, filter]);
+
+  if (ioRef) {
+    return (
+      <div style={{
+        marginTop: 6, padding: '6px 8px',
+        background: '#fef3c7', border: '1px solid #f59e0b',
+        borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6,
+      }}>
+        {/* No type badge — the tag name's q_/i_ prefix already says
+            input vs output. Border color is enough as a visual marker. */}
+        <span style={{ fontFamily: 'Consolas, monospace', fontSize: 11, fontWeight: 600, color: '#0f172a' }}>
+          {ioRef.tagName}
+        </span>
+        <span style={{ fontSize: 9, color: '#a16207', flex: 1 }}>
+          {ioRef.smName} · {ioRef.deviceName}
+        </span>
+        <button
+          onClick={() => setIoRef(null)}
+          style={{
+            padding: '2px 8px', fontSize: 10, fontWeight: 700,
+            background: '#fff', color: '#92400e', border: '1px solid #f59e0b',
+            borderRadius: 3, cursor: 'pointer',
+          }}
+          title="Clear I/O point"
+        >
+          ×
+        </button>
+      </div>
+    );
+  }
+
+  if (!drawerOpen) {
+    return (
+      <button
+        onClick={() => setDrawerOpen(true)}
+        style={{
+          marginTop: 6, marginLeft: 4,
+          padding: '4px 10px',
+          fontSize: 11, fontWeight: 600,
+          background: '#fff', color: '#92400e',
+          border: '1px dashed #f59e0b', borderRadius: 6,
+          cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4,
+        }}
+        title="Pick any input or output the project will emit (e.g. q_ExtendCyl). Same data as the toolbar I/O button."
+      >
+        + Pick I/O point…
+      </button>
+    );
+  }
+
+  return (
+    <div style={{
+      marginTop: 6, padding: 8,
+      background: '#f8fafc', border: '1px solid #cbd5e1',
+      borderRadius: 6,
+    }}>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: '#475569' }}>I/O point:</span>
+        {[
+          { k: 'all',     l: 'All' },
+          { k: 'inputs',  l: 'Inputs' },
+          { k: 'outputs', l: 'Outputs' },
+        ].map(t => (
+          <button
+            key={t.k}
+            onClick={() => setFilter(t.k)}
+            style={{
+              padding: '2px 7px', fontSize: 9, fontWeight: 700,
+              background: filter === t.k ? '#0072B5' : '#fff',
+              color: filter === t.k ? '#fff' : '#475569',
+              border: '1px solid ' + (filter === t.k ? '#0072B5' : '#cbd5e1'),
+              borderRadius: 3, cursor: 'pointer',
+            }}
+          >{t.l}</button>
+        ))}
+        <input
+          type="text"
+          placeholder="Search…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{
+            flex: 1, fontSize: 10, padding: '2px 6px',
+            border: '1px solid #cbd5e1', borderRadius: 3,
+          }}
+        />
+        <button
+          onClick={() => setDrawerOpen(false)}
+          style={{
+            background: 'none', border: 'none', fontSize: 14,
+            color: '#64748b', cursor: 'pointer', padding: '0 4px',
+          }}
+          title="Close"
+        >×</button>
+      </div>
+      {/* No inner scroll container — the picker's outer container handles
+          all scrolling. Nested scroll surfaces created bidirectional
+          confusion (could scroll down but not back up because the wheel
+          event was being routed to whichever surface the cursor's last
+          position landed on). One scroll surface = predictable scroll. */}
+      <div
+        style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 4 }}
+      >
+        {filtered.length === 0 && (
+          <div style={{ padding: 8, fontSize: 11, color: '#94a3b8', textAlign: 'center' }}>
+            No I/O points match.
+          </div>
+        )}
+        {filtered.map(p => {
+          const isOutput = p.section === 'digitalOutput';
+          return (
+            <button
+              key={`${p.smId}-${p.tagName}`}
+              onClick={() => {
+                setIoRef({
+                  tagName:    p.tagName,
+                  group:      isOutput ? 'DO' : 'DI',
+                  smId:       p.smId,
+                  smName:     p.smName,
+                  deviceId:   p.deviceId,
+                  deviceName: p.deviceName,
+                });
+                setDrawerOpen(false);
+              }}
+              style={{
+                // 4px colored bar on the left replaces the redundant
+                // IN/OUT pill — the tag's q_/i_ prefix already says
+                // direction. Color stays so input vs output is still
+                // visually scannable.
+                display: 'grid',
+                gridTemplateColumns: '4px 1fr',
+                gap: 8, alignItems: 'center', width: '100%',
+                padding: '4px 8px', textAlign: 'left',
+                background: 'none', border: 'none',
+                borderBottom: '1px solid #f1f5f9',
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+            >
+              <span style={{
+                alignSelf: 'stretch',
+                background: isOutput ? '#1574C4' : '#5a9a48',
+                borderRadius: 2,
+              }} />
+              <div style={{ minWidth: 0, overflow: 'hidden' }}>
+                <div style={{
+                  fontFamily: 'Consolas, monospace', fontSize: 11, color: '#0f172a',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>
+                  {p.tagName}
+                </div>
+                <div style={{
+                  fontSize: 9, color: '#94a3b8',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>
+                  {p.station} · {p.deviceName}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

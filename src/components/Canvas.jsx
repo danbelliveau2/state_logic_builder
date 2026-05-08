@@ -1033,6 +1033,49 @@ export function Canvas() {
     const nodesById = {};
     for (const n of smNodes) nodesById[n.id] = n;
 
+    // ── Merge detection ──────────────────────────────────────────────────────
+    // For each edge ending at a target T, check if there's another edge to T
+    // whose source node is in the SAME X column as T. That sibling is the
+    // "primary" straight-down path; THIS edge's last vertical drop (the
+    // bottom of a Z-bend) duplicates the bottom of the sibling's vertical
+    // line into T. We tag THIS edge with `_trimLastSegment=true` so
+    // RoutableEdge drops its last segment and ends at the merge point.
+    // The arrow then sits on the horizontal segment pointing into the merge
+    // column — communicating "this path joins the column here".
+    //
+    // Detection heuristic: two edges share target T. The "primary" edge has
+    // a source whose center X is within a tolerance of T's center X (i.e.
+    // straight up the same column). The OTHER edge gets the trim flag.
+    // Both edges drawing the same vertical drop into T is the visual noise
+    // we want to eliminate.
+    const COLUMN_TOL = 8;
+    const trimSet = new Set();
+    const edgesByTarget = new Map();
+    for (const e of smEdges) {
+      if (!e.target) continue;
+      const list = edgesByTarget.get(e.target) ?? [];
+      list.push(e);
+      edgesByTarget.set(e.target, list);
+    }
+    edgesByTarget.forEach((list, targetId) => {
+      if (list.length < 2) return;
+      const tgtNode = nodesById[targetId];
+      if (!tgtNode) return;
+      const tgtCenterX = tgtNode.position.x + (tgtNode.measured?.width ?? 240) / 2;
+      // Find the "primary" edge — source X aligned with target column.
+      const primary = list.find(e => {
+        const src = nodesById[e.source];
+        if (!src) return false;
+        const srcCenterX = src.position.x + (src.measured?.width ?? 240) / 2;
+        return Math.abs(srcCenterX - tgtCenterX) < COLUMN_TOL;
+      });
+      if (!primary) return;
+      // All OTHER edges to this target get trimmed.
+      for (const e of list) {
+        if (e.id !== primary.id) trimSet.add(e.id);
+      }
+    });
+
     return smEdges.map(e => {
       const isBranch = e.data?.conditionType === 'visionResult' || e.data?.conditionType === 'checkResult';
       const sourceNode = nodesById[e.source];
@@ -1085,7 +1128,7 @@ export function Canvas() {
           type: 'routableEdge',
           // Pass live label through BOTH label prop and data.outcomeLabel so
           // RoutableEdge's pill renderer always shows the correct text.
-          data: { ...(e.data ?? {}), outcomeLabel: liveLabel },
+          data: { ...(e.data ?? {}), outcomeLabel: liveLabel, _trimLastSegment: trimSet.has(e.id) },
           label: e.sourceHandle === 'exit-single' ? '' : liveLabel,
           labelStyle: { fill: '#fff', fontWeight: 600, fontSize: 11 },
           labelBgStyle: { fill: color, rx: 4, ry: 4 },
@@ -1109,6 +1152,9 @@ export function Canvas() {
         targetHandle,
         type: 'routableEdge',
         label: isBranch ? (e.data?.outcomeLabel ?? e.data?.label ?? '') : '',
+        // Inject trim flag from the merge-detection pass above. RoutableEdge
+        // checks `data._trimLastSegment` and drops its last segment.
+        data: { ...(e.data ?? {}), _trimLastSegment: trimSet.has(e.id) },
       };
       if (isExitSingle) {
         // Force gray sequential look, discard any stale colored-branch styling.
@@ -1150,7 +1196,8 @@ export function Canvas() {
         <div className={`canvas-sm-title${recoveryMode ? ' canvas-sm-title--recovery' : ''}`}>
           <span className="canvas-sm-title__number">S{String(sm.stationNumber ?? 0).padStart(2, '0')}</span>
           <span className="canvas-sm-title__name">{sm.name || 'Untitled'}</span>
-          {/* Normal / Recovery toggle */}
+          {/* Normal / Recovery toggle. I/O Map lives in the toolbar I/O
+              button now (popup) — no need to take canvas tab space too. */}
           <div className="canvas-mode-toggle">
             <button
               className={`canvas-mode-btn${!recoveryMode ? ' canvas-mode-btn--active' : ''}`}

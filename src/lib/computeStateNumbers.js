@@ -101,11 +101,26 @@ export function computeStateNumbers(nodes, edges, devices, options = {}) {
     if (completeStep !== undefined && currentStep === completeStep) currentStep += 3;
     stateMap.set(n.id, currentStep);
 
-    // Check if this node has a VisionSystem Inspect action
+    // Check if this node has a VisionSystem Inspect action.
+    //
+    // Two recognition paths:
+    //   1. Legacy v1 — `operation === 'VisionInspect'` on a VisionSystem device
+    //   2. v2 vision-pair — pickerV2 action with grammarRowId='vision' AND a
+    //      paired Decision row. The trigger half carries `pickerConfig.visionPair`
+    //      so this lets a vision pair node consume the same 4-sub-state slot as
+    //      the legacy node (Trigger / WaitBusy / WaitResult / Branch + PT update).
+    //
+    // Either match expands the node to 5 sub-state numbers and bumps the
+    // sequential counter by 12 so the NEXT state lands at N+15 (matching SDC's
+    // +3-per-state convention applied across 5 slots).
     const actions = n.data?.actions ?? [];
     const hasVisionInspect = actions.some(a => {
+      // v1 detection
       const dev = (devices ?? []).find(d => d.id === a.deviceId);
-      return dev?.type === 'VisionSystem' && (a.operation === 'Inspect' || a.operation === 'VisionInspect');
+      if (dev?.type === 'VisionSystem' && (a.operation === 'Inspect' || a.operation === 'VisionInspect')) return true;
+      // v2 detection — vision pair (Trigger + Decision rows)
+      if (a.pickerV2 && a.pickerConfig?.grammarRowId === 'vision' && a.pickerConfig?.visionPair) return true;
+      return false;
     });
 
     if (hasVisionInspect) {

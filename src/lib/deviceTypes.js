@@ -29,7 +29,7 @@ export const DEVICE_TYPES = {
       { value: 'Extend', label: 'Extended' },
     ],
     defaultHomePosition: 'Retract',
-    sensorArrangements: ['1-sensor (Ret only)', '2-sensor (Ext + Ret)'],
+    sensorArrangements: ['No sensors', '1-sensor (Ret only)', '2-sensor (Ext + Ret)'],
     defaultSensorArrangement: '2-sensor (Ext + Ret)',
     // SDC Guide §8/§10: full words, never Ext/Ret abbreviations.
     tagPatterns: {
@@ -76,7 +76,7 @@ export const DEVICE_TYPES = {
       { value: 'Extend', label: 'Extended (CW)' },
     ],
     defaultHomePosition: 'Retract',
-    sensorArrangements: ['1-sensor (Ret only)', '2-sensor (Ext + Ret)'],
+    sensorArrangements: ['No sensors', '1-sensor (Ret only)', '2-sensor (Ext + Ret)'],
     defaultSensorArrangement: '2-sensor (Ext + Ret)',
     tagPatterns: {
       inputExt:       'i_{name}Extended',
@@ -124,17 +124,23 @@ export const DEVICE_TYPES = {
       { value: 'Engage', label: 'Closed' },
     ],
     defaultHomePosition: 'Disengage',
-    sensorArrangements: ['1-sensor (Closed only)', '2-sensor (Closed + Open)'],
+    sensorArrangements: ['No sensors', '1-sensor (Closed only)', '2-sensor (Closed + Open)'],
     defaultSensorArrangement: '2-sensor (Closed + Open)',
     tagPatterns: {
+      // Inputs follow the verb (Closed/Open) since that's what the
+      // physical sensors detect on the device. Outputs follow the
+      // OPERATION name (Engage/Disengage) — q_EngagePartGripper reads
+      // as "command this gripper to engage" which matches the action
+      // verb a user picks in the picker. Was q_Close/q_Open which
+      // confused users when the operation list said Engage/Disengage.
       inputEngage:      'i_{name}Closed',
       inputDisengage:   'i_{name}Open',
-      outputEngage:     'q_Close{name}',
-      outputDisengage:  'q_Open{name}',
-      timerEngage:      '{name}CloseDelay',
-      timerDisengage:   '{name}OpenDelay',
-      debounceEngage:   '{name}CloseDebounce',
-      debounceDisengage:'{name}OpenDebounce',
+      outputEngage:     'q_Engage{name}',
+      outputDisengage:  'q_Disengage{name}',
+      timerEngage:      '{name}EngageDelay',
+      timerDisengage:   '{name}DisengageDelay',
+      debounceEngage:   '{name}EngageDebounce',
+      debounceDisengage:'{name}DisengageDebounce',
     },
     defaultTimerPreMs: 500,
     transitionConditions: {

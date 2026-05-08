@@ -668,7 +668,10 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-left: auto;
+  /* Was margin-left: auto — pushed actions to the far-right edge, leaving
+     a big dead gap between the recipes dropdown and the action buttons.
+     Removed so actions sit right after the recipes dropdown, shifting
+     everything over and using the space. */
   flex-shrink: 0;
   flex-wrap: nowrap;
 }

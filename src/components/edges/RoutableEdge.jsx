@@ -27,7 +27,6 @@ import {
   enforceNodeClearance,
   cleanWaypoints,
   findLongestVerticalSegment,
-  NODE_WIDTH,
 } from '../../lib/edgeRouting.js';
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -67,8 +66,24 @@ export function RoutableEdge({
   // segments — otherwise each "segment" would render its own arrow on what
   // looks like one straight run.
   const fullPts  = cleanWaypoints(buildFullPath(src, routeWps, tgt));
-  const segments = buildSegments(fullPts);
-  const pathD    = pointsToSvg(fullPts);
+  let segments  = buildSegments(fullPts);
+
+  // ── Merge-point trim ──────────────────────────────────────────────────────
+  // Canvas tags Z-bend edges whose last vertical drop overlaps another
+  // edge's column with `data._trimLastSegment = true`. We honor that here
+  // by dropping the final segment so this edge ends at the merge point.
+  // The mid-segment arrow on the now-last segment (the horizontal one)
+  // reads as "this path joins the column at this point".
+  if (data?._trimLastSegment && segments.length >= 2) {
+    segments = segments.slice(0, -1);
+  }
+
+  // Recompute pathD from possibly-trimmed segments so the visible stroke
+  // also stops at the merge point.
+  const trimmedPts = segments.length === 0
+    ? fullPts
+    : [segments[0].a, ...segments.map(s => s.b)];
+  const pathD = pointsToSvg(trimmedPts);
 
   // ── Styles ──────────────────────────────────────────────────────────────
   // Branch edges (decision exits) are GRAY regardless of stored style.
@@ -122,6 +137,30 @@ export function RoutableEdge({
     window.addEventListener('mouseup', onUp);
   }, [smId, id, data, updateLoopParams, pushHistory, screenToFlowPosition, loopGoRight]);
 
+  // Drag handler for the Z-bend horizontal "rail". Drags vertical (Y axis)
+  // and writes mergeYOffset on edge data — auto-route reads it next render
+  // and shifts the horizontal segment to railY = midY + offset. Same single-
+  // number model as loop drag; no stored waypoints, no shape change.
+  const onMergeRailDrag = useCallback((e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    pushHistory();
+    const startScreen = { x: e.clientX, y: e.clientY };
+    const startVal = Number(data?.mergeYOffset ?? 0);
+    function onMove(ev) {
+      const a = screenToFlowPosition(startScreen);
+      const b = screenToFlowPosition({ x: ev.clientX, y: ev.clientY });
+      const dy = b.y - a.y;
+      updateLoopParams(smId, id, { mergeYOffset: Math.round(startVal + dy) });
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [smId, id, data, updateLoopParams, pushHistory, screenToFlowPosition]);
+
   return (
     <>
       {/* Fat invisible hit area */}
@@ -143,9 +182,14 @@ export function RoutableEdge({
         style={{ pointerEvents: 'none' }}
       />
 
-      {/* Direction arrows — one per segment, in the MIDDLE. */}
+      {/* Direction arrows — one per segment, in the MIDDLE.
+          On the FIRST segment of a branch edge with a label pill, the arrow
+          is pushed past the pill end so they no longer overlap. If the
+          segment is too short to fit the pill + arrow at +90, fall back to
+          placing the arrow near the END of the segment (entering target)
+          rather than skipping it. */}
       {segments.map((seg, i) => {
-        const MIN_SEGMENT_LEN = 24;
+        const MIN_SEGMENT_LEN = 16;
         const SIZE = 7;
         const WIDTH = 4;
         const segLen = Math.hypot(seg.b.x - seg.a.x, seg.b.y - seg.a.y);
@@ -154,9 +198,24 @@ export function RoutableEdge({
         const BRANCH_HANDLES = new Set(['exit-pass', 'exit-fail', 'exit-retry']);
         const isBranchEdge2 = data?.isDecisionExit === true || BRANCH_HANDLES.has(sourceHandle);
         const hasSourcePill = i === 0 && isBranchEdge2 && sourceHandle !== 'exit-single';
-        const PILL_CLEAR = 60;
-        if (hasSourcePill && segLen < PILL_CLEAR + 14) return null;
-        const tDist = hasSourcePill ? PILL_CLEAR : segLen * 0.5;
+        // Pill is centered at +36 from seg start, ≤+66 right edge for
+        // longer labels. Place arrow at +90 to leave clearance. If the
+        // segment is too short, drop back to "near the end" so the arrow
+        // is always present.
+        const PILL_CLEAR = 90;
+        let tDist;
+        if (hasSourcePill) {
+          // Long segment: past the pill (gives clear separation).
+          // Short segment: near the END of the segment so the arrow is
+          // always visible. Slight pill overlap on very short segments is
+          // acceptable — the alternative (skipping the arrow) loses flow
+          // direction info entirely.
+          tDist = segLen >= PILL_CLEAR + SIZE + 4
+            ? PILL_CLEAR
+            : Math.max(0, segLen - SIZE - 2);
+        } else {
+          tDist = segLen * 0.5;            // mid-segment for non-labeled segs
+        }
 
         const ux = (seg.b.x - seg.a.x) / segLen;
         const uy = (seg.b.y - seg.a.y) / segLen;
@@ -176,6 +235,25 @@ export function RoutableEdge({
           />
         );
       })}
+
+      {/* Forward-Z merge-rail drag overlay — for forward Z-bend edges (3
+          segments: down, horizontal, down). The MIDDLE horizontal segment
+          is the "rail" — drag it up/down to shift where the bend happens.
+          Skipped on loop-backs (they have their own drag) and on side-
+          handle edges (which use L-bend, not Z). Trimmed last-segment edges
+          still get the rail (segments[1] is now the LAST segment — that's
+          the horizontal one). */}
+      {!isLoopBack && !isSideHandleSrc && segments.length >= 2 && segments[1]?.isH && (
+        <path
+          key="merge-rail"
+          d={`M ${segments[1].a.x} ${segments[1].a.y} L ${segments[1].b.x} ${segments[1].b.y}`}
+          fill="none"
+          stroke="transparent"
+          strokeWidth={14}
+          style={{ cursor: 'ns-resize', pointerEvents: 'stroke' }}
+          onMouseDown={onMergeRailDrag}
+        />
+      )}
 
       {/* Loop-back drag overlays — only render when the edge is a loop-back.
           Each overlay is an invisible thicker stroke on top of one of the

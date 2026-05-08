@@ -286,12 +286,19 @@ export function computeAutoRoute(src, tgt, edgeData, allNodes, sourceHandle, sna
   //  the parametric loop-back code path, whether or not the user picked
   //  Loop Left / Loop Right explicitly.)
 
-  // Forward offset: Z-bend (down to midpoint, over, down)
+  // Forward offset: Z-bend (down to midpoint, over, down).
+  // The horizontal segment's Y defaults to the midpoint between source and
+  // target. The user can drag the horizontal segment up/down via the merge
+  // overlay in RoutableEdge — that drag stores `mergeYOffset` on edge data
+  // (a delta from midY in flow coords). Auto-route reads it here so the
+  // shape recomputes from a single number, no stored waypoints.
   if (isSideways) {
     const midY = (src.y + tgt.y) / 2;
+    const offset = Number(edgeData?.mergeYOffset ?? 0);
+    const railY = midY + offset;
     return [
-      { x: src.x, y: midY },
-      { x: tgt.x, y: midY },
+      { x: src.x, y: railY },
+      { x: tgt.x, y: railY },
     ];
   }
 

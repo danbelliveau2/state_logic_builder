@@ -3,11 +3,12 @@
  * Project name, SM dropdown (with reorder), recipe dropdown, export, save/load.
  */
 
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { useDiagramStore } from '../store/useDiagramStore.js';
 import { downloadL5X, downloadAllL5XAsZip, exportProjectJSON } from '../lib/l5xExporter.js';
 import { downloadControllerL5X } from '../lib/controllerL5xExporter.js';
 import { buildProgramName } from '../lib/tagNaming.js';
+import { getProjectIoMap, IO_SECTION_ORDER, IO_SECTION_META } from '../lib/getProjectIoMap.js';
 
 // ── Reorderable list popup ──────────────────────────────────────────────────────
 function ReorderPopup({ items, labelFn, onReorder, onClose, title }) {
@@ -92,6 +93,236 @@ function getSmStationType(sm, machineConfig) {
   return null;
 }
 
+// ── I/O Map quick-look popup ────────────────────────────────────────────────
+// Drawer-style popup anchored under the I/O button. Same data the L5X
+// exporter uses (`getProjectIoMap` reads `getDeviceTags` for every device).
+// Layout: SM selector on top + side-by-side INPUTS card (left) and OUTPUTS
+// card (right) so both columns are visible without toggling. Internal tags
+// (debounce / delay timers — confusing for non-PLC users) hidden by
+// default; "Show internal" toggle reveals them.
+function IoMapPopup({ project, activeSmId, onClose }) {
+  const ioMap = useMemo(() => getProjectIoMap(project), [project]);
+  const [search, setSearch] = useState('');
+  const [showInternal, setShowInternal] = useState(false);
+  // SM filter — defaults to the canvas's active SM so the engineer sees
+  // "what's on this machine" first. Switch to '__all__' to see everything
+  // wired across the whole project.
+  const [smFilter, setSmFilter] = useState(activeSmId || '__all__');
+
+  const filterBySm = (e) => smFilter === '__all__' || e.smId === smFilter;
+  const matches = (e) => {
+    if (!filterBySm(e)) return false;
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return e.tagName.toLowerCase().includes(q)
+      || e.deviceName.toLowerCase().includes(q)
+      || (e.description || '').toLowerCase().includes(q);
+  };
+
+  const inputs   = useMemo(() => [...ioMap.bySection.digitalInput, ...ioMap.bySection.analogInput].filter(matches), [ioMap, search, smFilter]);
+  const outputs  = useMemo(() => [...ioMap.bySection.digitalOutput, ...ioMap.bySection.analogOutput].filter(matches), [ioMap, search, smFilter]);
+  const internal = useMemo(() => ioMap.bySection.internal.filter(matches), [ioMap, search, smFilter]);
+  const sms = project?.stateMachines ?? [];
+
+  const renderRow = (e) => {
+    const meta = IO_SECTION_META[e.section];
+    return (
+      <div
+        key={`${e.smId}-${e.tagName}`}
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '34px 1fr',
+          alignItems: 'center', gap: 6,
+          padding: '4px 8px',
+          borderBottom: '1px solid #f1f5f9',
+          fontSize: 11,
+        }}
+        title={`${e.tagName} (${e.dataType}) — ${e.description}\n${e.station} · ${e.deviceName}`}
+      >
+        <span style={{
+          padding: '1px 5px', borderRadius: 3, textAlign: 'center',
+          background: meta.color, color: '#fff', fontSize: 9, fontWeight: 700,
+        }}>{meta.abbr}</span>
+        <div style={{ overflow: 'hidden' }}>
+          <div style={{ fontFamily: 'Consolas, monospace', color: '#0f172a', fontWeight: 500, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+            {e.tagName}
+          </div>
+          <div style={{ fontSize: 9, color: '#94a3b8', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+            {e.station} · {e.deviceName}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderColumn = (title, color, rows) => (
+    <div style={{
+      flex: 1, minWidth: 0,
+      background: '#fff',
+      border: '1px solid #e2e8f0',
+      borderRadius: 6,
+      display: 'flex', flexDirection: 'column',
+      overflow: 'hidden',
+    }}>
+      <div style={{
+        padding: '6px 10px',
+        background: color,
+        color: '#fff',
+        fontSize: 11, fontWeight: 700, letterSpacing: '0.05em',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <span>{title}</span>
+        <span style={{ fontSize: 9, fontWeight: 500, opacity: 0.85 }}>{rows.length}</span>
+      </div>
+      <div style={{ overflow: 'auto', maxHeight: 480 }}>
+        {rows.length === 0 && (
+          <div style={{ padding: 16, textAlign: 'center', fontSize: 11, color: '#94a3b8' }}>
+            None
+          </div>
+        )}
+        {rows.map(renderRow)}
+      </div>
+    </div>
+  );
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 'calc(100% + 4px)',
+        left: 0,
+        zIndex: 1000,
+        width: 720,
+        maxHeight: 640,
+        background: '#fff',
+        border: '1px solid #cbd5e1',
+        borderRadius: 8,
+        boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+        display: 'flex', flexDirection: 'column',
+      }}
+    >
+      {/* Header */}
+      <div style={{
+        padding: '10px 14px',
+        borderBottom: '1px solid #e2e8f0',
+        display: 'flex', alignItems: 'center', gap: 10,
+        flexShrink: 0,
+      }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>I/O Map</span>
+        <span style={{ fontSize: 11, color: '#64748b' }}>
+          {inputs.length + outputs.length} tags · auto-derived from devices
+        </span>
+        <button
+          onClick={onClose}
+          style={{
+            marginLeft: 'auto',
+            background: 'none', border: 'none',
+            fontSize: 18, cursor: 'pointer', color: '#64748b', padding: '0 4px',
+            lineHeight: 1,
+          }}
+          title="Close"
+        >×</button>
+      </div>
+
+      {/* SM filter + search row — defaults to active SM. Switch to "All
+          state machines" to see every tag in the project at once. */}
+      <div style={{
+        padding: '8px 14px',
+        borderBottom: '1px solid #e2e8f0',
+        display: 'flex', alignItems: 'center', gap: 10,
+        flexShrink: 0,
+        background: '#f8fafc',
+      }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: '#475569', letterSpacing: '0.05em' }}>
+          STATE MACHINE
+        </span>
+        <select
+          value={smFilter}
+          onChange={e => setSmFilter(e.target.value)}
+          style={{
+            fontSize: 12, fontWeight: 600,
+            padding: '5px 10px',
+            border: '1px solid #cbd5e1', borderRadius: 4,
+            background: '#fff', color: '#0f172a',
+            minWidth: 220,
+          }}
+        >
+          <option value="__all__">All state machines</option>
+          {sms.map(sm => {
+            const station = `S${String(sm.stationNumber ?? 0).padStart(2, '0')}`;
+            return (
+              <option key={sm.id} value={sm.id}>
+                {station} — {sm.displayName ?? sm.name ?? '(unnamed)'}
+              </option>
+            );
+          })}
+        </select>
+        <input
+          type="text"
+          placeholder="Search tag, device…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{
+            marginLeft: 'auto', width: 200,
+            fontSize: 12, padding: '5px 10px',
+            border: '1px solid #cbd5e1', borderRadius: 4,
+          }}
+        />
+      </div>
+
+      {/* Side-by-side cards */}
+      <div style={{
+        flex: 1, padding: 12,
+        display: 'flex', gap: 12,
+        overflow: 'hidden',
+      }}>
+        {renderColumn('INPUTS',  '#5a9a48', inputs)}
+        {renderColumn('OUTPUTS', '#1574C4', outputs)}
+      </div>
+
+      {/* Internal tags — hidden by default. Debounce / delay timers etc.
+          aren't strictly I/O; they're program-internal helpers used by the
+          AOIs. New users find them confusing because they don't match
+          anything in the wiring. */}
+      {internal.length > 0 && (
+        <div style={{
+          borderTop: '1px solid #e2e8f0',
+          padding: '6px 14px',
+          display: 'flex', alignItems: 'center', gap: 8,
+          fontSize: 11, color: '#475569',
+          flexShrink: 0,
+        }}>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={showInternal}
+              onChange={e => setShowInternal(e.target.checked)}
+            />
+            <span>Show internal helper tags ({internal.length})</span>
+          </label>
+          <span style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic' }}>
+            — debounce / delay timers, not wired I/O
+          </span>
+        </div>
+      )}
+      {showInternal && internal.length > 0 && (
+        <div style={{
+          maxHeight: 160, overflow: 'auto',
+          borderTop: '1px solid #e2e8f0',
+          padding: 8,
+        }}>
+          {internal.map(renderRow)}
+        </div>
+      )}
+      {inputs.length === 0 && outputs.length === 0 && internal.length === 0 && (
+        <div style={{ padding: 24, textAlign: 'center', fontSize: 12, color: '#94a3b8' }}>
+          No devices yet. Add devices in any SM to populate the I/O map.
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Toolbar() {
   const store = useDiagramStore();
   const { project, activeSmId, serverAvailable } = store;
@@ -109,6 +340,29 @@ export function Toolbar() {
   const [recipeDropdownOpen, setRecipeDropdownOpen] = useState(false);
   const [smReorderOpen, setSmReorderOpen] = useState(false);
   const [recipeReorderOpen, setRecipeReorderOpen] = useState(false);
+  // I/O quick-look popup
+  const [ioPopupOpen, setIoPopupOpen] = useState(false);
+  const ioPopupRef = useRef(null);
+
+  // I/O popup — close on outside click and Esc. Uses CAPTURE phase so
+  // React Flow / nested stopPropagation handlers can't swallow the click
+  // before we see it (the previous version used non-capture which let
+  // React Flow's pane handler eat the event, leaving the popup stuck open).
+  useEffect(() => {
+    if (!ioPopupOpen) return;
+    function onClick(e) {
+      if (ioPopupRef.current && !ioPopupRef.current.contains(e.target)) {
+        setIoPopupOpen(false);
+      }
+    }
+    function onKey(e) { if (e.key === 'Escape') setIoPopupOpen(false); }
+    document.addEventListener('mousedown', onClick, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onClick, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [ioPopupOpen]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -264,17 +518,39 @@ export function Toolbar() {
         <span className="toolbar__title">SDC State Logic Builder</span>
       </div>
 
-      {/* Project selector */}
-      <button
-        className="btn btn--ghost toolbar__project-btn"
-        onClick={store.openProjectManager}
-        title={serverAvailable ? 'Switch project' : 'Project server not running — launch with START_APP.bat'}
-      >
-        📁 {project.name}
-        {!serverAvailable && (
-          <span className="toolbar__server-warn" title="Project server not running">⚠</span>
+      {/* I/O Map quick-look — replaces the never-used project-folder button.
+          Auto-derived from devices used across all SMs; same data the L5X
+          exporter emits, so what's listed here matches Studio 5000 exactly.
+          Project name still shows in the tab bar above; project switching
+          lives in the project manager modal (rarely needed). */}
+      <div style={{ position: 'relative' }} ref={ioPopupRef}>
+        <button
+          className="btn btn--ghost"
+          onClick={() => setIoPopupOpen(o => !o)}
+          title="I/O Map — every input / output the project will emit"
+          style={{
+            fontWeight: 700,
+            fontSize: 15,
+            padding: '8px 16px',
+            letterSpacing: '0.04em',
+            background: ioPopupOpen ? '#0072B5' : 'rgba(255,255,255,0.10)',
+            color: '#fff',
+            border: '1px solid ' + (ioPopupOpen ? '#0072B5' : 'rgba(255,255,255,0.25)'),
+            borderRadius: 6,
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+          }}
+        >
+          <span style={{ fontSize: 16, lineHeight: 1 }}>◉</span>
+          <span>I/O</span>
+        </button>
+        {ioPopupOpen && (
+          <IoMapPopup
+            project={project}
+            activeSmId={activeSmId}
+            onClose={() => setIoPopupOpen(false)}
+          />
         )}
-      </button>
+      </div>
       <button
         className={`btn btn--ghost toolbar__setup-btn${store.activeView === 'projectSetup' ? ' toolbar__setup-btn--active' : ''}`}
         onClick={() => store.setActiveView(store.activeView === 'projectSetup' ? 'canvas' : 'projectSetup')}
@@ -305,7 +581,6 @@ export function Toolbar() {
           ) : (
             <span style={{ color: '#8896a8' }}>No SM</span>
           )}
-          <span className="toolbar__sm-chevron">{smDropdownOpen ? '▲' : '▼'}</span>
         </button>
 
         {smDropdownOpen && (
