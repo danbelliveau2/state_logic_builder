@@ -6059,11 +6059,18 @@ export function StateNode({ data, selected, id }) {
                       onMouseDown={e => e.stopPropagation()}
                       style={{
                         fontSize: 9, fontWeight: 600, background: '#0072B5', color: '#fff',
-                        borderRadius: 10, padding: '1px 6px',
-                        display: 'inline-flex', alignItems: 'center', gap: 3,
+                        borderRadius: 10, padding: '1px 8px',
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
                       }}
                     >
-                      <span style={{ fontSize: 9 }}>📊</span>
+                      {/* Tiny "PT" badge prefix replaces the 📊 emoji —
+                          consistent with the rest of the app's text-based
+                          badges and doesn't clash with the canvas style. */}
+                      <span style={{
+                        fontSize: 7, fontWeight: 800, letterSpacing: '0.05em',
+                        background: 'rgba(255,255,255,0.25)',
+                        padding: '0 3px', borderRadius: 2,
+                      }}>PT</span>
                       {p.name}
                     </span>
                   ))}

@@ -4,10 +4,22 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '3.1.0';
+export const APP_VERSION = '3.2.0';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '3.2.0',
+    date: '2026-05-08',
+    time: '15:00',
+    author: 'Dan Belliveau',
+    changes: [
+      'STATION PASS/FAIL SUBJECTS — every state machine in the project now exposes a `S{NN}_PartPass` BOOL field as a pickable signal subject across the WHOLE project. Downstream stations can `Check & Branch` on `S03_PartPass` to route good vs reject parts. The per-SM StationResult rollup already existed in partTracking.js; this surfaces it as a picker subject everywhere.',
+      'QUICK "LOG RESULT" PRESET CHIP in the Check\'s PT log section. One click adds a `{Subject}_Result` BOOL field (true = passed, false = failed). Named "_Result" not "_Pass" because the value reflects the ACTUAL outcome — not always Pass. Sits above the free-text custom-field input; goes away once added (no double-adds).',
+      'BRANCH LABEL HORIZONTAL OFFSET adaptive to pill width — long labels like "Out of Tolerance" no longer bleed back into the source node. H_OFFSET = max(36, pillW/2 + 6) so short labels stay tight and long labels auto-clear the node edge.',
+      'PT PILL ICON CHANGED — replaced the 📊 chart emoji with a small lighter-blue `PT` text badge inside the pill ("[PT] ProbeCheck_Result"). Consistent with the app\'s other text-based badges; no canvas-style clash.',
+    ],
+  },
   {
     version: '3.1.0',
     date: '2026-05-08',

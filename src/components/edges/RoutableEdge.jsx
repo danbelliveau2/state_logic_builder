@@ -349,7 +349,13 @@ export function RoutableEdge({
           ly = seg.a.y + V_OFFSET;
         } else {
           const seg = segments[0];
-          const H_OFFSET = 36;
+          // Pill is centered at lx. Push the center far enough from the
+          // source edge that the LEFT side of the pill clears the node —
+          // otherwise long labels like "Out of Tolerance" bleed back
+          // into the node visually. Min 36 keeps short labels (On/Off)
+          // tight to the source; longer labels auto-push further out.
+          const PILL_GAP = 6;
+          const H_OFFSET = Math.max(36, pillW / 2 + PILL_GAP);
           if (seg.isH) {
             const dir = seg.b.x > seg.a.x ? 1 : -1;
             lx = seg.a.x + dir * H_OFFSET;

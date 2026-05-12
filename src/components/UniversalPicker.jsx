@@ -1078,6 +1078,37 @@ function LogTargetPicker({
             </code>
           </div>
 
+          {/* Quick "+ Log Result" preset chip. Adds a {Subject}_Result
+              BOOL field in one click — the field stores the ACTUAL
+              outcome of the check (true = passed, false = failed). Named
+              "_Result" (not "_Pass") because the value isn't always Pass;
+              it's whatever the check evaluated to. Station-level rollup
+              (S{NN}_PartPass) is automatic and separate from this — this
+              is for recording THIS specific check's outcome alongside the
+              station rollup. */}
+          {(() => {
+            const presetName = 'Result';
+            const already = list.some(e => e.name === presetName);
+            if (already) return null;
+            return (
+              <button
+                type="button"
+                onClick={() => setPtCustomLogs([...list, { name: presetName, dataType: 'BOOL' }])}
+                style={{
+                  alignSelf: 'flex-start',
+                  padding: '3px 9px',
+                  fontSize: 10, fontWeight: 700,
+                  background: '#fff', color: '#15803d',
+                  border: '1px dashed #16a34a', borderRadius: 6,
+                  cursor: 'pointer',
+                }}
+                title={`Adds a {Subject}_Result BOOL field that stores the actual check outcome (true = passed, false = failed). Station-level rollup is automatic (S{NN}_PartPass) and doesn't need this.`}
+              >
+                + Log result (Pass / Fail outcome)
+              </button>
+            );
+          })()}
+
           {/* Add row — name input, dataType select, Add button. Pressing
               Enter in the name field triggers Add. Strips spaces / special
               chars so the resulting PLC tag stays valid. */}
