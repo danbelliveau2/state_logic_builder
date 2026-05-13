@@ -4,10 +4,21 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '3.2.0';
+export const APP_VERSION = '3.3.0';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '3.3.0',
+    date: '2026-05-09',
+    time: '08:00',
+    author: 'Dan Belliveau',
+    changes: [
+      'UNIFIED DECISION PICKER — replaced the three named sub-actions (Wait / Check & Continue / Check & Branch) with two independent controls: a Wait/Check segmented toggle (top-left, purple-highlighted active option) and a "Number of exits" stepper (1..5, default 1). The sub-action is now DERIVED from these two fields, opening a new combo: Wait + 2 exits = "block until any of N conditions becomes true, branch on whichever fires first" — wasn\'t expressible before.',
+      'Migration: legacy `subAction` values map cleanly on read (wait → block=Y/exits=1, check → block=N/exits=1, branch → block=N/exits=branchCount). Commit writes BOTH the new fields (`blockUntilTrue`, `exitCount`) AND the derived `subAction` so the L5X exporter and existing render paths keep working. Old projects open and edit normally.',
+      'Action-row chip label shows `Wait` (single-exit wait), `Wait→` (wait + branch — new combo), or `Check` (sample now). Topology icon next to it indicates single vs branch.',
+    ],
+  },
   {
     version: '3.2.0',
     date: '2026-05-08',

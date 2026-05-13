@@ -110,7 +110,34 @@ export function UniversalPicker({
   // (add mode pre-fill). Falls back to default empty picks for fresh-add mode.
   const seed = editAction?.pickerConfig || seedConfig || null;
   const [mode, setMode]               = useState(seed?.mode || initialMode);
-  const [subAction, setSubAction]     = useState(seed?.subAction || 'wait');
+  // v3.3 — unified Decision model. Sub-action is now DERIVED from two
+  // independent fields: blockUntilTrue (Wait vs Check) and exitCount
+  // (1 = single forward, 2+ = branch). This is the user-asked-for
+  // unification: "what subject are you using? how many ways out?" rather
+  // than picking from three named modes.
+  // Migration: legacy seed.subAction maps cleanly to the new fields.
+  //   wait   → block=Y, exits=1
+  //   check  → block=N, exits=1
+  //   branch → block=N, exits=branchCount||2
+  const [blockUntilTrue, setBlockUntilTrue] = useState(() => {
+    if (typeof seed?.blockUntilTrue === 'boolean') return seed.blockUntilTrue;
+    return (seed?.subAction || 'wait') === 'wait';
+  });
+  const [exitCount, setExitCount] = useState(() => {
+    if (typeof seed?.exitCount === 'number') return seed.exitCount;
+    const sa = seed?.subAction || 'wait';
+    if (sa === 'branch') return seed?.branchCount || 2;
+    return 1;
+  });
+  // Derived sub-action — keeps the rest of the picker logic + L5X exporter
+  // compatible. Branch mode is anything with 2+ exits regardless of block;
+  // wait is the only 1-exit "block" combo; check is 1-exit "sample now."
+  const subAction = (() => {
+    if (mode !== 'decision') return null;
+    if (exitCount >= 2) return 'branch';
+    if (blockUntilTrue) return 'wait';
+    return 'check';
+  })();
   const [subjectId, setSubjectId]     = useState(seed?.subjectId || null);
   const [actionVerb, setActionVerb]   = useState(seed?.actionVerb || null);
   const [condition, setCondition]     = useState(seed?.condition || null);
@@ -263,16 +290,27 @@ export function UniversalPicker({
     setDetailVals({});
   }
 
-  function handleSubActionChange(next) {
-    setSubAction(next);
+  // v3.3 — sub-action no longer user-pickable; derived from blockUntilTrue
+  // + exitCount above. These helpers mutate the new fields. Auto-enable log
+  // when transitioning into "Check & Continue" (block=N, exits=1) since
+  // that's specifically the "observe + record" mode.
+  function setBlock(next) {
+    setBlockUntilTrue(next);
     if (grammarRow && !condition) {
       setCondition(parseList(grammarRow.inputs)[0] || null);
     }
-    // Check & Continue auto-enables log — the whole point of "check + continue"
-    // is to record what was observed. Other sub-actions don't auto-enable.
-    if (next === 'check') {
-      setPtEnabled(true);
+    // Going from blocking → sampling with single exit = Check & Continue
+    // (the whole point is to log + advance). Auto-enable PT.
+    if (!next && exitCount === 1) setPtEnabled(true);
+  }
+  function setExits(next) {
+    const clamped = Math.max(1, Math.min(5, next));
+    setExitCount(clamped);
+    if (grammarRow && !condition) {
+      setCondition(parseList(grammarRow.inputs)[0] || null);
     }
+    // Adding a second exit while in Check mode = Check & Branch.
+    // Don't auto-enable log here (Branch labels carry outcome on edges).
   }
 
   function handleSubjectChange(id) {
@@ -370,6 +408,11 @@ export function UniversalPicker({
     onPick && onPick({
       mode,
       subAction:    mode === 'decision' ? subAction : null,
+      // v3.3 unified Decision fields. Stored alongside the derived
+      // subAction so future logic can read them directly without needing
+      // to re-derive. Migration on re-open uses these first.
+      blockUntilTrue: mode === 'decision' ? blockUntilTrue : null,
+      exitCount:    mode === 'decision' ? exitCount : null,
       subjectId:    subject.id,
       subjectName:  subject.name,
       grammarRowId: grammarRow.id,
@@ -459,17 +502,76 @@ export function UniversalPicker({
         />
       </div>
 
-      {/* Sub-action toggle (decision only) */}
+      {/* Decision controls (v3.3) — left-aligned, two rows.
+          Row 1: Wait / Check segmented toggle (Wait blocks until condition
+                 is true; Check samples the value now and advances).
+          Row 2: Number of exits stepper (1 = single forward; 2+ = branch). */}
       {mode === 'decision' && (
-        <div style={{ ...sectionRow, gap: 6, marginTop: 6 }}>
-          {SUB_ACTIONS.map(s => (
-            <SubActionBtn
-              key={s.id}
-              {...s}
-              active={subAction === s.id}
-              onClick={() => handleSubActionChange(s.id)}
-            />
-          ))}
+        <div style={{
+          marginTop: 6, padding: '8px 10px',
+          background: '#f8fafc', border: '1px solid #e2e8f0',
+          borderRadius: 6, display: 'flex', flexDirection: 'column', gap: 8,
+          alignItems: 'flex-start',
+        }}>
+          {/* Wait / Check segmented toggle */}
+          <div style={{ display: 'inline-flex', gap: 0, border: '1px solid #cbd5e1', borderRadius: 6, overflow: 'hidden' }}>
+            {[
+              { value: true,  label: 'Wait',  tip: 'Block this state until the condition becomes true, then advance' },
+              { value: false, label: 'Check', tip: 'Sample the condition value now; advance/branch on whatever it reads' },
+            ].map(opt => {
+              const active = blockUntilTrue === opt.value;
+              return (
+                <button
+                  key={opt.label}
+                  type="button"
+                  onClick={() => setBlock(opt.value)}
+                  title={opt.tip}
+                  style={{
+                    padding: '5px 14px',
+                    fontSize: 11, fontWeight: 700, letterSpacing: '0.04em',
+                    background: active ? '#7c3aed' : '#fff',
+                    color: active ? '#fff' : '#475569',
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+          {/* Number of exits stepper */}
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600, color: '#475569' }}>
+            <span>Number of exits:</span>
+            <button
+              type="button"
+              onClick={() => setExits(exitCount - 1)}
+              disabled={exitCount <= 1}
+              style={{
+                width: 24, height: 24, padding: 0,
+                fontSize: 15, fontWeight: 700,
+                background: '#fff', color: exitCount <= 1 ? '#cbd5e1' : '#475569',
+                border: '1px solid #cbd5e1', borderRadius: 4,
+                cursor: exitCount <= 1 ? 'not-allowed' : 'pointer',
+              }}
+            >−</button>
+            <span style={{
+              minWidth: 24, textAlign: 'center',
+              fontSize: 13, fontWeight: 700, color: '#0f172a',
+            }}>{exitCount}</span>
+            <button
+              type="button"
+              onClick={() => setExits(exitCount + 1)}
+              disabled={exitCount >= 5}
+              style={{
+                width: 24, height: 24, padding: 0,
+                fontSize: 15, fontWeight: 700,
+                background: '#fff', color: exitCount >= 5 ? '#cbd5e1' : '#475569',
+                border: '1px solid #cbd5e1', borderRadius: 4,
+                cursor: exitCount >= 5 ? 'not-allowed' : 'pointer',
+              }}
+            >+</button>
+          </div>
         </div>
       )}
 

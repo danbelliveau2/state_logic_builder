@@ -861,17 +861,20 @@ function pickerV2ActionLabel(cfg) {
     if (v.startsWith('Servo ')) v = v.slice(6);
     return v;
   }
-  if (cfg.subAction === 'wait')   return 'Wait';
-  // Both check sub-actions read "Check" on the pill. The icon (rendered
-  // separately by pickerV2ActionIcon) signals continue-vs-branch:
-  //   ↓  = continues straight down to the next state
-  //   ⫡  = forks into multiple branches
-  // Pre-rename, "Branch" was its own pill text, but conceptually a branch
-  // IS a check that branches — so the verb stays "Check" and the topology
-  // shows up as a glyph (and as the actual outgoing edges on the canvas).
-  if (cfg.subAction === 'check')  return 'Check';
-  if (cfg.subAction === 'branch') return 'Check';
-  return '<sub>';
+  // v3.3 unified Decision model: subAction is derived from
+  // {blockUntilTrue, exitCount}. Label maps:
+  //   block=Y, exits=1  → Wait
+  //   block=Y, exits>=2 → Wait → Branch (new "race" semantics — block until
+  //                       one of N conditions becomes true, branch on which)
+  //   block=N, exits=1  → Check
+  //   block=N, exits>=2 → Check (branch shown by icon)
+  // Falls back to legacy subAction string for back-compat with old projects
+  // that haven't been re-saved since the v3.3 fields were added.
+  const block = typeof cfg.blockUntilTrue === 'boolean' ? cfg.blockUntilTrue : (cfg.subAction === 'wait');
+  const exits = typeof cfg.exitCount === 'number' ? cfg.exitCount : (cfg.subAction === 'branch' ? 2 : 1);
+  if (block && exits >= 2) return 'Wait→';
+  if (block)               return 'Wait';
+  return 'Check';
 }
 
 // Topology icon for the v2 action pill — small, INLINE next to the "Check"
