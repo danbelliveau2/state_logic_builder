@@ -71,6 +71,27 @@ export function SignalModal({ isOpen, onClose, signal }) {
   const [stateNodeId, setStateNodeId] = useState(signal?.stateNodeId ?? '');
   const [reachedMode, setReachedMode] = useState(signal?.reachedMode ?? 'reached');
   const [conditions, setConditions] = useState(signal?.conditions ?? []);
+  // v3.4 — state signals can match MULTIPLE state conditions OR'd together
+  // (e.g. "true when SM is at state 25 OR state 40"). Each rule is its own
+  // {smId, stateNodeId, reachedMode}. Legacy single-state fields above
+  // remain on read for back-compat; on save we write BOTH stateRules and
+  // the legacy fields (mirroring rules[0] into smId/stateNodeId/reachedMode)
+  // so old code paths keep working.
+  const hydrateRules = (sig) => {
+    if (Array.isArray(sig?.stateRules) && sig.stateRules.length > 0) {
+      return sig.stateRules.map(r => ({
+        smId: r.smId ?? '',
+        stateNodeId: r.stateNodeId ?? '',
+        reachedMode: r.reachedMode ?? 'reached',
+      }));
+    }
+    return [{
+      smId: sig?.smId ?? (allSMs[0]?.id ?? ''),
+      stateNodeId: sig?.stateNodeId ?? '',
+      reachedMode: sig?.reachedMode ?? 'reached',
+    }];
+  };
+  const [stateRules, setStateRules] = useState(() => hydrateRules(signal));
 
   // ── OFF condition state (optional, mirrors ON block by type) ───────────────
   const [hasOff, setHasOff] = useState(!!signal?.offCondition);
@@ -90,6 +111,7 @@ export function SignalModal({ isOpen, onClose, signal }) {
     setStateNodeId(signal?.stateNodeId ?? '');
     setReachedMode(signal?.reachedMode ?? 'reached');
     setConditions(signal?.conditions ?? []);
+    setStateRules(hydrateRules(signal));
     setHasOff(!!signal?.offCondition);
     setOffAxes(signal?.offCondition?.axes ?? []);
     setOffSmId(signal?.offCondition?.smId ?? (allSMs[0]?.id ?? ''));
@@ -263,6 +285,17 @@ export function SignalModal({ isOpen, onClose, signal }) {
       data.stateNodeId = stateNodeId || null;
       data.stateName = stateName;
       data.reachedMode = reachedMode;
+      // v3.4 — also persist the full stateRules array. The first rule
+      // mirrors the legacy fields above (the user edits it via the
+      // existing top-of-form UI); additional rules come from the
+      // stateRules state (managed by the + Add buttons). OR'd at runtime.
+      const firstRule = {
+        smId,
+        stateNodeId: stateNodeId || null,
+        reachedMode,
+      };
+      const additionalRules = stateRules.slice(1).filter(r => r.smId && r.stateNodeId);
+      data.stateRules = [firstRule, ...additionalRules];
     } else if (type === 'condition') {
       data.conditions = conditions.filter(c => c.signalId);
     }
@@ -570,6 +603,119 @@ export function SignalModal({ isOpen, onClose, signal }) {
                   {reachedMode === 'reached'   && 'SM.Step \u2265 N  (at or past this state)'}
                 </div>
               </div>
+              {/* v3.4 \u2014 multi-state rules. The block above renders the
+                  FIRST rule (back-compat with legacy single-state fields).
+                  Additional rules are rendered here, each OR'd with the
+                  first. Engineers can add as many as needed; first rule
+                  stays mirrored to legacy smId/stateNodeId/reachedMode so
+                  any code still reading those fields keeps working. */}
+              {stateRules.slice(1).map((rule, ix) => {
+                const i = ix + 1;
+                const ruleSm = allSMs.find(s => s.id === rule.smId);
+                const ruleNodes = ruleSm?.nodes ?? [];
+                const ruleStateMap = computeStateNumbers(ruleSm?.nodes ?? [], ruleSm?.edges ?? [], ruleSm?.devices ?? []).stateMap;
+                const ruleSorted = [...ruleNodes].sort((a, b) => {
+                  const aStep = ruleStateMap.get(a.id) ?? Infinity;
+                  const bStep = ruleStateMap.get(b.id) ?? Infinity;
+                  return aStep - bStep;
+                });
+                const update = (patch) => {
+                  const next = [...stateRules];
+                  next[i] = { ...next[i], ...patch };
+                  setStateRules(next);
+                };
+                const remove = () => setStateRules(stateRules.filter((_, idx) => idx !== i));
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      padding: 10, marginTop: 14, marginBottom: 4,
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: 6,
+                      position: 'relative',
+                    }}
+                  >
+                    <div style={{
+                      position: 'absolute', top: -8, left: 12,
+                      padding: '0 6px', background: '#fff',
+                      fontSize: 10, fontWeight: 700, color: '#7c3aed',
+                      letterSpacing: '0.08em',
+                    }}>
+                      OR
+                    </div>
+                    <button
+                      type="button"
+                      onClick={remove}
+                      title="Remove this state rule"
+                      style={{
+                        position: 'absolute', top: 6, right: 6,
+                        width: 22, height: 22, padding: 0,
+                        background: '#fff', color: '#dc2626',
+                        border: '1px solid #fca5a5', borderRadius: 4,
+                        cursor: 'pointer', fontSize: 13, fontWeight: 700, lineHeight: 1,
+                      }}
+                    >&times;</button>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                      <div>
+                        <label className="form-label" style={{ fontSize: 11 }}>State Machine</label>
+                        <select
+                          className="form-input"
+                          value={rule.smId}
+                          onChange={e => update({ smId: e.target.value, stateNodeId: '' })}
+                        >
+                          <option value="">-- Select SM --</option>
+                          {allSMs.map(s => <option key={s.id} value={s.id}>{s.displayName ?? s.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="form-label" style={{ fontSize: 11 }}>State</label>
+                        <select
+                          className="form-input"
+                          value={rule.stateNodeId}
+                          onChange={e => update({ stateNodeId: e.target.value })}
+                          disabled={!rule.smId}
+                        >
+                          <option value="">-- Select state --</option>
+                          {ruleSorted.map(n => (
+                            <option key={n.id} value={n.id}>{nodeLabelFor(n, ruleStateMap)}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 11 }}>
+                      {[
+                        { v: 'in',        l: 'Is in state' },
+                        { v: 'completed', l: 'Completed' },
+                        { v: 'reached',   l: 'Reached' },
+                      ].map(opt => (
+                        <label key={opt.v} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                          <input
+                            type="radio"
+                            name={`reachedMode-rule-${i}`}
+                            value={opt.v}
+                            checked={rule.reachedMode === opt.v}
+                            onChange={() => update({ reachedMode: opt.v })}
+                          />
+                          <span>{opt.l}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+              {/* Add-another button */}
+              <button
+                type="button"
+                className="btn btn--xs btn--ghost"
+                onClick={() => setStateRules([
+                  ...stateRules,
+                  { smId: allSMs[0]?.id ?? '', stateNodeId: '', reachedMode: 'reached' },
+                ])}
+                style={{ marginTop: 8 }}
+              >
+                + Add another state (OR)
+              </button>
             </>
           )}
 

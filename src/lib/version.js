@@ -4,10 +4,23 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '3.3.0';
+export const APP_VERSION = '3.4.0';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '3.4.0',
+    date: '2026-05-09',
+    time: '16:15',
+    author: 'Dan Belliveau',
+    changes: [
+      'STATE SIGNALS CAN TURN ON AT MULTIPLE STATES — added `stateRules[]` array; signal builder now has "+ Add another state (OR)" button. Each rule has its own SM / state / trigger-mode pickers; rules OR together at runtime. First rule mirrors the legacy `smId/stateNodeId/reachedMode` fields so old code keeps working. Latch pills on the state node now appear on ALL contributing states (was only the first).',
+      'UNIFIED DECISION EXIT COUNT — removed the duplicate "Number of branches" stepper at the bottom of the picker; the top "Number of exits" stepper is now the single source of truth. Bumping from 2 to 3 spawns the missing left-side branch (exit-retry handle) with its edge, preserving existing wiring on the other two.',
+      'BRANCH EXIT LABELS ARE RENAMABLE — picker shows an `EXIT LABELS` section with per-exit text inputs (↓ bottom / → right / ← left). Defaults pull from grammar inputs (On/Off/etc); user overrides flow into edge `outcomeLabel` and re-label existing edges on save.',
+      'VISION TOOLS — each Vision System job carries a `tools[]` array; the device editor exposes a "🔍 Tools" section inside each job for adding tools with BOOL/REAL/DINT type. Picker now offers a `Tool name` detail dropdown (formatted as `{Job}.{Tool}`) so a decision can read a specific tool\'s result, not just the job\'s overall Pass/Fail.',
+      'Edge spawn for branches: when existing fan-out is smaller than the requested exit count, the spawn helper now adds JUST the missing branches instead of bailing — preserves user wiring on the branches that are already there.',
+    ],
+  },
   {
     version: '3.3.0',
     date: '2026-05-09',

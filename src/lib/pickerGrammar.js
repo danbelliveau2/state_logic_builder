@@ -198,15 +198,19 @@ export const DEFAULT_GRAMMAR = [
   },
 
   // ── Vision ───────────────────────────────────────────────────────────────
+  // v3.5 — Job + Tool detail. Pick a Job to decide on its overall Pass/Fail,
+  // OR drill into a specific Tool within the job (Cam1 → Part_Inspect →
+  // LineDetect). Tool detail values come from pickerSubjectsFromProject:
+  // formatted as "{Job}.{Tool}" so the user sees the qualified name.
   {
     id: 'vision',
     category: 'vision',
     family: 'Vision System',
     subject: 'Device name (camera)',
-    detail:  'Job name',
+    detail:  'Job name, Tool name',
     actions: 'Trigger, Inspect',
     inputs:  'Pass, Fail',
-    notes: '"Inspect" = pulse trigger + wait result + log to PT (a compound Action).',
+    notes: '"Inspect" = pulse trigger + wait result + log to PT (a compound Action). Tool name (optional) drills into a specific check within the job.',
   },
 
   // ── Robot ────────────────────────────────────────────────────────────────

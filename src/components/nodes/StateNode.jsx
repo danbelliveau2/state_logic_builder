@@ -4762,12 +4762,21 @@ export function StateNode({ data, selected, id }) {
   // needed to see which signals fire here. Only SM-State signals contribute
   // (position/condition signals don't map cleanly to a specific state node).
   const projectSignals = useDiagramStore(s => s.project?.signals ?? []);
-  const onSideSignals = projectSignals.filter(sig =>
-    sig.type === 'state' && sig.stateNodeId === id
-  );
-  const offSideSignals = projectSignals.filter(sig =>
-    sig.offCondition?.stateNodeId === id
-  );
+  // v3.4 — state signals can have multiple rules OR'd together (stateRules
+  // array). Check ALL rules for this state, not just the legacy single
+  // stateNodeId field, so latch pills appear on every state that
+  // contributes to the signal.
+  const onSideSignals = projectSignals.filter(sig => {
+    if (sig.type !== 'state') return false;
+    if (sig.stateNodeId === id) return true;  // legacy / first rule
+    return Array.isArray(sig.stateRules)
+      && sig.stateRules.some(r => r.stateNodeId === id);
+  });
+  const offSideSignals = projectSignals.filter(sig => {
+    if (sig.offCondition?.stateNodeId === id) return true;
+    return Array.isArray(sig.offCondition?.stateRules)
+      && sig.offCondition.stateRules.some(r => r.stateNodeId === id);
+  });
 
   // v2 picker — subjects derived from project devices/signals/PT fields.
   // Memoised on identity of the project + sm so the picker doesn't rebuild
@@ -4956,8 +4965,15 @@ export function StateNode({ data, selected, id }) {
   // Retry is read from BOTH places so v1 (_decision) and v2 (picker) actions
   // both light up the bottom retry handle. v1 stored it on the action root
   // (`action.retryEnabled`); v2 stores it inside the picker config blob.
+  // v3.4 — also lights up when exitCount >= 3, since the 3rd exit always
+  // uses the exit-retry handle (left side) regardless of retry-label flag.
+  const lastDecisionHasThirdExit = lastDecisionHasTwoExits && (
+    (lastAction?.pickerConfig?.exitCount ?? 0) >= 3
+    || (lastAction?.pickerConfig?.edgeTopology ?? 0) >= 3
+  );
   const lastDecisionHasRetry = lastDecisionHasTwoExits && (
     lastAction.retryEnabled || lastAction.pickerConfig?.retryEnabled
+    || lastDecisionHasThirdExit
   );
   const showDecisionSideHandles = lastDecisionHasTwoExits && !showVisionSideHandles;
 
@@ -5325,11 +5341,66 @@ export function StateNode({ data, selected, id }) {
                 const sourceEdges = activeSeq ? (activeSeq.edges ?? []) : (freshSm.edges ?? []);
 
                 const outgoing = sourceEdges.filter(e => e.source === id);
-                const hasFanOut = outgoing.some(e => e.data?.isDecisionExit);
+                const fanOutEdges = outgoing.filter(e => e.data?.isDecisionExit);
+                const hasFanOut = fanOutEdges.length > 0;
                 const wantsBranch = cleanConfig.mode === 'decision'
                   && cleanConfig.subAction === 'branch'
                   && (cleanConfig.edgeTopology || 1) > 1;
-                if (!wantsBranch || hasFanOut) return;
+                const wantedCount = cleanConfig.edgeTopology || 1;
+                // v3.4 — when the user grows the exit count on an existing
+                // fan-out (e.g. 2 → 3), don't bail. Spawn JUST the missing
+                // branches (handles that aren't yet wired). Preserves user
+                // wiring on the existing branches.
+                if (!wantsBranch) return;
+                if (hasFanOut) {
+                  const usedHandles = new Set(fanOutEdges.map(e => e.sourceHandle));
+                  const allHandles  = ['exit-pass', 'exit-fail', 'exit-retry'];
+                  const missingHandles = allHandles
+                    .slice(0, wantedCount)
+                    .filter(h => !usedHandles.has(h));
+                  if (missingHandles.length === 0) return; // nothing to add
+                  // Spawn ONE new child per missing handle. Offsets match
+                  // the original layout so the new child sits where the
+                  // user expects (left for exit-retry, right for exit-fail).
+                  const labels = cleanConfig.edgeLabels ?? [];
+                  const handleToLabel = {
+                    'exit-pass':  labels[0] ?? '',
+                    'exit-fail':  labels[1] ?? '',
+                    'exit-retry': labels[labels.length - 1] ?? 'Retry',
+                  };
+                  const parentNode = sourceNodes.find(n => n.id === id);
+                  if (!parentNode) return;
+                  const measuredH = parentNode.measured?.height ?? 80;
+                  const Y_GAP = Number(freshState.project?.designTheme?.branchYOffset ?? 120);
+                  const X_OFF = Number(freshState.project?.designTheme?.branchXOffset ?? 400);
+                  const childY = parentNode.position.y + measuredH + Y_GAP;
+                  const baseX  = parentNode.position.x;
+                  for (const handle of missingHandles) {
+                    const dx = handle === 'exit-fail'  ? +X_OFF
+                             : handle === 'exit-retry' ? -X_OFF
+                             : 0;
+                    const newChildId = freshState.addNode(freshSm.id, {
+                      position: { x: baseX + dx, y: childY },
+                    });
+                    if (!newChildId) continue;
+                    const exitColor = handle === 'exit-pass' ? 'pass'
+                                    : handle === 'exit-fail' ? 'fail'
+                                    : 'retry';
+                    freshState.addEdge(freshSm.id, {
+                      source: id,
+                      sourceHandle: handle,
+                      target: newChildId,
+                      targetHandle: null,
+                    }, {
+                      conditionType: 'custom',
+                      label: handleToLabel[handle] || '',
+                      isDecisionExit: true,
+                      exitColor,
+                      outcomeLabel: handleToLabel[handle] || '',
+                    });
+                  }
+                  return;
+                }
 
                 // Replace a single placeholder edge (if present) with the
                 // new branch fan-out. Store actions handle recovery routing.

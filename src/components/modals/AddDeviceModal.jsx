@@ -97,6 +97,13 @@ function SpeedProfileRow({ profile, index, onChange, onRemove, motionType }) {
 function VisionJobRow({ job, index, onChange, onRemove }) {
   const [showCustomize, setShowCustomize] = useState(false);
   const numericOutputs = job.numericOutputs ?? [];
+  // v3.5 — tools[] inside each job. A tool is a single check or measurement
+  // the vision job exposes — boolean (Pass/Fail) or numeric (REAL/DINT).
+  // Picker uses these as decidable subjects: "decide based on Cam1 →
+  // Part_Inspect → Tool 'LineDetect_Pass' = ON". L5X tag pattern:
+  //   Cam1.Jobs[jobIdx].Tools[toolIdx].Result
+  // Naming: tool.name is user-defined. dataType defaults to BOOL.
+  const tools = job.tools ?? [];
 
   function handleNameChange(newName) {
     onChange(index, 'name', newName);
@@ -111,6 +118,15 @@ function VisionJobRow({ job, index, onChange, onRemove }) {
   }
   function removeNumericOutput(oIdx) {
     onChange(index, 'numericOutputs', numericOutputs.filter((_, i) => i !== oIdx));
+  }
+  function addTool() {
+    onChange(index, 'tools', [...tools, { name: '', dataType: 'BOOL' }]);
+  }
+  function updateTool(tIdx, field, value) {
+    onChange(index, 'tools', tools.map((t, i) => i === tIdx ? { ...t, [field]: value } : t));
+  }
+  function removeTool(tIdx) {
+    onChange(index, 'tools', tools.filter((_, i) => i !== tIdx));
   }
 
   return (
@@ -161,6 +177,53 @@ function VisionJobRow({ job, index, onChange, onRemove }) {
         {numericOutputs.length === 0 && (
           <div style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', padding: '4px 0' }}>
             No data outputs — add if vision returns measurements (offsets, positions, etc.)
+          </div>
+        )}
+      </div>
+      {/* Tools — individual checks within the job. Each tool exposes a
+          BOOL Pass/Fail or numeric result that downstream decisions can
+          read independently. Lets engineers run one big job with several
+          tools and decide on any one of them. */}
+      <div style={{ padding: '6px 8px', borderTop: '1px solid #e5e7eb', background: '#f1f5f9' }}>
+        <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center' }}>
+          <span>🔍 Tools</span>
+          <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 400, marginLeft: 6 }}>
+            individual checks within this job — each pickable as its own decision subject
+          </span>
+          <span onClick={addTool} style={{ marginLeft: 'auto', cursor: 'pointer', color: '#0072B5', fontWeight: 500 }}>
+            + Add Tool
+          </span>
+        </div>
+        {tools.map((tool, tIdx) => (
+          <div key={tIdx} style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 3 }}>
+            <span style={{ fontSize: 11, color: '#64748b', width: 22, textAlign: 'center' }}>T{tIdx}</span>
+            <input
+              className="form-input"
+              value={tool.name}
+              onChange={e => updateTool(tIdx, 'name', e.target.value)}
+              placeholder="e.g. LineDetect"
+              style={{ flex: 1, fontSize: 11, padding: '2px 6px' }}
+            />
+            <select
+              value={tool.dataType}
+              onChange={e => updateTool(tIdx, 'dataType', e.target.value)}
+              style={{ fontSize: 10, fontWeight: 700, padding: '2px 4px', borderRadius: 4, border: '1px solid #cbd5e1' }}
+              title="Tool result type — BOOL (Pass/Fail), REAL (measurement), DINT (count)"
+            >
+              <option value="BOOL">BOOL</option>
+              <option value="REAL">REAL</option>
+              <option value="DINT">DINT</option>
+            </select>
+            <button
+              onClick={() => removeTool(tIdx)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#999', fontSize: 12 }}
+              title="Remove tool"
+            >&times;</button>
+          </div>
+        ))}
+        {tools.length === 0 && (
+          <div style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', padding: '4px 0' }}>
+            No tools yet — add if your job exposes multiple individually-checkable results
           </div>
         )}
       </div>

@@ -85,10 +85,22 @@ export function getProjectSubjects(project, smId) {
           detailValueMeta['Position name'] = posMeta;
         }
       }
-      // Vision: jobs[].name → "Job name" enum
+      // Vision: jobs[].name → "Job name" enum; jobs[].tools[].name → "Tool name"
+      // formatted as "{Job}.{Tool}" so the user can pick the specific tool
+      // within a job (or leave Tool blank to decide on the job's overall
+      // Pass/Fail outcome). L5X tag pattern resolves to
+      // Cam.Jobs[jobIdx].Tools[toolIdx].Result.
       if (d.type === 'VisionSystem' && Array.isArray(d.jobs)) {
-        const names = d.jobs.map(j => j?.name).filter(Boolean);
-        if (names.length) detailValues['Job name'] = names;
+        const jobNames = d.jobs.map(j => j?.name).filter(Boolean);
+        if (jobNames.length) detailValues['Job name'] = jobNames;
+        const toolRefs = [];
+        for (const job of d.jobs) {
+          if (!job?.name || !Array.isArray(job.tools)) continue;
+          for (const t of job.tools) {
+            if (t?.name) toolRefs.push(`${job.name}.${t.name}`);
+          }
+        }
+        if (toolRefs.length) detailValues['Tool name'] = toolRefs;
       }
       // Robot: signals + sequences → "Sequence #" / "Signal name" enums
       if (d.type === 'Robot') {

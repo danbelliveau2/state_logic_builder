@@ -109,6 +109,11 @@ export function UniversalPicker({
   // Seed initial state from editAction.pickerConfig (edit mode) or seedConfig
   // (add mode pre-fill). Falls back to default empty picks for fresh-add mode.
   const seed = editAction?.pickerConfig || seedConfig || null;
+  // v3.4 — exitCount stepper at the top is now the SINGLE source of truth
+  // for how many outgoing branches the action has. The legacy `branchCount`
+  // field is read on migration but no longer maintained as state. Retry
+  // is a label/semantic flag for the LAST exit; it doesn't add an extra
+  // exit on top of exitCount anymore.
   const [mode, setMode]               = useState(seed?.mode || initialMode);
   // v3.3 — unified Decision model. Sub-action is now DERIVED from two
   // independent fields: blockUntilTrue (Wait vs Check) and exitCount
@@ -204,7 +209,19 @@ export function UniversalPicker({
   // analog with 3-way classification = 3). User can increment / decrement
   // within [2, 5]. Extra branches beyond grammar.inputs.length get auto-labels
   // like "Branch 4", "Branch 5" — editable per-edge after creation.
-  const [branchCount, setBranchCount] = useState(seed?.branchCount ?? null);
+  // v3.4 — branchCount removed; exitCount is the single source. Keep
+  // a no-op placeholder so any straggling references don't crash before
+  // the next pass cleans them up.
+  const branchCount = null;
+  // v3.4.1 — per-exit custom labels. Sparse array indexed by exit position;
+  // entries default to undefined (use grammar input fallback). User can
+  // rename any exit; rename persists on `edgeLabels` so the spawn + edges
+  // pick it up. Seed from existing edgeLabels so re-opening a row shows
+  // the names the user already set.
+  const [customLabels, setCustomLabels] = useState(() => {
+    const seeded = seed?.edgeLabels;
+    return Array.isArray(seeded) ? [...seeded] : [];
+  });
 
   // The currently selected subject instance + its grammar row.
   // When `crossSmRef` is set, synthesize a virtual subject so the rest
@@ -304,7 +321,10 @@ export function UniversalPicker({
     if (!next && exitCount === 1) setPtEnabled(true);
   }
   function setExits(next) {
-    const clamped = Math.max(1, Math.min(5, next));
+    // v3.4 — clamp 1..3 (current handle availability: exit-pass = bottom,
+    // exit-fail = right, exit-retry = left). 4+ would require additional
+    // handles which haven't been laid out yet.
+    const clamped = Math.max(1, Math.min(3, next));
     setExitCount(clamped);
     if (grammarRow && !condition) {
       setCondition(parseList(grammarRow.inputs)[0] || null);
@@ -336,32 +356,34 @@ export function UniversalPicker({
     if (mode === 'action')      return { topology: 1, labels: [] };
     if (subAction === 'wait')   return { topology: 1, labels: [] };
     if (subAction === 'check')  return { topology: 1, labels: [] };
-    // Branch: build labels[] sized by branchCount (default = grammar inputs).
-    //   - First N labels come from grammar inputs, condition (primary) first.
-    //   - Beyond inputs.length, auto-name "Branch <n>" (user can rename per-edge).
+    // v3.4 — labels driven by `exitCount` (the top stepper) + user-typed
+    // customLabels[i] overrides. Fallback chain per exit i:
+    //   customLabels[i]  (user explicitly named it)
+    //   grammar input    (e.g. "On", "Off", "InTol")
+    //   "Branch N"       (generic fallback)
+    // Retry: when enabled, the LAST exit's label is forced to "Retry"
+    // UNLESS the user has typed a custom label for that position.
     const inputs = parseList(grammarRow.inputs);
     const orderedInputs = condition
       ? [condition, ...inputs.filter(s => s !== condition)]
       : inputs;
-
-    // Effective count: user override (clamped to [2, 5]) OR derived from grammar.
-    // Grammar with <2 inputs degenerates to a 1-exit "branch" (functionally a Wait).
-    const grammarCount = Math.max(orderedInputs.length, 1);
-    const requested    = branchCount ?? grammarCount;
-    const count        = Math.max(grammarCount === 1 ? 1 : 2, Math.min(5, requested));
-
-    let labels = [];
+    const count = Math.max(2, Math.min(3, exitCount));  // clamped to available handle count
+    const labels = [];
     for (let i = 0; i < count; i++) {
-      labels.push(orderedInputs[i] ?? `Branch ${i + 1}`);
+      const custom  = customLabels[i];
+      const grammar = orderedInputs[i];
+      const fallback = `Branch ${i + 1}`;
+      labels.push((custom && custom.trim()) || grammar || fallback);
     }
-    // Retry: append a "Retry" label so the auto-spawn generates a final edge
-    // from `exit-retry` (bottom-center). Independent of branchCount — counts
-    // as a separate "extra" exit on top of whatever you set.
-    if (retryEnabled) {
-      labels = [...labels, 'Retry'];
+    if (retryEnabled && labels.length > 0) {
+      const lastIdx = labels.length - 1;
+      // Only override with "Retry" if user hasn't typed a custom label
+      if (!(customLabels[lastIdx] && customLabels[lastIdx].trim())) {
+        labels[lastIdx] = 'Retry';
+      }
     }
     return { topology: labels.length, labels };
-  }, [grammarRow, mode, subAction, condition, retryEnabled, branchCount]);
+  }, [grammarRow, mode, subAction, condition, retryEnabled, exitCount, customLabels]);
 
   // Terminal-state path commits standalone — no subject/condition needed.
   const canCommit = !!terminalType || (
@@ -562,16 +584,57 @@ export function UniversalPicker({
             <button
               type="button"
               onClick={() => setExits(exitCount + 1)}
-              disabled={exitCount >= 5}
+              disabled={exitCount >= 3}
               style={{
                 width: 24, height: 24, padding: 0,
                 fontSize: 15, fontWeight: 700,
-                background: '#fff', color: exitCount >= 5 ? '#cbd5e1' : '#475569',
+                background: '#fff', color: exitCount >= 3 ? '#cbd5e1' : '#475569',
                 border: '1px solid #cbd5e1', borderRadius: 4,
-                cursor: exitCount >= 5 ? 'not-allowed' : 'pointer',
+                cursor: exitCount >= 3 ? 'not-allowed' : 'pointer',
               }}
             >+</button>
           </div>
+          {/* v3.4.1 — per-exit label rename. Only shows when exits >= 2
+              (single-exit branches don't need a label). Each row shows
+              the handle direction (↓ bottom / → right / ← left) and an
+              editable input pre-filled with the live label (grammar
+              default or user override). Empty input falls back to
+              grammar / "Branch N". */}
+          {exitCount >= 2 && edgeInfo.labels.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4, width: '100%' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#475569', letterSpacing: '0.05em' }}>
+                EXIT LABELS
+              </div>
+              {edgeInfo.labels.map((label, i) => {
+                const arrow = i === 0 ? '↓' : i === 1 ? '→' : '←';
+                const position = i === 0 ? 'bottom' : i === 1 ? 'right' : 'left';
+                return (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{
+                      width: 16, fontSize: 13, fontWeight: 700, color: '#0f172a',
+                      textAlign: 'center', lineHeight: 1,
+                    }} title={position}>{arrow}</span>
+                    <input
+                      type="text"
+                      value={customLabels[i] ?? label}
+                      onChange={(e) => {
+                        const next = [...customLabels];
+                        next[i] = e.target.value;
+                        setCustomLabels(next);
+                      }}
+                      placeholder={label}
+                      style={{
+                        flex: 1, padding: '3px 6px',
+                        fontSize: 11, fontFamily: 'inherit',
+                        border: '1px solid #cbd5e1', borderRadius: 4,
+                        background: '#fff',
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -879,67 +942,16 @@ export function UniversalPicker({
             </>
           )}
 
-          {/* Compact one-line rows for Branch options. Order:
-                1. Number of branches  (stepper, default from grammar inputs)
-                2. Retry exit          (checkbox; uses the bottom handle)
-              Both render in a single line — no descriptions — to keep the
-              picker window short. The Log-target picker (below) follows the
-              same compact style. */}
+          {/* v3.4 — duplicate "Number of branches" stepper removed.
+              The TOP stepper ("Number of exits") is now the single source
+              of truth — it drives the spawn fan-out count directly via
+              edgeInfo.topology. Retry remains as a label/semantic flag
+              for the LAST exit (when enabled, the last exit reads
+              "Retry" and retryCount applies). */}
           {subAction === 'branch' && (() => {
-            const grammarN     = parseList(grammarRow.inputs).length;
-            const minN         = grammarN <= 1 ? 1 : 2;
-            const maxN         = retryEnabled ? 2 : 3;
-            const current      = branchCount ?? Math.max(grammarN, 2);
-            const retryBlocked = current >= 3;
-            const step = (delta) => {
-              const next = Math.max(minN, Math.min(maxN, current + delta));
-              setBranchCount(next);
-            };
+            const retryBlocked = false;  // no longer blocked by branch count
             return (
               <>
-                {/* Number of branches — single line, stepper on the right */}
-                <div
-                  style={{
-                    marginTop: 6,
-                    padding: '5px 10px',
-                    background: '#f8fafc',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: 6,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                  }}
-                  title="Number of outgoing branches (Retry exit is separate)"
-                >
-                  <span style={{ flex: 1, fontSize: 11, fontWeight: 700, color: '#475569' }}>
-                    Number of branches
-                  </span>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    <button
-                      onClick={() => step(-1)}
-                      disabled={current <= minN}
-                      style={stepperBtn(current <= minN)}
-                      title="Remove one branch"
-                    >
-                      −
-                    </button>
-                    <span style={{
-                      fontSize: 13, fontWeight: 700, minWidth: 16, textAlign: 'center',
-                      color: '#0f172a',
-                    }}>
-                      {current}
-                    </span>
-                    <button
-                      onClick={() => step(1)}
-                      disabled={current >= maxN}
-                      style={stepperBtn(current >= maxN)}
-                      title="Add one branch"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-
                 {/* Retry — single line checkbox row, matches Log style */}
                 <div
                   style={{
