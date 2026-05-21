@@ -458,6 +458,19 @@ function migrateRow(persisted) {
     if (merged.actions === 'Turn On, Turn Off') merged.actions = 'Vac On, Vac Off, Vac Eject On';
   }
 
+  // v3.5 — vision row: add "Tool name" to the detail list when missing.
+  // Cached grammars from earlier versions only had "Job name"; without
+  // this, the Tool-name dropdown never renders in the picker even though
+  // tools are defined on the device. Idempotent — only writes if Tool
+  // name is absent.
+  if (merged.id === 'vision' && typeof merged.detail === 'string') {
+    const parts = merged.detail.split(',').map(s => s.trim()).filter(Boolean);
+    if (!parts.includes('Tool name')) {
+      parts.push('Tool name');
+      merged.detail = parts.join(', ');
+    }
+  }
+
   return merged;
 }
 

@@ -4,10 +4,19 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '3.4.0';
+export const APP_VERSION = '3.4.1';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '3.4.1',
+    date: '2026-05-21',
+    time: '11:00',
+    author: 'Dan Belliveau',
+    changes: [
+      'Grammar migration: vision row now auto-backfills "Tool name" detail field on cached grammars from < v3.4 (was only on the default; existing localStorage rows never picked it up). Refresh in browser → Tool name dropdown appears in the picker when a vision device is the subject.',
+    ],
+  },
   {
     version: '3.4.0',
     date: '2026-05-09',
