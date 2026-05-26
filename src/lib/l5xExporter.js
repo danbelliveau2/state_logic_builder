@@ -8,7 +8,7 @@
  *  - R00_Main       — 3 JSR calls
  *  - R01_Inputs     — inverted-sensor → delay timer (1-sensor devices only)
  *  - R02_StateTransitions — XIC(Status.State[N]) + verify conditions + MOVE + AOI call
- *  - R03_StateLogic — OTE branch/latch per device, complementary outputs
+ *  - R03_StateLogic — SDC sealed OTE per direction, Status.State[1] auto/manual gate
  *  - No R04/R20     — fault detection via AOI FaultTime
  *
  * Reference: S01_CoreCoverLoadPNP.L5X (CE gold standard)
@@ -283,12 +283,55 @@ function orderNodes(nodes, edges) {
   const visited = new Set();
   const ordered = [];
 
+  // Bypass/detour detection — mirrors the same helper in computeStateNumbers.js.
+  // Returns true if there is a forward path from `fromId` to `toId` within
+  // maxDepth hops. When one exit of a decision node leads to the other exit's
+  // destination (a detour/skip pattern), the detour branch is visited first so
+  // detour states receive lower step numbers than the merge point.
+  function canReachForward(fromId, toId, maxDepth = 15) {
+    if (fromId === toId) return false;
+    const queue = [fromId];
+    const seen = new Set([fromId]);
+    for (let depth = 0; depth < maxDepth && queue.length > 0; depth++) {
+      const next = [];
+      for (const id of queue) {
+        const outs = edges.filter((e) => e.source === id);
+        for (const e of outs) {
+          if (e.target === toId) return true;
+          if (!seen.has(e.target)) {
+            seen.add(e.target);
+            next.push(e.target);
+          }
+        }
+      }
+      queue.length = 0;
+      queue.push(...next);
+    }
+    return false;
+  }
+
   function dfs(nodeId) {
     if (visited.has(nodeId)) return;
     visited.add(nodeId);
     const node = nodes.find((n) => n.id === nodeId);
     if (node) ordered.push(node);
-    const outEdges = edges.filter((e) => e.source === nodeId);
+
+    // Sort outgoing edges: detour branches before skip/direct branches,
+    // then left-to-right by target X as the tie-breaker.
+    const outEdges = edges
+      .filter((e) => e.source === nodeId)
+      .sort((a, b) => {
+        const na = nodes.find((n) => n.id === a.target);
+        const nb = nodes.find((n) => n.id === b.target);
+        if (!visited.has(a.target) && !visited.has(b.target)) {
+          const aReachesB = canReachForward(a.target, b.target);
+          const bReachesA = canReachForward(b.target, a.target);
+          if (aReachesB && !bReachesA) return -1; // A is detour → visit first
+          if (bReachesA && !aReachesB) return 1;  // B is detour → visit first
+        }
+        return (na?.position?.x ?? 0) - (nb?.position?.x ?? 0);
+      });
+
     for (const e of outEdges) {
       dfs(e.target);
     }
@@ -331,11 +374,46 @@ function advanceStep(step) {
   return next;
 }
 
+/**
+ * A "pure home" initial state — isInitial=true with no actions — is a semantic
+ * marker for the home/idle position, not a real process state. The SDC standard
+ * folds it into the State 3 → State 4 transition rung (whose verify conditions
+ * are the device home positions). Absorbed nodes:
+ *   - get no step number of their own
+ *   - are skipped as sources/destinations in the transition loop
+ *   - their outgoing edge effectively becomes the State 3 → first-auto rung
+ */
+function isAbsorbedInitialNode(node) {
+  if (node?.type !== 'stateNode') return false;
+  if (!node?.data?.isInitial) return false;
+  if (node?.data?.isComplete) return false;
+  const actions = node?.data?.actions ?? [];
+  return actions.length === 0;
+}
+
+/**
+ * A fault-state node (data.isFault === true) represents a destination the user
+ * draws to show "this branch leads to a fault." In the generated L5X, fault
+ * routing is handled exclusively by R20_Alarms: when an alarm trips,
+ * q_AlarmActive goes true and the existing State 127 entry rung fires. So in
+ * R02 these nodes are dropped entirely — no step slot, no incoming-edge rungs.
+ */
+function isFaultNode(node) {
+  return !!node?.data?.isFault;
+}
+
 function buildStepMap(orderedNodes, devices) {
   const map = {};
   let currentStep = STEP_BASE; // starts at 1 (wait state)
 
   orderedNodes.forEach((n) => {
+    // Pure-home initial nodes are absorbed into the State 3→4 transition;
+    // they don't claim a step slot of their own.
+    if (isAbsorbedInitialNode(n)) return;
+    // Fault-state nodes are handled by R20_Alarms → q_AlarmActive → State 127;
+    // they don't claim a step slot either.
+    if (isFaultNode(n)) return;
+
     currentStep = advanceStep(currentStep);
     map[n.id] = currentStep;
 
@@ -395,40 +473,194 @@ function getCompleteStep(_orderedNodes, _devices) {
 
 // ── State description for Status tag comments ────────────────────────────────
 
-function getStateDescription(node, devices) {
-  // Decision nodes: use signal/condition name
-  if (node?.type === 'decisionNode') {
-    const mode = node.data?.nodeMode === 'decide' ? 'Branch' : 'Wait';
-    const name = node.data?.signalName ?? 'Decision';
-    const condCount = (node.data?.conditions ?? []).length;
-    return condCount > 1 ? `${mode}: ${name} +${condCount - 1} more` : `${mode}: ${name}`;
-  }
-  const actions = node?.data?.actions ?? [];
-  if (actions.length === 0) return node?.data?.label ?? 'Empty State';
+// ── pickerV2 → legacy action shape translator ───────────────────────────────
+//
+// The newer UniversalPicker stores actions as
+//   { id, pickerV2: true, pickerConfig: { mode, subjectId, subjectName,
+//                                         grammarRowId, actionVerb,
+//                                         detail, condition, ... } }
+// while the rest of the exporter (buildVerifyConditions, R03 deviceMap,
+// R20 alarms, etc.) reads the legacy shape
+//   { id, deviceId, operation, positionName, ... }
+// This helper normalises a pickerV2 action to the legacy shape so the
+// existing per-device-type switch statements keep working unchanged.
 
-  return actions
-    .map((a) => {
-      const dev = devices.find((d) => d.id === a.deviceId);
-      if (!dev) return a.operation ?? '?';
-      if (a.operation === 'ServoMove') {
-        return `Move ${dev.displayName} to ${a.positionName ?? '?'}`;
-      }
-      if (a.operation === 'ServoIncr') {
-        return a.positionName
-          ? `Increment ${dev.displayName} — ${a.positionName} (${a.incrementDist ?? 1}mm)`
-          : `Increment ${dev.displayName} (${a.incrementDist ?? 1}mm)`;
-      }
-      if (a.operation === 'ServoIndex') {
-        return a.positionName
-          ? `Index ${dev.displayName} — ${a.positionName} (${a.indexStations ?? 6}-pos)`
-          : `Index ${dev.displayName} (${a.indexStations ?? 6}-pos)`;
-      }
-      if (a.operation === 'VisionInspect') {
-        return `${dev.displayName} Inspect ${a.jobName ?? ''}`;
-      }
-      return `${a.operation} ${dev.displayName}`;
-    })
-    .join(', ');
+const PV2_VERB_TO_OP = {
+  // cylinder
+  'Extend': 'Extend',
+  'Retract': 'Retract',
+  // rotary
+  'Rotate CW': 'RotateCW',
+  'Rotate CCW': 'RotateCCW',
+  // gripper
+  'Engage': 'Engage',
+  'Disengage': 'Disengage',
+  // vacuum
+  'Vac On': 'VacOn',
+  'Vac Off': 'VacOff',
+  'Vac Eject On': 'VacOnEject',
+  // servo
+  'Move Absolute': 'ServoMove',
+  'Move Incremental': 'ServoIncr',
+  'Index': 'ServoIndex',
+  // conveyor
+  'Run': 'Run',
+  'Stop': 'Stop',
+  // vision
+  'Trigger': 'Trigger',
+  'Inspect': 'VisionInspect',
+  // robot
+  'Run Sequence': 'RunSequence',
+  'Set Output': 'SetOutput',
+  // part tracking
+  'Set': 'SetOn',
+  'Clear': 'SetOff',
+};
+
+function pickerV2ToLegacy(action) {
+  const pc = action?.pickerConfig;
+  if (!pc) return action;                              // already legacy
+  if (!action.pickerV2 && !pc.mode) return action;     // not pickerV2
+
+  const out = { ...action };
+
+  // Common fields from pickerV2
+  out.deviceId = pc.subjectId;
+  out.positionName = pc.detail?.['Position name']
+                  ?? pc.detail?.position
+                  ?? pc.detail?.positionName
+                  ?? out.positionName;
+
+  if (pc.mode === 'action') {
+    out.operation = PV2_VERB_TO_OP[pc.actionVerb] ?? pc.actionVerb ?? null;
+    // Vision Inspect carries the job name in detail.['Job name']
+    if (pc.grammarRowId === 'vision') {
+      out.jobName = pc.detail?.['Job name'] ?? pc.detail?.jobName ?? out.jobName;
+    }
+    return out;
+  }
+
+  if (pc.mode === 'decision') {
+    const isOff = pc.condition === 'Off'
+               || pc.condition === 'Out of Tolerance'
+               || pc.condition === 'Fail'
+               || pc.condition === 'Disengaged'
+               || pc.condition === 'Retracted'
+               || pc.condition === 'Stopped';
+    out.operation = isOff ? 'WaitOff' : 'WaitOn';
+    out.conditionType = isOff ? 'off' : 'on';
+    if (pc.grammarRowId === 'analogSensor') {
+      out.setpointName = pc.detail?.['Setpoint name'] ?? pc.detail?.setpointName;
+    }
+    return out;
+  }
+
+  return out;
+}
+
+// Normalise every action in a node — returns a shallow-cloned node where
+// `data.actions` is the legacy-shape array.
+function normaliseNodeActions(node) {
+  const actions = node?.data?.actions ?? [];
+  if (actions.length === 0) return node;
+  if (!actions.some(a => a?.pickerV2 || a?.pickerConfig)) return node;  // already legacy
+  return {
+    ...node,
+    data: { ...node.data, actions: actions.map(pickerV2ToLegacy) },
+  };
+}
+
+// Describe a single action — handles BOTH the legacy shape
+// (a.deviceId / a.operation / a.positionName) AND the newer pickerV2 shape
+// (a.pickerConfig.mode / .subjectName / .actionVerb / .detail).
+function describeAction(a, devices) {
+  // ── pickerV2 shape ──
+  const pc = a?.pickerConfig;
+  if (pc && (a?.pickerV2 || pc.mode)) {
+    if (pc.mode === 'decision') {
+      // Format: "Check: Subject Name" (wait) or "Branch: Subject Name — Condition" (2-exit)
+      // Underscores → spaces so "Vision_Inverted" reads as "Vision Inverted".
+      const subjectName = (pc.subjectName ?? 'Decision').replace(/_/g, ' ');
+      const verb = pc.subAction === 'wait' ? 'Wait' : 'Check';
+      const cond = pc.condition && pc.condition !== 'On' ? ` — ${pc.condition}` : '';
+      return `${verb}: ${subjectName}${cond}`;
+    }
+    if (pc.mode === 'action') {
+      const verb = (pc.actionVerb ?? '').trim();
+      const name = (pc.subjectName ?? '').trim();
+      const pos = pc.detail?.['Position name'] ?? pc.detail?.position ?? pc.detail?.positionName;
+      if (verb && name && pos) return `${verb} ${name} to ${pos}`;
+      if (verb && name) return `${verb} ${name}`;
+      if (name) return name;
+      return null;
+    }
+    // Unknown pickerV2 mode — fall through to legacy resolution
+  }
+
+  // ── legacy shape ──
+  const dev = devices.find((d) => d.id === a?.deviceId);
+  if (!dev) return null;
+  if (a.operation === 'ServoMove') {
+    return `Move ${dev.displayName} to ${a.positionName ?? 'Position'}`;
+  }
+  if (a.operation === 'ServoIncr') {
+    return a.positionName
+      ? `Increment ${dev.displayName} — ${a.positionName} (${a.incrementDist ?? 1}mm)`
+      : `Increment ${dev.displayName} (${a.incrementDist ?? 1}mm)`;
+  }
+  if (a.operation === 'ServoIndex') {
+    return a.positionName
+      ? `Index ${dev.displayName} — ${a.positionName} (${a.indexStations ?? 6}-pos)`
+      : `Index ${dev.displayName} (${a.indexStations ?? 6}-pos)`;
+  }
+  if (a.operation === 'VisionInspect') {
+    return `${dev.displayName} Inspect ${a.jobName ?? ''}`.trim();
+  }
+  if (!a.operation) return null;
+  return `${a.operation} ${dev.displayName}`;
+}
+
+function getStateDescription(node, devices, stepNum = null) {
+  // Decision nodes — prefer user-set label; fall back to a readable auto-format.
+  if (node?.type === 'decisionNode') {
+    const label = node.data?.label?.trim?.();
+    if (label && label !== '?' && !/^Step\s+\d+$/i.test(label)) return label;
+
+    // Auto-format: "{ModeVerb}: {Source} - {Signal}" with underscores → spaces.
+    const source = node.data?.signalSource?.trim?.() ?? '';
+    const raw    = node.data?.signalName ?? 'Decision';
+    const name   = raw.replace(/_/g, ' ');
+    const mode   = node.data?.exitCount === 1            ? 'Wait'
+                 : node.data?.nodeMode  === 'verify'     ? 'Verify'
+                 : node.data?.nodeMode  === 'decide'     ? 'Decide'
+                 :                                         'Check';
+    const condCount = (node.data?.conditions ?? []).length;
+    const extra = condCount > 1 ? ` +${condCount - 1} more` : '';
+    return source && source !== name
+      ? `${mode}: ${source} - ${name}${extra}`
+      : `${mode}: ${name}${extra}`;
+  }
+
+  // Special-purpose state nodes
+  if (node?.data?.isComplete) return 'Cycle Complete';
+  if (node?.data?.isInitial && !(node?.data?.actions?.length)) {
+    return node.data?.label && node.data.label.trim() ? node.data.label : 'Wait for Cycle Start';
+  }
+
+  // If the node has a meaningful user-typed label, prefer it over any
+  // auto-derived action description. This lets users set "Vision Check for
+  // Inverted Part" on a node and have that exact text appear in the rung comment.
+  const nodeLabel = node?.data?.label?.trim?.() ?? '';
+  if (nodeLabel && nodeLabel !== '?' && !/^Step\s+\d+$/i.test(nodeLabel)) {
+    return nodeLabel;
+  }
+
+  // Build description from actions (handles both legacy + pickerV2)
+  const actions = node?.data?.actions ?? [];
+  const actionParts = actions.map(a => describeAction(a, devices)).filter(Boolean);
+  if (actionParts.length > 0) return actionParts.join(', ');
+
+  return stepNum != null ? `Step ${stepNum}` : 'Process Step';
 }
 
 // ── Rung builder ─────────────────────────────────────────────────────────────
@@ -467,11 +699,12 @@ ${cdata(`[0,${preMs},0]`)}
 }
 
 export function buildBoolTagXml(name, description, usage, externalAccess = 'Read/Write') {
+  // Only emit Usage attribute for parameter-visible tags; local program tags omit it entirely
+  const usageAttr = (usage === 'Output' || usage === 'Input' || usage === 'Public') ? ` Usage="${usage}"` : '';
+  // Omit the Description block entirely when description is empty — avoids blank CDATA noise
+  const descBlock = description ? `\n<Description>\n${cdata(description)}\n</Description>` : '';
   return `
-<Tag Name="${name}" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="${externalAccess}" OpcUaAccess="None">
-<Description>
-${cdata(description)}
-</Description>
+<Tag Name="${name}" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false"${usageAttr} ExternalAccess="${externalAccess}" OpcUaAccess="None">${descBlock}
 <Data Format="L5K">
 ${cdata('0')}
 </Data>
@@ -654,7 +887,8 @@ function buildStatusTagXml(orderedNodes, stepMap, devices) {
 
   for (const node of orderedNodes) {
     const step = stepMap[node.id];
-    const desc = getStateDescription(node, devices);
+    if (step === undefined) continue; // absorbed initial nodes have no state slot
+    const desc = getStateDescription(node, devices, step);
     const visionSubs = getVisionSubSteps(node, devices, stepMap);
 
     if (visionSubs) {
@@ -777,26 +1011,25 @@ function generateAllTags(sm, orderedNodes, stepMap, trackingFields = []) {
   // ── Standard scaffold tags (1116 pattern) ─────────────────────────────
 
   // Cycle control
-  addTag(buildBoolTagXml('CycleRunning', 'Cycle Running', 'Local'), 'CycleRunning');
-  addTag(buildBoolTagXml('CycleStopped', 'Cycle Stopped', 'Local'), 'CycleStopped');
-  addTag(buildBoolTagXml('CycleStopping', 'Cycle Stopping', 'Local'), 'CycleStopping');
+  addTag(buildBoolTagXml('CycleRunning', '', 'Local'), 'CycleRunning');
+  addTag(buildBoolTagXml('CycleStopped', 'Cycle Stop Override From Supervisor', 'Local'), 'CycleStopped');
+  addTag(buildBoolTagXml('CycleStopping', '', 'Local'), 'CycleStopping');
   addTag(buildTimerTagXml('CycleTimer', 'Cycle Time Accumulator', 0), 'CycleTimer');
 
   // Supervisor mapped inputs
-  addTag(buildBoolTagXml('ManualMode', 'Manual Mode (from Supervisor)', 'Local'), 'ManualMode');
-  addTag(buildBoolTagXml('SafetyOK', 'Safety OK (from Supervisor)', 'Local'), 'SafetyOK');
-  addTag(buildBoolTagXml('FaultReset', 'Fault Reset (from Supervisor)', 'Local'), 'FaultReset');
-  addTag(buildBoolTagXml('Initialized', 'Station Initialized', 'Local'), 'Initialized');
+  addTag(buildBoolTagXml('ManualMode', '', 'Local'), 'ManualMode');
+  addTag(buildBoolTagXml('SafetyOK', '', 'Local'), 'SafetyOK');
+  addTag(buildBoolTagXml('FaultReset', '', 'Local'), 'FaultReset');
+  addTag(buildBoolTagXml('Initialized', '', 'Local'), 'Initialized');
 
   // Fault state capture
   addTag(buildDintTagXml('FaultState', 'State when fault occurred'), 'FaultState');
   addTag(buildDintTagXml('RestartState', 'State to restart from after fault'), 'RestartState');
   addTag(buildDintTagXml('SafetyStopState', 'State when safety stop occurred'), 'SafetyStopState');
 
-  // Single step
+  // Single step (SS_ONS removed — now uses ONS.1 bit in combined ONS DINT)
   addTag(buildBoolTagXml('SS', 'Single Step Active', 'Local'), 'SS');
   addTag(buildBoolTagXml('SS_OK', 'Single Step OK to Advance', 'Local'), 'SS_OK');
-  addTag(buildBoolTagXml('SS_ONS', 'Single Step One-Shot (used by R01 SS_OK rung)', 'Local'), 'SS_ONS');
   addTag(buildBoolTagXml('LocalSS', 'Local Single Step Request', 'Local'), 'LocalSS');
   addTag(buildBoolTagXml('LocalSSONS', 'Local Single Step ONS', 'Local'), 'LocalSSONS');
 
@@ -808,11 +1041,35 @@ function generateAllTags(sm, orderedNodes, stepMap, trackingFields = []) {
   addTag(buildBoolTagXml('DryRun', 'Dry Run (HMI_Toggle.1 — engineer-defined dry-cycle gate)', 'Local'), 'DryRun');
   addTag(buildDintTagXml('HMI_Toggle', 'HMI Toggle Bits (.0 Lockout / .1 DryRun / .2 SS — fixed SDC map)'), 'HMI_Toggle');
   addTag(buildDintTagXml('HMI_Momentary', 'HMI Momentary Bits (auto-cleared each scan; bits assigned per-machine)'), 'HMI_Momentary');
+  addTag(buildBoolTagXml('HMI_MomentaryOnPrevScan', 'HMI_Momentary Was Non-Zero Last Scan (used for 2-rung auto-clear)', 'Local'), 'HMI_MomentaryOnPrevScan');
 
   // One-shot and HMI
   addTag(buildDintTagXml('ONS', 'One-Shot Storage Bits'), 'ONS');
-  addTag(buildDintTagXml('HMI_Button', 'HMI Manual Control Buttons'), 'HMI_Button');
+  addTag(buildDintTagXml('HMI_Button', 'HMI Manual Control Buttons (legacy)'), 'HMI_Button');
   addTag(buildBoolTagXml('HMI_LocalManualOverride', 'Local Manual Override (bypasses Supervisor)', 'Local'), 'HMI_LocalManualOverride');
+
+  // Station / Tracking integration
+  addTag(buildDintTagXml('StaNum', 'Station Number (indexes into \\Tracking.p_Data.Station[])', sm.stationNumber ?? 1), 'StaNum');
+  addTag(buildDintTagXml('StaNumPre', 'Upstream Station Number (indexes into \\Tracking.p_Data.Station[] for incoming nest)', Math.max(1, (sm.stationNumber ?? 1) - 1)), 'StaNumPre');
+  addTag(buildDintTagXml('NestNumCurrent', 'Nest Number at Current Station (from Tracking)'), 'NestNumCurrent');
+  addTag(buildDintTagXml('NestNumIncoming', 'Nest Number at Upstream Station (from Tracking)'), 'NestNumIncoming');
+  addTag(buildBoolTagXml('CycleStation', 'Cycle Station Permission (from Tracking)', 'Local'), 'CycleStation');
+  addTag(buildBoolTagXml('PartStarted', 'Part Started This Cycle (set on first Engage/gripper-close state)', 'Local'), 'PartStarted');
+  addTag(buildBoolTagXml('UseRestartLogic', 'Enable Restart Logic (wired to resume from interrupted state)', 'Local'), 'UseRestartLogic');
+
+  // OkMan intermediate BOOLs — generated when a PNP X/Z two-axis actuator pair is detected.
+  // These allow the X-axis to be jogged manually only when Z is retracted (collision prevention).
+  {
+    const devices = sm.devices ?? [];
+    const pnpActuators = devices.filter(d => d.type === 'PneumaticLinearActuator');
+    const xAxisDev = pnpActuators.find(d => /x/i.test(d.name));
+    const zAxisDev = pnpActuators.find(d => /z/i.test(d.name));
+    if (xAxisDev && zAxisDev) {
+      const xShortName = xAxisDev.name.replace(/Axis$/i, '') || xAxisDev.name;
+      addTag(buildBoolTagXml(`OkManExtend${xShortName}`, `Manual Enable: Extend ${xAxisDev.displayName} (OkMan — Z must be retracted)`, 'Local'), `OkManExtend${xShortName}`);
+      addTag(buildBoolTagXml(`OkManRetract${xShortName}`, `Manual Enable: Retract ${xAxisDev.displayName} (OkMan — Z must be retracted)`, 'Local'), `OkManRetract${xShortName}`);
+    }
+  }
 
   // Timer arrays
   addTag(`
@@ -841,6 +1098,17 @@ ${cdata('Station Alarm Data')}
 ${cdata('Station Warning Data')}
 </Description>
 </Tag>`, 'Warning');
+
+  // Per-device alarm definitions (used by both this tag pass and generateR20Alarms)
+  const alarmDefs = buildAlarmDefinitions(sm);
+  if (alarmDefs.length > 0) {
+    // AlarmList — pre-populated message text (without station prefix)
+    addTag(buildAlarmListTagXml(alarmDefs), 'AlarmList');
+    // One TIMER per alarm trigger (preset baked in)
+    for (const def of alarmDefs) {
+      addTag(buildAlarmTimerTagXml(def.timerTag, def.timerPreset), def.timerTag);
+    }
+  }
 
   // NOTE: ProgramAlarmHandler references \Alarms.p_ProgramID, \Alarms.p_Active, \Alarms.p_History
   // and controller-scope g_CPUDateTime — these are provided by the Alarms program and controller tags.
@@ -915,7 +1183,7 @@ ${cdata('0.000000')}
             ),
             patterns.inputRet.replace(/\{name\}/g, device.name)
           );
-          // 1-sensor (Ret only): need ExtDelay timer for R01 pattern
+          // 1-sensor (Ret only): ExtendDelay timer + position-confirm OTE tag
           addTag(
             buildTimerTagXml(
               patterns.timerExt.replace(/\{name\}/g, device.name),
@@ -923,6 +1191,10 @@ ${cdata('0.000000')}
               device.extTimerMs ?? typeDef.defaultTimerPreMs
             ),
             patterns.timerExt.replace(/\{name\}/g, device.name)
+          );
+          addTag(
+            buildBoolTagXml(`${device.name}Extended`, '', 'Local'),
+            `${device.name}Extended`
           );
         } else if (sensorConfig === 'extendOnly') {
           addTag(
@@ -933,6 +1205,7 @@ ${cdata('0.000000')}
             ),
             patterns.inputExt.replace(/\{name\}/g, device.name)
           );
+          // 1-sensor (Ext only): RetractDelay timer + position-confirm OTE tag
           addTag(
             buildTimerTagXml(
               patterns.timerRet.replace(/\{name\}/g, device.name),
@@ -940,6 +1213,10 @@ ${cdata('0.000000')}
               device.retTimerMs ?? typeDef.defaultTimerPreMs
             ),
             patterns.timerRet.replace(/\{name\}/g, device.name)
+          );
+          addTag(
+            buildBoolTagXml(`${device.name}Retracted`, '', 'Local'),
+            `${device.name}Retracted`
           );
         }
 
@@ -1008,7 +1285,7 @@ ${cdata('0.000000')}
           patterns.outputDisengage.replace(/\{name\}/g, device.name)
         );
 
-        // Delay timers (always needed — gripper uses inline TON in R02)
+        // Delay timers — used in R01 position-confirm rungs
         addTag(
           buildTimerTagXml(
             patterns.timerEngage.replace(/\{name\}/g, device.name),
@@ -1024,6 +1301,15 @@ ${cdata('0.000000')}
             device.disengageTimerMs ?? typeDef.defaultTimerPreMs
           ),
           patterns.timerDisengage.replace(/\{name\}/g, device.name)
+        );
+        // Position-confirm BOOLs — computed in R01, used as clean verify tags in R02
+        addTag(
+          buildBoolTagXml(`${device.name}Closed`, '', 'Local'),
+          `${device.name}Closed`
+        );
+        addTag(
+          buildBoolTagXml(`${device.name}Opened`, '', 'Local'),
+          `${device.name}Opened`
         );
         break;
       }
@@ -1079,14 +1365,19 @@ ${cdata('0.000000')}
       }
 
       case 'DigitalSensor': {
+        const sensorInputTag = patterns.inputTag.replace(/\{name\}/g, device.name);
         addTag(
-          buildBoolTagXml(
-            patterns.inputTag.replace(/\{name\}/g, device.name),
-            `${device.displayName} Sensor Input`,
-            'Input'
-          ),
-          patterns.inputTag.replace(/\{name\}/g, device.name)
+          buildBoolTagXml(sensorInputTag, `${device.displayName} Sensor Input`, 'Input'),
+          sensorInputTag
         );
+        // AOI_Debounce instance — used by the R01 debounce rung
+        const debounceTag = `${device.name}Debounce`;
+        addTag(`
+<Tag Name="${debounceTag}" TagType="Base" DataType="AOI_Debounce" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+${cdata(`${device.displayName} Part Present Debounce`)}
+</Description>
+</Tag>`, debounceTag);
         break;
       }
 
@@ -1488,7 +1779,7 @@ function generateR00Main(sm = null) {
 //   3. HMI_Momentary auto-clear (one OTU per declared momentary bit)
 //   4. 1-sensor pneumatic invert (only for devices flagged as 1-sensor)
 //   5. AOI_Debounce calls for part-present DigitalSensors (100/100 ms defaults)
-//   6. CPU_TimeDate_wJulian call (once per program)
+//   (CPU_TimeDate_wJulian belongs in the controller/main program — not here)
 //
 // Legacy Supervisor mappings (ManualMode/SafetyOK/FaultReset/CycleRunning/
 // Initialized) are retained at the top for backward compatibility with
@@ -1499,85 +1790,124 @@ function generateR01Inputs(sm) {
   const rungs = [];
   let rungNum = 0;
   const devices = sm.devices ?? [];
+  const stationNum = sm.stationNumber ?? 1;
+  // StaNumPre = upstream/previous station (one less, floor 1)
+  const stationNumPre = sm.stationNumberPre ?? Math.max(1, stationNum - 1);
 
-  // ── Legacy Supervisor integration (retained) ─────────────────────────────
-  rungs.push(buildRung(rungNum++, 'Mapped Inputs from Supervisor', 'NOP();'));
-  rungs.push(buildRung(rungNum++, null, 'XIC(\\Supervisor.q_ManualMode)XIO(HMI_LocalManualOverride)OTE(ManualMode);'));
-  rungs.push(buildRung(rungNum++, null, 'XIC(\\Supervisor.q_SafetyOK)OTE(SafetyOK);'));
-  rungs.push(buildRung(rungNum++, null, 'XIC(\\Supervisor.q_FaultReset)OTE(FaultReset);'));
-  rungs.push(buildRung(rungNum++, null, '[XIC(\\Supervisor.q_CycleStartLatch) ,XIC(HMI_LocalManualOverride) ]OTE(CycleRunning);'));
-  rungs.push(buildRung(rungNum++, null, 'XIO(\\Supervisor.q_CycleStartLatch)OTE(CycleStopping);'));
-  rungs.push(buildRung(rungNum++, null, 'XIC(\\Supervisor.q_CycleStopped)ONS(ONS.0)XIO(Status.State[2])XIO(Status.State[3])OTE(CycleStopped);'));
-  rungs.push(buildRung(rungNum++, 'Initialization', 'XIC(Status.State[124])OTE(Initialized);'));
+  // ── Nest & Station Numbers ────────────────────────────────────────────────
+  // Combined parallel: set StaNum + StaNumPre in branch 1,
+  // read NestNum from Tracking in branch 2 (executes same scan).
+  rungs.push(buildRung(rungNum++, 'Nest & Station Numbers',
+    `[MOVE(${stationNum},StaNum) MOVE(${stationNumPre},StaNumPre) ,MOVE(\\Tracking.p_Data.Station[StaNum].NestNum,NestNumCurrent) MOVE(\\Tracking.p_Data.Station[StaNumPre].NestNum,NestNumIncoming) ];`));
 
-  // ── §15.7 step 1: HMI_Toggle decode (fixed bit map) ──────────────────────
-  rungs.push(buildRung(rungNum++, 'HMI_Toggle Decode', 'XIC(HMI_Toggle.0)OTE(Lockout);'));
-  rungs.push(buildRung(rungNum++, null, 'XIC(HMI_Toggle.1)OTE(DryRun);'));
-  rungs.push(buildRung(rungNum++, null, 'XIC(HMI_Toggle.2)OTE(SS);'));
-
-  // ── §15.7 step 2: SS_OK ──────────────────────────────────────────────────
-  // SS_OK is true when single-step is OFF, or when SS is ON and the operator
-  // has pulsed HMI_Momentary.StepAdvance (one-shot advance).
-  rungs.push(buildRung(rungNum++, 'SS_OK', '[XIO(SS) ,XIC(SS) XIC(HMI_Momentary.StepAdvance) ONS(SS_ONS) ]OTE(SS_OK);'));
-
-  // ── §15.7 step 3: HMI_Momentary auto-clear ───────────────────────────────
-  // Each declared momentary bit: XIC(HMI_Momentary.X) OTU(HMI_Momentary.X) so
-  // the pulse self-clears on the next scan. Default bit: StepAdvance. Additional
-  // bits from project.machineConfig.hmiMomentaryBits (if present) get added.
-  const momentaryBits = sm.hmiMomentaryBits ?? ['StepAdvance', 'FaultReset', 'CycleStart'];
-  let momentaryCommentAdded = false;
-  for (const bitName of momentaryBits) {
-    rungs.push(buildRung(rungNum++, !momentaryCommentAdded ? 'HMI_Momentary Auto-Clear' : null,
-      `XIC(HMI_Momentary.${bitName})OTU(HMI_Momentary.${bitName});`));
-    momentaryCommentAdded = true;
-  }
-
-  // ── §15.7 step 4: 1-sensor pneumatic invert ──────────────────────────────
-  // For devices with only one limit switch, derive the opposite sensor via TON
-  // (the existing pattern is a delay-timer gate on the declared-sensor edge).
+  // ── Mapped / Debounced Inputs ─────────────────────────────────────────────
+  // 1-sensor pneumatic delay timers.
+  // Timer only runs when the output is actively commanding that direction AND
+  // the opposing output is off — prevents false accumulation during manual jog
+  // or when the actuator is mid-stroke for an unrelated reason.
   let addedSensorComment = false;
   for (const device of devices) {
     if (device.type !== 'PneumaticLinearActuator' && device.type !== 'PneumaticRotaryActuator') continue;
     const sensorConfig = getSensorConfigKey(device);
     const patterns = DEVICE_TYPES[device.type]?.tagPatterns;
     if (!patterns) continue;
-
     if (sensorConfig === 'retractOnly') {
-      const retSensor = patterns.inputRet.replace(/\{name\}/g, device.name);
-      const extDelay = patterns.timerExt.replace(/\{name\}/g, device.name);
-      rungs.push(buildRung(rungNum++, !addedSensorComment ? '1-Sensor Pneumatic Delay Timers' : null,
-        `XIO(${retSensor})TON(${extDelay},?,?);`));
+      // Only has retract sensor — use ExtendDelay to compute {name}Extended confirm bit
+      const retSensor   = patterns.inputRet.replace(/\{name\}/g, device.name);
+      const extOutput   = patterns.outputExtend.replace(/\{name\}/g, device.name);
+      const retOutput   = patterns.outputRetract.replace(/\{name\}/g, device.name);
+      const extDelay    = patterns.timerExt.replace(/\{name\}/g, device.name);
+      const extConfirm  = `${device.name}Extended`;
+      rungs.push(buildRung(rungNum++, !addedSensorComment ? 'Mapped/Debounced Inputs' : null,
+        `XIO(${retSensor})XIO(${retOutput})XIC(${extOutput})TON(${extDelay},?,?)XIC(${extDelay}.DN)OTE(${extConfirm});`));
       addedSensorComment = true;
     } else if (sensorConfig === 'extendOnly') {
-      const extSensor = patterns.inputExt.replace(/\{name\}/g, device.name);
-      const retDelay = patterns.timerRet.replace(/\{name\}/g, device.name);
-      rungs.push(buildRung(rungNum++, !addedSensorComment ? '1-Sensor Pneumatic Delay Timers' : null,
-        `XIO(${extSensor})TON(${retDelay},?,?);`));
+      // Only has extend sensor — use RetractDelay to compute {name}Retracted confirm bit
+      const extSensor   = patterns.inputExt.replace(/\{name\}/g, device.name);
+      const extOutput   = patterns.outputExtend.replace(/\{name\}/g, device.name);
+      const retOutput   = patterns.outputRetract.replace(/\{name\}/g, device.name);
+      const retDelay    = patterns.timerRet.replace(/\{name\}/g, device.name);
+      const retConfirm  = `${device.name}Retracted`;
+      rungs.push(buildRung(rungNum++, !addedSensorComment ? 'Mapped/Debounced Inputs' : null,
+        `XIO(${extSensor})XIO(${extOutput})XIC(${retOutput})TON(${retDelay},?,?)XIC(${retDelay}.DN)OTE(${retConfirm});`));
       addedSensorComment = true;
     }
   }
-
-  // ── §15.7 step 5: AOI_Debounce calls for part-present DigitalSensors ─────
-  // Per user confirmation: required for DigitalSensor part-present; NOT for
-  // pneumatic ext/ret sensors, NOT for robot DI/DO.
-  let debounceCommentAdded = false;
+  // PneumaticGripper position-confirm rungs.
+  // Each gripper gets two OTE tags that R02 uses as verify conditions:
+  //   {name}Closed  — engage output ON + disengage output OFF + engage delay timer done
+  //   {name}Opened  — disengage output ON + engage output OFF + disengage delay timer done
+  // Keeping the TON inside R01 (not R02) keeps state-transition rungs clean.
   for (const device of devices) {
-    if (device.type !== 'DigitalSensor') continue;
-    const inputTag = `i_${device.name}`;
-    const debounceInst = `${device.name}Debounce`;
-    // AOI_Debounce(instance, Input, OnDelay, OffDelay) — SDC default 100 ms / 100 ms.
-    rungs.push(buildRung(rungNum++, !debounceCommentAdded ? 'Debounce Filters' : null,
-      `AOI_Debounce(${debounceInst},${inputTag},100,100);`));
-    debounceCommentAdded = true;
+    if (device.type !== 'PneumaticGripper') continue;
+    const patterns = DEVICE_TYPES.PneumaticGripper.tagPatterns;
+    const engageOut    = patterns.outputEngage.replace(/\{name\}/g, device.name);
+    const disengageOut = patterns.outputDisengage.replace(/\{name\}/g, device.name);
+    const engageTmr    = patterns.timerEngage.replace(/\{name\}/g, device.name);
+    const disengageTmr = patterns.timerDisengage.replace(/\{name\}/g, device.name);
+    const closedTag    = `${device.name}Closed`;
+    const openedTag    = `${device.name}Opened`;
+    rungs.push(buildRung(rungNum++, !addedSensorComment ? 'Mapped/Debounced Inputs' : null,
+      `XIC(${engageOut})XIO(${disengageOut})TON(${engageTmr},?,?)XIC(${engageTmr}.DN)OTE(${closedTag});`));
+    addedSensorComment = true;
+    rungs.push(buildRung(rungNum++, null,
+      `XIC(${disengageOut})XIO(${engageOut})TON(${disengageTmr},?,?)XIC(${disengageTmr}.DN)OTE(${openedTag});`));
   }
 
-  // ── §15.7 step 6: CPU time/date capture (g_CPUDateTime is controller-scope) ──
-  rungs.push(buildRung(rungNum++, 'CPU Time/Date',
-    'CPU_TimeDate_wJulian(\\g_CPUDateTime);'));
+  // AOI_Debounce for part-present DigitalSensors
+  for (const device of devices) {
+    if (device.type !== 'DigitalSensor') continue;
+    rungs.push(buildRung(rungNum++, !addedSensorComment ? 'Mapped/Debounced Inputs' : null,
+      `AOI_Debounce(${device.name}Debounce,i_${device.name},100,100);`));
+    addedSensorComment = true;
+  }
 
-  // Legacy SS handling — retained so LocalSS panel buttons still work until
-  // the project fully migrates to HMI_Toggle-only.
-  rungs.push(buildRung(rungNum++, 'Legacy LocalSS Passthrough', 'XIC(LocalSS)OTE(SS);'));
+  // ── Logic Inputs from Supervisor ─────────────────────────────────────────
+  rungs.push(buildRung(rungNum++, 'Logic Inputs\n\n*Replace always off bits with real conditions', 'NOP();'));
+  rungs.push(buildRung(rungNum++, null, 'XIC(\\Supervisor.q_ManualMode)XIO(HMI_LocalManualOverride)OTE(ManualMode);'));
+  rungs.push(buildRung(rungNum++, null, 'XIC(\\Supervisor.q_SafetyOK)OTE(SafetyOK);'));
+  rungs.push(buildRung(rungNum++, null, 'XIC(\\Supervisor.q_FaultReset)OTE(FaultReset);'));
+  rungs.push(buildRung(rungNum++, null, 'XIC(\\Supervisor.q_CycleStartLatch)OTE(CycleRunning);'));
+  rungs.push(buildRung(rungNum++, null, 'XIO(\\Supervisor.q_CycleStartLatch)OTE(CycleStopping);'));
+  rungs.push(buildRung(rungNum++, null, 'XIC(\\Supervisor.q_CycleStopped)ONS(ONS.0)XIO(Status.State[2])XIO(Status.State[3])OTE(CycleStopped);'));
+
+  // ── Initialization (from actual device home positions) ────────────────────
+  {
+    const homeConditions = buildHomeVerifyConditions(devices);
+    if (homeConditions) {
+      rungs.push(buildRung(rungNum++, 'Initialization',
+        `${homeConditions}OTE(Initialized);`));
+    } else {
+      rungs.push(buildRung(rungNum++, 'Initialization',
+        'XIC(Status.State[124])OTE(Initialized);'));
+    }
+  }
+
+  // ── Lockout / Dry Run / Single Step — from Tracking OpStatus ─────────────
+  // Lockout is inhibited in Manual mode so the operator can still jog devices.
+  rungs.push(buildRung(rungNum++, 'Lockout',
+    `XIC(\\Tracking.p_Data.Station[StaNum].OpStatus.Lockout)XIO(ManualMode)OTE(Lockout);`));
+  rungs.push(buildRung(rungNum++, 'Dry Run Logic (can add supervisor dry run condition if needed as parallel branch)',
+    `XIC(\\Tracking.p_Data.Station[StaNum].OpStatus.DryRun)OTE(DryRun);`));
+  rungs.push(buildRung(rungNum++, 'Single Step Logic',
+    `XIC(\\Tracking.p_Data.Station[StaNum].OpStatus.SingleStep)OTE(SS);`));
+  // SS_OK: advance on next scan after operator pulses LocalSSONS
+  rungs.push(buildRung(rungNum++, null,
+    `[XIO(SS) ,XIC(LocalSSONS) ONS(ONS.1) ]OTE(SS_OK);`));
+
+  // ── Cycle Station (placeholder) ───────────────────────────────────────────
+  // Wire to your machine's tracking nest/station logic.
+  // For dial machines: check NestNumCurrent PartLoaded + upstream station result + DryRun.
+  rungs.push(buildRung(rungNum++, 'Cycle Station\n*Wire to tracking nest/station logic for your machine type',
+    `OTE(CycleStation);`));
+
+  // ── Clear HMI Manual Triggers ─────────────────────────────────────────────
+  // MOVE(0) clears the whole HMI_Momentary DINT one scan after any bit was set.
+  // Two-rung pattern matches SDC standard project exactly.
+  rungs.push(buildRung(rungNum++, 'Clear HMI Manual Triggers',
+    `XIC(HMI_MomentaryOnPrevScan)MOVE(0,HMI_Momentary);`));
+  rungs.push(buildRung(rungNum++, null,
+    `NE(HMI_Momentary,0)OTE(HMI_MomentaryOnPrevScan);`));
 
   return `
 <Routine Name="R01_Inputs" Type="RLL">
@@ -1681,47 +2011,32 @@ function buildVerifyConditions(node, devices, allSMs = [], trackingFields = []) 
             conditions += `XIC(${retTag})XIO(${extTag})`;
           }
         } else if (sensorConfig === 'retractOnly') {
+          // R01 computes {name}Extended via output + timer — use that clean tag here
           if (action.operation === 'Extend') {
-            const delayTag = patterns.timerExt.replace(
-              /\{name\}/g,
-              device.name
-            );
-            conditions += `XIC(${delayTag}.DN)`;
+            conditions += `XIC(${device.name}Extended)`;
           } else if (action.operation === 'Retract') {
-            const retTag = patterns.inputRet.replace(
-              /\{name\}/g,
-              device.name
-            );
+            const retTag = patterns.inputRet.replace(/\{name\}/g, device.name);
             conditions += `XIC(${retTag})`;
           }
         } else if (sensorConfig === 'extendOnly') {
+          // R01 computes {name}Retracted via output + timer — use that clean tag here
           if (action.operation === 'Extend') {
-            const extTag = patterns.inputExt.replace(
-              /\{name\}/g,
-              device.name
-            );
+            const extTag = patterns.inputExt.replace(/\{name\}/g, device.name);
             conditions += `XIC(${extTag})`;
           } else if (action.operation === 'Retract') {
-            const delayTag = patterns.timerRet.replace(
-              /\{name\}/g,
-              device.name
-            );
-            conditions += `XIC(${delayTag}.DN)`;
+            conditions += `XIC(${device.name}Retracted)`;
           }
         }
         break;
       }
 
       case 'PneumaticGripper': {
+        // R01 computes {name}Closed / {name}Opened via output + timer confirmation.
+        // R02 just references that single clean tag — no inline TON here.
         if (action.operation === 'Engage') {
-          const tmr = patterns.timerEngage.replace(/\{name\}/g, device.name);
-          conditions += `TON(${tmr},?,?)XIC(${tmr}.DN)`;
+          conditions += `XIC(${device.name}Closed)`;
         } else if (action.operation === 'Disengage') {
-          const tmr = patterns.timerDisengage.replace(
-            /\{name\}/g,
-            device.name
-          );
-          conditions += `TON(${tmr},?,?)XIC(${tmr}.DN)`;
+          conditions += `XIC(${device.name}Opened)`;
         }
         break;
       }
@@ -1741,18 +2056,25 @@ function buildVerifyConditions(node, devices, allSMs = [], trackingFields = []) 
       }
 
       case 'ServoAxis': {
-        // Engineer convention: {name}_MAM is the auto-move instance (§15.2).
-        const mamTag = (patterns.mamAutoInst ?? '{name}_MAM').replace(/\{name\}/g, device.name);
-        conditions += `XIC(${mamTag}.PC)`;
-        // Position In_Range only for ServoMove (not ServoIncr/ServoIndex)
         if (action.operation === 'ServoMove') {
+          // For named-position moves, use the AOI_RangeCheck .InPos exclusively.
+          // .InPos confirms the axis is physically at position within tolerance —
+          // _MAM.PC only confirms the instruction finished, not physical arrival.
           const posName = action.positionName ?? '';
           if (posName) {
-            const rcTag = patterns.positionRC
+            const rcTag = (patterns.positionRC ?? '{name}{positionName}')
               .replace(/\{name\}/g, device.name)
               .replace(/\{positionName\}/g, posName);
             conditions += `XIC(${rcTag}.InPos)`;
+          } else {
+            // No position name set — fall back to MAM.PC as placeholder
+            const mamTag = (patterns.mamAutoInst ?? '{name}_MAM').replace(/\{name\}/g, device.name);
+            conditions += `XIC(${mamTag}.PC)`;
           }
+        } else {
+          // ServoIncr / ServoIndex — no named AOI_RangeCheck instance, use MAM.PC
+          const mamTag = (patterns.mamAutoInst ?? '{name}_MAM').replace(/\{name\}/g, device.name);
+          conditions += `XIC(${mamTag}.PC)`;
         }
         break;
       }
@@ -1828,14 +2150,22 @@ function buildVerifyConditions(node, devices, allSMs = [], trackingFields = []) 
 // Reuses the same verify patterns as buildVerifyConditions.
 
 function buildHomeVerifyConditions(devices, allSMs = [], trackingFields = []) {
-  // Create virtual actions from each device's home position
-  // Fall back to defaultHomePosition from device type if not explicitly set
+  // Create virtual actions from each device's home position.
+  // For ServoAxis, also supply positionName from the device's positions array
+  // (the entry flagged isHome: true) so buildVerifyConditions can emit
+  // {name}{positionName}.InPos instead of falling back to _MAM.PC.
   const virtualActions = (devices ?? [])
-    .map(d => ({
-      deviceId: d.id,
-      operation: d.homePosition || DEVICE_TYPES[d.type]?.defaultHomePosition,
-    }))
-    .filter(a => a.operation);
+    .map(d => {
+      const operation = d.homePosition || DEVICE_TYPES[d.type]?.defaultHomePosition;
+      if (!operation) return null;
+      const action = { deviceId: d.id, operation };
+      if (d.type === 'ServoAxis') {
+        const homePos = (d.positions ?? []).find(p => p.isHome);
+        if (homePos) action.positionName = homePos.name;
+      }
+      return action;
+    })
+    .filter(a => a && a.operation);
 
   if (virtualActions.length === 0) return '';
 
@@ -1857,516 +2187,458 @@ function generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs = [], tra
     ? stepMap[explicitCompleteNode.id]
     : getCompleteStep(orderedNodes, devices);
 
-  // ── Reserved States (SDC Standard 1116 pattern) ───────────────────────────
+  // ── Reserved States (top of R02 — SDC Standard) ─────────────────────────
 
-  // State 0: Safety Stop — with state capture
+  // NOP to mark start of state machine
+  rungs.push(buildRung(rungNum++, 'Start Of State Machine', 'NOP();'));
+
+  // State 2: Auto Idle NOT Ready — enters from safety clear, manual exit,
+  //   State 3 or CycleStopped (when uninitialized), lockout release, or alarm clear.
+  //   CycleStopped is a one-shot fired only outside State 2/3 (see R01) so it acts as
+  //   an interrupt path that snaps the machine to whichever idle matches Initialized.
   rungs.push(
-    buildRung(rungNum++, 'State 0: Safety Stop',
-      `[XIO(SafetyOK) ,XIC(S:FS) ][ONS(ONS.3) LIMIT(4,Control.StateReg,99) MOVE(Control.StateReg,SafetyStopState) MOVE(Control.StateReg,RestartState) ,MOVE(0,Control.StateReg) ];`)
+    buildRung(rungNum++, 'State 2: Auto Mode Idle Not Ready',
+      `[XIC(Status.State[0]) XIC(SafetyOK) ,XIC(Status.State[1]) XIO(ManualMode) ,[XIC(Status.State[3]) ,XIC(CycleStopped) ] XIO(Initialized) ,XIC(Status.State[99]) XIO(CycleRunning) ,XIC(Status.State[127]) XIO(q_AlarmActive) ]MOVE(2,Control.StateReg);`)
   );
 
-  // State 1: Manual Mode
-  rungs.push(
-    buildRung(rungNum++, 'State 1: Manual Mode',
-      `XIC(ManualMode)MOVE(1,Control.StateReg);`)
-  );
-
-  // State 2: Auto Idle NOT Ready (from Safety/Manual/Fault/Init)
-  rungs.push(
-    buildRung(rungNum++, 'State 2: Auto Idle NOT Ready',
-      `[XIC(Status.State[0]) XIC(SafetyOK) XIO(ManualMode) ,XIC(Status.State[1]) XIO(ManualMode) ,XIC(Status.State[127]) XIC(FaultReset) ,XIC(Status.State[124]) ]MOVE(2,Control.StateReg);`)
-  );
-
-  // State 3: Auto Idle Ready (from 2 or cycle complete)
-  rungs.push(
-    buildRung(rungNum++, 'State 3: Auto Idle Ready',
-      `[XIC(Status.State[2]) XIC(Initialized) ,XIC(Status.State[${completeStep}]) ]MOVE(3,Control.StateReg);`)
-  );
-
-  // State 99: Lockout (§15.5 — HMI_Toggle.0 forces Step=99 from any state).
-  // Safe-state outputs (retract pneumatics, disable servos) are handled in R03.
-  rungs.push(
-    buildRung(rungNum++, 'State 99: Lockout (HMI_Toggle.0)',
-      `XIC(HMI_Toggle.0)MOVE(99,Control.StateReg);`)
-  );
-
-  // ── Process Transitions ───────────────────────────────────────────────────
-
-  // State 3 → first process state (with home position verify)
-  if (orderedNodes.length > 0) {
-    const firstStep = stepMap[orderedNodes[0].id];
-    const homeConditions = buildHomeVerifyConditions(devices, allSMs, trackingFields);
+  // State 3: Auto Idle Ready — entered from State 2/CycleStopped (when initialized) or
+  //   from clean-break process states when CycleRunning drops mid-sequence.
+  //   Clean-break = first process state, wait/decision nodes, cycle complete, init complete.
+  {
+    // Skip absorbed pure-home initial nodes — they have no step number.
+    const autoNodes = orderedNodes.filter(n => !isAbsorbedInitialNode(n));
+    const cleanBreakNodes = autoNodes.filter((n, i) =>
+      i === 0 ||                   // first real process state (natural cycle start/restart point)
+      n.type === 'decisionNode' || // wait states — machine is paused waiting for a signal
+      n.data?.isComplete           // cycle complete state
+    );
+    const processStateChecks = cleanBreakNodes
+      .map(n => stepMap[n.id])
+      .filter(s => s !== undefined)
+      .map(s => `XIC(Status.State[${s}])`);
+    const fallbackBranches = processStateChecks.length > 0
+      ? ` ,[${processStateChecks.join(' ,')} ,XIC(Status.State[124]) ] XIO(CycleRunning)`
+      : ` ,XIC(Status.State[124]) XIO(CycleRunning)`;
     rungs.push(
-      buildRung(
-        rungNum++,
-        `State ${firstStep}: ${getStateDescription(orderedNodes[0], devices)}`,
-        `XIC(Status.State[3])XIC(CycleRunning)${homeConditions}MOVE(${firstStep},Control.StateReg);`
-      )
+      buildRung(rungNum++, 'State 3: Auto Mode Idle Ready',
+        `[[XIC(Status.State[2]) ,XIC(CycleStopped) ] XIC(Initialized)${fallbackBranches} ]MOVE(3,Control.StateReg);`)
     );
   }
 
-  // Rungs for each transition between action states
+  // ── Process Transitions ───────────────────────────────────────────────────
+
+  // First "real" auto state — skip any absorbed pure-home initial nodes.
+  const firstAutoNode = orderedNodes.find(n => !isAbsorbedInitialNode(n) && stepMap[n.id] !== undefined);
+
+  // State 3 → first process state (or re-entry from State 124 init complete).
+  // No home-position verifies needed here — Initialized already encompasses every
+  // home condition (computed in R01 as the AND of all device home positions).
+  // Re-checking them on this rung would be redundant.
+  if (firstAutoNode) {
+    const firstStep = stepMap[firstAutoNode.id];
+    rungs.push(
+      buildRung(
+        rungNum++,
+        `State ${firstStep}: ${getStateDescription(firstAutoNode, devices, firstStep)}`,
+        `[XIC(Status.State[3]) XIC(Initialized) ,XIC(Status.State[124]) ]XIC(CycleRunning)MOVE(${firstStep},Control.StateReg);`
+      )
+    );
+  }
+  // (State 100: Begin Initialization is emitted later, just before the init sub-state chain.)
+
+  // ── Destination-driven rung generation ───────────────────────────────────
+  //
+  // The SDC convention is: each destination state gets ONE rung whose parallel
+  // branches enumerate every way to enter that state.
+  //   [path1, path2, path3] MOVE(N, Control.StateReg);
+  //
+  // This naturally handles:
+  //   - Branching (one source, multiple outgoing edges → multiple destination rungs)
+  //   - Merges    (multiple sources, one destination → multiple branches in one rung)
+  //   - Loop-backs (back-edges just become another branch on the destination's rung)
+  //
+  // What's NOT edge-driven and stays synthetic:
+  //   - VisionInspect 3 internal sub-rungs ([0]→[1], [1]→[2], [2]→[3])
+  //   - Continuous-mode vision search loop + timeout
+  //   - Last → Complete fallback when no explicit complete node
+
   const edges = sm.edges ?? [];
-  // Track nodes that we've already generated branching rungs for
-  const branchHandled = new Set();
 
-  for (let i = 0; i < orderedNodes.length - 1; i++) {
-    const srcNode = orderedNodes[i];
-    const srcStep = stepMap[srcNode.id];
+  // Helper — compute the branch-specific condition for an outgoing edge,
+  // based on the source node type. Returns { cond, placeholderSubject }.
+  //   placeholderSubject is non-null when we emitted an AlwaysOff that the
+  //   engineer needs to wire up post-import (currently for pickerV2 decisions
+  //   whose signals we don't resolve yet).
+  function computeBranchCondition(srcNode, edge) {
+    const result = { cond: '', placeholderSubject: null };
 
-    // Skip complete nodes — they just loop back to wait (handled by the Complete→Wait rung above)
-    if (srcNode.data?.isComplete) continue;
-
-    // Check if this node has a CheckResults action with 2+ outcomes → branching
+    // 1. CheckResults outcome branching
     const checkAction = (srcNode.data?.actions ?? []).find(a => {
       const dev = devices.find(d => d.id === a.deviceId);
       return dev?.type === 'CheckResults' && (dev.outcomes ?? []).length >= 2;
     });
-
     if (checkAction) {
-      branchHandled.add(srcNode.id);
       const checkDevice = devices.find(d => d.id === checkAction.deviceId);
-      const outcomes = checkDevice?.outcomes ?? [];
-
-      // Find outgoing edges from this node
-      const outEdges = edges.filter(e => e.source === srcNode.id);
-
-      for (const outEdge of outEdges) {
-        const tgtNode = orderedNodes.find(n => n.id === outEdge.target);
-        if (!tgtNode) continue;
-        const tgtStep = stepMap[tgtNode.id];
-        if (tgtStep === undefined) continue;
-
-        const outcomeId = outEdge.data?.outcomeId;
-        const outcomeLabel = outEdge.data?.outcomeLabel ?? 'branch';
-        const desc = getStateDescription(tgtNode, devices);
-
-        // Find the matching outcome to get its per-outcome param data
-        const outcome = outcomes.find(o => o.id === outcomeId);
-
-        // Resolve per-outcome branch condition — unified inputRef or legacy sourceType
-        let branchCond = '';
-        if (outcome?.inputRef) {
-          // New unified format: inputRef = "deviceId:key" or "deviceId:cross:smId" or "_tracking:fieldId"
+      const outcome = (checkDevice?.outcomes ?? []).find(o => o.id === edge.data?.outcomeId);
+      if (outcome) {
+        if (outcome.inputRef) {
           const tag = resolveInputRefTag(outcome.inputRef, devices, allSMs, trackingFields);
           if (tag) {
             const isOff = outcome.condition === 'off' || outcome.condition === 'outOfRange';
-            // _allPass returns "tag1 AND tag2 …" — expand to multiple XIC/XIO
             const tagList = tag.includes(' AND ') ? tag.split(' AND ') : [tag];
-            branchCond = tagList.map(t => isOff ? `XIO(${t})` : `XIC(${t})`).join('');
+            result.cond = tagList.map(t => isOff ? `XIO(${t})` : `XIC(${t})`).join('');
           }
-        } else if (outcome?.sourceType === 'digitalSensor' && outcome?.sensorDeviceId) {
-          // Legacy: DigitalSensor
+        } else if (outcome.sourceType === 'digitalSensor' && outcome.sensorDeviceId) {
           const sensorDev = devices.find(d => d.id === outcome.sensorDeviceId);
-          if (sensorDev) branchCond = outcome.condition === 'off' ? `XIO(i_${sensorDev.name})` : `XIC(i_${sensorDev.name})`;
-        } else if (outcome?.sourceType === 'analogSensor' && outcome?.sensorDeviceId) {
-          // Legacy: AnalogSensor
+          if (sensorDev) result.cond = outcome.condition === 'off' ? `XIO(i_${sensorDev.name})` : `XIC(i_${sensorDev.name})`;
+        } else if (outcome.sourceType === 'analogSensor' && outcome.sensorDeviceId) {
           const sensorDev = devices.find(d => d.id === outcome.sensorDeviceId);
           if (sensorDev) {
             const rcTag = `${sensorDev.name}${outcome.setpointName ?? ''}RC.InPos`;
-            branchCond = outcome.condition === 'outOfRange' ? `XIO(${rcTag})` : `XIC(${rcTag})`;
+            result.cond = outcome.condition === 'outOfRange' ? `XIO(${rcTag})` : `XIC(${rcTag})`;
           }
-        } else if (outcome?.paramDeviceId) {
-          // Legacy: Parameter
-          let paramDev = devices.find(d => d.id === outcome.paramDeviceId);
+        } else if (outcome.paramDeviceId) {
+          const paramDev = devices.find(d => d.id === outcome.paramDeviceId);
           const pfx = paramDev?.dataType === 'boolean' ? 'q_' : 'p_';
           let paramTag = paramDev ? `${pfx}${paramDev.name}` : '';
           if (outcome.paramScope === 'cross-sm' && outcome.crossSmId) {
             const crossSm = allSMs.find(s => s.id === outcome.crossSmId);
-            if (crossSm) {
-              const crossParamDev = (crossSm.devices ?? []).find(d => d.id === outcome.paramDeviceId);
-              if (crossParamDev) {
-                const progName = buildProgramName(crossSm.stationNumber ?? 1, crossSm.name ?? 'Unknown');
-                paramTag = `\\${progName}.${crossParamDev.dataType === 'boolean' ? 'q_' : 'p_'}${crossParamDev.name}`;
-              }
+            const crossDev = (crossSm?.devices ?? []).find(d => d.id === outcome.paramDeviceId);
+            if (crossSm && crossDev) {
+              const progName = buildProgramName(crossSm.stationNumber ?? 1, crossSm.name ?? 'Unknown');
+              paramTag = `\\${progName}.${crossDev.dataType === 'boolean' ? 'q_' : 'p_'}${crossDev.name}`;
             }
           }
-          if (paramTag) branchCond = outcome.condition === 'off' ? `XIO(${paramTag})` : `XIC(${paramTag})`;
-        }
-
-        // Retry logic: if outcome has retry, generate fault-check + increment rungs
-        if (outcome?.retry && checkDevice) {
-          const counterTag = `${checkDevice.name}_${outcome.id}_RetryCnt`;
-          const maxTag = `${checkDevice.name}_${outcome.id}_MaxRetries`;
-          const faultStep = 127; // SDC standard: all faults → state 127
-
-          // Rung 1: condition met AND counter >= max → fault
-          rungs.push(
-            buildRung(
-              rungNum++,
-              `State ${faultStep}: FAULT — ${outcomeLabel} retries exceeded`,
-              `XIC(Status.State[${srcStep}])${branchCond}GEQ(${counterTag},${maxTag})MOVE(${faultStep},Control.StateReg);`
-            )
-          );
-          // Rung 2: condition met AND counter < max → increment + go to recovery path
-          rungs.push(
-            buildRung(
-              rungNum++,
-              `State ${tgtStep}: ${desc} [${outcomeLabel}] (retry)`,
-              `XIC(Status.State[${srcStep}])${branchCond}LES(${counterTag},${maxTag})[ADD(${counterTag},1,${counterTag}),MOVE(${tgtStep},Control.StateReg)];`
-            )
-          );
-        } else {
-          // No retry — collect counter resets from sibling outcomes that have retry
-          let resetRungs = '';
-          if (checkDevice) {
-            for (const sib of outcomes) {
-              if (sib.retry && sib.id !== outcome?.id) {
-                const sibCounter = `${checkDevice.name}_${sib.id}_RetryCnt`;
-                resetRungs += `MOVE(0,${sibCounter})`;
-              }
-            }
-          }
-
-          rungs.push(
-            buildRung(
-              rungNum++,
-              `State ${tgtStep}: ${desc} [${outcomeLabel}]`,
-              `XIC(Status.State[${srcStep}])${branchCond}${resetRungs}MOVE(${tgtStep},Control.StateReg);`
-            )
-          );
+          if (paramTag) result.cond = outcome.condition === 'off' ? `XIO(${paramTag})` : `XIC(${paramTag})`;
         }
       }
-    } else if (srcNode.type === 'decisionNode' && srcNode.data?.exitCount === 2 && (srcNode.data?.sensorRef || (srcNode.data?.conditions ?? []).length > 0)) {
-      // ── Decision node branching ──────────────────────────────────────────
-      branchHandled.add(srcNode.id);
+      return result;
+    }
+
+    // 2. Legacy decisionNode with exitCount=2
+    if (srcNode.type === 'decisionNode' && srcNode.data?.exitCount === 2) {
       const dData = srcNode.data;
       const dConditions = dData.conditions ?? [];
       const dLogic = dData.conditionLogic ?? 'AND';
+      const isPass = edge.sourceHandle === 'exit-pass';
 
-      // Build pass-branch condition string from conditions array (or legacy single condition)
-      let passCond = '';
+      let parts = [];
       if (dConditions.length > 0) {
-        const condParts = [];
-        for (const cond of dConditions) {
-          const tag = resolveInputRefTag(cond.ref, devices, allSMs, trackingFields);
+        for (const c of dConditions) {
+          const tag = resolveInputRefTag(c.ref, devices, allSMs, trackingFields);
           if (!tag) continue;
           const tagList = tag.includes(' AND ') ? tag.split(' AND ') : [tag];
           for (const t of tagList) {
-            condParts.push(cond.conditionType === 'off' ? `XIO(${t})` : `XIC(${t})`);
+            const inverted = !isPass; // fail branch inverts each clause
+            const condOff = c.conditionType === 'off';
+            parts.push((inverted ? !condOff : condOff) ? `XIO(${t})` : `XIC(${t})`);
           }
-        }
-        if (dLogic === 'OR' && condParts.length > 1) {
-          // OR = parallel branches: [cond1 ,cond2 ,cond3]
-          passCond = `[${condParts.join(' ,')}]`;
-        } else {
-          // AND = serial chain
-          passCond = condParts.join('');
-        }
-      } else if (dData.sensorRef) {
-        // Legacy single condition
-        const tag = resolveInputRefTag(dData.sensorRef, devices, allSMs, trackingFields);
-        if (tag) {
-          passCond = dData.conditionType === 'off' ? `XIO(${tag})` : `XIC(${tag})`;
-        }
-      }
-
-      // Build fail condition (inverse of pass)
-      let failCond = '';
-      if (dConditions.length > 0) {
-        const condParts = [];
-        for (const cond of dConditions) {
-          const tag = resolveInputRefTag(cond.ref, devices, allSMs, trackingFields);
-          if (!tag) continue;
-          const tagList = tag.includes(' AND ') ? tag.split(' AND ') : [tag];
-          for (const t of tagList) {
-            // Invert: ON→XIO, OFF→XIC
-            condParts.push(cond.conditionType === 'off' ? `XIC(${t})` : `XIO(${t})`);
-          }
-        }
-        if (dLogic === 'AND' && condParts.length > 1) {
-          // Inverse of AND is OR: any one failing → fail branch
-          failCond = `[${condParts.join(' ,')}]`;
-        } else {
-          // Inverse of OR is AND: all must fail
-          failCond = condParts.join('');
         }
       } else if (dData.sensorRef) {
         const tag = resolveInputRefTag(dData.sensorRef, devices, allSMs, trackingFields);
         if (tag) {
-          failCond = dData.conditionType === 'off' ? `XIC(${tag})` : `XIO(${tag})`;
+          const inverted = !isPass;
+          const condOff = dData.conditionType === 'off';
+          parts.push((inverted ? !condOff : condOff) ? `XIO(${tag})` : `XIC(${tag})`);
         }
       }
-
-      // Find outgoing edges by sourceHandle
-      const outEdges = edges.filter(e => e.source === srcNode.id);
-      for (const outEdge of outEdges) {
-        const tgtNode = orderedNodes.find(n => n.id === outEdge.target);
-        if (!tgtNode) continue;
-        const tgtStep = stepMap[tgtNode.id];
-        if (tgtStep === undefined) continue;
-        const desc = getStateDescription(tgtNode, devices);
-
-        const isPass = outEdge.sourceHandle === 'exit-pass';
-        const isFail = outEdge.sourceHandle === 'exit-fail';
-        const cond = isPass ? passCond : isFail ? failCond : '';
-        const branchLabel = isPass ? 'Pass' : isFail ? 'Fail' : outEdge.label ?? '';
-
-        rungs.push(
-          buildRung(
-            rungNum++,
-            `State ${tgtStep}: ${desc} [${branchLabel}]`,
-            `XIC(Status.State[${srcStep}])${cond}MOVE(${tgtStep},Control.StateReg);`
-          )
-        );
-      }
-    } else {
-      // Check if this node has a VisionSystem Inspect action → multi-step
-      const visionSubs = getVisionSubSteps(srcNode, devices, stepMap);
-
-      if (visionSubs) {
-        // VisionSystem generates 4 internal sub-state transitions:
-        //   [0] Verify Trigger Ready → [1] Wait Timer → [2] Trigger → [3] Check Results
-        const visionAction = (srcNode.data?.actions ?? []).find(a => {
-          const dev = devices.find(d => d.id === a.deviceId);
-          return dev?.type === 'VisionSystem' && (a.operation === 'Inspect' || a.operation === 'VisionInspect');
-        });
-        const visionDevice = visionAction ? devices.find(d => d.id === visionAction.deviceId) : null;
-
-        if (visionDevice) {
-          const trigReadyTag = DEVICE_TYPES.VisionSystem.tagPatterns.triggerReady.replace(/\{name\}/g, visionDevice.name);
-          const trigDwellTag = DEVICE_TYPES.VisionSystem.tagPatterns.trigDwell.replace(/\{name\}/g, visionDevice.name);
-          const resultReadyTag = DEVICE_TYPES.VisionSystem.tagPatterns.resultReady.replace(/\{name\}/g, visionDevice.name);
-
-          // Sub-state [0]→[1]: Verify Trigger Ready → Wait Timer
-          rungs.push(
-            buildRung(
-              rungNum++,
-              `State ${visionSubs[1]}: ${visionDevice.displayName} - Wait Timer`,
-              `XIC(Status.State[${visionSubs[0]}])XIC(${trigReadyTag})MOVE(${visionSubs[1]},Control.StateReg);`
-            )
-          );
-
-          // Sub-state [1]→[2]: Wait Timer → Trigger
-          rungs.push(
-            buildRung(
-              rungNum++,
-              `State ${visionSubs[2]}: ${visionDevice.displayName} - Trigger`,
-              `XIC(Status.State[${visionSubs[1]}])TON(${trigDwellTag},?,?)XIC(${trigDwellTag}.DN)MOVE(${visionSubs[2]},Control.StateReg);`
-            )
-          );
-
-          // Sub-state [2]→[3]: Trigger → Check Results (wait for ResultReady)
-          rungs.push(
-            buildRung(
-              rungNum++,
-              `State ${visionSubs[3]}: ${visionDevice.displayName} - Check Results`,
-              `XIC(Status.State[${visionSubs[2]}])XIC(${resultReadyTag})MOVE(${visionSubs[3]},Control.StateReg);`
-            )
-          );
-
-          // Sub-state [3] → branching (if VisionInspect with outcomes) or linear (old Inspect)
-          const hasOutcomes = visionAction.operation === 'VisionInspect' && visionAction.outcomes?.length >= 2;
-
-          if (hasOutcomes) {
-            // Mark as branch-handled so we don't generate a normal transition
-            branchHandled.add(srcNode.id);
-            const inspPassTag = DEVICE_TYPES.VisionSystem.tagPatterns.inspPass.replace(/\{name\}/g, visionDevice.name);
-
-            // Find outgoing edges from this node for VisionInspect branching
-            const outEdges = edges.filter(e => e.source === srcNode.id);
-
-            // Branch rungs for all configured outcomes (same for snap & continuous)
-            for (const outEdge of outEdges) {
-              const tgtNode = orderedNodes.find(n => n.id === outEdge.target);
-              if (!tgtNode) continue;
-              const tgtStep = stepMap[tgtNode.id];
-              if (tgtStep === undefined) continue;
-
-              const outcomeLabel = outEdge.data?.outcomeLabel ?? 'branch';
-              const outcomeIdx = outEdge.data?.outcomeIndex ?? 0;
-              const desc = getStateDescription(tgtNode, devices);
-
-              // Default 2-outcome: Pass = XIC(InspPass), Fail = XIO(InspPass)
-              const isPass = outcomeIdx === 0;
-              const inspCond = isPass ? `XIC(${inspPassTag})` : `XIO(${inspPassTag})`;
-
-              rungs.push(
-                buildRung(
-                  rungNum++,
-                  `State ${tgtStep}: ${desc} [${outcomeLabel}]`,
-                  `XIC(Status.State[${visionSubs[3]}])${inspCond}MOVE(${tgtStep},Control.StateReg);`
-                )
-              );
-            }
-
-            if (visionAction.continuous) {
-              // Continuous mode extras: non-matching → loop back, timeout → fault 127
-              const searchTimeoutTag = DEVICE_TYPES.VisionSystem.tagPatterns.searchTimeout.replace(/\{name\}/g, visionDevice.name);
-
-              // Non-matching result → loop back to sub-state [0] (re-trigger)
-              // This rung catches anything not already handled by the branch rungs above
-              rungs.push(
-                buildRung(
-                  rungNum++,
-                  `${visionDevice.displayName} - Search Loop (no match → re-trigger)`,
-                  `XIC(Status.State[${visionSubs[3]}])MOVE(${visionSubs[0]},Control.StateReg);`
-                )
-              );
-
-              // Timeout → fault 127 (accumulates across retries from sub-state [0])
-              rungs.push(
-                buildRung(
-                  rungNum++,
-                  `${visionDevice.displayName} - Search Timeout → Fault`,
-                  `XIC(Status.State[${visionSubs[0]}])TON(${searchTimeoutTag},?,?)XIC(${searchTimeoutTag}.DN)MOVE(127,Control.StateReg);`
-                )
-              );
-            }
-          } else {
-            // Old-style linear: Sub-state [3]→next node
-            const tgtNode = orderedNodes[i + 1];
-            if (tgtNode) {
-              const tgtStep = stepMap[tgtNode.id];
-              const desc = getStateDescription(tgtNode, devices);
-              rungs.push(
-                buildRung(
-                  rungNum++,
-                  `State ${tgtStep}: ${desc}`,
-                  `XIC(Status.State[${visionSubs[3]}])MOVE(${tgtStep},Control.StateReg);`
-                )
-              );
-            }
-          }
-        }
+      // For fail branch with AND logic, OR the inverted clauses; for pass, AND them.
+      if (parts.length > 1 && ((isPass && dLogic === 'OR') || (!isPass && dLogic === 'AND'))) {
+        result.cond = `[${parts.join(' ,')}]`;
       } else {
-        // Normal linear transition
-        const tgtNode = orderedNodes[i + 1];
-        const tgtStep = stepMap[tgtNode.id];
-        const conditions = buildVerifyConditions(srcNode, devices, allSMs, trackingFields);
-        const desc = getStateDescription(tgtNode, devices);
+        result.cond = parts.join('');
+      }
+      return result;
+    }
 
-        // Index sync gating — only on the home/initial node's first transition,
-        // only on indexing machines, and only when there's no user-drawn
-        // IndexComplete wait node covering it.
-        let indexSyncGate = '';
-        if (srcNode.data?.isInitial
-            && (machineConfig?.machineType ?? 'indexing') === 'indexing'
-            && !isIndexSyncOverridden(srcNode.id, sm)) {
-          const mode = resolveIndexSync(srcNode, sm, machineConfig);
-          if (mode === 'afterIndex') {
-            indexSyncGate = 'XIC(\\Supervisor.IndexComplete)';
-          } else if (mode === 'midIndex') {
-            const angle = srcNode.data?.midIndexAngle;
-            if (angle != null && angle > 0) {
-              const stationNum = sm.stationNumber ?? 0;
-              indexSyncGate = `GEQ(\\Supervisor.IndexAngle,p_MidIndexStart_S${String(stationNum).padStart(2,'0')})`;
-            }
-          }
-          // 'independent' → no auto-wait
-        }
+    // 3. VisionInspect outcomes
+    const srcVisionSubs = getVisionSubSteps(srcNode, devices, stepMap);
+    if (srcVisionSubs) {
+      const visionAction = (srcNode.data?.actions ?? []).find(a => {
+        const dev = devices.find(d => d.id === a.deviceId);
+        return dev?.type === 'VisionSystem' && (a.operation === 'Inspect' || a.operation === 'VisionInspect');
+      });
+      const visionDevice = visionAction ? devices.find(d => d.id === visionAction.deviceId) : null;
+      if (visionDevice && visionAction?.operation === 'VisionInspect' && (visionAction.outcomes?.length ?? 0) >= 2) {
+        const inspPassTag = DEVICE_TYPES.VisionSystem.tagPatterns.inspPass.replace(/\{name\}/g, visionDevice.name);
+        const outcomeIdx = edge.data?.outcomeIndex ?? 0;
+        result.cond = outcomeIdx === 0 ? `XIC(${inspPassTag})` : `XIO(${inspPassTag})`;
+      }
+      return result;
+    }
 
-        // Entry rule gating — only on the home/initial node's first outgoing transition
-        // (and only when the next node is NOT a decision node, which would handle branching itself).
-        let entryRuleGate = '';
-        let entryRuleSkipRung = null;
-        const tgtIsBranchingDecision = tgtNode?.type === 'decisionNode' && (tgtNode?.data?.exitCount ?? 1) === 2;
-        if (srcNode.data?.isInitial && !tgtIsBranchingDecision) {
-          const rule = resolveEntryRule(srcNode, sm, machineConfig);
-          const mcType = machineConfig?.machineType ?? 'indexing';
-          const stationNum = sm.stationNumber ?? 0;
-          // Reject tag convention: dial → \Supervisor.StationStatus[n].Reject ;  inline → local q_UpstreamReject
-          const rejectTag = mcType === 'indexing'
-            ? `\\Supervisor.StationStatus[${stationNum}].Reject`
-            : 'q_UpstreamReject';
+    // 4. PickerV2 decision branching — signal resolution deferred, use AlwaysOff placeholder
+    const pickerDec = (srcNode.data?.actions ?? []).find(a =>
+      a?.pickerConfig?.mode === 'decision' && a?.pickerConfig?.exitCount === 2
+    );
+    if (pickerDec) {
+      const isPass = edge.sourceHandle === 'exit-pass';
+      const isFail = edge.sourceHandle === 'exit-fail';
+      if (isPass || isFail) {
+        result.cond = isFail ? 'XIO(g_MachineBasic.AlwaysOff)' : 'XIC(g_MachineBasic.AlwaysOff)';
+        result.placeholderSubject = pickerDec.pickerConfig.subjectName ?? 'condition';
+      }
+      return result;
+    }
 
-          if (rule === 'ifGood') {
-            entryRuleGate = `XIO(${rejectTag})`;
-            entryRuleSkipRung = buildRung(
-              rungNum,
-              `Entry Rule (If Good): reject present → skip sequence → Cycle Complete`,
-              `XIC(Status.State[${srcStep}])XIC(${rejectTag})MOVE(${completeStep},Control.StateReg);`
-            );
-          } else if (rule === 'ifReject') {
-            entryRuleGate = `XIC(${rejectTag})`;
-            entryRuleSkipRung = buildRung(
-              rungNum,
-              `Entry Rule (If Reject): no reject → skip sequence → Cycle Complete`,
-              `XIC(Status.State[${srcStep}])XIO(${rejectTag})MOVE(${completeStep},Control.StateReg);`
-            );
-          } else if (rule === 'custom') {
-            // Placeholder — user wires custom condition post-import
-            entryRuleGate = `XIC(p_CustomEntryRule_S${String(stationNum).padStart(2,'0')})`;
-          }
-          // 'always' → no gate, no skip
-        }
+    return result;
+  }
 
-        if (entryRuleSkipRung) {
-          rungs.push(entryRuleSkipRung);
-          rungNum++;
-        }
+  // Helper — derive description for the rung comment. Preference order:
+  // (1) destination node's `data.label` if it's a meaningful custom label,
+  // (2) action-derived description (existing getStateDescription),
+  // (3) "Step N" fallback.
+  function getDestinationLabel(node, stepNum) {
+    const label = node?.data?.label?.trim?.();
+    if (label && label !== '?' && !/^Step\s+\d+$/i.test(label)) {
+      return label;
+    }
+    return getStateDescription(node, devices, stepNum);
+  }
 
-        rungs.push(
-          buildRung(
-            rungNum++,
-            `State ${tgtStep}: ${desc}`,
-            `XIC(Status.State[${srcStep}])${indexSyncGate}${entryRuleGate}${conditions}MOVE(${tgtStep},Control.StateReg);`
-          )
-        );
+  // ── Pre-pass: VisionInspect internal sub-rungs (synthetic) ───────────────
+  for (const node of orderedNodes) {
+    if (isAbsorbedInitialNode(node) || isFaultNode(node)) continue;
+    const visionSubs = getVisionSubSteps(node, devices, stepMap);
+    if (!visionSubs) continue;
+
+    const visionAction = (node.data?.actions ?? []).find(a => {
+      const dev = devices.find(d => d.id === a.deviceId);
+      return dev?.type === 'VisionSystem' && (a.operation === 'Inspect' || a.operation === 'VisionInspect');
+    });
+    const visionDevice = visionAction ? devices.find(d => d.id === visionAction.deviceId) : null;
+    if (!visionDevice) continue;
+
+    const trigReadyTag = DEVICE_TYPES.VisionSystem.tagPatterns.triggerReady.replace(/\{name\}/g, visionDevice.name);
+    const trigDwellTag = DEVICE_TYPES.VisionSystem.tagPatterns.trigDwell.replace(/\{name\}/g, visionDevice.name);
+    const resultReadyTag = DEVICE_TYPES.VisionSystem.tagPatterns.resultReady.replace(/\{name\}/g, visionDevice.name);
+
+    rungs.push(buildRung(rungNum++, `State ${visionSubs[1]}: ${visionDevice.displayName} - Wait Timer`,
+      `XIC(Status.State[${visionSubs[0]}])XIC(${trigReadyTag})MOVE(${visionSubs[1]},Control.StateReg);`));
+    rungs.push(buildRung(rungNum++, `State ${visionSubs[2]}: ${visionDevice.displayName} - Trigger`,
+      `XIC(Status.State[${visionSubs[1]}])TON(${trigDwellTag},?,?)XIC(${trigDwellTag}.DN)MOVE(${visionSubs[2]},Control.StateReg);`));
+    rungs.push(buildRung(rungNum++, `State ${visionSubs[3]}: ${visionDevice.displayName} - Check Results`,
+      `XIC(Status.State[${visionSubs[2]}])XIC(${resultReadyTag})MOVE(${visionSubs[3]},Control.StateReg);`));
+
+    // Continuous mode: loop back to sub-state [0] + timeout to fault
+    if (visionAction.continuous && (visionAction.outcomes?.length ?? 0) >= 2) {
+      const searchTimeoutTag = DEVICE_TYPES.VisionSystem.tagPatterns.searchTimeout.replace(/\{name\}/g, visionDevice.name);
+      rungs.push(buildRung(rungNum++, `${visionDevice.displayName} - Search Loop (no match → re-trigger)`,
+        `XIC(Status.State[${visionSubs[3]}])MOVE(${visionSubs[0]},Control.StateReg);`));
+      rungs.push(buildRung(rungNum++, `${visionDevice.displayName} - Search Timeout → Fault`,
+        `XIC(Status.State[${visionSubs[0]}])TON(${searchTimeoutTag},?,?)XIC(${searchTimeoutTag}.DN)MOVE(127,Control.StateReg);`));
+    }
+  }
+
+  // ── Main pass: one rung per destination, with parallel incoming branches ──
+  for (const dest of orderedNodes) {
+    if (isAbsorbedInitialNode(dest)) continue;
+    if (isFaultNode(dest)) continue;
+    if (dest.id === firstAutoNode?.id) continue; // covered by manual State 3→4 rung
+
+    const tgtStep = stepMap[dest.id];
+    if (tgtStep === undefined) continue;
+
+    // Collect incoming edges from valid sources
+    const incomingEdges = edges.filter(e => {
+      if (e.target !== dest.id) return false;
+      const src = orderedNodes.find(n => n.id === e.source);
+      if (!src) return false;
+      if (isAbsorbedInitialNode(src)) return false; // entry from absorbed handled by manual rung
+      if (isFaultNode(src)) return false;
+      return true;
+    });
+
+    if (incomingEdges.length === 0) continue;
+
+    // Build branches
+    const branches = [];
+    const placeholderSubjects = new Set();
+    for (const edge of incomingEdges) {
+      const srcNode = orderedNodes.find(n => n.id === edge.source);
+      if (!srcNode) continue;
+      const srcVisionSubs = getVisionSubSteps(srcNode, devices, stepMap);
+      const srcStep = srcVisionSubs ? srcVisionSubs[3] : stepMap[srcNode.id];
+      if (srcStep === undefined) continue;
+
+      // Source action-completion verify. Skip for vision sources — sub-state [3]
+      // already implies trigger+result-ready, so the only condition needed is the
+      // outcome branch (handled below).
+      const verify = srcVisionSubs ? '' : buildVerifyConditions(srcNode, devices, allSMs, trackingFields);
+
+      // Branch-specific condition (CheckResults outcome, decisionNode pass/fail,
+      // VisionInspect outcome, or pickerV2 decision pass/fail).
+      const bi = computeBranchCondition(srcNode, edge);
+      if (bi.placeholderSubject) placeholderSubjects.add(bi.placeholderSubject);
+
+      branches.push(`XIC(Status.State[${srcStep}])${verify}${bi.cond}`);
+    }
+
+    if (branches.length === 0) continue;
+
+    // Build rung text — single branch is inline, multiple are bracketed.
+    const rungText = branches.length === 1
+      ? `${branches[0]}MOVE(${tgtStep},Control.StateReg);`
+      : `[${branches.join(' ,')}]MOVE(${tgtStep},Control.StateReg);`;
+
+    // Comment — destination label preferred, action-derived as fallback.
+    const desc = getDestinationLabel(dest, tgtStep);
+    const hint = placeholderSubjects.size > 0
+      ? `  *Replace AlwaysOff with: ${[...placeholderSubjects].join(', ')}*`
+      : '';
+
+    rungs.push(buildRung(rungNum++, `State ${tgtStep}: ${desc}${hint}`, rungText));
+  }
+
+  // ── Last → Complete fallback ──────────────────────────────────────────────
+  // Only emitted when there's NO explicit complete node in the diagram. In that
+  // case the last node in the DFS order is wired directly to the synthetic
+  // Cycle Complete step. With an explicit complete node, its incoming edges
+  // are already handled by the destination-driven loop above.
+  if (orderedNodes.length > 0 && !explicitCompleteNode) {
+    // Find the last non-absorbed, non-fault node that's already in stepMap
+    let lastNode = null;
+    for (let j = orderedNodes.length - 1; j >= 0; j--) {
+      const n = orderedNodes[j];
+      if (isAbsorbedInitialNode(n) || isFaultNode(n)) continue;
+      if (stepMap[n.id] === undefined) continue;
+      lastNode = n;
+      break;
+    }
+    if (lastNode) {
+      const lastVisionSubs = getVisionSubSteps(lastNode, devices, stepMap);
+      const effectiveLastStep = lastVisionSubs ? lastVisionSubs[3] : stepMap[lastNode.id];
+      // Don't emit if the lastNode is already a source of an outgoing edge —
+      // that would mean its successor (handled by destination-driven loop) is
+      // the proper next step and Complete is unreachable here.
+      const hasOutgoing = edges.some(e => e.source === lastNode.id);
+      if (!hasOutgoing) {
+        const conditions = lastVisionSubs ? '' : buildVerifyConditions(lastNode, devices, allSMs, trackingFields);
+        rungs.push(buildRung(rungNum++, `State ${completeStep}: Complete`,
+          `XIC(Status.State[${effectiveLastStep}])${conditions}MOVE(${completeStep},Control.StateReg);`));
       }
     }
   }
 
-  // Last action → Complete (only if it wasn't already handled as a branch or explicit complete node)
-  // If there's an explicit complete node, edges from preceding nodes handle the transition
-  if (orderedNodes.length > 0 && !explicitCompleteNode) {
-    const lastNode = orderedNodes[orderedNodes.length - 1];
-    const lastStep = stepMap[lastNode.id];
-    const lastVisionSubs = getVisionSubSteps(lastNode, devices, stepMap);
-    // For vision nodes, the "last step" is the last sub-state (index 3 = Check Results)
-    const effectiveLastStep = lastVisionSubs ? lastVisionSubs[3] : lastStep;
 
-    if (!branchHandled.has(lastNode.id)) {
-      let conditions;
-      if (lastVisionSubs) {
-        // Vision node: sub-state [3] (Check Results) already verified result,
-        // so transition to Complete is unconditional from that sub-state
-        conditions = '';
-      } else {
-        conditions = buildVerifyConditions(lastNode, devices, allSMs, trackingFields);
+  // ── State 99: Lockout ────────────────────────────────────────────────────
+  // Only reachable while CycleRunning — prevents accidental lockout during idle.
+  rungs.push(
+    buildRung(rungNum++, 'State 99: Lockout',
+      `XIC(CycleRunning)XIC(Lockout)MOVE(99,Control.StateReg);`)
+  );
+
+  // ── State 100: Begin Initialization ───────────────────────────────────────
+  // Entry into the init sub-state chain from State 2 — fires when the machine is
+  // not yet Initialized, hasn't started a part, has cycle running, and SS_OK.
+  rungs.push(
+    buildRung(rungNum++, 'State 100: Begin Initialization',
+      `XIC(Status.State[2])XIO(Initialized)XIO(PartStarted)XIC(CycleRunning)XIC(SS_OK)MOVE(100,Control.StateReg);`)
+  );
+
+  // ── Init Sequence States 103–124 ──────────────────────────────────────────
+  // One state per device that has a home position — home all devices sequentially.
+  // State 124 = Initialization Complete → exits to State 2 (handled by State 2 rung).
+  {
+    const initDevices = devices.filter(d => {
+      const t = d.type;
+      if (t === 'Timer' || t === 'DigitalSensor' || t === 'Parameter' ||
+          t === 'CheckResults' || t === 'VisionSystem' || t === 'Robot') return false;
+      const homeOp = d.homePosition || DEVICE_TYPES[d.type]?.defaultHomePosition;
+      return !!homeOp;
+    });
+
+    if (initDevices.length > 0) {
+      // Cap at 7 devices so last real device state ≤ 121, leaving 124 as Init Complete
+      const capped = initDevices.slice(0, 7);
+
+      for (let i = 0; i < capped.length; i++) {
+        const device = capped[i];
+        const homeOp = device.homePosition || DEVICE_TYPES[device.type]?.defaultHomePosition;
+        const gateStep = 100 + i * 3;                                                   // source state
+        const destStep = (i < capped.length - 1) ? (100 + (i + 1) * 3) : 124;           // destination state
+        const isLast = (i === capped.length - 1);
+
+        // Verify THIS device is at home before advancing past this gate state.
+        // ServoAxis: supply the home position name so buildVerifyConditions uses
+        // {name}{pos}.InPos (physical position confirmed) instead of {name}_MAM.PC
+        // (motion instruction complete — only correct for incremental moves).
+        const homeAction = { deviceId: device.id, operation: homeOp };
+        if (device.type === 'ServoAxis') {
+          const homePos = (device.positions ?? []).find(p => p.isHome);
+          if (homePos) homeAction.positionName = homePos.name;
+        }
+        const homeVerify = buildVerifyConditions(
+          { data: { actions: [homeAction] } },
+          devices, allSMs, trackingFields
+        );
+
+        // Rung comment describes the DESTINATION state (per SDC convention)
+        const destDesc = isLast
+          ? 'Initialization Complete'
+          : `Home ${capped[i + 1].displayName}`;
+
+        rungs.push(
+          buildRung(rungNum++,
+            `State ${destStep}: ${destDesc}`,
+            `XIC(Status.State[${gateStep}])${homeVerify}XIC(SS_OK)MOVE(${destStep},Control.StateReg);`)
+        );
       }
-
+    } else {
+      // No homing devices — jump straight to 124 on entering init
       rungs.push(
-        buildRung(
-          rungNum++,
-          `State ${completeStep}: Complete`,
-          `XIC(Status.State[${effectiveLastStep}])${conditions}MOVE(${completeStep},Control.StateReg);`
-        )
+        buildRung(rungNum++, 'State 124: Initialization Complete (no devices to home)',
+          `XIC(Status.State[100])XIC(SS_OK)MOVE(124,Control.StateReg);`)
       );
     }
   }
 
-  // State 127: Fault — with fault state capture (placed after all process states)
+  // ── Restart Logic (placeholder) ───────────────────────────────────────────
+  // Use the part status at this station to determine a course of action here.
+  // For instance, no attempt + no part present → init; attempt with no result → restart
+  // at last state. Replace g_MachineBasic.AlwaysOff with your restart condition.
+  rungs.push(
+    buildRung(rungNum++,
+      'Restart Logic\n\n*Use the part status at this station to determine a course of action here.\nFor instance, no attempt made, no part present, no success or failure status at this station indicates initialization is in order. If an attempt was made with no success or failure, restart at last state may be in order.\nAlso, you do not always need to go into the state you left. Some cases require you to go into the prior state to restart a particular portion of the sequence.',
+      `XIC(Status.State[2])XIC(UseRestartLogic)XIC(CycleRunning)XIC(g_MachineBasic.AlwaysOff)MOVE(RestartState,Control.StateReg);`)
+  );
+
+  // ── State 127: Fault ─────────────────────────────────────────────────────
+  // Captures active process state into FaultState and RestartState before moving to 127.
+  // LIMIT range includes Lockout (4–99) so a fault during lockout is also captured.
   rungs.push(
     buildRung(rungNum++, 'State 127: Fault',
       `XIC(q_AlarmActive)[ONS(ONS.2) LIMIT(4,Control.StateReg,99) MOVE(Control.StateReg,FaultState) MOVE(Control.StateReg,RestartState) ,MOVE(127,Control.StateReg) ];`)
   );
 
-  // ── Cycle Time Tracking ──────────────────────────────────────────────────
-  // RTO accumulates while in process states (4-59), resets + computes on cycle restart
-  {
-    // Cycle timer runs during process states
-    const processStates = orderedNodes.map(n => stepMap[n.id]).filter(s => s >= 4 && s <= 59);
-    if (processStates.length > 0) {
-      const stateChecks = processStates.map(s => `XIC(Status.State[${s}])`);
-      const rungText = stateChecks.length === 1
-        ? `${stateChecks[0]}RTO(CycleTimer,?,?);`
-        : `[${stateChecks.join(' ,')}]RTO(CycleTimer,?,?);`;
-      rungs.push(buildRung(rungNum++, 'Cycle Time Accumulator', rungText));
-    }
+  // ── State 1: Manual Mode ─────────────────────────────────────────────────
+  // Must be near bottom so higher-priority states don't get overwritten in same scan.
+  rungs.push(
+    buildRung(rungNum++, 'State 1: Manual Mode',
+      `XIC(ManualMode)MOVE(1,Control.StateReg);`)
+  );
 
-    // On cycle restart (entering first process state), compute cycle time and reset
-    if (orderedNodes.length > 0) {
-      const firstStep = stepMap[orderedNodes[0].id];
-      rungs.push(
-        buildRung(rungNum++, 'Cycle Time Compute + Reset',
-          `XIC(Status.State[3])XIC(CycleRunning)ONS(ONS.4)[DIV(CycleTimer.ACC,1000.0,p_CycleTime) ,MOVE(0,CycleTimer.ACC) ];`)
-      );
-    }
+  // ── State 0: Safety Stop ──────────────────────────────────────────────────
+  // Highest-priority — at bottom so it always wins regardless of scan order.
+  // LIMIT(4,…,98): captures process states only (excludes Lockout 99 so lockout
+  // is not "restarted" after safety clears — operator must re-enable).
+  rungs.push(
+    buildRung(rungNum++, 'State 0: Safety Stop',
+      `[XIO(SafetyOK) ,XIC(S:FS) ][ONS(ONS.3) LIMIT(4,Control.StateReg,98) MOVE(Control.StateReg,SafetyStopState) MOVE(Control.StateReg,RestartState) ,MOVE(0,Control.StateReg) ];`)
+  );
+
+  // ── Cycle Time Tracking ──────────────────────────────────────────────────
+  // Single combined rung: ONS on firstStep saves+resets timer; LIMIT branch accumulates.
+  // firstStep = first REAL auto state (skips absorbed pure-home initials).
+  if (firstAutoNode) {
+    const firstStep = stepMap[firstAutoNode.id];
+    rungs.push(
+      buildRung(rungNum++, 'Cycle Time',
+        `[XIC(Status.State[${firstStep}]) ONS(ONS.4) DIV(CycleTimer.ACC,1000,p_CycleTime) RES(CycleTimer) ,LIMIT(4,Control.StateReg,98) RTO(CycleTimer,?,?) ];`)
+    );
   }
 
   // ── Fault Timer Enabling ──────────────────────────────────────────────────
-  // Enable fault detection during process states (4-59), disable during single step
   rungs.push(
     buildRung(rungNum++, 'Fault Timer Enable',
       `LIMIT(4,Control.StateReg,59)XIO(SS)[MOVE(${DEFAULT_FAULT_TIME},Control.FaultTime) ,OTE(Control.EnaFaultDetect) ];`)
@@ -2390,16 +2662,22 @@ function generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs = [], tra
 
 // ── R03_StateLogic ───────────────────────────────────────────────────────────
 //
-// OTE branch/latch pattern per device (matches CE output):
+// SDC standard sealed-OTE pattern with auto/manual split by Status.State[1]:
 //
-// For each device "primary direction" (e.g. Extend):
-//   [XIC(Status.State[SET_STATE]) ,XIC(output) XIO(Status.State[CLEAR_STATE]) ]OTE(output);
+//   [XIO(Status.State[1]) [<set_states> ,XIC(q_Out) <XIO clears>] ,
+//    XIC(Status.State[1]) [<manual_set> ,XIC(q_Out) <manual_clear>] ]OTE(q_Out);
 //
-// Multiple SET states:
-//   [[XIC(Status.State[S1]) ,XIC(Status.State[S2]) ] ,XIC(output) XIO(Status.State[C1]) XIO(Status.State[C2]) ]OTE(output);
+// Auto branch (XIO State 1):
+//   Each set state energizes the output. Self-seal via XIC(q_Out) holds it ON
+//   until any clear state is active (XIO each).
 //
-// Complementary output:
-//   XIO(primary_output)OTE(complement_output);
+// Manual branch (XIC State 1):
+//   HMI_Momentary.N press energizes; self-seal holds until opposite-direction
+//   press (HMI_Momentary.M) clears. X-axis substitutes OkMan intermediate BOOLs;
+//   Z-axis adds X-position safety on the press expression.
+//
+// Each direction gets its OWN full OTE rung (q_Extend AND q_Retract both
+// independently sealed). There is no "complement = NOT primary" pattern.
 
 function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingFields = []) {
   const rungs = [];
@@ -2559,53 +2837,202 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
     }
   }
 
-  // Generate rungs: self-latching OTE with manual overlay (1116 pattern)
-  // Track HMI_Button bit allocation for manual control
-  let hmiButtonBit = 0;
+  // 3) Ensure ALL output-capable devices appear in deviceMap — even if no states reference them.
+  //    This guarantees that manual control rungs are always generated for every actuator.
+  {
+    const SKIP_TYPES = new Set(['Timer', 'DigitalSensor', 'Parameter', 'CheckResults',
+                                'VisionSystem', 'Robot', 'ServoAxis', 'AnalogSensor']);
+    for (const device of devices) {
+      if (deviceMap[device.id]) continue; // already populated by passes 1 or 2
+      if (SKIP_TYPES.has(device.type)) continue;
+
+      const entry = ensureEntry(device);
+
+      if (device.type === 'Custom' && device.customTypeDef) {
+        const pairs = device.customTypeDef.complementPairs ?? [];
+        if (pairs.length > 0) {
+          if (!entry.primaryTag) entry.primaryTag = getOutputTagForOperation(device, pairs[0].primary);
+          if (!entry.opposingTag) entry.opposingTag = getOutputTagForOperation(device, pairs[0].opposing);
+        }
+        continue;
+      }
+
+      // Derive primary from home position (home = opposing means primary = extend/engage/vacOn)
+      const homeOp = device.homePosition || DEVICE_TYPES[device.type]?.defaultHomePosition;
+      if (!homeOp) continue;
+
+      if (PRIMARY_OPS.has(homeOp)) {
+        // Home is primary direction (device stays energised at home)
+        if (!entry.primaryTag) entry.primaryTag = getOutputTagForOperation(device, homeOp);
+        const oppOp = OPPOSING_PAIRS[homeOp];
+        if (oppOp && !entry.opposingTag) entry.opposingTag = getOutputTagForOperation(device, oppOp);
+      } else {
+        // Home is opposing direction (normal — home=Retract, primary=Extend)
+        const primOp = OPPOSING_PAIRS[homeOp];
+        if (primOp) {
+          if (!entry.primaryTag) entry.primaryTag = getOutputTagForOperation(device, primOp);
+          if (!entry.opposingTag) entry.opposingTag = getOutputTagForOperation(device, homeOp);
+        }
+      }
+    }
+  }
+
+  // ── PartStarted: latches on first "Engage" (gripper close) state ────────────
+  // Tracks whether a part has been picked up this cycle.
+  // Clear conditions: entering gripper-open state, PowerUpCP, or gripper sensor open.
+  // When no gripper device is present, AlwaysOff placeholder is used.
+  {
+    // Find gripper device, set step (first Engage), and clear step (first Disengage)
+    let partStartedSetStep = null;
+    let partStartedClearStep = null;
+    let gripperDevice = null;
+
+    for (const node of orderedNodes) {
+      for (const a of node.data?.actions ?? []) {
+        const dev = devices.find(d => d.id === a.deviceId);
+        if (!dev || (dev.type !== 'PneumaticGripper' && dev.type !== 'Custom')) continue;
+        if (a.operation === 'Engage' && partStartedSetStep == null) {
+          partStartedSetStep = stepMap[node.id];
+          gripperDevice = dev;
+        }
+        if (a.operation === 'Disengage' && partStartedClearStep == null) {
+          partStartedClearStep = stepMap[node.id];
+        }
+      }
+    }
+
+    const rungComment = 'Set the part started bit once the process gets to a point where if interrupted you want to resume or perform some other operation upon restart. Use states and/or part tracking to set this bit. Fill in additional conditions to clear this bit if necessary.';
+
+    if (partStartedSetStep != null) {
+      // Gripper closed sensor tag (e.g. i_GripperClosed)
+      const gripperClosedSensor = gripperDevice ? `i_${gripperDevice.name}Closed` : 'GripperClosed';
+      // Clear step condition (XIO of the Disengage state, if found)
+      const clearStateCond = partStartedClearStep != null ? ` XIO(Status.State[${partStartedClearStep}])` : '';
+      rungs.push(
+        buildRung(rungNum++, rungComment,
+          `[XIC(Status.State[${partStartedSetStep}]) ,XIC(PartStarted)${clearStateCond} XIO(g_MachineBasic.PowerUpCP) XIO(${gripperClosedSensor}) ]OTE(PartStarted);`)
+      );
+    } else {
+      // No gripper — placeholder
+      rungs.push(
+        buildRung(rungNum++, rungComment,
+          `[XIC(g_MachineBasic.AlwaysOff) ,XIC(PartStarted) XIC(g_MachineBasic.AlwaysOff) XIO(g_MachineBasic.PowerUpCP) ]OTE(PartStarted);`)
+      );
+    }
+  }
+
+  // ── PNP X/Z detection: two PneumaticLinearActuators, one X and one Z ────────
+  // If detected, the X-axis gets OkMan intermediate BOOLs (safety interlock: Z must
+  // be retracted before X can be jogged manually). Z-axis uses direct HMI_Momentary
+  // with X-position safety check. All other devices use the generic pattern.
+  const pnpActuators = devices.filter(d => d.type === 'PneumaticLinearActuator');
+  const xAxisDev = pnpActuators.find(d => /x/i.test(d.name));
+  const zAxisDev = pnpActuators.find(d => /z/i.test(d.name));
+  const isPnpXZ = !!(xAxisDev && zAxisDev);
+
+  let okManExtendTag = null;
+  let okManRetractTag = null;
+  let okManBitBase = 0; // HMI_Momentary bits 0,1 reserved for X-axis OkMan decode
+
+  if (isPnpXZ) {
+    // OkMan tag names: strip trailing "Axis" from device name for brevity
+    const xShortName = xAxisDev.name.replace(/Axis$/i, '') || xAxisDev.name;
+    okManExtendTag = `OkManExtend${xShortName}`;
+    okManRetractTag = `OkManRetract${xShortName}`;
+    const zRetractSensor = `i_${zAxisDev.name}Retracted`;
+
+    // OkMan decode rung: State[1] (Manual) AND Z retracted → decode HMI buttons to OkMan intermediates
+    rungs.push(
+      buildRung(rungNum++, `${xAxisDev.displayName} Manual Enable (OkMan — Z must be retracted)`,
+        `XIC(Status.State[1])XIC(${zRetractSensor})[XIC(HMI_Momentary.0) OTE(${okManExtendTag}) ,XIC(HMI_Momentary.1) OTE(${okManRetractTag}) ];`)
+    );
+    okManBitBase = 2; // Z-axis and remaining devices start at bit 2
+  }
+
+  // ── Generate rungs: SDC standard OTE pattern ───────────────────────────────
+  //
+  // [XIO(Status.State[1]) [<set_states> ,XIC(q_Out) <XIO clears>] ,
+  //  XIC(Status.State[1]) [<manual_set_expr> ,XIC(q_Out) <manual_clear_expr>]]OTE(q_Out);
+  //
+  // Each direction gets its OWN full OTE rung. There is no "complement = NOT primary"
+  // shortcut — primary and opposing are independently sealed outputs with reversed
+  // set/clear state lists. This matches Software Standardization L5K (S01_PartLoad,
+  // S05_ServoPNP gripper, etc.) where both q_OpenGripper and q_CloseGripper, both
+  // q_ExtendXAxis and q_RetractXAxis, etc. carry full OTE rungs.
+  //
+  // HMI_Momentary bits: bit N = primary/extend, bit N+1 = opposing/retract.
+  // Bits are auto-cleared in R01 so they act as momentary pushbuttons.
+
+  // Helper — builds one full OTE rung in the SDC standard pattern.
+  function buildSdcOteRung(outputTag, setStateList, clearStateList, manualSetExpr, manualClearExpr) {
+    // Auto branch — inside XIO(Status.State[1]):
+    //   one branch per set state, plus one self-seal branch: XIC(q_Out) <XIO clears>
+    const setBranchParts = setStateList.length === 0
+      ? ['XIC(g_MachineBasic.AlwaysOff)']  // no auto states — placeholder, CE wires post-import
+      : setStateList.map(s => `XIC(Status.State[${s}])`);
+    const sealXios = clearStateList.map(s => `XIO(Status.State[${s}])`).join(' ');
+    const sealBranchAuto = sealXios
+      ? `XIC(${outputTag}) ${sealXios}`
+      : `XIC(${outputTag})`;
+    const autoInner = [...setBranchParts, sealBranchAuto].join(' ,');
+
+    // Manual branch — inside XIC(Status.State[1]):
+    //   set: manualSetExpr (HMI_Momentary press, optionally with safety conditions)
+    //   seal: XIC(q_Out) manualClearExpr (opposite-direction press XIO'd)
+    const sealBranchManual = `XIC(${outputTag}) ${manualClearExpr}`;
+    const manualInner = `${manualSetExpr} ,${sealBranchManual}`;
+
+    return `[XIO(Status.State[1]) [${autoInner} ] ,XIC(Status.State[1]) [${manualInner} ] ]OTE(${outputTag});`;
+  }
+
+  let hmiMomentaryBit = okManBitBase; // Start after any OkMan-reserved bits
 
   for (const [, entry] of Object.entries(deviceMap)) {
     const { device, primaryTag, opposingTag, setSteps, clearSteps } = entry;
-    if (!primaryTag || setSteps.length === 0) continue;
+    if (!primaryTag) continue; // no output tag resolvable — skip entirely
 
-    // Assign HMI button bits for this device pair
-    const primaryBit = hmiButtonBit++;
-    const opposingBit = opposingTag ? hmiButtonBit++ : -1;
+    const isXAxis = isPnpXZ && device.id === xAxisDev.id;
+    const isZAxis = isPnpXZ && device.id === zAxisDev.id;
 
-    // Branch 1: Auto states — energize in these states
-    let autoBranch;
-    if (setSteps.length === 1) {
-      autoBranch = `XIC(Status.State[${setSteps[0]}])`;
+    let primaryManualSet, primaryManualClear, opposingManualSet, opposingManualClear;
+
+    if (isXAxis) {
+      // X-axis uses OkMan intermediate BOOLs (bits 0/1 decoded earlier with Z-retract safety)
+      primaryManualSet = `XIC(${okManExtendTag})`;
+      primaryManualClear = `XIO(${okManRetractTag})`;
+      opposingManualSet = `XIC(${okManRetractTag})`;
+      opposingManualClear = `XIO(${okManExtendTag})`;
+      // Note: no HMI_Momentary bits consumed (X-axis claims bits 0/1 via OkMan decode rung)
+    } else if (isZAxis) {
+      // Z-axis uses HMI_Momentary with X-position safety on the press
+      const zPrimaryBit = hmiMomentaryBit++;
+      const zOpposingBit = opposingTag ? hmiMomentaryBit++ : zPrimaryBit;
+      const xExtendedSensor = `i_${xAxisDev.name}Extended`;
+      const xRetractedSensor = `i_${xAxisDev.name}Retracted`;
+      const xPosSafety = `[XIC(${xExtendedSensor}) ,XIC(${xRetractedSensor})]`;
+      // Extend press requires X at a known end position; retract press does not
+      primaryManualSet = `XIC(HMI_Momentary.${zPrimaryBit}) ${xPosSafety}`;
+      primaryManualClear = `XIO(HMI_Momentary.${zOpposingBit})`;
+      opposingManualSet = `XIC(HMI_Momentary.${zOpposingBit})`;
+      opposingManualClear = `XIO(HMI_Momentary.${zPrimaryBit})`;
     } else {
-      const parts = setSteps.map((s) => `XIC(Status.State[${s}])`);
-      autoBranch = `[${parts.join(' ,')}]`;
+      // Generic: a momentary bit for each direction, no safety conditions
+      const primaryBit = hmiMomentaryBit++;
+      const opposingBit = opposingTag ? hmiMomentaryBit++ : primaryBit;
+      primaryManualSet = `XIC(HMI_Momentary.${primaryBit})`;
+      primaryManualClear = `XIO(HMI_Momentary.${opposingBit})`;
+      opposingManualSet = `XIC(HMI_Momentary.${opposingBit})`;
+      opposingManualClear = `XIO(HMI_Momentary.${primaryBit})`;
     }
 
-    // Branch 2: Manual mode + HMI button
-    const manualBranch = `XIC(ManualMode) XIC(HMI_Button.${primaryBit})`;
+    // Primary direction (e.g., Extend / Engage / VacOn)
+    rungs.push(buildRung(rungNum++, `${device.displayName} ${primaryTag.startsWith('q_') ? primaryTag.slice(2) : primaryTag} Control`,
+      buildSdcOteRung(primaryTag, setSteps, clearSteps, primaryManualSet, primaryManualClear)));
 
-    // Branch 3: Self-latch with manual/auto sub-branches
-    // In auto: latch ON while NOT in any opposing state
-    // In manual: latch ON while opposing button NOT pressed
-    let latchClearAuto = `XIO(ManualMode)`;
-    for (const cs of clearSteps) {
-      latchClearAuto += ` XIO(Status.State[${cs}])`;
-    }
-    let latchClearManual = opposingBit >= 0
-      ? `XIC(ManualMode) XIO(HMI_Button.${opposingBit})`
-      : `XIC(ManualMode)`;
-    const latchBranch = `XIC(${primaryTag}) [${latchClearAuto} ,${latchClearManual}]`;
-
-    const rungText = `[${autoBranch} ,${manualBranch} ,${latchBranch} ]OTE(${primaryTag});`;
-
-    rungs.push(
-      buildRung(rungNum++, `${device.displayName} Control`, rungText)
-    );
-
-    // Complement: opposing = NOT primary
+    // Opposing direction (e.g., Retract / Disengage / VacOff) — set/clear swapped
     if (opposingTag) {
-      rungs.push(
-        buildRung(rungNum++, null, `XIO(${primaryTag})OTE(${opposingTag});`)
-      );
+      rungs.push(buildRung(rungNum++, null,
+        buildSdcOteRung(opposingTag, clearSteps, setSteps, opposingManualSet, opposingManualClear)));
     }
   }
 
@@ -3032,86 +3459,161 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
 
 // ── R20_Alarms ──────────────────────────────────────────────────────────────
 //
-// 1116 pattern: AlarmData[] array + ProgramAlarmHandler AOI
-// Each alarm: [fault_condition TON(Timer[n]) XIC(Timer[n].DN) ,XIC(Alarm[n].Active) XIO(FaultReset)]OTE(Alarm[n].Active);
-// Final rung: ProgramAlarmHandler AOI call
+// SDC standard per-device alarm pattern:
+//
+//   XIO(Lockout) [<trigger> TON(AlarmTimer{Name}{Dir},?,?) XIC(AlarmTimer{Name}{Dir}.DN) ,
+//                 XIC(Alarm[N].Active) XIO(FaultReset)]
+//                [OTE(Alarm[N].Active) ,
+//                 ONS(ONS.M) CONCAT(g_StationList[StaNum],AlarmList[N],Alarm[N].Message)];
+//
+// Per device:
+//   - 2-sensor pneumatic actuator → 3 alarms (Extend timeout, Retract timeout, Misconfigured)
+//   - 1-sensor pneumatic actuator → 2 alarms (Extend/Retract timeout, no misconfig)
+//   - Gripper → 2 alarms (Close timeout, Open timeout) using R01 position-confirm bits
+//
+// Final rung: ProgramAlarmHandler AOI call.
+
+// Build the per-device alarm definitions for an SM. Returns array of
+// { idx, ons, message, triggerExpr, timerTag, timerPreset, comment } in
+// emission order so generateAllTags and generateR20Alarms produce matching
+// indices. Hard-capped at 10 (Alarm[] array size).
+function buildAlarmDefinitions(sm) {
+  const devices = sm.devices ?? [];
+  const defs = [];
+  const ONS_BASE = 5; // ONS.0-4 are claimed by State 2/3, Cycle Time, etc.
+  let idx = 0;
+  function add(def) {
+    if (idx >= 10) return;
+    defs.push({ ...def, idx, ons: ONS_BASE + idx });
+    idx++;
+  }
+
+  for (const device of devices) {
+    if (idx >= 10) break;
+    const name = device.name;
+    const displayName = device.displayName ?? name;
+
+    switch (device.type) {
+      case 'PneumaticLinearActuator':
+      case 'PneumaticRotaryActuator': {
+        const sensorMode = device.sensorMode || 'both';
+        const qExt = `q_Ext${name}`;
+        const qRet = `q_Ret${name}`;
+        // Sensor or computed position-confirm bit for each direction
+        const extConfirm = sensorMode === 'retractOnly' ? `${name}Extended`  : `i_${name}Extended`;
+        const retConfirm = sensorMode === 'extendOnly'  ? `${name}Retracted` : `i_${name}Retracted`;
+
+        add({
+          message: `Waiting For ${displayName} To Extend`,
+          comment: `Waiting For ${displayName} To Extend`,
+          triggerExpr: `XIC(${qExt}) XIO(${extConfirm}) TON(AlarmTimer${name}Extended,?,?) XIC(AlarmTimer${name}Extended.DN)`,
+          timerTag: `AlarmTimer${name}Extended`,
+          timerPreset: 3000,
+        });
+        add({
+          message: `Waiting For ${displayName} To Retract`,
+          comment: `Waiting For ${displayName} To Retract`,
+          triggerExpr: `XIC(${qRet}) XIO(${retConfirm}) TON(AlarmTimer${name}Retracted,?,?) XIC(AlarmTimer${name}Retracted.DN)`,
+          timerTag: `AlarmTimer${name}Retracted`,
+          timerPreset: 3000,
+        });
+        if (sensorMode === 'both') {
+          add({
+            message: `${displayName} Sensors/Outputs Misconfigured`,
+            comment: `${displayName} Sensors/Outputs Misconfigured`,
+            triggerExpr: `[XIC(${qExt}) XIC(${qRet}) ,XIC(i_${name}Extended) XIC(i_${name}Retracted)] TON(AlarmTimer${name}Misconfigured,?,?) XIC(AlarmTimer${name}Misconfigured.DN)`,
+            timerTag: `AlarmTimer${name}Misconfigured`,
+            timerPreset: 50,
+          });
+        }
+        break;
+      }
+      case 'PneumaticGripper': {
+        const qEng = `q_Engage${name}`;
+        const qDis = `q_Disengage${name}`;
+        const closedBit = `${name}Closed`;
+        const openedBit = `${name}Opened`;
+        add({
+          message: `Waiting For ${displayName} To Close`,
+          comment: `Waiting For ${displayName} To Close`,
+          triggerExpr: `XIC(${qEng}) XIO(${closedBit}) TON(AlarmTimer${name}Closed,?,?) XIC(AlarmTimer${name}Closed.DN)`,
+          timerTag: `AlarmTimer${name}Closed`,
+          timerPreset: 3000,
+        });
+        add({
+          message: `Waiting For ${displayName} To Open`,
+          comment: `Waiting For ${displayName} To Open`,
+          triggerExpr: `XIC(${qDis}) XIO(${openedBit}) TON(AlarmTimer${name}Opened,?,?) XIC(AlarmTimer${name}Opened.DN)`,
+          timerTag: `AlarmTimer${name}Opened`,
+          timerPreset: 3000,
+        });
+        break;
+      }
+      // ServoAxis, PneumaticVacGenerator, Custom devices: not yet auto-alarmed.
+      // CE adds these post-export until the per-type rules are agreed.
+      default:
+        break;
+    }
+  }
+  return defs;
+}
+
+// AlarmList STRING[10] tag — pre-populated with alarm messages so the runtime
+// CONCAT(g_StationList[StaNum],AlarmList[N],Alarm[N].Message) builds the
+// final HMI-displayed alarm text on first scan.
+function buildAlarmListTagXml(alarmDefs) {
+  const padded = Array.from({ length: 10 }, (_, i) => alarmDefs[i]?.message ?? '');
+  const decoratedElements = padded.map((m, i) => `
+<Element Index="[${i}]">
+<Structure DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="${m.length}"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII"><![CDATA[${m}]]></DataValueMember>
+</Structure>
+</Element>`).join('');
+  return `
+<Tag Name="AlarmList" TagType="Base" DataType="STRING" Dimensions="10" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="Decorated">
+<Array DataType="STRING" Dimensions="10" Radix="ASCII">${decoratedElements}
+</Array>
+</Data>
+</Tag>`;
+}
+
+// AlarmTimer TIMER tag with a Preset value baked in.
+function buildAlarmTimerTagXml(name, presetMs) {
+  return `
+<Tag Name="${name}" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[0,${presetMs},0]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="${presetMs}"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</Data>
+</Tag>`;
+}
 
 function generateR20Alarms(sm, orderedNodes, stepMap) {
   const rungs = [];
   let rungNum = 0;
-  const devices = sm.devices ?? [];
+  const alarmDefs = buildAlarmDefinitions(sm);
 
-  // Auto-generate alarms for devices that have sensor verify actions
-  // Each verify action that could timeout gets an alarm slot
-  let alarmIdx = 0;
-  const alarmEntries = [];
-
-  for (const node of orderedNodes) {
-    const step = stepMap[node.id];
-    for (const action of (node.data?.actions ?? [])) {
-      const device = devices.find(d => d.id === action.deviceId);
-      if (!device) continue;
-
-      // Determine if this action has a verify condition that could fault
-      let faultCondition = null;
-      let alarmDesc = null;
-
-      switch (device.type) {
-        case 'PneumaticLinearActuator':
-        case 'PneumaticRotaryActuator':
-          if (action.operation === 'Extend' || action.operation === 'Retract') {
-            faultCondition = `XIC(Status.State[${step}])`;
-            alarmDesc = `${device.displayName} ${action.operation} Timeout`;
-          }
-          break;
-        case 'PneumaticGripper':
-          if (action.operation === 'Engage' || action.operation === 'Disengage') {
-            faultCondition = `XIC(Status.State[${step}])`;
-            alarmDesc = `${device.displayName} ${action.operation} Timeout`;
-          }
-          break;
-        case 'PneumaticVacGenerator':
-          if (action.operation === 'VacOn' || action.operation === 'VacOnEject') {
-            faultCondition = `XIC(Status.State[${step}])`;
-            alarmDesc = `${device.displayName} Vacuum Timeout`;
-          }
-          break;
-        case 'ServoAxis':
-          if (action.operation === 'ServoMove' || action.operation === 'ServoIncr' || action.operation === 'ServoIndex') {
-            faultCondition = `XIC(Status.State[${step}])`;
-            alarmDesc = `${device.displayName} Motion Timeout`;
-          }
-          break;
-        case 'Custom': {
-          const cDef = device.customTypeDef;
-          if (cDef) {
-            const op = (cDef.operations ?? []).find(o => o.label === action.operation);
-            if (op?.inputToVerify) {
-              faultCondition = `XIC(Status.State[${step}])`;
-              alarmDesc = `${device.displayName} ${action.operation} Timeout`;
-            }
-          }
-          break;
-        }
-      }
-
-      if (faultCondition && alarmDesc && alarmIdx < 10) {
-        alarmEntries.push({ faultCondition, alarmDesc, idx: alarmIdx });
-        alarmIdx++;
-      }
-    }
-  }
-
-  if (alarmEntries.length === 0) {
-    // No alarms — just add NOP and the handler call
+  if (alarmDefs.length === 0) {
     rungs.push(buildRung(rungNum++, 'No fault conditions defined', 'NOP();'));
   } else {
-    // Generate alarm rungs
-    for (const entry of alarmEntries) {
-      rungs.push(
-        buildRung(rungNum++, entry.alarmDesc,
-          `[${entry.faultCondition}TON(SensorTimer[${entry.idx}],?,?)XIC(SensorTimer[${entry.idx}].DN) ,XIC(Alarm[${entry.idx}].Active) XIO(FaultReset) ]OTE(Alarm[${entry.idx}].Active);`)
-      );
+    for (const def of alarmDefs) {
+      // [XIO(Lockout)] [ trigger , XIC(Alarm[N].Active) XIO(FaultReset) ]
+      //                [ OTE(Alarm[N].Active) , ONS(ONS.M) CONCAT(...) ]
+      const rungText =
+        `XIO(Lockout)` +
+        `[${def.triggerExpr} ,XIC(Alarm[${def.idx}].Active) XIO(FaultReset) ]` +
+        `[OTE(Alarm[${def.idx}].Active) ,ONS(ONS.${def.ons}) CONCAT(g_StationList[StaNum],AlarmList[${def.idx}],Alarm[${def.idx}].Message) ];`;
+      rungs.push(buildRung(rungNum++, def.comment, rungText));
     }
   }
 
@@ -4824,6 +5326,11 @@ function generateRecoveryRoutine(sm, allSMs = [], trackingFields = []) {
 export function exportProgramXml(sm, allSMs = [], trackingFields = [], machineConfig = null) {
   if (!sm) throw new Error('No state machine provided');
 
+  // Normalise pickerV2 actions on every node to the legacy shape so all
+  // downstream generators (R02 verify, R03 deviceMap, R20 alarms, etc.) work
+  // without each having to know about pickerConfig.
+  sm = { ...sm, nodes: (sm.nodes ?? []).map(normaliseNodeActions) };
+
   const programName = buildProgramName(sm.stationNumber ?? 0, sm.name ?? 'Unnamed');
   const orderedNodes = orderNodes(sm.nodes ?? [], sm.edges ?? []);
   const stepMap = buildStepMap(orderedNodes, sm.devices ?? []);
@@ -4872,6 +5379,11 @@ ${r20}
 
 export function exportToL5X(sm, allSMs = [], trackingFields = [], machineConfig = null) {
   if (!sm) throw new Error('No state machine provided');
+
+  // Normalise pickerV2 actions on every node to the legacy shape (same as
+  // exportProgramXml — needed here because we call orderNodes/buildStepMap
+  // directly before delegating to exportProgramXml).
+  sm = { ...sm, nodes: (sm.nodes ?? []).map(normaliseNodeActions) };
 
   const programName = buildProgramName(sm.stationNumber ?? 0, sm.name ?? 'Unnamed');
   const servoDevices = (sm.devices ?? []).filter(d => d.type === 'ServoAxis');

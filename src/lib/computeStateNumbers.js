@@ -51,19 +51,66 @@ export function computeStateNumbers(nodes, edges, devices, options = {}) {
   const visited = new Set();
   const ordered = [];
 
+  // Bypass/detour detection helper.
+  // Returns true if there is a forward path from `fromId` to `toId` within
+  // maxDepth hops. Used to detect the "skip branch" pattern where one exit of a
+  // decision node is a short detour that rejoins the other exit's destination:
+  //
+  //   Decision ──On──► [detour node] ──► [merge node]
+  //            └─Off──────────────────► [merge node]
+  //
+  // In this pattern canReachForward(detour, merge) = true but
+  // canReachForward(merge, detour) = false, so the detour is visited first
+  // and gets the lower state number — matching the left-to-right DFS intent.
+  function canReachForward(fromId, toId, maxDepth = 15) {
+    if (fromId === toId) return false;
+    const queue = [fromId];
+    const seen = new Set([fromId]);
+    for (let depth = 0; depth < maxDepth && queue.length > 0; depth++) {
+      const next = [];
+      for (const id of queue) {
+        const outs = (edges ?? []).filter(e => e.source === id);
+        for (const e of outs) {
+          if (e.target === toId) return true;
+          if (!seen.has(e.target)) {
+            seen.add(e.target);
+            next.push(e.target);
+          }
+        }
+      }
+      queue.length = 0;
+      queue.push(...next);
+    }
+    return false;
+  }
+
   function dfs(nodeId) {
     if (visited.has(nodeId)) return;
     visited.add(nodeId);
     const node = nodes.find(n => n.id === nodeId);
     if (node) ordered.push(node);
-    // Sort outgoing edges by target node X position (left-to-right)
+
+    // Sort outgoing edges — detour branches before skip/direct branches, then
+    // left-to-right by target X as the tie-breaker.
+    //
+    // Detour detection: if target A can reach target B (but not vice versa),
+    // A is a detour to B — visit A first so detour states get lower numbers.
+    // Only applies when both targets are unvisited (avoids re-sorting back-edges).
     const outEdges = (edges ?? [])
       .filter(e => e.source === nodeId)
       .sort((a, b) => {
         const na = nodes.find(n => n.id === a.target);
         const nb = nodes.find(n => n.id === b.target);
+        if (!visited.has(a.target) && !visited.has(b.target)) {
+          const aReachesB = canReachForward(a.target, b.target);
+          const bReachesA = canReachForward(b.target, a.target);
+          if (aReachesB && !bReachesA) return -1; // A is detour → visit first
+          if (bReachesA && !aReachesB) return 1;  // B is detour → visit first
+        }
+        // Default: left-to-right by target X position
         return (na?.position?.x ?? 0) - (nb?.position?.x ?? 0);
       });
+
     for (const e of outEdges) {
       dfs(e.target);
     }
