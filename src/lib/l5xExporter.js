@@ -2904,13 +2904,16 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
     const rungComment = 'Set the part started bit once the process gets to a point where if interrupted you want to resume or perform some other operation upon restart. Use states and/or part tracking to set this bit. Fill in additional conditions to clear this bit if necessary.';
 
     if (partStartedSetStep != null) {
-      // Gripper closed sensor tag (e.g. i_GripperClosed)
-      const gripperClosedSensor = gripperDevice ? `i_${gripperDevice.name}Closed` : 'GripperClosed';
+      // Use the R01-computed confirm tag ({name}Closed — output ON + timer done),
+      // NOT the raw sensor input (i_{name}Closed), which is undefined on grippers
+      // that use the timer-confirmation approach instead of a physical sensor.
+      // buildVerifyConditions uses the same {name}Closed tag for R02.
+      const gripperClosedTag = gripperDevice ? `${gripperDevice.name}Closed` : 'PartStartedClearCondition';
       // Clear step condition (XIO of the Disengage state, if found)
       const clearStateCond = partStartedClearStep != null ? ` XIO(Status.State[${partStartedClearStep}])` : '';
       rungs.push(
         buildRung(rungNum++, rungComment,
-          `[XIC(Status.State[${partStartedSetStep}]) ,XIC(PartStarted)${clearStateCond} XIO(g_MachineBasic.PowerUpCP) XIO(${gripperClosedSensor}) ]OTE(PartStarted);`)
+          `[XIC(Status.State[${partStartedSetStep}]) ,XIC(PartStarted)${clearStateCond} XIO(g_MachineBasic.PowerUpCP) XIO(${gripperClosedTag}) ]OTE(PartStarted);`)
       );
     } else {
       // No gripper — placeholder
