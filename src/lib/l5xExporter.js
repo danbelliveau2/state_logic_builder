@@ -2974,12 +2974,20 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
 
   // Helper — builds one full OTE rung in the SDC standard pattern.
   function buildSdcOteRung(outputTag, setStateList, clearStateList, manualSetExpr, manualClearExpr) {
+    // The outer rung already encodes State 1 as the auto/manual gate:
+    //   XIO(State[1]) → auto branch   XIC(State[1]) → manual branch
+    // So State 1 must NOT appear inside either inner branch — it would be
+    // contradictory in the set list (XIC inside XIO) or redundant in the
+    // clear/seal list (XIO inside XIO, always true → dead contact).
+    const autoSetList   = setStateList.filter(s => s !== waitStep);
+    const autoClearList = clearStateList.filter(s => s !== waitStep);
+
     // Auto branch — inside XIO(Status.State[1]):
     //   one branch per set state, plus one self-seal branch: XIC(q_Out) <XIO clears>
-    const setBranchParts = setStateList.length === 0
+    const setBranchParts = autoSetList.length === 0
       ? ['XIC(g_MachineBasic.AlwaysOff)']  // no auto states — placeholder, CE wires post-import
-      : setStateList.map(s => `XIC(Status.State[${s}])`);
-    const sealXios = clearStateList.map(s => `XIO(Status.State[${s}])`).join(' ');
+      : autoSetList.map(s => `XIC(Status.State[${s}])`);
+    const sealXios = autoClearList.map(s => `XIO(Status.State[${s}])`).join(' ');
     const sealBranchAuto = sealXios
       ? `XIC(${outputTag}) ${sealXios}`
       : `XIC(${outputTag})`;
