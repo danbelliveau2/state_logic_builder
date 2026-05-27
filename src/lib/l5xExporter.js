@@ -2611,12 +2611,18 @@ function generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs = [], tra
       `XIC(q_AlarmActive)[ONS(ONS.2) LIMIT(4,Control.StateReg,99) MOVE(Control.StateReg,FaultState) MOVE(Control.StateReg,RestartState) ,MOVE(127,Control.StateReg) ];`)
   );
 
-  // ── State 1: Manual Mode ─────────────────────────────────────────────────
+  // ── State 1: Initial / Wait-for-Ready ────────────────────────────────────
   // Must be near bottom so higher-priority states don't get overwritten in same scan.
-  rungs.push(
-    buildRung(rungNum++, 'State 1: Manual Mode',
-      `XIC(ManualMode)MOVE(1,Control.StateReg);`)
-  );
+  // Use the actual initial node's label (e.g. "Wait For Ready") rather than a
+  // hardcoded "Manual Mode" string that doesn't match the canvas node name.
+  {
+    const initialNode = orderedNodes.find(n => n.data?.isInitial);
+    const state1Label = initialNode?.data?.label?.trim?.() || 'Wait For Ready';
+    rungs.push(
+      buildRung(rungNum++, `State 1: ${state1Label}`,
+        `XIC(ManualMode)MOVE(1,Control.StateReg);`)
+    );
+  }
 
   // ── State 0: Safety Stop ──────────────────────────────────────────────────
   // Highest-priority — at bottom so it always wins regardless of scan order.
