@@ -991,7 +991,7 @@ ${cdata('[0,0,0,0,0,0,0,0,0,0]')}
 
 // ── Generate all program tags ────────────────────────────────────────────────
 
-function generateAllTags(sm, orderedNodes, stepMap, trackingFields = []) {
+function generateAllTags(sm, orderedNodes, stepMap, trackingFields = [], machineConfig = null) {
   const tags = [];
   const seen = new Set();
 
@@ -1048,12 +1048,20 @@ function generateAllTags(sm, orderedNodes, stepMap, trackingFields = []) {
   addTag(buildDintTagXml('HMI_Button', 'HMI Manual Control Buttons (legacy)'), 'HMI_Button');
   addTag(buildBoolTagXml('HMI_LocalManualOverride', 'Local Manual Override (bypasses Supervisor)', 'Local'), 'HMI_LocalManualOverride');
 
-  // Station / Tracking integration
-  addTag(buildDintTagXml('StaNum', 'Station Number (indexes into \\Tracking.p_Data.Station[])', sm.stationNumber ?? 1), 'StaNum');
-  addTag(buildDintTagXml('StaNumPre', 'Upstream Station Number (indexes into \\Tracking.p_Data.Station[] for incoming nest)', Math.max(1, (sm.stationNumber ?? 1) - 1)), 'StaNumPre');
-  addTag(buildDintTagXml('NestNumCurrent', 'Nest Number at Current Station (from Tracking)'), 'NestNumCurrent');
-  addTag(buildDintTagXml('NestNumIncoming', 'Nest Number at Upstream Station (from Tracking)'), 'NestNumIncoming');
-  addTag(buildBoolTagXml('CycleStation', 'Cycle Station Permission (from Tracking)', 'Local'), 'CycleStation');
+  // Station number — always present; used for alarm CONCAT (g_StationList[StaNum])
+  // and as a general station identifier. On indexing machines it also indexes into
+  // \Tracking.p_Data.Station[]; on standalone machines it is a simple constant.
+  const isIndexing = (machineConfig?.machineType ?? 'indexing') === 'indexing';
+  const staNumDesc = isIndexing
+    ? 'Station Number (indexes into \\Tracking.p_Data.Station[])'
+    : 'Station Number (used for alarm messages)';
+  addTag(buildDintTagXml('StaNum', staNumDesc, sm.stationNumber ?? 1), 'StaNum');
+  if (isIndexing) {
+    addTag(buildDintTagXml('StaNumPre', 'Upstream Station Number (indexes into \\Tracking.p_Data.Station[] for incoming nest)', Math.max(1, (sm.stationNumber ?? 1) - 1)), 'StaNumPre');
+    addTag(buildDintTagXml('NestNumCurrent', 'Nest Number at Current Station (from Tracking)'), 'NestNumCurrent');
+    addTag(buildDintTagXml('NestNumIncoming', 'Nest Number at Upstream Station (from Tracking)'), 'NestNumIncoming');
+  }
+  addTag(buildBoolTagXml('CycleStation', isIndexing ? 'Cycle Station Permission (from Tracking)' : 'Cycle Station Permission (wire to supervisor or AlwaysOn)', 'Local'), 'CycleStation');
   addTag(buildBoolTagXml('PartStarted', 'Part Started This Cycle (set on first Engage/gripper-close state)', 'Local'), 'PartStarted');
   addTag(buildBoolTagXml('UseRestartLogic', 'Enable Restart Logic (wired to resume from interrupted state)', 'Local'), 'UseRestartLogic');
 
@@ -1786,19 +1794,25 @@ function generateR00Main(sm = null) {
 // existing State 0/1/2/3 R02 rungs — these will eventually be folded into the
 // §15.5 reserved-state model.
 
-function generateR01Inputs(sm) {
+function generateR01Inputs(sm, machineConfig = null) {
   const rungs = [];
   let rungNum = 0;
   const devices = sm.devices ?? [];
   const stationNum = sm.stationNumber ?? 1;
   // StaNumPre = upstream/previous station (one less, floor 1)
   const stationNumPre = sm.stationNumberPre ?? Math.max(1, stationNum - 1);
+  // Indexing machines have a \Tracking program; standalone PNP / robot-cell /
+  // test-inspect machines do not and use HMI_Toggle bits directly.
+  const isIndexing = (machineConfig?.machineType ?? 'indexing') === 'indexing';
 
-  // ── Nest & Station Numbers ────────────────────────────────────────────────
+  // ── Nest & Station Numbers (indexing machines only) ───────────────────────
   // Combined parallel: set StaNum + StaNumPre in branch 1,
-  // read NestNum from Tracking in branch 2 (executes same scan).
-  rungs.push(buildRung(rungNum++, 'Nest & Station Numbers',
-    `[MOVE(${stationNum},StaNum) MOVE(${stationNumPre},StaNumPre) ,MOVE(\\Tracking.p_Data.Station[StaNum].NestNum,NestNumCurrent) MOVE(\\Tracking.p_Data.Station[StaNumPre].NestNum,NestNumIncoming) ];`));
+  // read NestNum from \Tracking in branch 2 (executes same scan).
+  // Non-indexing machines omit this rung — StaNum is set as a constant tag default.
+  if (isIndexing) {
+    rungs.push(buildRung(rungNum++, 'Nest & Station Numbers',
+      `[MOVE(${stationNum},StaNum) MOVE(${stationNumPre},StaNumPre) ,MOVE(\\Tracking.p_Data.Station[StaNum].NestNum,NestNumCurrent) MOVE(\\Tracking.p_Data.Station[StaNumPre].NestNum,NestNumIncoming) ];`));
+  }
 
   // ── Mapped / Debounced Inputs ─────────────────────────────────────────────
   // 1-sensor pneumatic delay timers.
@@ -1883,14 +1897,25 @@ function generateR01Inputs(sm) {
     }
   }
 
-  // ── Lockout / Dry Run / Single Step — from Tracking OpStatus ─────────────
+  // ── Lockout / Dry Run / Single Step ──────────────────────────────────────
+  // Indexing machines: read OpStatus bits from \Tracking (supervisor-driven).
+  // Standalone machines: driven directly from HMI_Toggle bits (no \Tracking program).
   // Lockout is inhibited in Manual mode so the operator can still jog devices.
-  rungs.push(buildRung(rungNum++, 'Lockout',
-    `XIC(\\Tracking.p_Data.Station[StaNum].OpStatus.Lockout)XIO(ManualMode)OTE(Lockout);`));
-  rungs.push(buildRung(rungNum++, 'Dry Run Logic (can add supervisor dry run condition if needed as parallel branch)',
-    `XIC(\\Tracking.p_Data.Station[StaNum].OpStatus.DryRun)OTE(DryRun);`));
-  rungs.push(buildRung(rungNum++, 'Single Step Logic',
-    `XIC(\\Tracking.p_Data.Station[StaNum].OpStatus.SingleStep)OTE(SS);`));
+  if (isIndexing) {
+    rungs.push(buildRung(rungNum++, 'Lockout',
+      `XIC(\\Tracking.p_Data.Station[StaNum].OpStatus.Lockout)XIO(ManualMode)OTE(Lockout);`));
+    rungs.push(buildRung(rungNum++, 'Dry Run Logic (can add supervisor dry run condition if needed as parallel branch)',
+      `XIC(\\Tracking.p_Data.Station[StaNum].OpStatus.DryRun)OTE(DryRun);`));
+    rungs.push(buildRung(rungNum++, 'Single Step Logic',
+      `XIC(\\Tracking.p_Data.Station[StaNum].OpStatus.SingleStep)OTE(SS);`));
+  } else {
+    rungs.push(buildRung(rungNum++, 'Lockout (HMI_Toggle.0 — forces Step=99)',
+      `XIC(HMI_Toggle.0)XIO(ManualMode)OTE(Lockout);`));
+    rungs.push(buildRung(rungNum++, 'Dry Run Logic (HMI_Toggle.1 — engineer-defined dry-cycle gate)',
+      `XIC(HMI_Toggle.1)OTE(DryRun);`));
+    rungs.push(buildRung(rungNum++, 'Single Step Logic (HMI_Toggle.2)',
+      `XIC(HMI_Toggle.2)OTE(SS);`));
+  }
   // SS_OK: advance on next scan after operator pulses LocalSSONS
   rungs.push(buildRung(rungNum++, null,
     `[XIO(SS) ,XIC(LocalSSONS) ONS(ONS.1) ]OTE(SS_OK);`));
@@ -5336,10 +5361,10 @@ export function exportProgramXml(sm, allSMs = [], trackingFields = [], machineCo
 
   const servoCount = (sm.devices ?? []).filter(d => d.type === 'ServoAxis').length;
 
-  const tagsXml = generateAllTags(sm, orderedNodes, stepMap, effectiveTrackingFields);
+  const tagsXml = generateAllTags(sm, orderedNodes, stepMap, effectiveTrackingFields, machineConfig);
   const rangeCheckTags = generateServoRangeCheckTags(sm);
   const r00 = generateR00Main(sm);
-  const r01 = generateR01Inputs(sm);
+  const r01 = generateR01Inputs(sm, machineConfig);
   const r02 = generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs, effectiveTrackingFields, machineConfig);
   const r03 = generateR03StateLogic(sm, orderedNodes, stepMap, allSMs, effectiveTrackingFields);
   // Per-axis servo routines (engineer convention): R04_{axis1}Servo, R05_{axis2}Servo, ...
