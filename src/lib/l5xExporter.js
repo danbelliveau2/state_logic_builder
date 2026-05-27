@@ -3134,39 +3134,18 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
     }
   }
 
-  // ── Part Tracking: Clear all fields at cycle start ─────────────────────
-  // On rising edge of CycleRunning (entering first process state), OTU all PT fields
-  // so stale pass/fail data from a previous part doesn't carry over.
-  if (trackingFields.length > 0) {
-    const clearOTUs = trackingFields.map(f => `OTU(PartTracking.${f.name})`).join('');
-    rungs.push(
-      buildRung(rungNum++, 'Part Tracking: Clear All at Cycle Start',
-        `XIC(CycleRunning)ONS(ONS.5)${clearOTUs};`)
-    );
-  }
-
   // ── Part Tracking OTE / OTU rungs (table-driven) ──────────────────────
-  // Rows derived from: Cycle Complete, dual-branch decision nodes, vision
-  // inspect actions. Each enabled row emits writes based on its kind.
+  // Rows derived from: dual-branch decision nodes, vision inspect actions,
+  // analog checks, and custom writes. Each enabled row emits instructions
+  // based on its kind.
   {
     const ptRows = derivePartTrackingTable(sm, stepMap);
     for (const row of ptRows) {
       if (!row.enabled) continue;
       const ptTag = `PartTracking.${row.fieldName}`;
 
-      if (row.kind === 'stationResult' || row.kind === 'stationComplete') {
-        // Single OTE when in the Cycle Complete state (rolled-up overall outcome)
-        const step = stepMap[row.setAtNodeId];
-        if (step == null) continue;
-        rungs.push(
-          buildRung(
-            rungNum++,
-            `Part Tracking: ${row.fieldName} (Station Result)`,
-            `XIC(Status.State[${step}])OTE(${ptTag});`
-          )
-        );
-        continue;
-      }
+      // stationResult / stationComplete rungs removed — logic TBD by CE post-export.
+      if (row.kind === 'stationResult' || row.kind === 'stationComplete') continue;
 
       if (row.kind === 'custom') {
         // Manual custom row: write at selected state, value determines latch/unlatch
