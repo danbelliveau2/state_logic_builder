@@ -2716,6 +2716,38 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
   const devices = sm.devices ?? [];
   const waitStep = getWaitStep();
 
+  // ── Outputs Status to Supervisor ─────────────────────────────────────────
+  // These go FIRST so the supervisor always reads a current value regardless
+  // of where in the routine the scan is when it reads the output tags.
+  //
+  // q_StartOK: station is physically ready to accept a new cycle.
+  //   - All pneumatic/non-servo devices are confirmed at their home positions
+  //     (same home verify conditions used by the R02 init sequence).
+  //   - Each ServoAxis must have its {name}Ready bit set — this encapsulates
+  //     homed + MSO active + no axis fault (set/cleared in R04/R05).
+  //   - No active alarms.
+  //   If no homing devices exist the rung reduces to XIO(q_AlarmActive).
+  {
+    const nonServoDevices = devices.filter(d => d.type !== 'ServoAxis');
+    const homeCondStr = buildHomeVerifyConditions(nonServoDevices, allSMs, trackingFields);
+    const servoReadyStr = devices
+      .filter(d => d.type === 'ServoAxis')
+      .map(d => `XIC(${d.name}Ready)`)
+      .join('');
+    rungs.push(buildRung(rungNum++, 'Station Start OK\n\n*All devices at home and no active alarms.',
+      `${homeCondStr}${servoReadyStr}XIO(q_AlarmActive)OTE(q_StartOK);`));
+  }
+
+  // q_AutoMode: station is in automatic (not manual, not locked out).
+  //   Supervisor uses this to know the station will respond to cycle-start commands.
+  rungs.push(buildRung(rungNum++, 'Auto Mode Status',
+    `XIO(ManualMode)XIO(Lockout)OTE(q_AutoMode);`));
+
+  // q_AutoStopped: cycle has been stopped while in auto mode.
+  //   Supervisor uses this to sequence the next index or hold the conveyor.
+  rungs.push(buildRung(rungNum++, 'Auto Stopped Status',
+    `XIC(CycleStopped)XIO(Lockout)OTE(q_AutoStopped);`));
+
   // CE pattern: ONE OTE per device (primary direction only).
   // The opposing direction is always XIO(primary)OTE(opposing) — pure complement.
   //
@@ -3452,24 +3484,7 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
     );
   }
 
-  // ── Standard boilerplate outputs (1116 pattern) ────────────────────────
-  // q_StartOK: station is at home and ready to start a cycle
-  rungs.push(
-    buildRung(rungNum++, 'Station Start OK',
-      `[XIC(Status.State[${waitStep}]) ,XIC(Status.State[2]) ,XIC(Status.State[3]) ]XIO(q_AlarmActive)OTE(q_StartOK);`)
-  );
-
-  // q_AutoMode: station is in idle states and not running
-  rungs.push(
-    buildRung(rungNum++, 'Auto Mode Status',
-      `[XIC(Status.State[2]) ,XIC(Status.State[3]) ]XIO(CycleRunning)OTE(q_AutoMode);`)
-  );
-
-  // q_AutoStopped: station is in idle or fault state and not running
-  rungs.push(
-    buildRung(rungNum++, 'Auto Stopped Status',
-      `[XIC(Status.State[2]) ,XIC(Status.State[3]) ,XIC(Status.State[127]) ]XIO(CycleRunning)OTE(q_AutoStopped);`)
-  );
+  // (Supervisor output rungs moved to top of R03 — see block after function open)
 
   return `
 <Routine Name="R03_StateLogic" Type="RLL">
