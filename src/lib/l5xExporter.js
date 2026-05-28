@@ -2724,22 +2724,26 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
   // These go FIRST so the supervisor always reads a current value regardless
   // of where in the routine the scan is when it reads the output tags.
   //
-  // q_StartOK: station is physically ready to accept a new cycle.
-  //   - All pneumatic/non-servo devices are confirmed at their home positions
-  //     (same home verify conditions used by the R02 init sequence).
-  //   - Each ServoAxis must have its {name}Ready bit set — this encapsulates
-  //     homed + MSO active + no axis fault (set/cleared in R04/R05).
-  //   - No active alarms.
-  //   If no homing devices exist the rung reduces to XIO(q_AlarmActive).
+  // q_StartOK: station is ready to accept a new automatic cycle.
+  //   Pneumatic home positions are NOT checked here — those are confirmed by
+  //   the initialization states (100-127) before the machine ever reaches the
+  //   wait state. StartOK is for conditions that could require INTERVENTION:
+  //   e.g. a servo axis that has lost home and needs to be re-homed by an
+  //   operator. Add any machine-specific permissives as additional XIC contacts.
+  //
+  //   Auto-generated: one XIC({name}Ready) per declared ServoAxis.
+  //   CE: add any additional intervention-prevention conditions here.
   {
-    const nonServoDevices = devices.filter(d => d.type !== 'ServoAxis');
-    const homeCondStr = buildHomeVerifyConditions(nonServoDevices, allSMs, trackingFields);
     const servoReadyStr = devices
       .filter(d => d.type === 'ServoAxis')
       .map(d => `XIC(${d.name}Ready)`)
       .join('');
-    rungs.push(buildRung(rungNum++, 'Station Start OK\n\n*All devices at home and no active alarms.',
-      `${homeCondStr}${servoReadyStr}XIO(q_AlarmActive)OTE(q_StartOK);`));
+    const hasServos = servoReadyStr.length > 0;
+    const comment = hasServos
+      ? 'Station Start OK\n\n*Servo axes must be homed and enabled. Add any additional machine-specific intervention conditions.'
+      : 'Station Start OK\n\n*No servo axes detected. Add conditions that indicate intervention is required (e.g. tooling not seated, safety bypass active).';
+    rungs.push(buildRung(rungNum++, comment,
+      `${servoReadyStr}XIO(q_AlarmActive)OTE(q_StartOK);`));
   }
 
   // q_AutoMode: station is in automatic (not manual, not locked out).
