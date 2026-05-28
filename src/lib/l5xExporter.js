@@ -881,8 +881,12 @@ function buildStatusTagXml(orderedNodes, stepMap, devices) {
   const completeStep = getCompleteStep(orderedNodes, devices);
   const comments = [];
 
+  // State 1 is the manual / home state — displayed above every XIC/XIO(Status.State[1])
+  // contact in R02 and R03. "Manual Mode" is the correct semantic label because the bit
+  // is used everywhere as the auto/manual gate (XIO = auto branch, XIC = manual branch).
+  // The R02 rung HEADER uses the canvas node's label (e.g. "Wait For Ready") separately.
   comments.push(
-    `<Comment Operand=".STATE[${waitStep}]">\n${cdata('Wait For Ready')}\n</Comment>`
+    `<Comment Operand=".STATE[${waitStep}]">\n${cdata('Manual Mode')}\n</Comment>`
   );
 
   for (const node of orderedNodes) {
