@@ -266,8 +266,38 @@ export function escapeXml(str) {
     .replace(/"/g, '&quot;');
 }
 
+/**
+ * Replace common Unicode characters with readable ASCII equivalents, then
+ * strip any remaining non-ASCII codepoints.  Studio 5000 parses L5X as
+ * Windows-1252 / Latin-1, so multi-byte UTF-8 sequences (e.g. → U+2192)
+ * appear as garbled mojibake (â†') when the file is opened.
+ */
+function sanitizeAscii(str) {
+  if (typeof str !== 'string') return str ?? '';
+  return str
+    // Arrows
+    .replace(/→/g, '->')
+    .replace(/←/g, '<-')
+    .replace(/↑/g, '^')
+    .replace(/↓/g, 'v')
+    .replace(/⇒/g, '=>')
+    .replace(/⇐/g, '<=')
+    // Common symbols that appear in node labels
+    .replace(/[⌂⌘]/g, '')          // house / command symbols → remove
+    .replace(/•/g, '*')
+    .replace(/·/g, '.')
+    .replace(/…/g, '...')
+    .replace(/°/g, ' deg')
+    // Dashes and quotes
+    .replace(/[—–]/g, '-')
+    .replace(/[""]/g, '"')
+    .replace(/['']/g, "'")
+    // Strip anything still non-ASCII
+    .replace(/[^\x00-\x7F]/g, '');
+}
+
 export function cdata(str) {
-  return `<![CDATA[${str}]]>`;
+  return `<![CDATA[${sanitizeAscii(str)}]]>`;
 }
 
 // ── Node ordering (topological sort) ─────────────────────────────────────────
@@ -402,9 +432,48 @@ function isFaultNode(node) {
   return !!node?.data?.isFault;
 }
 
+/**
+ * Compute the effective step increment for a given node list.
+ * Tries 3 first; if the last auto state would reach or exceed 99 (lockout),
+ * falls back to 2, then 1.  The first auto state is always 4 regardless of
+ * increment (SDC standard: wait=1, first action=4).
+ */
+function computeEffectiveIncrement(orderedNodes, devices) {
+  let totalSlots = 0;
+  for (const n of orderedNodes) {
+    if (isAbsorbedInitialNode(n) || isFaultNode(n)) continue;
+    totalSlots += 1;
+    const hasVision = (n.data?.actions ?? []).some(a => {
+      const dev = (devices ?? []).find(d => d.id === a.deviceId);
+      return dev?.type === 'VisionSystem' && (a.operation === 'Inspect' || a.operation === 'VisionInspect');
+    });
+    if (hasVision) totalSlots += 3; // vision consumes 4 sub-states
+  }
+  if (totalSlots <= 1) return STEP_INCREMENT; // 0 or 1 node — no overflow possible
+  // Last state = 4 + (totalSlots - 1) * inc; must stay < 99
+  for (const inc of [3, 2, 1]) {
+    if (4 + (totalSlots - 1) * inc < 99) return inc;
+  }
+  return 1;
+}
+
 function buildStepMap(orderedNodes, devices) {
-  const map = {};
-  let currentStep = STEP_BASE; // starts at 1 (wait state)
+  const effectiveIncrement = computeEffectiveIncrement(orderedNodes, devices);
+
+  // Local advance that uses the effective (possibly reduced) increment.
+  // Skips state 99 and the init block (100-127) exactly as the global version does.
+  function localAdvance(step) {
+    let next = step + effectiveIncrement;
+    while (isReservedStateNumber(next)) next += effectiveIncrement;
+    return next;
+  }
+
+  // _increment is stored as metadata so getVisionSubSteps can read it without
+  // requiring a separate parameter.  Node IDs are always UUIDs (not '_increment'),
+  // so there is no collision risk with real step entries.
+  const map = { _increment: effectiveIncrement };
+  let currentStep = STEP_BASE; // = 1 (wait state)
+  let firstAutoNode = true;
 
   orderedNodes.forEach((n) => {
     // Pure-home initial nodes are absorbed into the State 3→4 transition;
@@ -414,17 +483,24 @@ function buildStepMap(orderedNodes, devices) {
     // they don't claim a step slot either.
     if (isFaultNode(n)) return;
 
-    currentStep = advanceStep(currentStep);
+    if (firstAutoNode) {
+      // The first auto state is always 4 (SDC standard), regardless of increment.
+      // This preserves the wait-state gap (1→4) even when inc=2 or inc=1.
+      currentStep = 4;
+      firstAutoNode = false;
+    } else {
+      currentStep = localAdvance(currentStep);
+    }
     map[n.id] = currentStep;
 
-    // VisionSystem Inspect nodes consume 4 sub-states (N, N+3, N+6, N+9)
+    // VisionSystem Inspect nodes consume 4 sub-states (N, N+inc, N+2*inc, N+3*inc)
     const hasVisionInspect = (n.data?.actions ?? []).some(a => {
       const dev = (devices ?? []).find(d => d.id === a.deviceId);
       return dev?.type === 'VisionSystem' && (a.operation === 'Inspect' || a.operation === 'VisionInspect');
     });
     if (hasVisionInspect) {
-      // Consume 3 extra slots. Skip reserved along the way.
-      for (let i = 0; i < 3; i++) currentStep = advanceStep(currentStep);
+      // Consume 3 extra slots using the effective increment.
+      for (let i = 0; i < 3; i++) currentStep = localAdvance(currentStep);
     }
   });
 
@@ -458,7 +534,8 @@ function getVisionSubSteps(node, devices, stepMap) {
     return dev?.type === 'VisionSystem' && (a.operation === 'Inspect' || a.operation === 'VisionInspect');
   });
   if (!hasVisionInspect) return null;
-  return [baseStep, baseStep + STEP_INCREMENT, baseStep + STEP_INCREMENT * 2, baseStep + STEP_INCREMENT * 3];
+  const inc = stepMap._increment ?? STEP_INCREMENT;
+  return [baseStep, baseStep + inc, baseStep + inc * 2, baseStep + inc * 3];
 }
 
 function getWaitStep() {
@@ -578,12 +655,13 @@ function describeAction(a, devices) {
   const pc = a?.pickerConfig;
   if (pc && (a?.pickerV2 || pc.mode)) {
     if (pc.mode === 'decision') {
-      // Format: "Check: Subject Name" (wait) or "Branch: Subject Name — Condition" (2-exit)
       // Underscores → spaces so "Vision_Inverted" reads as "Vision Inverted".
-      const subjectName = (pc.subjectName ?? 'Decision').replace(/_/g, ' ');
-      const verb = pc.subAction === 'wait' ? 'Wait' : 'Check';
-      const cond = pc.condition && pc.condition !== 'On' ? ` — ${pc.condition}` : '';
-      return `${verb}: ${subjectName}${cond}`;
+      const subjectName = (pc.subjectName ?? '').replace(/_/g, ' ').trim();
+      const cond = pc.condition && pc.condition !== 'On' ? ` (${pc.condition})` : '';
+      if (pc.subAction === 'wait') {
+        return subjectName ? `Waiting for ${subjectName}${cond}` : null;
+      }
+      return subjectName ? `Check: ${subjectName}${cond}` : null;
     }
     if (pc.mode === 'action') {
       const verb = (pc.actionVerb ?? '').trim();
@@ -624,21 +702,22 @@ function getStateDescription(node, devices, stepNum = null) {
   // Decision nodes — prefer user-set label; fall back to a readable auto-format.
   if (node?.type === 'decisionNode') {
     const label = node.data?.label?.trim?.();
-    if (label && label !== '?' && !/^Step\s+\d+$/i.test(label)) return label;
+    if (label && label !== '?' && !/^Step\s+\d+$/i.test(label) && !/^Decision$/i.test(label)) return label;
 
-    // Auto-format: "{ModeVerb}: {Source} - {Signal}" with underscores → spaces.
-    const source = node.data?.signalSource?.trim?.() ?? '';
-    const raw    = node.data?.signalName ?? 'Decision';
-    const name   = raw.replace(/_/g, ' ');
-    const mode   = node.data?.exitCount === 1            ? 'Wait'
-                 : node.data?.nodeMode  === 'verify'     ? 'Verify'
-                 : node.data?.nodeMode  === 'decide'     ? 'Decide'
-                 :                                         'Check';
+    // Build subject from signalSource (device/SM name) and signalName (condition/job).
+    // Underscores → spaces for readability.
+    const source  = (node.data?.signalSource ?? '').trim().replace(/_/g, ' ');
+    const rawName = (node.data?.signalName   ?? '').trim().replace(/_/g, ' ');
+    // Only append signalName when it adds information beyond the source itself.
+    const suffix  = rawName && rawName !== source ? ` - ${rawName}` : '';
+    const subject = source || rawName || 'signal';
     const condCount = (node.data?.conditions ?? []).length;
-    const extra = condCount > 1 ? ` +${condCount - 1} more` : '';
-    return source && source !== name
-      ? `${mode}: ${source} - ${name}${extra}`
-      : `${mode}: ${name}${extra}`;
+    const extra   = condCount > 1 ? ` +${condCount - 1} more` : '';
+
+    if (node.data?.exitCount === 1)           return `Waiting for ${subject}${suffix}${extra}`;
+    if (node.data?.nodeMode  === 'verify')    return `Verify: ${subject}${suffix}${extra}`;
+    if (node.data?.nodeMode  === 'decide')    return `Decide: ${subject}${suffix}${extra}`;
+    return `Check: ${subject}${suffix}${extra}`;
   }
 
   // Special-purpose state nodes
@@ -650,8 +729,14 @@ function getStateDescription(node, devices, stepNum = null) {
   // If the node has a meaningful user-typed label, prefer it over any
   // auto-derived action description. This lets users set "Vision Check for
   // Inverted Part" on a node and have that exact text appear in the rung comment.
+  // Filter out known default/placeholder values that are not meaningful.
   const nodeLabel = node?.data?.label?.trim?.() ?? '';
-  if (nodeLabel && nodeLabel !== '?' && !/^Step\s+\d+$/i.test(nodeLabel)) {
+  const isPlaceholderLabel = !nodeLabel
+    || nodeLabel === '?'
+    || /^Step\s+\d+$/i.test(nodeLabel)
+    || /^Decision$/i.test(nodeLabel)
+    || /^Process\s+Step$/i.test(nodeLabel);
+  if (!isPlaceholderLabel) {
     return nodeLabel;
   }
 
@@ -661,6 +746,67 @@ function getStateDescription(node, devices, stepNum = null) {
   if (actionParts.length > 0) return actionParts.join(', ');
 
   return stepNum != null ? `Step ${stepNum}` : 'Process Step';
+}
+
+/**
+ * Map of single-word generic outcome labels → their past-tense form.
+ * Nodes whose description matches one of these keys are branch destinations
+ * (Fail path, Pass path, Retry path, etc.) that need source context to be
+ * meaningful in the L5X rung comment and status-tag comment.
+ */
+const OUTCOME_LABEL_MAP = {
+  fail:   'Failed',
+  pass:   'Passed',
+  retry:  'Retry',
+  reject: 'Rejected',
+  fault:  'Faulted',
+  on:     'On',
+  off:    'Off',
+};
+
+/**
+ * Returns a description for `node`, enriched with source context when the
+ * node's own description is a generic branch-outcome word (Fail, Pass…).
+ *
+ * If the base description is generic AND there is exactly one incoming edge
+ * whose source has a meaningful description, the result is:
+ *   "{source description} {past-tense outcome}"   e.g. "Check: StamperVision - Link Orient Failed"
+ *   "{source description} - {On|Off}"             e.g. "Decide: Retry Count - On"
+ *
+ * Falls back to the plain base description when:
+ *  - The base is not in OUTCOME_LABEL_MAP
+ *  - There are 0 or >1 incoming edges (ambiguous source)
+ *  - The source description is circular or unavailable
+ *  - For "on"/"off": the source is not actually a decide-type node
+ */
+function buildEnhancedStateDesc(node, allNodes, edges, devices, stepMap) {
+  const baseDesc = getStateDescription(node, devices, stepMap?.[node.id]);
+  const outcomeKey = baseDesc.trim().toLowerCase();
+  const outcomePast = OUTCOME_LABEL_MAP[outcomeKey];
+  if (!outcomePast) return baseDesc;
+
+  const incoming = (edges ?? []).filter(e => e.target === node.id);
+  if (incoming.length !== 1) return baseDesc; // ambiguous — keep generic label
+
+  const srcNode = (allNodes ?? []).find(n => n.id === incoming[0].source);
+  if (!srcNode) return baseDesc;
+
+  // For On/Off exits, only enrich when the source is actually a decide-type node.
+  // This prevents a StateNode legitimately labelled "On" from being falsely enriched.
+  if (outcomeKey === 'on' || outcomeKey === 'off') {
+    const isDecide = srcNode.type === 'decisionNode' ||
+      (srcNode.data?.actions ?? []).some(
+        a => a?.pickerConfig?.mode === 'decision' && (a?.pickerConfig?.exitCount ?? 2) >= 2
+      );
+    if (!isDecide) return baseDesc;
+  }
+
+  const srcDesc = getStateDescription(srcNode, devices, stepMap?.[srcNode.id]);
+  if (!srcDesc || srcDesc === baseDesc) return baseDesc;
+
+  // On/Off use a dash separator; past-tense outcomes use a space.
+  const sep = (outcomeKey === 'on' || outcomeKey === 'off') ? ' - ' : ' ';
+  return `${srcDesc}${sep}${outcomePast}`;
 }
 
 // ── Rung builder ─────────────────────────────────────────────────────────────
@@ -725,6 +871,22 @@ ${cdata(String(defaultValue))}
 </Data>
 <Data Format="Decorated">
 <DataValue DataType="DINT" Radix="Decimal" Value="${defaultValue}"/>
+</Data>
+</Tag>`;
+}
+
+function buildStringTagXml(name, description = '') {
+  const descBlock = description ? `\n<Description>\n${cdata(description)}\n</Description>` : '';
+  return `
+<Tag Name="${name}" TagType="Base" DataType="STRING" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">${descBlock}
+<Data Format="L5K">
+<![CDATA[[0,'']]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII" Value=""/>
+</Structure>
 </Data>
 </Tag>`;
 }
@@ -875,7 +1037,7 @@ ${cdata('[0,0,0,0]')}
 
 // ── Status tag (StateLogicStatus UDT) with state comments ────────────────────
 
-function buildStatusTagXml(orderedNodes, stepMap, devices) {
+function buildStatusTagXml(orderedNodes, stepMap, devices, edges = []) {
   // Build state comments
   const waitStep = getWaitStep();
   const completeStep = getCompleteStep(orderedNodes, devices);
@@ -892,7 +1054,7 @@ function buildStatusTagXml(orderedNodes, stepMap, devices) {
   for (const node of orderedNodes) {
     const step = stepMap[node.id];
     if (step === undefined) continue; // absorbed initial nodes have no state slot
-    const desc = getStateDescription(node, devices, step);
+    const desc = buildEnhancedStateDesc(node, orderedNodes, edges, devices, stepMap);
     const visionSubs = getVisionSubSteps(node, devices, stepMap);
 
     if (visionSubs) {
@@ -1008,7 +1170,7 @@ function generateAllTags(sm, orderedNodes, stepMap, trackingFields = [], machine
 
   // State engine infrastructure tags
   addTag(buildControlTagXml(), 'Control');
-  addTag(buildStatusTagXml(orderedNodes, stepMap, sm.devices ?? []), 'Status');
+  addTag(buildStatusTagXml(orderedNodes, stepMap, sm.devices ?? [], sm.edges ?? []), 'Status');
   addTag(buildStateEngineTagXml(), 'StateEngine');
   addTag(buildStateHistoryTagXml(), 'StateHistory');
 
@@ -1111,8 +1273,70 @@ ${cdata('Station Warning Data')}
 </Description>
 </Tag>`, 'Warning');
 
+  // ── Servo alarm infrastructure (per ServoAxis device) ────────────────────
+  // Each axis gets: Drive Faulted + Loss of Absolute Position Reference alarms.
+  // These use ServoAlarm[] / ServoAlarmList[] — separate from device Alarm[].
+  const servoDevicesForTags = (sm.devices ?? []).filter(d => d.type === 'ServoAxis');
+  const servoAlarmCount = servoDevicesForTags.length * 2; // 2 alarms per axis
+
+  if (servoDevicesForTags.length > 0) {
+    addTag(`
+<Tag Name="ServoAlarm" TagType="Base" DataType="AlarmData" Dimensions="10" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+${cdata('Servo Alarm Data')}
+</Description>
+</Tag>`, 'ServoAlarm');
+
+    // Pre-populated message strings for each servo alarm slot
+    const servoAlarmMessages = [];
+    for (const dev of servoDevicesForTags) {
+      const dn = dev.displayName ?? dev.name;
+      servoAlarmMessages.push(`${dn} Drive Is Faulted`);
+      servoAlarmMessages.push(`${dn} Loss Of Absolute Position Reference`);
+    }
+    addTag(buildNamedAlarmListTagXml('ServoAlarmList', servoAlarmMessages), 'ServoAlarmList');
+
+    // Per-axis STRING tags for DTOS output and CONCAT intermediate
+    for (const dev of servoDevicesForTags) {
+      const dn = dev.displayName ?? dev.name;
+      addTag(buildStringTagXml(`${dev.name}Fault`,        `${dn} - Axis Fault Code`),    `${dev.name}Fault`);
+      addTag(buildStringTagXml(`${dev.name}FaultMessage`, `${dn} - Fault Message Build`), `${dev.name}FaultMessage`);
+    }
+
+    // Servo fault handler AOI instance
+    addTag(`
+<Tag Name="ServoFaultHandler" TagType="Base" DataType="ProgramAlarmHandler" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+${cdata('Servo Alarm Handler Instance')}
+</Description>
+</Tag>`, 'ServoFaultHandler');
+
+    // Intermediate active flags consumed by the final OR rungs
+    addTag(buildBoolTagXml('ServoAlarmActive',   'Servo Alarm Active Flag'),   'ServoAlarmActive');
+    addTag(buildBoolTagXml('ServoWarningActive', 'Servo Warning Active Flag'), 'ServoWarningActive');
+
+    // Quickstop warning (PNP machines with X axis + Z axis)
+    // Z axis retract position check uses the AOI_RangeCheck instance already declared
+    // in generateServoRangeCheckTags. Message strings are pre-declared empty; the
+    // R04/R05 servo routine populates ZAxisQuickstopReason at runtime.
+    const xDevForQS = servoDevicesForTags.find(d => /x/i.test(d.name));
+    const zDevForQS = servoDevicesForTags.find(d => /z/i.test(d.name));
+    if (xDevForQS && zDevForQS) {
+      const zn = zDevForQS.name;
+      const zdn = zDevForQS.displayName ?? zn;
+      addTag(buildStringTagXml(`${zn}QuickstopMessageA`, `${zdn} - Quickstop Message Prefix`), `${zn}QuickstopMessageA`);
+      addTag(buildStringTagXml(`${zn}QuickstopMessageB`, `${zdn} - Quickstop Message Build`),  `${zn}QuickstopMessageB`);
+      addTag(buildStringTagXml(`${zn}QuickstopReason`,   `${zdn} - Quickstop Reason`),          `${zn}QuickstopReason`);
+    }
+  }
+
+  // Intermediate active flags for device alarms (always present)
+  addTag(buildBoolTagXml('AlarmActive',   'Alarm Active Flag'),   'AlarmActive');
+  addTag(buildBoolTagXml('WarningActive', 'Warning Active Flag'), 'WarningActive');
+
+  // ── Device alarm infrastructure ───────────────────────────────────────────
   // Per-device alarm definitions (used by both this tag pass and generateR20Alarms)
-  const alarmDefs = buildAlarmDefinitions(sm);
+  const alarmDefs = buildAlarmDefinitions(sm, servoAlarmCount);
   if (alarmDefs.length > 0) {
     // AlarmList — pre-populated message text (without station prefix)
     addTag(buildAlarmListTagXml(alarmDefs), 'AlarmList');
@@ -1125,7 +1349,7 @@ ${cdata('Station Warning Data')}
   // NOTE: ProgramAlarmHandler references \Alarms.p_ProgramID, \Alarms.p_Active, \Alarms.p_History
   // and controller-scope g_CPUDateTime — these are provided by the Alarms program and controller tags.
 
-  // Program fault handler AOI instance
+  // Program fault handler AOI instance (device alarms)
   addTag(`
 <Tag Name="ProgramFaultHandler" TagType="Base" DataType="ProgramAlarmHandler" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
 <Description>
@@ -1770,10 +1994,6 @@ function generateR00Main(sm = null) {
     rungs.push(buildRung(n++, null, `JSR(R${num}_${dev.name}Servo,0);`));
   });
 
-  // Recovery routine at the next consecutive slot after servos (R04 if 0 servos).
-  const recoveryNum = String(4 + servos.length).padStart(2, '0');
-  rungs.push(buildRung(n++, null, `JSR(R${recoveryNum}_Recovery,0);`));
-
   rungs.push(buildRung(n++, null, 'JSR(R20_Alarms,0);'));
 
   return `
@@ -2350,6 +2570,7 @@ function generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs = [], tra
       const dConditions = dData.conditions ?? [];
       const dLogic = dData.conditionLogic ?? 'AND';
       const isPass = edge.sourceHandle === 'exit-pass';
+      const isFail = edge.sourceHandle === 'exit-fail';
 
       let parts = [];
       if (dConditions.length > 0) {
@@ -2371,11 +2592,24 @@ function generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs = [], tra
           parts.push((inverted ? !condOff : condOff) ? `XIO(${tag})` : `XIC(${tag})`);
         }
       }
-      // For fail branch with AND logic, OR the inverted clauses; for pass, AND them.
-      if (parts.length > 1 && ((isPass && dLogic === 'OR') || (!isPass && dLogic === 'AND'))) {
-        result.cond = `[${parts.join(' ,')}]`;
-      } else {
-        result.cond = parts.join('');
+
+      if (parts.length > 0) {
+        // For fail branch with AND logic, OR the inverted clauses; for pass, AND them.
+        if (parts.length > 1 && ((isPass && dLogic === 'OR') || (!isPass && dLogic === 'AND'))) {
+          result.cond = `[${parts.join(' ,')}]`;
+        } else {
+          result.cond = parts.join('');
+        }
+      } else if (isPass || isFail) {
+        // Conditions could not be resolved (e.g. vision result, unlinked signal).
+        // Emit an AlwaysOff placeholder so the rung is syntactically valid and the
+        // engineer is prompted to wire in the actual feedback tag.
+        result.cond = isFail ? 'XIO(g_MachineBasic.AlwaysOff)' : 'XIC(g_MachineBasic.AlwaysOff)';
+        const src = (dData.signalSource ?? '').replace(/_/g, ' ').trim();
+        const sig = (dData.signalName  ?? '').replace(/_/g, ' ').trim();
+        result.placeholderSubject = src && sig ? `feedback from ${src} - ${sig}`
+                                  : src        ? `feedback from ${src}`
+                                  :              'feedback from vision';
       }
       return result;
     }
@@ -2418,11 +2652,9 @@ function generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs = [], tra
   // (2) action-derived description (existing getStateDescription),
   // (3) "Step N" fallback.
   function getDestinationLabel(node, stepNum) {
-    const label = node?.data?.label?.trim?.();
-    if (label && label !== '?' && !/^Step\s+\d+$/i.test(label)) {
-      return label;
-    }
-    return getStateDescription(node, devices, stepNum);
+    // Use buildEnhancedStateDesc so that single-word outcome labels like
+    // "Fail" and "Pass" inherit context from their source decision node.
+    return buildEnhancedStateDesc(node, orderedNodes, edges, devices, stepMap);
   }
 
   // ── Pre-pass: VisionInspect internal sub-rungs (synthetic) ───────────────
@@ -2468,15 +2700,22 @@ function generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs = [], tra
     const tgtStep = stepMap[dest.id];
     if (tgtStep === undefined) continue;
 
-    // Collect incoming edges from valid sources
-    const incomingEdges = edges.filter(e => {
-      if (e.target !== dest.id) return false;
-      const src = orderedNodes.find(n => n.id === e.source);
-      if (!src) return false;
-      if (isAbsorbedInitialNode(src)) return false; // entry from absorbed handled by manual rung
-      if (isFaultNode(src)) return false;
-      return true;
-    });
+    // Collect incoming edges from valid sources, sorted by source step number
+    // (ascending) so lower-numbered states appear as the top branch in Studio 5000.
+    const incomingEdges = edges
+      .filter(e => {
+        if (e.target !== dest.id) return false;
+        const src = orderedNodes.find(n => n.id === e.source);
+        if (!src) return false;
+        if (isAbsorbedInitialNode(src)) return false; // entry from absorbed handled by manual rung
+        if (isFaultNode(src)) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        const stepA = stepMap[a.source] ?? 0;
+        const stepB = stepMap[b.source] ?? 0;
+        return stepA - stepB;
+      });
 
     if (incomingEdges.length === 0) continue;
 
@@ -2505,15 +2744,17 @@ function generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs = [], tra
 
     if (branches.length === 0) continue;
 
-    // Build rung text — single branch is inline, multiple are bracketed.
-    const rungText = branches.length === 1
-      ? `${branches[0]}MOVE(${tgtStep},Control.StateReg);`
-      : `[${branches.join(' ,')}]MOVE(${tgtStep},Control.StateReg);`;
+    // Each source branch gets XIC(SS_OK) appended — operator must acknowledge in
+    // Single-Step mode before the state advances.
+    const ssOkBranches = branches.map(b => `${b}XIC(SS_OK)`);
+    const rungText = ssOkBranches.length === 1
+      ? `${ssOkBranches[0]}MOVE(${tgtStep},Control.StateReg);`
+      : `[${ssOkBranches.join(' ,')}]MOVE(${tgtStep},Control.StateReg);`;
 
     // Comment — destination label preferred, action-derived as fallback.
     const desc = getDestinationLabel(dest, tgtStep);
     const hint = placeholderSubjects.size > 0
-      ? `  *Replace AlwaysOff with: ${[...placeholderSubjects].join(', ')}*`
+      ? `\n*Replace AlwaysOff with: ${[...placeholderSubjects].join(', ')}*`
       : '';
 
     rungs.push(buildRung(rungNum++, `State ${tgtStep}: ${desc}${hint}`, rungText));
@@ -2544,7 +2785,7 @@ function generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs = [], tra
       if (!hasOutgoing) {
         const conditions = lastVisionSubs ? '' : buildVerifyConditions(lastNode, devices, allSMs, trackingFields);
         rungs.push(buildRung(rungNum++, `State ${completeStep}: Complete`,
-          `XIC(Status.State[${effectiveLastStep}])${conditions}MOVE(${completeStep},Control.StateReg);`));
+          `XIC(Status.State[${effectiveLastStep}])${conditions}XIC(SS_OK)MOVE(${completeStep},Control.StateReg);`));
       }
     }
   }
@@ -3521,10 +3762,12 @@ function generateR03StateLogic(sm, orderedNodes, stepMap, allSMs = [], trackingF
 // { idx, ons, message, triggerExpr, timerTag, timerPreset, comment } in
 // emission order so generateAllTags and generateR20Alarms produce matching
 // indices. Hard-capped at 10 (Alarm[] array size).
-function buildAlarmDefinitions(sm) {
+function buildAlarmDefinitions(sm, onsOffset = 0) {
   const devices = sm.devices ?? [];
   const defs = [];
-  const ONS_BASE = 5; // ONS.0-4 are claimed by State 2/3, Cycle Time, etc.
+  // ONS.0-4 are claimed by State 2/3, Cycle Time, etc.
+  // onsOffset shifts the base to sit after any servo alarm ONS bits.
+  const ONS_BASE = 5 + onsOffset;
   let idx = 0;
   function add(def) {
     if (idx >= 10) return;
@@ -3540,12 +3783,20 @@ function buildAlarmDefinitions(sm) {
     switch (device.type) {
       case 'PneumaticLinearActuator':
       case 'PneumaticRotaryActuator': {
-        const sensorMode = device.sensorMode || 'both';
-        const qExt = `q_Ext${name}`;
-        const qRet = `q_Ret${name}`;
-        // Sensor or computed position-confirm bit for each direction
-        const extConfirm = sensorMode === 'retractOnly' ? `${name}Extended`  : `i_${name}Extended`;
-        const retConfirm = sensorMode === 'extendOnly'  ? `${name}Retracted` : `i_${name}Retracted`;
+        // Mirror the same sensorArrangement parsing used in tagNaming.js:
+        //   '2-sensor (Ext + Ret)'  → both physical sensors present
+        //   '1-sensor (Ret only)'   → retract sensor only
+        //   'No sensors'            → no physical sensors
+        const arrangement = device.sensorArrangement ?? '';
+        const hasExtSensor = arrangement.includes('2-sensor');
+        const hasRetSensor = arrangement.includes('2-sensor') ||
+                             (!arrangement.includes('No sensors') && arrangement.includes('Ret'));
+        const qExt = getOutputTagForOperation(device, 'Extend')  ?? `q_Extend${name}`;
+        const qRet = getOutputTagForOperation(device, 'Retract') ?? `q_Retract${name}`;
+        // Use the physical sensor tag when the sensor exists; otherwise fall
+        // back to the R01-computed confirm bit (timer-based, no i_ prefix).
+        const extConfirm = hasExtSensor ? `i_${name}Extended`  : `${name}Extended`;
+        const retConfirm = hasRetSensor ? `i_${name}Retracted` : `${name}Retracted`;
 
         add({
           message: `Waiting For ${displayName} To Extend`,
@@ -3561,7 +3812,11 @@ function buildAlarmDefinitions(sm) {
           timerTag: `AlarmTimer${name}Retracted`,
           timerPreset: 3000,
         });
-        if (sensorMode === 'both') {
+        // Misconfigured alarm only makes sense when both physical sensors are
+        // present — it detects both outputs energised simultaneously or both
+        // sensor inputs active simultaneously, which is impossible if a sensor
+        // is absent (the computed confirm bit is not independently observable).
+        if (hasExtSensor && hasRetSensor) {
           add({
             message: `${displayName} Sensors/Outputs Misconfigured`,
             comment: `${displayName} Sensors/Outputs Misconfigured`,
@@ -3602,25 +3857,45 @@ function buildAlarmDefinitions(sm) {
   return defs;
 }
 
-// AlarmList STRING[10] tag — pre-populated with alarm messages so the runtime
-// CONCAT(g_StationList[StaNum],AlarmList[N],Alarm[N].Message) builds the
-// final HMI-displayed alarm text on first scan.
-function buildAlarmListTagXml(alarmDefs) {
-  const padded = Array.from({ length: 10 }, (_, i) => alarmDefs[i]?.message ?? '');
+// Generic STRING[10] alarm-list tag with pre-populated messages.
+// Used for both AlarmList (device alarms) and ServoAlarmList (servo alarms).
+function buildNamedAlarmListTagXml(tagName, messages) {
+  const padded = Array.from({ length: 10 }, (_, i) => messages[i] ?? '');
+
+  // L5K format is required for Studio 5000 to initialise STRING values on import.
+  // Each STRING element: [LEN,'data'] — escape $ → $$, ' → $27, non-ASCII → $XX.
+  function l5kEscapeString(str) {
+    return str
+      .replace(/\$/g, '$$$$')       // $ → $$
+      .replace(/'/g, '$27')          // ' → $27
+      .replace(/[^\x20-\x7E]/g, c => `$${c.charCodeAt(0).toString(16).padStart(2, '0').toUpperCase()}`);
+  }
+  const l5kElements = padded.map(m => `[${m.length},'${l5kEscapeString(m)}']`).join(',');
+
+  // Decorated format (human-readable, also used by some importer versions).
   const decoratedElements = padded.map((m, i) => `
 <Element Index="[${i}]">
 <Structure DataType="STRING">
 <DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="${m.length}"/>
-<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII"><![CDATA[${m}]]></DataValueMember>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII" Value="${m.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}"/>
 </Structure>
 </Element>`).join('');
+
   return `
-<Tag Name="AlarmList" TagType="Base" DataType="STRING" Dimensions="10" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Tag Name="${tagName}" TagType="Base" DataType="STRING" Dimensions="10" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[${l5kElements}]]]>
+</Data>
 <Data Format="Decorated">
 <Array DataType="STRING" Dimensions="10" Radix="ASCII">${decoratedElements}
 </Array>
 </Data>
 </Tag>`;
+}
+
+// Thin wrapper — keeps existing call sites unchanged.
+function buildAlarmListTagXml(alarmDefs) {
+  return buildNamedAlarmListTagXml('AlarmList', alarmDefs.map(d => d.message));
 }
 
 // AlarmTimer TIMER tag with a Preset value baked in.
@@ -3643,16 +3918,88 @@ function buildAlarmTimerTagXml(name, presetMs) {
 }
 
 function generateR20Alarms(sm, orderedNodes, stepMap) {
+  const devices = sm.devices ?? [];
+  const servoDevices = devices.filter(d => d.type === 'ServoAxis');
   const rungs = [];
   let rungNum = 0;
-  const alarmDefs = buildAlarmDefinitions(sm);
 
-  if (alarmDefs.length === 0) {
+  // ── Servo alarm rungs ──────────────────────────────────────────────────────
+  // Standard pattern (per axis):
+  //   Drive Faulted:     XIO(Lockout)NE(iq_{name}.AxisFault,0)[OTE(Active) ,ONS DTOS CONCAT CONCAT];
+  //   Loss of Abs Pos:   XIO(Lockout)XIC(PowerUpCP)XIO(HomedStatus)[OTE(Active) ,ONS CONCAT];
+  // The OTE lives INSIDE the single parallel branch alongside the ONS+message chain.
+  // ONS bits start at 5 (0-4 reserved); Drive+Homing alarms claim consecutive bits.
+  const servoOnsBase = 5;
+  let servoIdx = 0;
+
+  for (const device of servoDevices) {
+    const name        = device.name;
+    const displayName = device.displayName ?? name;
+    const axisTag     = `iq_${name}`;
+
+    // (1) Drive Faulted
+    const faultIdx = servoIdx++;
+    rungs.push(buildRung(rungNum++,
+      `${displayName} Servo Drive Is Faulted`,
+      `XIO(Lockout)NE(${axisTag}.AxisFault,0)` +
+      `[OTE(ServoAlarm[${faultIdx}].Active)` +
+      ` ,ONS(ONS.${servoOnsBase + faultIdx}) DTOS(${axisTag}.AxisFault,${name}Fault)` +
+      ` CONCAT(g_StationList[StaNum],ServoAlarmList[${faultIdx}],${name}FaultMessage)` +
+      ` CONCAT(${name}FaultMessage,${name}Fault,ServoAlarm[${faultIdx}].Message) ];`
+    ));
+
+    // (2) Loss of Absolute Position Reference
+    const homingIdx = servoIdx++;
+    rungs.push(buildRung(rungNum++,
+      `${displayName} Loss Of Absolute Position Reference`,
+      `XIO(Lockout)XIC(g_MachineBasic.PowerUpCP)XIO(${axisTag}.AxisHomedStatus)` +
+      `[OTE(ServoAlarm[${homingIdx}].Active)` +
+      ` ,ONS(ONS.${servoOnsBase + homingIdx}) CONCAT(g_StationList[StaNum],ServoAlarmList[${homingIdx}],ServoAlarm[${homingIdx}].Message) ];`
+    ));
+  }
+
+  // (3) Quickstop Warning — PNP machines only (X axis + Z axis present).
+  // Fires when the X axis MAS-All stop instruction activates (permissive lost,
+  // estop, etc.). Severity=1 marks it a warning, not a fault.
+  // Uses ONS.29 (non-sequential) so it does not shift the device-alarm ONS chain.
+  const xAxisDev = servoDevices.find(d => /x/i.test(d.name));
+  const zAxisDev = servoDevices.find(d => /z/i.test(d.name));
+  if (xAxisDev && zAxisDev) {
+    const qsIdx = servoIdx++; // ServoAlarm index after Drive+Homing alarms
+    const xn    = xAxisDev.name;
+    const zn    = zAxisDev.name;
+    const xdn   = xAxisDev.displayName ?? xn;
+
+    // Z-axis in-retract-position check — use declared AOI_RangeCheck instance
+    const zRetractPos = (zAxisDev.positions ?? []).find(p => /retract/i.test(p.name));
+    const zRetractTag = zRetractPos
+      ? `${zn}${zRetractPos.name.replace(/[^A-Za-z0-9]/g, '')}`
+      : null;
+    // If no Retract position declared, use AlwaysOff placeholder so CE can wire it in
+    const zPosCond = zRetractTag
+      ? `XIO(${zRetractTag}.InPos) XIO(${zRetractTag}.InPosWide) `
+      : `XIC(g_MachineBasic.AlwaysOff) `;
+
+    rungs.push(buildRung(rungNum++,
+      `${xdn} Quickstop Warning`,
+      `[XIC(${xn}_MAS_All.EN) ONS(ONS.29) ,XIC(ServoAlarm[${qsIdx}].Active) XIO(FaultReset) ]` +
+      `[OTE(ServoAlarm[${qsIdx}].Active)` +
+      ` ,${zPosCond}CONCAT(g_StationList[StaNum],${zn}QuickstopMessageA,${zn}QuickstopMessageB)` +
+      ` CONCAT(${zn}QuickstopMessageB,${zn}QuickstopReason,ServoAlarm[${qsIdx}].Message)` +
+      ` ,MOVE(1,ServoAlarm[${qsIdx}].Severity) ];`
+    ));
+  }
+
+  // ── Device alarm rungs ─────────────────────────────────────────────────────
+  // ONS bits continue after the Drive+Homing servo alarm bits (not counting
+  // quickstop which uses the fixed ONS.29 outside the sequential chain).
+  const servoAlarmCount = servoDevices.length * 2;
+  const alarmDefs = buildAlarmDefinitions(sm, servoAlarmCount);
+
+  if (alarmDefs.length === 0 && servoDevices.length === 0) {
     rungs.push(buildRung(rungNum++, 'No fault conditions defined', 'NOP();'));
   } else {
     for (const def of alarmDefs) {
-      // [XIO(Lockout)] [ trigger , XIC(Alarm[N].Active) XIO(FaultReset) ]
-      //                [ OTE(Alarm[N].Active) , ONS(ONS.M) CONCAT(...) ]
       const rungText =
         `XIO(Lockout)` +
         `[${def.triggerExpr} ,XIC(Alarm[${def.idx}].Active) XIO(FaultReset) ]` +
@@ -3661,11 +4008,35 @@ function generateR20Alarms(sm, orderedNodes, stepMap) {
     }
   }
 
-  // Final rung: ProgramAlarmHandler AOI call
-  rungs.push(
-    buildRung(rungNum++, 'Program Alarm Handler',
-      'ProgramAlarmHandler(ProgramFaultHandler,\\Alarms.p_ProgramID,Alarm,\\Alarms.p_Active,\\Alarms.p_History,g_CPUDateTime,q_AlarmActive,q_WarningActive);')
-  );
+  // ── Alarm handler AOI calls ────────────────────────────────────────────────
+  // Each handler writes to its own intermediate active tag (ServoAlarmActive /
+  // AlarmActive). The final OR rungs merge them into q_AlarmActive / q_WarningActive.
+  if (servoDevices.length > 0) {
+    rungs.push(buildRung(rungNum++, 'Servo Alarm Handler',
+      'ProgramAlarmHandler(ServoFaultHandler,\\Alarms.p_ProgramID,ServoAlarm,\\Alarms.p_Active,\\Alarms.p_History,g_CPUDateTime,ServoAlarmActive,ServoWarningActive);'
+    ));
+  }
+  rungs.push(buildRung(rungNum++, 'Station Alarm Handler',
+    'ProgramAlarmHandler(ProgramFaultHandler,\\Alarms.p_ProgramID,Alarm,\\Alarms.p_Active,\\Alarms.p_History,g_CPUDateTime,AlarmActive,WarningActive);'
+  ));
+
+  // ── Alarm/Warning active output OR rungs ──────────────────────────────────
+  // q_AlarmActive / q_WarningActive are the public outputs used by the supervisor.
+  if (servoDevices.length > 0) {
+    rungs.push(buildRung(rungNum++, 'Alarm/Warning Active Outputs',
+      `[XIC(ServoAlarmActive) ,XIC(AlarmActive) ]OTE(q_AlarmActive);`
+    ));
+    rungs.push(buildRung(rungNum++, null,
+      `[XIC(ServoWarningActive) ,XIC(WarningActive) ]OTE(q_WarningActive);`
+    ));
+  } else {
+    rungs.push(buildRung(rungNum++, 'Alarm/Warning Active Outputs',
+      `XIC(AlarmActive)OTE(q_AlarmActive);`
+    ));
+    rungs.push(buildRung(rungNum++, null,
+      `XIC(WarningActive)OTE(q_WarningActive);`
+    ));
+  }
 
   return `
 <Routine Name="R20_Alarms" Type="RLL">
@@ -5198,7 +5569,7 @@ function generateServoAxisRoutine(routineName, device, sm, orderedNodes, stepMap
     `[XIC(${name}TorqueHome.PC) ,XIC(${name}_MAH.PC) ] OTE(${hmi}.Status.HomeComplete) ];`));
 
   // Rung 13 — Manual Mode (ManMoves.N → MotionParameters.Position via declared positions)
-  let manBranches = `MOVE(${hmi}.Parameters.ManualSpeed,${mp}.Speed) ,XIC(${name}Permissive) [`;
+  let manBranches = `MOVE(${hmi}.Parameters.ManualSpeed,${mp}.Speed) ,MOVE(${hmi}.Parameters.Accel[0],${mp}.Accel) ,MOVE(${hmi}.Parameters.Decel[0],${mp}.Decel) ,XIC(${name}Permissive) [`;
   if (positions.length === 0) {
     manBranches += `XIC(${hmi}.Control.ManMoves.0) MOVE(${hmi}.Parameters.Positions[0],${mp}.Position) `;
   } else {
@@ -5393,8 +5764,6 @@ export function exportProgramXml(sm, allSMs = [], trackingFields = [], machineCo
   // Per-axis servo routines (engineer convention): R04_{axis1}Servo, R05_{axis2}Servo, ...
   // orderedNodes + stepMap let rungs 14/15 bind flowchart ServoMove states to MAM.
   const r04Servos = generateR04ServoRoutines(sm, orderedNodes, stepMap);
-  // Recovery routine — placed at R{4+servoCount} to sit after all servo routines.
-  const recovery = generateRecoveryRoutine(sm, allSMs, effectiveTrackingFields);
   const r20 = generateR20Alarms(sm, orderedNodes, stepMap);
 
   const stationDesc = `S${String(sm.stationNumber ?? 0).padStart(2, '0')} ${sm.description ?? sm.name ?? ''}`;
@@ -5413,7 +5782,6 @@ ${r01}
 ${r02}
 ${r03}
 ${r04Servos}
-${recovery}
 ${r20}
 </Routines>
 </Program>`;

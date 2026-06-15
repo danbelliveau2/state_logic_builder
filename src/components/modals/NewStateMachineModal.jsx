@@ -6,14 +6,8 @@ import { useState } from 'react';
 import { useDiagramStore } from '../../store/useDiagramStore.js';
 import { buildProgramName } from '../../lib/tagNaming.js';
 
-// Tiny ID generator (match store pattern)
-let _modalId = Date.now() + 900000;
-const uid = () => `id_${(_modalId++).toString(36)}`;
-
 export function NewStateMachineModal() {
   const store = useDiagramStore();
-  const machineType = useDiagramStore(s => s.project?.machineConfig?.machineType);
-  const isIndexing = machineType === 'indexing' || machineType === 'linear';
   const [name, setName] = useState('');
   const [station, setStation] = useState('');
   const [desc, setDesc] = useState('');
@@ -30,77 +24,11 @@ export function NewStateMachineModal() {
     });
 
     if (addStartState) {
-      if (isIndexing) {
-        // For indexing machines: add a DecisionNode waiting on IndexComplete signal
-        const sms = store.project?.stateMachines ?? [];
-        const indexerSm = sms.find(sm => sm.name === 'Dial_Indexer' || sm.name === 'DialIndexer' || sm.name === 'Indexer');
-        const cycleCompleteNode = indexerSm?.nodes?.find(n => n.data?.isComplete);
-
-        // Ensure IndexComplete signal exists
-        const signals = store.project?.signals ?? [];
-        let indexSignal = signals.find(s => s.name === 'IndexComplete');
-        if (!indexSignal && indexerSm && cycleCompleteNode) {
-          store.addSignal({
-            name: 'IndexComplete',
-            description: 'TRUE when the indexer SM reaches Cycle Complete — used by station SMs to know indexing is done.',
-            type: 'state',
-            smId: indexerSm.id,
-            stateNodeId: cycleCompleteNode.id,
-            stateName: 'Cycle Complete',
-            reachedMode: 'reached',
-          });
-          // Re-read after adding
-          indexSignal = (store.project?.signals ?? []).find(s => s.name === 'IndexComplete');
-        }
-
-        // Create DecisionNode waiting on IndexComplete
-        const decisionId = uid();
-        store.addDecisionNode(smId, {
-          id: decisionId,
-          position: { x: 400, y: 100 },
-          data: {
-            label: 'Wait Index Complete',
-            decisionType: 'signal',
-            signalId: indexSignal?.id ?? null,
-            signalName: 'IndexComplete',
-            signalSource: indexerSm?.displayName ?? 'Dial_Indexer',
-            signalSmName: indexerSm?.displayName ?? 'Dial_Indexer',
-            signalType: 'state',
-            exitCount: 1,
-            exit1Label: 'Ready',
-            autoOpenPopup: false,
-            conditions: [{
-              signalId: indexSignal?.id ?? null,
-              signalName: 'IndexComplete',
-              signalSource: indexerSm?.displayName ?? 'Dial_Indexer',
-              signalType: 'state',
-              sensorState: 'on',
-            }],
-            conditionLogic: 'AND',
-          },
-        });
-
-        // Create first action state below and connect it
-        const firstStateId = store.addNode(smId, { position: { x: 400, y: 340 } });
-
-        if (firstStateId) {
-          store.addEdge(smId, {
-            source: decisionId,
-            sourceHandle: 'exit-single',
-            target: firstStateId,
-            targetHandle: null,
-          }, {
-            conditionType: 'ready',
-            label: 'Ready',
-            isDecisionExit: true,
-            exitColor: 'pass',
-            outcomeLabel: 'Ready',
-          });
-        }
-      } else {
-        // Non-indexing: just add an empty initial state
-        store.addNode(smId, { label: 'Home' });
-      }
+      // Every SM starts with a single initial Home state — matches the SDC standard,
+      // where downstream stations don't have a separate "Wait Index Complete" state.
+      // If a station needs to gate on IndexComplete, the user adds a decision node
+      // explicitly with the right cross-SM signal selected.
+      store.addNode(smId, { label: 'Home' });
     }
 
     setName('');
@@ -160,7 +88,7 @@ export function NewStateMachineModal() {
               checked={addStartState}
               onChange={e => setAddStartState(e.target.checked)}
             />
-            <span>{isIndexing ? 'Add "Wait for Index Complete" decision node' : 'Add initial Home state'}</span>
+            <span>Add initial Home state</span>
           </label>
 
           <div className="modal__footer">
