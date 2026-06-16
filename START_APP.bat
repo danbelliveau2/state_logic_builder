@@ -2,7 +2,7 @@
 title SDC State Logic Builder
 
 :: Always run from the source directory on C: drive (has correct config + node_modules)
-set APP_DIR=C:\SDC-StateLogic
+set APP_DIR=C:\state_logic_builder
 
 echo.
 echo  ============================================
@@ -14,6 +14,11 @@ echo  Close this window to stop both servers.
 echo.
 
 cd /d "%APP_DIR%"
+
+:: Pull latest code from GitHub
+echo  Checking for updates from GitHub...
+git pull origin main
+echo.
 
 if not exist "node_modules\" (
   echo  Installing dependencies - please wait...

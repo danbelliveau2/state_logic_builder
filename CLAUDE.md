@@ -4,6 +4,38 @@
 
 ---
 
+## 0. TIM'S BRANCH RULE — ALWAYS ENFORCED
+
+**This session is Tim (L5X Export & Tag Naming zone).**
+
+- **NEVER commit or work directly on `main`**
+- **ALWAYS work on a `dev/tim-<short-description>` branch**
+- At the start of every session, check `git branch` — if on `main` with changes, immediately run:
+  ```bash
+  git checkout -b dev/tim-<short-description>
+  ```
+- Changes carry over automatically since they're uncommitted
+- Per CONTRIBUTING.md: Tim owns `src/lib/l5xExporter.js`, `src/lib/tagNaming.js`, `src/lib/computeStateNumbers.js`, `src/lib/controllerL5xExporter.js`, `src/lib/supervisorL5xExporter.js`
+
+---
+
+## 0b. TIM'S PR WORKFLOW — ALWAYS ENFORCED
+
+When Tim says his work is ready (any phrase like "push my branch", "submit my work", "create a PR", "send to Dan", "ready to merge"), **always do ALL of these steps automatically, no extra prompting:**
+
+1. **Commit** all changes on the current `dev/tim-...` branch with a clear descriptive message
+2. **Push** the branch to GitHub: `git push origin dev/tim-<branch-name>`
+3. **Open a Pull Request** via `gh pr create`:
+   - Base: `main`
+   - Title: short summary of what changed
+   - Body: bullet list of what was changed and why, referencing files from Tim's zone
+   - Reviewer: `danbelliveau2` (Dan — always tag him)
+4. **Report back** the PR URL so Tim can see it
+
+Never ask Tim to do any of these steps manually. Do the full sequence end to end.
+
+---
+
 ## 0. WORKING IN THIS REPO — READ FIRST
 
 **Don't probe the codebase blindly — three files are huge and re-reading them eats your session.**

@@ -242,6 +242,9 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
   // because the new condition implies fresh defaults.
   const [labelsCustomized, setLabelsCustomized] = useState(!!data.exitLabelsCustomized);
   const [nodeMode, setNodeMode] = useState(data.nodeMode ?? 'wait');  // 'wait' | 'decide' | 'verify'
+  // Optional plain-text description shown as the rung comment in the L5X export.
+  // Falls back to the auto-generated "Check: Source - Signal" format when blank.
+  const [nodeDescription, setNodeDescription] = useState(data.label ?? '');
 
   // Multi-outcome labels for decide mode (exitCount > 2)
   const [outcomeLabels, setOutcomeLabels] = useState(data.outcomeLabels ?? ['Option A', 'Option B', 'Option C']);
@@ -821,6 +824,8 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
       // Multi-condition
       conditions: conditions.length > 0 ? conditions : undefined,
       conditionLogic: conditions.length > 1 ? conditionLogic : undefined,
+      // Plain-text rung description for L5X export (optional — blank = auto-generate)
+      label: nodeDescription.trim() || undefined,
     };
     // Auto-create PT field if user typed a new name (no existing field selected).
     // Unified-flag model: gate purely on the local ptEnabled flag. Log mode
@@ -2642,6 +2647,28 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
                   : `If condition fails, retry up to ${retryMax}x before taking the fail branch.`}
               </div>
             )}
+          </div>
+
+          {/* Rung description — optional label shown as L5X rung comment */}
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 9, color: '#94a3b8', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Rung Description <span style={{ color: '#64748b', fontWeight: 400, textTransform: 'none' }}>(optional — shown in L5X)</span>
+            </div>
+            <input
+              className="nodrag"
+              type="text"
+              placeholder="e.g. Vision Check for Inverted Part"
+              value={nodeDescription}
+              onChange={e => setNodeDescription(e.target.value)}
+              onMouseDown={e => e.stopPropagation()}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (conditions.length > 0) handleDone(); } }}
+              style={{
+                width: '100%', padding: '5px 7px', fontSize: 11,
+                border: '1px solid #334155', borderRadius: 4,
+                background: '#0f172a', color: '#e2e8f0',
+                boxSizing: 'border-box', outline: 'none',
+              }}
+            />
           </div>
 
           {/* Done button — disabled until a signal/condition is picked */}
