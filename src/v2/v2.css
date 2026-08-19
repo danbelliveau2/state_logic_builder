@@ -116,6 +116,34 @@
   display: inline-block;
 }
 
+/* Jarvis button (learning-being surface) */
+.v2-jarvis__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.v2-jarvis__btn:hover {
+  background: var(--color-primary-h);
+  border-color: var(--color-primary-h);
+}
+.v2-jarvis__badge {
+  background: var(--color-warning);
+  color: #3a2f00;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 7px;
+  line-height: 1.5;
+}
+
 /* Build menu */
 .v2-build { position: relative; }
 .v2-build__btn {

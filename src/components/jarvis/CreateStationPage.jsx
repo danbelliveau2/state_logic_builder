@@ -553,6 +553,14 @@ export function CreateStationPage() {
   const [questions, setQuestions] = useState(draft?.questions ?? []);
   const [changes, setChanges] = useState('');
   const [applying, setApplying] = useState(false);
+  // Standing rules JARVIS just learned from the engineer's answers —
+  // only facts the model explicitly returned AND the server recorded.
+  const [learnedNotes, setLearnedNotes] = useState([]);
+  // Question-loop guards: how many Apply-changes rounds have run (after 2,
+  // JARVIS is told to ask ZERO new questions) and the full Q&A history
+  // (sent with every re-summarize so nothing is ever re-asked).
+  const [qaRounds, setQaRounds] = useState(0);
+  const [qaHistory, setQaHistory] = useState([]);
   const [summarizeCost, setSummarizeCost] = useState(draft?.summarizeCost ?? 0);
   // Per-station-draft summarize cost ceiling ($). Server reports the real
   // configured value in meta.maxCostUSD; 5 is the documented default.
@@ -631,6 +639,7 @@ export function CreateStationPage() {
     buildSucceededRef.current = false;
     setName(''); setDescription(''); setImages([]);
     setSummary(null); setJarvisCoverage(null); setQuestions([]); setChanges('');
+    setQaRounds(0); setQaHistory([]); setLearnedNotes([]);
     setSummarizeCost(0); setError(null); setDraftNote(false); setDraftImagesDropped(0);
     setPhase('input');
   }
@@ -651,9 +660,13 @@ export function CreateStationPage() {
   const allCovered = covered === applicable.length;
 
   const preview = name ? buildProgramName(station || 1, name.replace(/[^a-zA-Z0-9_]/g, '')) : '—';
-  const canBuild = !!name.trim()
-    && !!(usingJarvisVerdicts ? summaryHasContent(summary) : description.trim())
-    && allCovered;
+  // Only the four coverage items gate the primary Build — open questions NEVER
+  // gate: Jarvis decides them per SDC standards and notes them for review.
+  const hasBuildInput = !!name.trim()
+    && !!(usingJarvisVerdicts ? summaryHasContent(summary) : description.trim());
+  const canBuild = hasBuildInput && allCovered;
+  // Escape hatch: build even with thin coverage (confirmed by the user).
+  const canBuildAsIs = hasBuildInput && usingJarvisVerdicts;
 
   // Cost gate: the limit is money, never the user's explanation length.
   const overSummarizeBudget = summarizeCost >= summarizeCostCap;
@@ -671,6 +684,9 @@ export function CreateStationPage() {
       otherSms: otherSms.map(s => ({ name: s.name, displayName: s.displayName ?? s.name })),
       priorSummary,
       corrections,
+      round: qaRounds,
+      qaHistory,
+      priorCoverage: jarvisCoverage,
     }, (pct, stage) => {
       setSumPct(pct);
       setSumStage(stage);
@@ -681,6 +697,10 @@ export function CreateStationPage() {
     setSummary(data.summary);
     setJarvisCoverage(data.coverage);
     setQuestions(data.questions ?? []);
+    const recorded = (Array.isArray(data.learnedFacts) ? data.learnedFacts : [])
+      .filter(f => f && f.recorded === true && f.fact)
+      .map(f => String(f.fact));
+    if (recorded.length) setLearnedNotes(notes => [...notes, ...recorded.filter(f => !notes.includes(f))]);
     setSummarizeCost(c => Number((c + (Number(data.meta?.costUSD) || 0)).toFixed(4)));
     const cap = Number(data.meta?.maxCostUSD);
     if (Number.isFinite(cap) && cap > 0) setSummarizeCostCap(cap);
@@ -705,8 +725,17 @@ export function CreateStationPage() {
     if (overSummarizeBudget) { setError(budgetMessage); return; }
     setError(null);
     setApplying(true);
+    // Record this round's Q&A BEFORE the call so the prompt's history and
+    // round budget include it (state updates land for the next render;
+    // the payload uses the local values below).
+    const answered = { questions: questions.slice(), answer: changes.trim() };
     try {
-      await callSummarize({ priorSummary: summaryToText(summary), corrections: changes.trim() });
+      await callSummarize({
+        priorSummary: summaryToText(summary),
+        corrections: changes.trim(),
+      });
+      setQaHistory(h => [...h, answered]);
+      setQaRounds(n => n + 1);
       setChanges('');
     } catch (e) {
       setError(e.message);
@@ -793,9 +822,26 @@ export function CreateStationPage() {
         nodes: drafted.nodes ?? [],
         edges: drafted.edges ?? [],
         // Station exists from this moment — description saved with it even
-        // if the spec extraction below fails.
-        machineSpec: { version: 1, sourceDescription: desc },
+        // if the spec extraction below fails. Open questions never gate the
+        // build — they ride along as pendingQuestions for CE review.
+        machineSpec: {
+          version: 1, sourceDescription: desc,
+          ...(questions.length ? { pendingQuestions: questions.slice() } : {}),
+        },
       });
+      // Hand open questions to Jarvis's question queue (best effort — the
+      // pendingQuestions copy above guarantees nothing is lost either way).
+      for (const q of questions) {
+        fetch('/api/jarvis/questions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            question: q,
+            context: `Create Station "${name.trim()}" — built with this question open; Jarvis decided per SDC standards.`,
+            source: 'create-station',
+          }),
+        }).catch(() => { /* queue endpoint unavailable — pendingQuestions has it */ });
+      }
       if ((drafted.devices ?? []).some(d => d.type === 'VisionSystem')) {
         store.syncVisionPartTracking?.(smId);
       }
@@ -844,7 +890,10 @@ export function CreateStationPage() {
 
       // ── 4. Save machineSpec (sourceDescription included) ────────────────
       store.updateStateMachine(smId, {
-        machineSpec: { ...sData.spec, sourceDescription: desc },
+        machineSpec: {
+          ...sData.spec, sourceDescription: desc,
+          ...(questions.length ? { pendingQuestions: questions.slice() } : {}),
+        },
       });
 
       prog.stop();
@@ -1213,6 +1262,37 @@ export function CreateStationPage() {
                   </button>
                 </div>
 
+                {/* Standing rules JARVIS learned from the engineer's answers */}
+                {learnedNotes.length > 0 && (
+                  <div
+                    data-testid="jarvis-learned-note"
+                    style={{
+                      marginTop: 10, display: 'flex', alignItems: 'flex-start', gap: 10,
+                      border: `1px solid ${C.primaryBorder}`, background: C.primaryBg,
+                      borderRadius: 8, padding: '8px 12px',
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      {learnedNotes.map((fact, i) => (
+                        <div key={i} style={{ fontSize: 12, color: C.text, lineHeight: 1.5, padding: '1px 0' }}>
+                          <strong>Jarvis learned:</strong> {fact} — won't ask again.
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="Dismiss"
+                      onClick={() => setLearnedNotes([])}
+                      style={{
+                        border: 'none', background: 'transparent', cursor: 'pointer',
+                        color: C.muted, fontSize: 14, lineHeight: 1, padding: '2px 4px', flexShrink: 0,
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+
                 {/* Add pictures (paste / drag) */}
                 <div style={{ marginTop: 6 }}>
                   <DescribeSurface
@@ -1260,12 +1340,33 @@ export function CreateStationPage() {
                       {covered} of {applicable.length} covered — answer what's missing, then Apply changes
                     </span>
                   )}
+                  {allCovered && questions.length > 0 && (
+                    <span data-testid="open-questions-note" style={{ fontSize: 11, color: C.muted }}>
+                      {questions.length} open question{questions.length === 1 ? '' : 's'} — Jarvis will
+                      decide these per SDC standards and note them for review.
+                    </span>
+                  )}
+                  {!allCovered && canBuildAsIs && (
+                    <button
+                      type="button"
+                      className="btn btn--secondary"
+                      data-testid="build-as-is-btn"
+                      onClick={() => {
+                        if (window.confirm('Some areas are thin — Jarvis will fill gaps with SDC-standard assumptions and flag them. Build?')) {
+                          handleBuild();
+                        }
+                      }}
+                      style={{ fontSize: 12 }}
+                    >
+                      Build as-is
+                    </button>
+                  )}
                   <button
                     className="btn btn--primary"
                     data-testid="build-station-btn"
                     onClick={handleBuild}
                     disabled={!canBuild}
-                    title={allCovered ? undefined : "JARVIS's checklist verdicts gate the build"}
+                    title={allCovered ? undefined : "JARVIS's checklist verdicts gate the build — or use Build as-is"}
                     style={{
                       fontSize: 14, padding: '9px 22px',
                       transition: 'background 0.35s ease, box-shadow 0.35s ease, opacity 0.35s ease',

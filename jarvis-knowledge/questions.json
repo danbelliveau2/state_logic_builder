@@ -1,0 +1,82 @@
+[
+  {
+    "id": "seed_std_draft_01",
+    "question": "Jason's finding first: he saw an action commanded in the wrong state (Z move in the gripper-close state) in the generated PnP. Which rung exactly? The agent's self-checks compare code against the diagram — this case becomes a permanent automated check.",
+    "context": "Standards draft review",
+    "source": "manual",
+    "askedAt": "2026-08-19T20:58:09.424Z",
+    "status": "open"
+  },
+  {
+    "id": "seed_std_draft_02",
+    "question": "What's the acceptance test for generated code — what makes you trust it enough to run on a machine, beyond importing clean?",
+    "context": "Standards draft review",
+    "source": "manual",
+    "askedAt": "2026-08-19T20:58:09.424Z",
+    "status": "open"
+  },
+  {
+    "id": "seed_std_draft_03",
+    "question": "Wideband policy: which transitions may early-advance, in one rule? (Current guess: only when the next motion can't collide with the settling axis.)",
+    "context": "Standards draft review",
+    "source": "manual",
+    "askedAt": "2026-08-19T20:58:09.424Z",
+    "status": "open"
+  },
+  {
+    "id": "seed_std_draft_04",
+    "question": "Manual servo speeds: manual/jog rungs read Accel[0]/Decel[0] (shared with auto) in the template. Intentional, or should manual have its own indices?",
+    "context": "Standards draft review",
+    "source": "manual",
+    "askedAt": "2026-08-19T20:58:09.424Z",
+    "status": "open"
+  },
+  {
+    "id": "seed_std_draft_05",
+    "question": "Init-with-part: templates re-enter mid-sequence when a part is already gripped at power-up (124 + GripperClosed). What's the general rule for choosing the re-entry state on any new station?",
+    "context": "Standards draft review",
+    "source": "manual",
+    "askedAt": "2026-08-19T20:58:09.424Z",
+    "status": "open"
+  },
+  {
+    "id": "seed_std_draft_06",
+    "question": "Fault vs warning: the rule for which conditions fault (stop) vs warn (q_Pause)? \"Waiting for upstream\" = warning — what else?",
+    "context": "Standards draft review",
+    "source": "manual",
+    "askedAt": "2026-08-19T20:58:09.424Z",
+    "status": "open"
+  },
+  {
+    "id": "seed_std_draft_07",
+    "question": "q_ActuatorsSafe: the precise definition per station type. All actuators home? Or a defined safe subset per application?",
+    "context": "Standards draft review",
+    "source": "manual",
+    "askedAt": "2026-08-19T20:58:09.424Z",
+    "status": "open"
+  },
+  {
+    "id": "seed_std_draft_08",
+    "question": "Homing: when torque-home (AOI_TorqueHome) vs MAH? Who decides, and what marks a station as needing homing before auto?",
+    "context": "Standards draft review",
+    "source": "manual",
+    "askedAt": "2026-08-19T20:58:09.424Z",
+    "status": "open"
+  },
+  {
+    "id": "seed_std_draft_09",
+    "question": "HMI_Toggle vs Tracking OpStatus: V4.2 sources Lockout/DryRun/SS from \\Tracking...OpStatus. Is HMI_Toggle officially dead in new programs?",
+    "context": "Standards draft review",
+    "source": "manual",
+    "askedAt": "2026-08-19T20:58:09.424Z",
+    "status": "open"
+  },
+  {
+    "id": "seed_std_draft_10",
+    "question": "Where should the agent ask vs. decide? Before generating, it asks a short list (devices, transitions, timeouts, handshakes). What must ALWAYS be asked, and what may it default?",
+    "context": "Standards draft review",
+    "source": "manual",
+    "askedAt": "2026-08-19T20:58:09.424Z",
+    "status": "open"
+  }
+]

@@ -27,6 +27,7 @@ import { AddDeviceModal } from '../components/modals/AddDeviceModal.jsx';
 import { ActionModal } from '../components/modals/ActionModal.jsx';
 import { ProjectManagerModal } from '../components/modals/ProjectManagerModal.jsx';
 import { RecipeManagerModal } from '../components/modals/RecipeManagerModal.jsx';
+import { VersionBadge } from '../components/VersionBadge.jsx';
 import { useDiagramStore } from '../store/useDiagramStore.js';
 import { initStandardsLibrary } from '../lib/standardsLibrary.js';
 import { exportProjectJSON } from '../lib/l5xExporter.js';
@@ -170,6 +171,7 @@ export function AppV2() {
         {showActionModal && <ActionModal />}
         {showProjectManager && <ProjectManagerModal />}
         {showRecipeManager && <RecipeManagerModal />}
+        <VersionBadge />
       </ReactFlowProvider>
     </ErrorBoundary>
   );

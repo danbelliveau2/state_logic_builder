@@ -21,6 +21,7 @@ import { useDiagramStore } from '../store/useDiagramStore.js';
 import { downloadL5X, downloadAllL5XAsZip, exportProjectJSON } from '../lib/l5xExporter.js';
 import { downloadControllerL5X } from '../lib/controllerL5xExporter.js';
 import { JarvisGenerateModal } from '../components/modals/JarvisGenerateModal.jsx';
+import { JarvisPage } from '../components/jarvis/JarvisPage.jsx';
 import { ProjectPickerModal } from '../components/modals/ProjectPickerModal.jsx';
 import { useAutoSaveStatus } from './useAutoSaveStatus.js';
 
@@ -288,6 +289,41 @@ function BuildMenu() {
   );
 }
 
+// ── Jarvis button (learning-being surface) ──────────────────────────────────
+function JarvisButton() {
+  const [open, setOpen] = useState(false);
+  const [openCount, setOpenCount] = useState(null);
+
+  async function refreshCount() {
+    try {
+      const r = await fetch('/api/jarvis/questions');
+      if (!r.ok) return;
+      const qs = await r.json();
+      setOpenCount(Array.isArray(qs) ? qs.filter(q => q.status === 'open').length : null);
+    } catch {
+      /* server offline — no badge, button still opens the page */
+    }
+  }
+  useEffect(() => { refreshCount(); }, []);
+
+  return (
+    <>
+      <button
+        className="v2-jarvis__btn"
+        data-testid="jarvis-open-btn"
+        onClick={() => setOpen(true)}
+        title="Jarvis — his questions for the controls team, knowledge, and track record"
+      >
+        Jarvis
+        {openCount != null && openCount > 0 && (
+          <span className="v2-jarvis__badge" data-testid="jarvis-topbar-badge">{openCount}</span>
+        )}
+      </button>
+      {open && <JarvisPage onClose={() => { setOpen(false); refreshCount(); }} />}
+    </>
+  );
+}
+
 export function TopBarV2() {
   return (
     <header className="v2-topbar">
@@ -296,6 +332,7 @@ export function TopBarV2() {
       <V2TabStrip />
       <div className="v2-topbar__spacer" />
       <AutoSaveIndicator />
+      <JarvisButton />
       <BuildMenu />
     </header>
   );

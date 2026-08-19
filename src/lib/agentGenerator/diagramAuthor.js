@@ -19,6 +19,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '..', '.env'), quiet: true });
 
 const { costOfUsage, AiNotConfiguredError } = require('./client');
+const { loadMeKnowledge } = require('./meKnowledge');
 
 const MODEL = process.env.JARVIS_MODEL || 'claude-opus-5';
 const MAX_TOKENS = parseInt(process.env.JARVIS_DIAGRAM_MAX_TOKENS, 10) || 32000;
@@ -298,10 +299,12 @@ async function authorDiagram({ description, images = [], station = null, onProgr
 
   onProgress(10, 'prompt', 'Assembling schema guide and layout rules');
   const example = loadExampleProject();
+  const meKnowledge = loadMeKnowledge();
   const system =
     'You are JARVIS, the SDC Automation station-diagram author. You convert a manufacturing ' +
     'engineer\'s plain-English (and pictured) description of an automation station into a ' +
     'State Logic Builder project JSON draft that follows SDC PLC standards exactly.\n\n' +
+    (meKnowledge ? meKnowledge + '\n\n' : '') +
     SCHEMA_GUIDE + '\n' + LAYOUT_RULES + '\n' +
     (example ? `# Reference example (a real, correctly-formed project)\n${example}\n\n` : '') +
     OUTPUT_SPEC;

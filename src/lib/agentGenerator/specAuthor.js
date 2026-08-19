@@ -21,6 +21,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '..', '.env'), quiet: true });
 
 const { costOfUsage, AiNotConfiguredError } = require('./client');
+const { loadMeKnowledge } = require('./meKnowledge');
 
 const MODEL = process.env.JARVIS_MODEL || 'claude-opus-5';
 const MAX_TOKENS = parseInt(process.env.JARVIS_SPEC_MAX_TOKENS, 10) || 8000;
@@ -79,7 +80,7 @@ Respond with ONLY one JSON object (no markdown fences, no prose):
       "purpose": "<what it is for, from the text>" }
   ],
   "unmentionedDeviceIds": ["<existing device id the text never mentioned>", ...],
-  "questions": ["<2-5 clarifying questions about genuine ambiguities>"]
+  "questions": ["<0-3 questions, mechanical intent only — obey the Question policy above>"]
 }
 
 Rules of engagement:
@@ -88,6 +89,8 @@ Rules of engagement:
   name is closest. Only propose a NEW device when nothing configured plausibly matches.
 - proposedDevices: full-word PascalCase names (SDC standard, no abbreviations). Include
   sensorArrangement only for pneumatic types, choosing from that type's options.
+  Obey the Device taxonomy above: never propose valves, EOAT assemblies, timers,
+  or HMI elements as devices — decompose to the actual actuated mechanism.
 - unmentionedDeviceIds: every existing device the description said nothing about.
 - outcomeRules: one rule per distinct failure the text describes. retryCount only when a number
   of tries is stated. Keep trigger/response/escalation in the engineer's plain language.
@@ -190,7 +193,7 @@ function normalizeResult(parsed, sm, otherSms) {
     if (deviceIds.has(id) && !out.spec.devicePurposes[id]) out.unmentionedDeviceIds.push(id);
   }
 
-  out.questions = (Array.isArray(parsed.questions) ? parsed.questions : []).map(String).slice(0, 6);
+  out.questions = (Array.isArray(parsed.questions) ? parsed.questions : []).map(String).slice(0, 3);
   return { result: out, fixups };
 }
 
@@ -221,10 +224,12 @@ async function authorSpec({ description, images = [], sm = {}, otherSms = [], ex
       + sm.drawnSteps.map((s, i) => `  ${i + 1}. ${s}`).join('\n')
     : '';
 
+  const meKnowledge = loadMeKnowledge();
   const system =
     'You are JARVIS, the SDC Automation station-spec extractor. A manufacturing engineer explains ' +
     'an automation station in plain language, the way they would to a new engineer. You extract a ' +
     'structured Station Spec from EXACTLY what they said — their words, their intent, nothing invented.\n' +
+    (meKnowledge ? '\n' + meKnowledge + '\n' : '') +
     DEVICE_VOCAB + OUTPUT_SPEC;
 
   const content = [];
@@ -319,16 +324,39 @@ Respond with ONLY one JSON object (no markdown fences, no prose):
     "failures":     { "score": 0|1|2, "missing": "..." },
     "interactions": { "score": 0|1|2, "missing": "..." }
   },
-  "questions": ["<2-4 short questions back to the engineer about genuine gaps or ambiguities>"]
+  "questions": ["<0-3 short questions, mechanical intent only — obey the Question policy>"],
+  "learnedFacts": [
+    { "fact": "<a standing rule or fact the engineer stated/corrected, one tight sentence>",
+      "scope": "sdc-standard" | "this-project" }
+  ]
 }
 
 Summary rules:
 - Each array restates what the engineer SAID — their intent, cleaned up and organized into
   short scannable lines. Faithful: never invent devices, steps, numbers, or behavior they
   did not state. A section with nothing stated is an EMPTY array.
-- Keep the engineer's device names/terms. Fix grammar and rambling, not meaning.
+- TIGHT output. Device purposes: 8 words or fewer. Sequence steps: 10 words or fewer.
+  No filler adjectives, no restating the obvious. Every line must scan in one glance.
+- devices: obey the Device taxonomy above. Valves, EOAT assemblies, timers, and HMI
+  elements are NOT devices — decompose to the actual actuated mechanism (an "EOAT with a
+  gripper" is ONE device: the gripper). Keep the engineer's terms for real devices.
 - sequence: one physical step per line, no numbering prefix (the UI numbers them).
 - interactions: "station" should match one of the project's other station names when possible.
+- questions: obey the Question policy above — never ask about Standing SDC facts, learned
+  facts, or controls-architecture decisions. Zero questions is a good answer.
+  NEVER ask a question whose answer is derivable from the description, the engineer's
+  prior answers (Q&A history in the message), the standing knowledge above, or an
+  earlier question in this session. Asked-and-answered is answered forever.
+
+Coverage monotonicity:
+- When the message includes your PREVIOUS coverage verdicts, coverage may only IMPROVE.
+  A section previously scored 2 stays 2; a 1 may become 2, never 0. The engineer answering
+  questions adds information — it never removes any.
+- learnedFacts: when the engineer states or corrects a RULE (not a description of this
+  station), capture it. scope "sdc-standard" = a standing rule that applies to every
+  future station ("servo speeds always live in the HMI"); scope "this-project" = true
+  only here ("this gripper has no sensors"). Only facts the engineer actually stated —
+  usually an empty array. Never repeat a fact already in the standing knowledge above.
 
 Coverage rules (2 = fully covered, 1 = mentioned briefly, 0 = not covered):
 - devices: are the physical devices named with what each is for?
@@ -362,7 +390,8 @@ const SUMMARIZE_EXPECTED_OUTPUT_TOKENS = 1200;
 
 async function summarizeDescription({
   description, images = [], checklist = null, sm = {}, otherSms = [],
-  priorSummary = '', corrections = '', signal = null, onProgress = null,
+  priorSummary = '', corrections = '', round = 0, qaHistory = [],
+  priorCoverage = null, signal = null, onProgress = null,
 } = {}) {
   if (!description || !String(description).trim()) {
     throw new Error('description is required');
@@ -372,11 +401,16 @@ async function summarizeDescription({
   const stationLines = (otherSms || []).map(s => `  - ${s.displayName || s.name}`).join('\n')
     || '  (no other stations in this project yet)';
 
+  const meKnowledge = loadMeKnowledge();
   const system =
-    'You are JARVIS, the SDC Automation station explainer. A manufacturing engineer has just ' +
-    'finished explaining an automation station out loud (dictated and/or typed — expect rambling, ' +
-    'repetition, speech artifacts). You restate it cleanly and judge how complete it is. You NEVER ' +
-    'invent behavior — everything in the summary must come from what they said.\n' + SUMMARIZE_OUTPUT;
+    'You are JARVIS, an intelligent SDC controls engineer listening to a MECHANICAL engineer ' +
+    'who has just finished explaining an automation station out loud (dictated and/or typed — ' +
+    'expect rambling, repetition, speech artifacts). You restate it cleanly and TIGHTLY and ' +
+    'judge how complete it is. You already know how SDC does controls — you never ask the ME ' +
+    'about it. You NEVER invent behavior — everything in the summary must come from what they ' +
+    'said.\n' +
+    (meKnowledge ? '\n' + meKnowledge + '\n' : '') +
+    SUMMARIZE_OUTPUT;
 
   const content = [];
   for (const img of images.slice(0, 8)) {
@@ -396,8 +430,27 @@ async function summarizeDescription({
   if (priorSummary && String(priorSummary).trim()) {
     text += `\n\nYour PREVIOUS summary (being revised):\n\n${String(priorSummary).trim()}`;
   }
+  if (priorCoverage && typeof priorCoverage === 'object') {
+    text += `\n\nYour PREVIOUS coverage verdicts (monotonic — scores may only improve): ${JSON.stringify(priorCoverage)}`;
+  }
+  const qa = (Array.isArray(qaHistory) ? qaHistory : []).filter(r => r && (r.questions?.length || r.answer));
+  if (qa.length) {
+    text += '\n\nQ&A HISTORY this session (questions you already asked and the engineer\'s answers — '
+      + 'NEVER re-ask these or anything derivable from them):\n'
+      + qa.map((r, i) =>
+        `Round ${i + 1}:\n`
+        + (r.questions || []).map(q => `  Q: ${q}`).join('\n')
+        + (r.answer ? `\n  A: ${String(r.answer).trim()}` : '')
+      ).join('\n');
+  }
   if (corrections && String(corrections).trim()) {
     text += `\n\nEngineer's CORRECTIONS to apply (these override anything they conflict with above):\n\n${String(corrections).trim()}`;
+  }
+  const roundN = Number(round) || 0;
+  if (roundN >= 2) {
+    text += '\n\nQUESTION BUDGET EXHAUSTED: you have asked enough this session. Return ZERO new '
+      + 'questions ("questions": []). Decide every remaining unknown per SDC standards and fold the '
+      + 'decision into the summary — decisions, not questions.';
   }
   if (images.length) text += `\n\n(${images.length} image(s) of the station/CAD are attached above.)`;
   content.push({ type: 'text', text });
@@ -458,8 +511,15 @@ async function summarizeDescription({
   const coverage = {};
   for (const k of COVERAGE_KEYS) {
     const c = parsed.coverage && parsed.coverage[k];
-    const score = c && [0, 1, 2].includes(Number(c.score)) ? Number(c.score) : 0;
-    coverage[k] = { score, missing: String((c && c.missing) || '').trim() };
+    let score = c && [0, 1, 2].includes(Number(c.score)) ? Number(c.score) : 0;
+    let missing = String((c && c.missing) || '').trim();
+    // Hard monotonic clamp: never regress below the prior verdict.
+    const prior = priorCoverage && priorCoverage[k] && Number(priorCoverage[k].score);
+    if ([1, 2].includes(prior) && prior > score) {
+      score = prior;
+      if (score === 2) missing = '';
+    }
+    coverage[k] = { score, missing };
   }
   const str = (v) => String(v == null ? '' : v).trim();
   const arr = (v) => (Array.isArray(v) ? v : []);
@@ -486,14 +546,25 @@ async function summarizeDescription({
     && !summary.failureHandling.length && !summary.interactions.length) {
     throw new Error('Model returned an empty summary');
   }
-  const questions = (Array.isArray(parsed.questions) ? parsed.questions : [])
-    .map(q => String(q).trim()).filter(Boolean).slice(0, 4);
+  // Question budget is hard-enforced: <=3 per round, ZERO after round 2.
+  const questions = roundN >= 2 ? [] : (Array.isArray(parsed.questions) ? parsed.questions : [])
+    .map(q => String(q).trim()).filter(Boolean).slice(0, 3);
+  // Learned standing rules the engineer stated — only what the model
+  // explicitly returned; the server decides what persists.
+  const learnedFacts = (Array.isArray(parsed.learnedFacts) ? parsed.learnedFacts : [])
+    .map(f => ({
+      fact: String((f && f.fact) || '').trim(),
+      scope: (f && f.scope) === 'sdc-standard' ? 'sdc-standard' : 'this-project',
+    }))
+    .filter(f => f.fact)
+    .slice(0, 8);
   if (progress) { try { progress(100, 'done'); } catch (_) {} }
 
   return {
     summary,
     coverage,
     questions,
+    learnedFacts,
     meta: {
       model: response.model || MODEL,
       usage: response.usage || null,

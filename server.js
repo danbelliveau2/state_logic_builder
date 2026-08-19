@@ -47,6 +47,19 @@
  *                                     the body — read it with fetch(), not
  *                                     EventSource.
  *
+ *   GET    /api/jarvis/questions      Jarvis's question queue (array, newest last)
+ *   POST   /api/jarvis/questions      append a question: { question, context?, source? }
+ *   POST   /api/jarvis/questions/:id/answer   { answer, answeredBy } — marks the
+ *                                     question answered AND appends the answer to
+ *                                     meKnowledge.md "## Learned from the MEs"
+ *                                     (dated, attributed; section/file created if
+ *                                     missing; one retry on write conflict)
+ *   POST   /api/jarvis/questions/:id/dismiss   mark a question dismissed
+ *   GET    /api/jarvis/knowledge      { meKnowledge, rulesHeadings } — read-only
+ *                                     view of what Jarvis knows (files on disk)
+ *   GET    /api/jarvis/trackrecord    { version, history, benchmarks, generatedCount }
+ *                                     — jarvisVersion.js HISTORY + benchmarks/*.report.json
+ *
  *   GET    /api/standards             get the entire shared standards library (array)
  *   POST   /api/standards             replace the entire library with the POST body
  *   POST   /api/standards/:id         upsert a single standard by id
@@ -397,10 +410,30 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     }
   }
 
+  /** Persist 'sdc-standard' learnedFacts to meKnowledge.md (append-only,
+   *  fuzzy-deduped) and annotate each fact with whether it was recorded.
+   *  Never throws — learning failures must not break the summarize result. */
+  function persistLearnedFacts(result) {
+    try {
+      if (!result || !Array.isArray(result.learnedFacts) || !result.learnedFacts.length) return result;
+      const { appendLearnedFacts } = require('./src/lib/agentGenerator/meKnowledge.js');
+      const { recorded } = appendLearnedFacts(result.learnedFacts, { who: 'ME' });
+      const recordedSet = new Set(recorded);
+      result.learnedFacts = result.learnedFacts.map(f => ({
+        ...f,
+        recorded: f.scope === 'sdc-standard' && recordedSet.has(String(f.fact).trim().replace(/\s+/g, ' ')),
+      }));
+      if (recorded.length) console.log('[jarvis] learned:', recorded.join(' | '));
+    } catch (e) {
+      console.warn('[jarvis] learned-fact persistence failed:', e.message);
+    }
+    return result;
+  }
+
   /** POST /api/jarvis/summarize — body: { description, images, checklist,
    *  sm, otherSms, priorSummary, corrections }. Cheap "Done explaining"
-   *  call: cleaned restatement + per-checklist coverage verdict + 2-4
-   *  follow-up questions. Stateless. */
+   *  call: cleaned restatement + per-checklist coverage verdict + 0-3
+   *  follow-up questions. Stateless except learnedFacts persistence. */
   async function handleJarvisSummarize(req, res) {
     let author;
     try {
@@ -421,7 +454,11 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         otherSms: Array.isArray(body.otherSms) ? body.otherSms : [],
         priorSummary: typeof body.priorSummary === 'string' ? body.priorSummary : '',
         corrections: typeof body.corrections === 'string' ? body.corrections : '',
+        round: Number(body.round) || 0,
+        qaHistory: Array.isArray(body.qaHistory) ? body.qaHistory : [],
+        priorCoverage: body.priorCoverage && typeof body.priorCoverage === 'object' ? body.priorCoverage : null,
       });
+      persistLearnedFacts(result);
       sendJson(res, 200, { ok: true, ...result });
     } catch (e) {
       if (e && e.code === 'AI_NOT_CONFIGURED') return sendJson(res, 503, { error: e.message });
@@ -485,9 +522,13 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         otherSms: Array.isArray(body.otherSms) ? body.otherSms : [],
         priorSummary: typeof body.priorSummary === 'string' ? body.priorSummary : '',
         corrections: typeof body.corrections === 'string' ? body.corrections : '',
+        round: Number(body.round) || 0,
+        qaHistory: Array.isArray(body.qaHistory) ? body.qaHistory : [],
+        priorCoverage: body.priorCoverage && typeof body.priorCoverage === 'object' ? body.priorCoverage : null,
         signal: abort.signal,
         onProgress,
       });
+      persistLearnedFacts(result);
       send('done', { ok: true, ...result });
     } catch (e) {
       if (clientGone || (e && (e.name === 'AbortError' || e.name === 'APIUserAbortError'))) {
@@ -497,6 +538,225 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       }
     }
     res.end();
+  }
+
+  // ── JARVIS learning being: question queue + knowledge + track record ───────
+  //
+  // Jarvis accumulates questions while working (create-station, generation,
+  // training, or manually seeded); the controls team answers them; answers
+  // become permanent lines in meKnowledge.md "## Learned from the MEs".
+  // Queue lives in <repo>/jarvis-knowledge/questions.json.
+
+  const JARVIS_QUESTIONS_DIR_  = path.join(__dirname, 'jarvis-knowledge');
+  const JARVIS_QUESTIONS_FILE_ = path.join(JARVIS_QUESTIONS_DIR_, 'questions.json');
+  const ME_KNOWLEDGE_PATH_     = path.join(__dirname, 'src', 'lib', 'agentGenerator', 'meKnowledge.md');
+  const LEARNED_HEADING_       = '## Learned from the MEs';
+
+  function readQuestions() {
+    try {
+      if (!fs.existsSync(JARVIS_QUESTIONS_FILE_)) return [];
+      const parsed = JSON.parse(fs.readFileSync(JARVIS_QUESTIONS_FILE_, 'utf8'));
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      console.warn('[jarvis-questions] read failed:', e.message);
+      return [];
+    }
+  }
+
+  /** Atomic write (tmp + rename), one retry — the file may be contended by
+   *  a concurrent answer/dismiss or an external seed script. */
+  function writeQuestions(arr) {
+    fs.mkdirSync(JARVIS_QUESTIONS_DIR_, { recursive: true });
+    const tmp = JARVIS_QUESTIONS_FILE_ + '.tmp';
+    const body = JSON.stringify(arr, null, 2);
+    try {
+      fs.writeFileSync(tmp, body, 'utf8');
+      fs.renameSync(tmp, JARVIS_QUESTIONS_FILE_);
+    } catch (e) {
+      // Retry once (Windows rename can transiently fail if the file is open)
+      fs.writeFileSync(tmp, body, 'utf8');
+      fs.renameSync(tmp, JARVIS_QUESTIONS_FILE_);
+    }
+  }
+
+  /** Append one dated, attributed learned line to meKnowledge.md's
+   *  "## Learned from the MEs" section. Creates the file and/or section if
+   *  missing. Coordinate-safe: read-modify-write is append-only and retried
+   *  once on failure. Returns the appended line text. */
+  function appendLearnedLine({ answer, answeredBy, question }) {
+    const date = new Date().toISOString().slice(0, 10);
+    const q = String(question || '').replace(/\s+/g, ' ').trim();
+    const qShort = q.length > 120 ? q.slice(0, 117) + '…' : q;
+    const line = `- (${date}, ${answeredBy}) ${String(answer).replace(/\s+/g, ' ').trim()}`
+      + (qShort ? ` [answers: "${qShort}"]` : '');
+
+    const doAppend = () => {
+      let md = '';
+      try { md = fs.readFileSync(ME_KNOWLEDGE_PATH_, 'utf8'); } catch (_) { md = ''; }
+      if (!md.trim()) {
+        md = '# ME-Facing Standing Knowledge\n\n' + LEARNED_HEADING_ + '\n\n'
+           + 'Append-only. One line per fact: `- (date, who) fact`.\n';
+      } else if (!md.includes(LEARNED_HEADING_)) {
+        md = md.replace(/\s*$/, '') + '\n\n' + LEARNED_HEADING_ + '\n\n'
+           + 'Append-only. One line per fact: `- (date, who) fact`.\n';
+      }
+      const updated = md.replace(/\s*$/, '') + '\n' + line + '\n';
+      fs.writeFileSync(ME_KNOWLEDGE_PATH_, updated, 'utf8');
+    };
+    try { doAppend(); }
+    catch (e) { doAppend(); } // one retry on write conflict
+    return line;
+  }
+
+  function handleJarvisQuestionsList(res) {
+    sendJson(res, 200, readQuestions());
+  }
+
+  /** POST /api/jarvis/questions — { question, context?, source? }. Used by
+   *  future integrations (create-station, generation, training) to queue a
+   *  question for the controls team. */
+  async function handleJarvisQuestionAdd(req, res) {
+    try {
+      const body = JSON.parse(await readBody(req) || '{}');
+      const question = String(body.question || '').trim();
+      if (!question) return sendJson(res, 400, { error: 'question is required' });
+      const VALID_SOURCES = ['create-station', 'generation', 'training', 'manual'];
+      const entry = {
+        id: 'q_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8),
+        question,
+        context: String(body.context || '').trim(),
+        source: VALID_SOURCES.includes(body.source) ? body.source : 'manual',
+        askedAt: new Date().toISOString(),
+        status: 'open',
+      };
+      const arr = readQuestions();
+      arr.push(entry);
+      writeQuestions(arr);
+      sendJson(res, 200, { ok: true, question: entry });
+    } catch (e) { sendJson(res, 500, { error: e.message }); }
+  }
+
+  /** POST /api/jarvis/questions/:id/answer — { answer, answeredBy }. Marks
+   *  answered AND appends the answer to meKnowledge.md so Jarvis's very next
+   *  prompt includes it (loadMeKnowledge() reads the file fresh). */
+  async function handleJarvisQuestionAnswer(req, res, id) {
+    try {
+      const body = JSON.parse(await readBody(req) || '{}');
+      const answer = String(body.answer || '').trim();
+      const answeredBy = String(body.answeredBy || '').trim() || 'Controls';
+      if (!answer) return sendJson(res, 400, { error: 'answer is required' });
+      const arr = readQuestions();
+      const q = arr.find(x => x && x.id === id);
+      if (!q) return sendJson(res, 404, { error: 'Question not found' });
+      if (q.status === 'answered') return sendJson(res, 409, { error: 'Already answered' });
+
+      const learnedFactId = 'learned_' + Date.now().toString(36);
+      let learnedLine = null;
+      try {
+        learnedLine = appendLearnedLine({ answer, answeredBy, question: q.question });
+      } catch (e) {
+        // Honest failure: the answer is still recorded on the question, but
+        // the client is told Jarvis could NOT persist it to standing knowledge.
+        console.warn('[jarvis-questions] meKnowledge append failed:', e.message);
+      }
+
+      q.status = 'answered';
+      q.answer = answer;
+      q.answeredBy = answeredBy;
+      q.answeredAt = new Date().toISOString();
+      if (learnedLine) q.learnedFactId = learnedFactId;
+      writeQuestions(arr);
+      sendJson(res, 200, { ok: true, question: q, learned: !!learnedLine, learnedLine });
+    } catch (e) { sendJson(res, 500, { error: e.message }); }
+  }
+
+  /** POST /api/jarvis/questions/:id/dismiss */
+  async function handleJarvisQuestionDismiss(res, id) {
+    try {
+      const arr = readQuestions();
+      const q = arr.find(x => x && x.id === id);
+      if (!q) return sendJson(res, 404, { error: 'Question not found' });
+      q.status = 'dismissed';
+      writeQuestions(arr);
+      sendJson(res, 200, { ok: true, question: q });
+    } catch (e) { sendJson(res, 500, { error: e.message }); }
+  }
+
+  /** GET /api/jarvis/knowledge — what Jarvis knows, read fresh from disk:
+   *  meKnowledge.md full text (null if absent) + generationRules.md headings. */
+  function handleJarvisKnowledge(res) {
+    let meKnowledge = null;
+    try { meKnowledge = fs.readFileSync(ME_KNOWLEDGE_PATH_, 'utf8'); } catch (_) {}
+    let rulesHeadings = [];
+    try {
+      const rules = fs.readFileSync(path.join(__dirname, 'src', 'lib', 'agentGenerator', 'generationRules.md'), 'utf8');
+      rulesHeadings = rules.split('\n')
+        .filter(l => /^#{1,2}\s/.test(l))
+        .map(l => l.replace(/^#+\s*/, '').trim());
+    } catch (_) {}
+    sendJson(res, 200, { meKnowledge, rulesHeadings });
+  }
+
+  /** GET /api/jarvis/trackrecord — jarvisVersion HISTORY + every
+   *  benchmarks/<project>/<name>.report.json + generated-file count. All read
+   *  fresh so a benchmark run shows up on refresh. */
+  function handleJarvisTrackRecord(res) {
+    let version = null, history = [];
+    try {
+      // Bust the require cache so a version bump shows without a restart.
+      const vPath = require.resolve('./src/lib/agentGenerator/jarvisVersion.js');
+      delete require.cache[vPath];
+      const jv = require('./src/lib/agentGenerator/jarvisVersion.js');
+      version = jv.JARVIS_VERSION;
+      history = jv.HISTORY;
+    } catch (e) {
+      console.warn('[jarvis-trackrecord] version load failed:', e.message);
+    }
+
+    const benchmarks = [];
+    try {
+      const benchDir = path.join(__dirname, 'benchmarks');
+      for (const sub of fs.readdirSync(benchDir, { withFileTypes: true })) {
+        if (!sub.isDirectory()) continue;
+        const subDir = path.join(benchDir, sub.name);
+        for (const f of fs.readdirSync(subDir)) {
+          if (!f.endsWith('.report.json')) continue;
+          try {
+            const r = JSON.parse(fs.readFileSync(path.join(subDir, f), 'utf8'));
+            benchmarks.push({
+              file: `${sub.name}/${f}`,
+              version: r.jarvisVersion || null,
+              project: r.project || sub.name,
+              smName: r.smName || null,
+              ok: r.ok === true,
+              attemptsUsed: r.attemptsUsed ?? null,
+              durationMs: r.durationMs ?? null,
+              costUSD: r.costEstimate?.totalUSD ?? null,
+              ranAt: r.ranAt || null,
+              errors: r.validation?.errors?.length ?? null,
+              warnings: r.validation?.warnings?.length ?? null,
+            });
+          } catch (e) {
+            benchmarks.push({ file: `${sub.name}/${f}`, parseError: e.message, ok: false });
+          }
+        }
+      }
+      benchmarks.sort((a, b) => String(a.ranAt || '').localeCompare(String(b.ranAt || '')));
+    } catch (_) { /* no benchmarks dir — empty list is honest */ }
+
+    let generatedCount = 0;
+    try {
+      const walk = (dir) => {
+        for (const d of fs.readdirSync(dir, { withFileTypes: true })) {
+          const fp = path.join(dir, d.name);
+          if (d.isDirectory()) walk(fp);
+          else if (/\.L5X$/i.test(d.name)) generatedCount++;
+        }
+      };
+      walk(path.join(__dirname, 'generated'));
+    } catch (_) {}
+
+    sendJson(res, 200, { version, history, benchmarks, generatedCount });
   }
 
   // ── Standards Library (shared across all clients) ─────────────────────────
@@ -647,6 +907,32 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
 
     if (pathname === '/api/jarvis/summarize/stream') {
       if (method === 'POST') return handleJarvisSummarizeStream(req, res);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    if (pathname.startsWith('/api/jarvis/questions')) {
+      const rest = pathname.slice('/api/jarvis/questions'.length);
+      if (rest === '' || rest === '/') {
+        if (method === 'GET')  return handleJarvisQuestionsList(res);
+        if (method === 'POST') return handleJarvisQuestionAdd(req, res);
+        return sendJson(res, 405, { error: 'Method not allowed' });
+      }
+      const m = rest.match(/^\/([^/]+)\/(answer|dismiss)$/);
+      if (m && method === 'POST') {
+        const id = decodeURIComponent(m[1]);
+        if (m[2] === 'answer')  return handleJarvisQuestionAnswer(req, res, id);
+        if (m[2] === 'dismiss') return handleJarvisQuestionDismiss(res, id);
+      }
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    if (pathname === '/api/jarvis/knowledge') {
+      if (method === 'GET') return handleJarvisKnowledge(res);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    if (pathname === '/api/jarvis/trackrecord') {
+      if (method === 'GET') return handleJarvisTrackRecord(res);
       return sendJson(res, 405, { error: 'Method not allowed' });
     }
 
