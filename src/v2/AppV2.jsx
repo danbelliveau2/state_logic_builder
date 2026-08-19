@@ -22,7 +22,7 @@
 import { useEffect, useState, useCallback, Component } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { Canvas } from '../components/Canvas.jsx';
-import { NewStateMachineModal } from '../components/modals/NewStateMachineModal.jsx';
+import { CreateStationModal } from '../components/modals/CreateStationModal.jsx';
 import { AddDeviceModal } from '../components/modals/AddDeviceModal.jsx';
 import { ActionModal } from '../components/modals/ActionModal.jsx';
 import { ProjectManagerModal } from '../components/modals/ProjectManagerModal.jsx';
@@ -160,10 +160,11 @@ export function AppV2() {
 
         {/* Store-flag modals — same set the classic App mounts, so canvas
             interactions (add device, edit action…) keep working in v2. */}
-        {/* TODO(v2 integration point): swap NewStateMachineModal for the
-            describe-first CreateStationModal once it lands (being built in a
+        {/* v2 uses the describe-first CreateStationModal (live checklist gates
+            Build; "start blank instead" inside it reaches the classic modal)
+            (integrated from the parallel build — was NewStateMachineModal in a
             parallel session — not imported yet on purpose). */}
-        {showNewSmModal && <NewStateMachineModal />}
+        {showNewSmModal && <CreateStationModal />}
         {(showAddDeviceModal || showEditDeviceModal) && <AddDeviceModal />}
         {showActionModal && <ActionModal />}
         {showProjectManager && <ProjectManagerModal />}
