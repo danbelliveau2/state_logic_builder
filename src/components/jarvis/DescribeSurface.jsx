@@ -1,14 +1,24 @@
 /**
  * DescribeSurface — the shared "Explain this station" surface.
  *
- * One big free-form textarea + image drag-drop (CAD screenshots), used by
- * both SpecEditorModal (re-describe an existing station) and
- * CreateStationModal (describe-first station creation). Extracted so the
- * two flows can't drift apart.
+ * One big free-form textarea + image drag-drop / clipboard paste (CAD
+ * screenshots, Snipping Tool captures), used by SpecEditorModal
+ * (re-describe an existing station) and CreateStationPage (describe-first
+ * station creation). Extracted so the flows can't drift apart.
  *
  * Controlled: the parent owns `description` and `images` state. Images are
  * downscaled client-side (imageUtils.downscaleImage) before being stored as
  * { name, base64, mediaType, previewUrl }.
+ *
+ * Clipboard paste: a WINDOW-level 'paste' listener (mounted while this
+ * surface is mounted) catches Ctrl+V anywhere on the page — including when
+ * focus is inside the textarea. When the clipboard holds image items the
+ * event is preventDefault-ed so no junk text lands in the textarea, and the
+ * images go through the same downscale path as drag-drop.
+ *
+ * Voice dictation lives in the exported useDictation hook + MicButton so
+ * other inputs (e.g. the summary "changes" box on CreateStationPage) reuse
+ * the exact same implementation.
  *
  * SDC palette only — standard form classes + CSS tokens.
  */
@@ -16,17 +26,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { downscaleImage } from '../../lib/imageUtils.js';
 
-/**
- * Voice dictation (Web Speech API).
- *
- * Interim-text choice: interim (not-yet-final) speech is kept in LOCAL state
- * and rendered as a non-editable light-gray ghost strip overlaid at the
- * bottom of the textarea. It is never written into the controlled value, so
- * it can never corrupt the user's typed text and the coverage checklist only
- * ever sees committed (final) results. Final results are inserted at the
- * textarea caret (or appended at the end when unfocused) through the normal
- * onDescriptionChange path — so the checklist reacts live while dictating.
- */
 function getSpeechRecognition() {
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
@@ -42,34 +41,35 @@ const C = {
   danger: 'var(--color-danger)',
 };
 
-export function DescribeSurface({
-  description,
-  onDescriptionChange,
-  images,
-  onImagesChange,
-  label = 'Explain this station like you would to a new engineer.',
-  hint = null,            // optional node rendered under the label
-  placeholder,
-  rows = 12,
-  autoFocus = true,
-  error = null,
-  errorTitle = 'Extraction failed:',
-}) {
-  const [dragOver, setDragOver] = useState(false);
-  const fileInputRef = useRef(null);
-  const textareaRef = useRef(null);
-
-  // ── Voice dictation state ─────────────────────────────────────────────
+/**
+ * Voice dictation (Web Speech API) — reusable hook.
+ *
+ * Interim-text choice: interim (not-yet-final) speech is kept in LOCAL state
+ * and rendered by the caller as a non-editable light-gray ghost strip. It is
+ * never written into the controlled value, so it can never corrupt the
+ * user's typed text and coverage checklists only ever see committed (final)
+ * results. Final results are inserted at the textarea caret (or appended at
+ * the end when unfocused) through the normal onChange path.
+ *
+ * @param {object} opts
+ * @param {string} opts.value                  current controlled text value
+ * @param {(next:string)=>void} opts.onChange  controlled setter
+ * @param {React.RefObject} opts.textareaRef   ref to the target textarea
+ * @param {()=>void} [opts.onEnd]              called when the USER toggles dictation off
+ */
+export function useDictation({ value, onChange, textareaRef, onEnd = null }) {
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState('');
   const [micError, setMicError] = useState(null);
-  const recognitionRef = useRef(null);   // live SpeechRecognition instance
+  const recognitionRef = useRef(null);    // live SpeechRecognition instance
   const wantListeningRef = useRef(false); // user toggle intent (survives auto-end)
   // Fresh values for use inside recognition callbacks (avoid stale closures)
-  const descriptionRef = useRef(description);
-  descriptionRef.current = description;
-  const onChangeRef = useRef(onDescriptionChange);
-  onChangeRef.current = onDescriptionChange;
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const onEndRef = useRef(onEnd);
+  onEndRef.current = onEnd;
 
   // Supported? (checked per render so a late polyfill/test hook still works)
   const speechSupported = typeof window !== 'undefined' && !!getSpeechRecognition();
@@ -78,7 +78,7 @@ export function DescribeSurface({
   function insertFinalTranscript(text) {
     const chunk = text.trim();
     if (!chunk) return;
-    const current = descriptionRef.current ?? '';
+    const current = valueRef.current ?? '';
     const ta = textareaRef.current;
     // Insert at caret if the textarea is focused, else append at the end.
     const at = (ta && document.activeElement === ta) ? ta.selectionStart : current.length;
@@ -152,6 +152,7 @@ export function DescribeSurface({
       setInterim('');
       try { recognitionRef.current?.stop(); } catch { /* noop */ }
       recognitionRef.current = null;
+      onEndRef.current?.();
     } else {
       setMicError(null);
       wantListeningRef.current = true;
@@ -159,101 +160,170 @@ export function DescribeSurface({
     }
   }
 
-  // Stop cleanly on unmount (modal close)
+  // Stop cleanly on unmount (page/modal close)
   useEffect(() => () => {
     wantListeningRef.current = false;
     try { recognitionRef.current?.stop(); } catch { /* noop */ }
     recognitionRef.current = null;
   }, []);
 
+  return { listening, interim, micError, speechSupported, toggleDictation };
+}
+
+/** The mic toggle button — shared styling for every dictation-enabled input. */
+export function MicButton({ listening, supported, onToggle, testId = 'dictate-btn' }) {
+  return (
+    <button
+      type="button"
+      className="icon-btn"
+      data-testid={testId}
+      disabled={!supported}
+      onClick={onToggle}
+      title={!supported
+        ? 'Voice input needs Chrome/Edge'
+        : listening ? 'Stop dictation' : 'Dictate (voice to text)'}
+      style={{
+        border: `1px solid ${listening ? C.danger : C.border}`,
+        color: listening ? C.danger : C.muted,
+        background: listening ? '#fdf3f3' : 'transparent',
+        opacity: supported ? 1 : 0.4,
+        cursor: supported ? 'pointer' : 'not-allowed',
+      }}
+    >
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+        <line x1="12" y1="19" x2="12" y2="23" />
+      </svg>
+    </button>
+  );
+}
+
+/** Pulsing "Listening…" indicator (shared with the changes input). */
+export function ListeningIndicator() {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 6,
+      fontSize: 11, color: C.danger, fontWeight: 600, whiteSpace: 'nowrap',
+    }}>
+      <span style={{
+        width: 8, height: 8, borderRadius: '50%', background: C.danger,
+        animation: 'sdc-mic-pulse 1.2s ease-in-out infinite',
+      }} />
+      Listening…
+    </span>
+  );
+}
+
+export function DescribeSurface({
+  description,
+  onDescriptionChange,
+  images,
+  onImagesChange,
+  label = 'Explain this station like you would to a new engineer.',
+  hint = null,            // optional node rendered under the label
+  placeholder,
+  rows = 12,
+  autoFocus = true,
+  error = null,
+  errorTitle = 'Extraction failed:',
+  onDictationEnd = null,  // called when the user toggles dictation OFF
+  showTextarea = true,    // false = images-only mode ("Add pictures" step)
+}) {
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef(null);
+  const textareaRef = useRef(null);
+
+  const { listening, interim, micError, speechSupported, toggleDictation } = useDictation({
+    value: description,
+    onChange: onDescriptionChange,
+    textareaRef,
+    onEnd: onDictationEnd,
+  });
+
+  // Fresh refs for the window-level paste listener (avoid stale closures)
+  const imagesRef = useRef(images);
+  imagesRef.current = images;
+  const onImagesChangeRef = useRef(onImagesChange);
+  onImagesChangeRef.current = onImagesChange;
+
   async function addFiles(fileList) {
-    const files = [...fileList].filter(f => f.type.startsWith('image/'));
+    const files = [...fileList].filter(f => f && f.type && f.type.startsWith('image/'));
     if (!files.length) return;
     try {
       const processed = await Promise.all(files.slice(0, MAX_DESCRIBE_IMAGES).map(downscaleImage));
-      onImagesChange([...images, ...processed].slice(0, MAX_DESCRIBE_IMAGES));
+      onImagesChangeRef.current([...imagesRef.current, ...processed].slice(0, MAX_DESCRIBE_IMAGES));
     } catch (e) { alert(e.message); }
   }
 
+  // ── Clipboard paste (Snipping Tool etc.) — page-wide while mounted ──────
+  useEffect(() => {
+    function onPaste(e) {
+      const items = [...(e.clipboardData?.items || [])]
+        .filter(it => it.kind === 'file' && it.type.startsWith('image/'));
+      if (!items.length) return; // plain text paste — leave it alone
+      // Image paste must never dump junk text into a focused textarea.
+      e.preventDefault();
+      const files = items.map(it => it.getAsFile()).filter(Boolean)
+        .map((f, i) => (f.name ? f : new File([f], `pasted-${Date.now()}-${i}.png`, { type: f.type })));
+      addFiles(files);
+    }
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+    // addFiles reads through refs — safe with an empty dep list
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <label className="form-label" style={{ fontSize: 14, flex: 1, marginBottom: 0 }}>{label}</label>
-        {listening && (
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            fontSize: 11, color: C.danger, fontWeight: 600, whiteSpace: 'nowrap',
-          }}>
-            <span style={{
-              width: 8, height: 8, borderRadius: '50%', background: C.danger,
-              animation: 'sdc-mic-pulse 1.2s ease-in-out infinite',
-            }} />
-            Listening…
-          </span>
-        )}
-        <button
-          type="button"
-          className="icon-btn"
-          data-testid="dictate-btn"
-          disabled={!speechSupported}
-          onClick={toggleDictation}
-          title={!speechSupported
-            ? 'Voice input needs Chrome/Edge'
-            : listening ? 'Stop dictation' : 'Dictate (voice to text)'}
-          style={{
-            border: `1px solid ${listening ? C.danger : C.border}`,
-            color: listening ? C.danger : C.muted,
-            background: listening ? '#fdf3f3' : 'transparent',
-            opacity: speechSupported ? 1 : 0.4,
-            cursor: speechSupported ? 'pointer' : 'not-allowed',
-          }}
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-            <line x1="12" y1="19" x2="12" y2="23" />
-          </svg>
-        </button>
-        <style>{'@keyframes sdc-mic-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }'}</style>
-      </div>
-      {hint}
-      {micError && (
-        <div style={{ fontSize: 11, color: C.danger, margin: '4px 0 2px' }}>{micError}</div>
-      )}
-      <div style={{ position: 'relative' }}>
-        <textarea
-          ref={textareaRef}
-          className="form-input form-textarea"
-          autoFocus={autoFocus}
-          rows={rows}
-          style={{ lineHeight: 1.55, fontFamily: 'inherit', resize: 'vertical' }}
-          value={description}
-          onChange={e => onDescriptionChange(e.target.value)}
-          placeholder={placeholder
-            ?? 'Just talk — JARVIS pulls the spec out of what you write.\n\ne.g. "This station feeds magnets to the pick. There\'s a vertical shuttle that raises the stack, a horizontal shuttle that slides one magnet over coin-changer style…"'}
-        />
-        {listening && interim && (
-          <div
-            data-testid="dictate-interim"
-            style={{
-              position: 'absolute', left: 1, right: 1, bottom: 1,
-              padding: '4px 10px', pointerEvents: 'none',
-              fontSize: 12, fontStyle: 'italic', color: C.light,
-              background: 'rgba(255,255,255,0.88)',
-              borderRadius: '0 0 6px 6px',
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            }}
-          >
-            {interim}
+      {showTextarea && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label className="form-label" style={{ fontSize: 14, flex: 1, marginBottom: 0 }}>{label}</label>
+            {listening && <ListeningIndicator />}
+            <MicButton listening={listening} supported={speechSupported} onToggle={toggleDictation} />
+            <style>{'@keyframes sdc-mic-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }'}</style>
           </div>
-        )}
-      </div>
+          {hint}
+          {micError && (
+            <div style={{ fontSize: 11, color: C.danger, margin: '4px 0 2px' }}>{micError}</div>
+          )}
+          <div style={{ position: 'relative' }}>
+            <textarea
+              ref={textareaRef}
+              className="form-input form-textarea"
+              autoFocus={autoFocus}
+              rows={rows}
+              style={{ lineHeight: 1.55, fontFamily: 'inherit', resize: 'vertical' }}
+              value={description}
+              onChange={e => onDescriptionChange(e.target.value)}
+              placeholder={placeholder
+                ?? 'Just talk — JARVIS pulls the spec out of what you write.\n\ne.g. "This station feeds magnets to the pick. There\'s a vertical shuttle that raises the stack, a horizontal shuttle that slides one magnet over coin-changer style…"'}
+            />
+            {listening && interim && (
+              <div
+                data-testid="dictate-interim"
+                style={{
+                  position: 'absolute', left: 1, right: 1, bottom: 1,
+                  padding: '4px 10px', pointerEvents: 'none',
+                  fontSize: 12, fontStyle: 'italic', color: C.light,
+                  background: 'rgba(255,255,255,0.88)',
+                  borderRadius: '0 0 6px 6px',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}
+              >
+                {interim}
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
-      <label className="form-label" style={{ marginTop: 12 }}>
-        Pictures (optional — CAD screenshots, layout sketches)
+      <label className="form-label" style={{ marginTop: showTextarea ? 12 : 0 }}>
+        Pictures (optional — CAD screenshots, layout sketches, Snipping Tool captures)
       </label>
       <div
+        data-testid="describe-image-drop"
         onDragOver={e => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={e => { e.preventDefault(); setDragOver(false); addFiles(e.dataTransfer.files); }}
@@ -267,7 +337,10 @@ export function DescribeSurface({
         }}
       >
         {images.length === 0 && (
-          <span>Drag &amp; drop images here, or click to browse (max {MAX_DESCRIBE_IMAGES}, auto-resized)</span>
+          <span>
+            Drag &amp; drop, click to browse, or <strong>paste (Ctrl+V)</strong> a screenshot
+            (max {MAX_DESCRIBE_IMAGES}, auto-resized)
+          </span>
         )}
         {images.map((img, i) => (
           <div key={i} style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
@@ -287,7 +360,9 @@ export function DescribeSurface({
           </div>
         ))}
         {images.length > 0 && images.length < MAX_DESCRIBE_IMAGES && (
-          <span style={{ fontSize: 20, color: C.light, padding: '0 10px' }}>＋</span>
+          <span style={{ fontSize: 20, color: C.light, padding: '0 10px' }}>
+            ＋ <span style={{ fontSize: 11 }}>drop / paste more</span>
+          </span>
         )}
       </div>
       <input

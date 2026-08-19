@@ -33,6 +33,10 @@
  *                                       otherSms:[{id,name,displayName}], existingSpec }
  *                                     -> { ok, spec, proposedDevices, unmentionedDeviceIds,
  *                                          questions, fixups, meta }. Stateless — nothing saved.
+ *   POST   /api/jarvis/summarize      "Done explaining" -> cleaned restatement:
+ *                                     { description, images, checklist, sm, otherSms,
+ *                                       priorSummary, corrections }
+ *                                     -> { ok, summary, coverage, questions, meta }. Stateless.
  *
  *   GET    /api/standards             get the entire shared standards library (array)
  *   POST   /api/standards             replace the entire library with the POST body
@@ -384,6 +388,38 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     }
   }
 
+  /** POST /api/jarvis/summarize — body: { description, images, checklist,
+   *  sm, otherSms, priorSummary, corrections }. Cheap "Done explaining"
+   *  call: cleaned restatement + per-checklist coverage verdict + 2-4
+   *  follow-up questions. Stateless. */
+  async function handleJarvisSummarize(req, res) {
+    let author;
+    try {
+      author = require('./src/lib/agentGenerator/specAuthor.js');
+    } catch (e) {
+      return sendJson(res, 503, { error: 'Spec author not available — run npm install: ' + e.message });
+    }
+    try {
+      const body = JSON.parse(await readBody(req) || '{}');
+      if (!body.description || !String(body.description).trim()) {
+        return sendJson(res, 400, { error: 'description is required' });
+      }
+      const result = await author.summarizeDescription({
+        description: body.description,
+        images: Array.isArray(body.images) ? body.images : [],
+        checklist: body.checklist && typeof body.checklist === 'object' ? body.checklist : null,
+        sm: body.sm && typeof body.sm === 'object' ? body.sm : {},
+        otherSms: Array.isArray(body.otherSms) ? body.otherSms : [],
+        priorSummary: typeof body.priorSummary === 'string' ? body.priorSummary : '',
+        corrections: typeof body.corrections === 'string' ? body.corrections : '',
+      });
+      sendJson(res, 200, { ok: true, ...result });
+    } catch (e) {
+      if (e && e.code === 'AI_NOT_CONFIGURED') return sendJson(res, 503, { error: e.message });
+      sendJson(res, 500, { error: e.message });
+    }
+  }
+
   // ── Standards Library (shared across all clients) ─────────────────────────
 
   /** Read the full standards array from disk. Returns [] if the file is
@@ -522,6 +558,11 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
 
     if (pathname === '/api/jarvis/spec') {
       if (method === 'POST') return handleJarvisSpec(req, res);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    if (pathname === '/api/jarvis/summarize') {
+      if (method === 'POST') return handleJarvisSummarize(req, res);
       return sendJson(res, 405, { error: 'Method not allowed' });
     }
 

@@ -12,7 +12,7 @@ import { Canvas } from './components/Canvas.jsx';
 import { PropertiesPanel } from './components/PropertiesPanel.jsx';
 import { ProjectSetup } from './components/ProjectSetup.jsx';
 import { StandardsView } from './components/StandardsView.jsx';
-import { CreateStationModal } from './components/modals/CreateStationModal.jsx';
+import { CreateStationPage } from './components/jarvis/CreateStationPage.jsx';
 import { AddDeviceModal } from './components/modals/AddDeviceModal.jsx';
 import { ActionModal } from './components/modals/ActionModal.jsx';
 import { ProjectManagerModal } from './components/modals/ProjectManagerModal.jsx';
@@ -129,7 +129,10 @@ export function App() {
           )}
         </div>
 
-        {showNewSmModal && <CreateStationModal />}
+        {/* Full-viewport describe-first Create Station page (round-2 rework —
+            was CreateStationModal). Renders fixed over the whole app; only
+            its explicit "← Back" (with draft-safe confirm) leaves it. */}
+        {showNewSmModal && <CreateStationPage />}
         {(showAddDeviceModal || showEditDeviceModal) && <AddDeviceModal />}
         {showActionModal && <ActionModal />}
         {showProjectManager && <ProjectManagerModal />}

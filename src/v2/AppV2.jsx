@@ -22,7 +22,7 @@
 import { useEffect, useState, useCallback, Component } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { Canvas } from '../components/Canvas.jsx';
-import { CreateStationModal } from '../components/modals/CreateStationModal.jsx';
+import { CreateStationPage } from '../components/jarvis/CreateStationPage.jsx';
 import { AddDeviceModal } from '../components/modals/AddDeviceModal.jsx';
 import { ActionModal } from '../components/modals/ActionModal.jsx';
 import { ProjectManagerModal } from '../components/modals/ProjectManagerModal.jsx';
@@ -160,11 +160,12 @@ export function AppV2() {
 
         {/* Store-flag modals — same set the classic App mounts, so canvas
             interactions (add device, edit action…) keep working in v2. */}
-        {/* v2 uses the describe-first CreateStationModal (live checklist gates
-            Build; "start blank instead" inside it reaches the classic modal)
-            (integrated from the parallel build — was NewStateMachineModal in a
-            parallel session — not imported yet on purpose). */}
-        {showNewSmModal && <CreateStationModal />}
+        {/* v2 uses the describe-first Create Station flow as a FULL-VIEWPORT
+            page (round-2 rework — was CreateStationModal): overlays the whole
+            shell on showNewSmModal, no outside-click dismissal, draft
+            autosave, JARVIS summary loop. "start blank instead" inside it
+            still reaches the classic NewStateMachineModal. */}
+        {showNewSmModal && <CreateStationPage />}
         {(showAddDeviceModal || showEditDeviceModal) && <AddDeviceModal />}
         {showActionModal && <ActionModal />}
         {showProjectManager && <ProjectManagerModal />}

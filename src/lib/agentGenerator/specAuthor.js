@@ -276,4 +276,144 @@ async function authorSpec({ description, images = [], sm = {}, otherSms = [], ex
   };
 }
 
-module.exports = { authorSpec };
+// ── summarizeDescription — "Done explaining" cleanup + coverage verdict ─────
+//
+// Cheap, fast call: restates the engineer's raw explanation as a clean,
+// well-organized summary (short paragraphs under the four checklist
+// headings), gives a per-checklist-item coverage verdict (replacing the
+// local regex heuristics once it exists), and asks 2-4 "anything to
+// change?" questions. Used by CreateStationPage's summary loop; the final
+// Build then runs on the summary (+ original appended as reference).
+
+const SUMMARIZE_MAX_TOKENS = parseInt(process.env.JARVIS_SUMMARIZE_MAX_TOKENS, 10) || 2000;
+
+const COVERAGE_KEYS = ['devices', 'sequence', 'failures', 'interactions'];
+
+const SUMMARIZE_OUTPUT = `
+# Your response
+
+Respond with ONLY one JSON object (no markdown fences, no prose):
+{
+  "summary": "<the cleaned restatement — plain text, four sections, each a heading line then 1-3 short paragraphs>",
+  "coverage": {
+    "devices":      { "score": 0|1|2, "missing": "<one short line: what is still missing — '' when score is 2>" },
+    "sequence":     { "score": 0|1|2, "missing": "..." },
+    "failures":     { "score": 0|1|2, "missing": "..." },
+    "interactions": { "score": 0|1|2, "missing": "..." }
+  },
+  "questions": ["<2-4 short 'anything to change?' questions about genuine gaps or ambiguities>"]
+}
+
+Summary rules:
+- Use EXACTLY these four heading lines, in this order, each on its own line:
+  "DEVICES", "SEQUENCE", "FAILURE HANDLING", "STATION INTERACTIONS".
+- Under each heading: short readable paragraphs restating what the engineer SAID — their
+  intent, cleaned up and organized. Faithful: never invent devices, steps, numbers, or
+  behavior they did not state. If a section has nothing, write one line: "(not described yet)".
+- Keep the engineer's device names/terms. Fix grammar and rambling, not meaning.
+
+Coverage rules (2 = fully covered, 1 = mentioned briefly, 0 = not covered):
+- devices: are the physical devices named with what each is for?
+- sequence: is the cycle walked step by step, in order?
+- failures: are failure cases given WITH what should happen about them?
+- interactions: are relationships to other stations stated (feeds / waits for / tells / hands off)?
+  When the project has no other stations this may be scored 2 with missing "".
+- "missing": actionable and specific ("the gripper's open/closed sensing isn't stated"), not generic.
+`;
+
+/**
+ * @param {object} opts
+ * @param {string} opts.description       The engineer's raw explanation (required)
+ * @param {Array}  [opts.images]          [{name?, base64, mediaType}]
+ * @param {object} [opts.checklist]       local heuristic scores (context only)
+ * @param {object} [opts.sm]              { name, displayName }
+ * @param {Array}  [opts.otherSms]        [{ name, displayName }]
+ * @param {string} [opts.priorSummary]    previous summary being revised
+ * @param {string} [opts.corrections]     the engineer's correction text
+ * @param {AbortSignal} [opts.signal]
+ * @returns {Promise<{ summary, coverage, questions, meta }>}
+ */
+async function summarizeDescription({
+  description, images = [], checklist = null, sm = {}, otherSms = [],
+  priorSummary = '', corrections = '', signal = null,
+} = {}) {
+  if (!description || !String(description).trim()) {
+    throw new Error('description is required');
+  }
+  const client = getClient();
+
+  const stationLines = (otherSms || []).map(s => `  - ${s.displayName || s.name}`).join('\n')
+    || '  (no other stations in this project yet)';
+
+  const system =
+    'You are JARVIS, the SDC Automation station explainer. A manufacturing engineer has just ' +
+    'finished explaining an automation station out loud (dictated and/or typed — expect rambling, ' +
+    'repetition, speech artifacts). You restate it cleanly and judge how complete it is. You NEVER ' +
+    'invent behavior — everything in the summary must come from what they said.\n' + SUMMARIZE_OUTPUT;
+
+  const content = [];
+  for (const img of images.slice(0, 8)) {
+    if (!img || !img.base64) continue;
+    content.push({
+      type: 'image',
+      source: { type: 'base64', media_type: img.mediaType || 'image/jpeg', data: img.base64 },
+    });
+  }
+  let text =
+    `STATION being described: "${sm.displayName || sm.name || 'Unknown'}"\n\n` +
+    `Other stations in this project:\n${stationLines}\n`;
+  if (checklist && typeof checklist === 'object') {
+    text += `\nLocal keyword-heuristic checklist scores (rough context only — your verdict replaces them): ${JSON.stringify(checklist)}\n`;
+  }
+  text += `\nEngineer's raw explanation:\n\n${String(description).trim()}`;
+  if (priorSummary && String(priorSummary).trim()) {
+    text += `\n\nYour PREVIOUS summary (being revised):\n\n${String(priorSummary).trim()}`;
+  }
+  if (corrections && String(corrections).trim()) {
+    text += `\n\nEngineer's CORRECTIONS to apply (these override anything they conflict with above):\n\n${String(corrections).trim()}`;
+  }
+  if (images.length) text += `\n\n(${images.length} image(s) of the station/CAD are attached above.)`;
+  content.push({ type: 'text', text });
+
+  const req = { model: MODEL, max_tokens: SUMMARIZE_MAX_TOKENS, system, messages: [{ role: 'user', content }] };
+  if (/^claude-(fable|opus)-/.test(MODEL)) {
+    req.betas = ['server-side-fallback-2026-07-01'];
+    req.fallbacks = 'default';
+  }
+  const stream = client.beta.messages.stream(req, signal ? { signal } : undefined);
+  const response = await stream.finalMessage();
+  if (response.stop_reason === 'refusal') {
+    throw new Error('Model refused the request: ' + (response.stop_details?.explanation || 'no reason given'));
+  }
+  if (response.stop_reason === 'max_tokens') {
+    throw new Error(`Summary truncated at ${SUMMARIZE_MAX_TOKENS} tokens — try a shorter description`);
+  }
+  const raw = response.content.filter(b => b.type === 'text').map(b => b.text).join('');
+  const parsed = extractJson(raw);
+
+  // Normalize
+  const coverage = {};
+  for (const k of COVERAGE_KEYS) {
+    const c = parsed.coverage && parsed.coverage[k];
+    const score = c && [0, 1, 2].includes(Number(c.score)) ? Number(c.score) : 0;
+    coverage[k] = { score, missing: String((c && c.missing) || '').trim() };
+  }
+  const summary = String(parsed.summary || '').trim();
+  if (!summary) throw new Error('Model returned an empty summary');
+  const questions = (Array.isArray(parsed.questions) ? parsed.questions : [])
+    .map(q => String(q).trim()).filter(Boolean).slice(0, 4);
+
+  const costUSD = response.usage ? costOfUsage(response.usage, MODEL) : 0;
+  return {
+    summary,
+    coverage,
+    questions,
+    meta: {
+      model: response.model || MODEL,
+      usage: response.usage || null,
+      costUSD: Number(costUSD.toFixed(4)),
+    },
+  };
+}
+
+module.exports = { authorSpec, summarizeDescription };
