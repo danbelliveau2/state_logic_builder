@@ -1,0 +1,3060 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<RSLogix5000Content SchemaRevision="1.0" SoftwareRevision="37.00" TargetName="SoftwareStandardization" TargetType="Controller" ContainsContext="false" ExportDate="Wed, 19 Aug 2026 12:28:35 GMT" ExportOptions="References NoRawData L5KData DecoratedData Context Dependencies ForceProtectedEncoding AllProjDocTrans">
+<Controller Use="Target" Name="SoftwareStandardization" ProcessorType="1756-L83E" MajorRev="37" MinorRev="1" ProjectCreationDate="Wed, 19 Aug 2026 12:28:35 GMT" LastModifiedDate="Wed, 19 Aug 2026 12:28:35 GMT" SFCExecutionControl="CurrentActive" SFCRestartPosition="MostRecent" SFCLastScan="DontScan" ProjectSN="16#0000_0000" MatchProjectToController="false" CanUseRPIFromProducer="false" InhibitAutomaticFirmwareUpdate="0" PassThroughConfiguration="EnabledWithAppend" DownloadProjectDocumentationAndExtendedProperties="true" DownloadProjectCustomProperties="true" ReportMinorOverflow="false">
+<Description>
+<![CDATA[JARVIS FIRST DRAFT - SDC machine-level (tier-3) programs for controls lead review. Generated Wed, 19 Aug 2026 12:28:35 GMT.
+EVIDENCE: Alarms / HMI / Production transcribed from X-drive exports; station contract, UDTs, AOI interfaces from V4.2 templates; TopAlarms / batch counter / Recipe / q_MachineStopReason from the Revision History.
+INFERENCE: Supervisor internals, Tracking internals, Recipe program, LightStackControl AOI - every inferred rung carries a JARVIS INFERENCE comment.
+Machine shape: INDEXING DIAL (matches S00 indexer templates). Linear / robot-cell differences noted in the MainTask description and rung comments.
+NOT A DOWNLOADABLE PROJECT: AOI definitions marked STUB carry interfaces only - import the SDC standard AOIs over them; no Modules section; station programs are context references.]]>
+</Description>
+<DataTypes>
+<DataType Name="AlarmData" Family="NoFamily" Class="User">
+<Members>
+<Member Name="ProgramID" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Unique ID given to each AOI instance.]]>
+</Description>
+</Member>
+<Member Name="AlarmID" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Index number of the alarm taken from the array attached to the AOI.]]>
+</Description>
+</Member>
+<Member Name="Severity" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Fault = 0, Warning = 1]]>
+</Description>
+</Member>
+<Member Name="Group" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Alarm group number. 0 - 31]]>
+</Description>
+</Member>
+<Member Name="Message" DataType="STRING100" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Message Description (Default Language)]]>
+</Description>
+</Member>
+<Member Name="TimeStamp" DataType="LINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[UTC microseconds. Time it went active.]]>
+</Description>
+</Member>
+<Member Name="Count" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Count of Alarm Occurrences]]>
+</Description>
+</Member>
+<Member Name="Duration" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Duration in seconds]]>
+</Description>
+</Member>
+<Member Name="Active" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Alarm Active]]>
+</Description>
+</Member>
+<Member Name="DoNotSaveToHistory" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Set this flag to prevent the alarm from cluttering up the history.]]>
+</Description>
+</Member>
+<Member Name="HMI_ResetCount" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[HMI Reset input]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+<DataType Name="AlarmHistory" Family="NoFamily" Class="User">
+<Members>
+<Member Name="Message" DataType="STRING" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="AlarmCount" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="ShiftAlarmCount" DataType="DINT" Dimension="3" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+</Members>
+</DataType>
+<DataType Name="CPU_TimeDate" Family="NoFamily" Class="User">
+<Description>
+<![CDATA[CPU Time And Date Array]]>
+</Description>
+<Members>
+<Member Name="Year" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="Month" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="Day" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="Hour" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="Minutes" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="Seconds" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="Milliseconds" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="Microseconds" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="UTCMicroseconds" DataType="LINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+</Members>
+</DataType>
+<DataType Name="DisplayListControl" Family="NoFamily" Class="User">
+<Members>
+<Member Name="PageUp" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Page Up thru the List]]>
+</Description>
+</Member>
+<Member Name="ScrollUp" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Scroll Up thru the List]]>
+</Description>
+</Member>
+<Member Name="ScrollDown" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Scroll Down thru the List]]>
+</Description>
+</Member>
+<Member Name="PageDown" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Page Down thru the List]]>
+</Description>
+</Member>
+<Member Name="ScrollEnd" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Go to the bottom / end of the List]]>
+</Description>
+</Member>
+<Member Name="Sort" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Sort the List]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+<DataType Name="MachineBasic" Family="NoFamily" Class="User">
+<Members>
+<Member Name="AlwaysOn" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Always On Bit]]>
+</Description>
+</Member>
+<Member Name="AlwaysOff" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Always Off Bit]]>
+</Description>
+</Member>
+<Member Name="PowerUpCP" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[PLC Power Up Complete]]>
+</Description>
+</Member>
+<Member Name="MotionUpCP" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[EIP Motion Power Up Complete]]>
+</Description>
+</Member>
+<Member Name="Flash100msPS" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Flasher 100ms Pulse]]>
+</Description>
+</Member>
+<Member Name="Flash250msPD" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Flashers 250ms Period]]>
+</Description>
+</Member>
+<Member Name="Flash250msPS" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Flashers 250ms Pulse]]>
+</Description>
+</Member>
+<Member Name="Flash500msPD" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Flasher 500ms Period]]>
+</Description>
+</Member>
+<Member Name="Flash500msPS" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Flasher 500ms Pulse]]>
+</Description>
+</Member>
+<Member Name="Flash1sPD" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Flasher 1s Period]]>
+</Description>
+</Member>
+<Member Name="Flash1sPS" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Flasher 1s Pulse]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+<DataType Name="ProductionData" Family="NoFamily" Class="User">
+<Members>
+<Member Name="Total" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="Good" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="Reject" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="GoodPercent" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="RejectPercent" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="ElapsedTime" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="RuntimeMin" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="DowntimeMin" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="RuntimeSec" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="DowntimeSec" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="GoodRate" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Good Rate/Minute (changed DINT to REAL per V4.1)]]>
+</Description>
+</Member>
+<Member Name="TotalFaults" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="Availability" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="Performance" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="Quality" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="OEE" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="ElapsedSec" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Added V4.1 - JARVIS INFERENCE on exact use]]>
+</Description>
+</Member>
+<Member Name="ElapsedMin" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Added V4.1 - JARVIS INFERENCE on exact use]]>
+</Description>
+</Member>
+<Member Name="PPM" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Parts Per Minute - Added V4.1 - JARVIS INFERENCE on exact formula]]>
+</Description>
+</Member>
+<Member Name="PerfectRunTotal" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Parts a zero-loss run would have produced - Added V4.1 - JARVIS INFERENCE]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+<DataType Name="RecipeData" Family="NoFamily" Class="User">
+<Description>
+<![CDATA[JARVIS INFERENCE: Recipe program added in V4.2 with a PanelView 5310 example project. No export exists; this UDT is a reconstruction for review.]]>
+</Description>
+<Members>
+<Member Name="Name" DataType="STRING" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Recipe display name]]>
+</Description>
+</Member>
+<Member Name="Parameter" DataType="REAL" Dimension="16" Radix="Float" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[JARVIS INFERENCE: generic parameter slots. Engineer maps each slot to a real setpoint (servo positions, timers, batch target) per machine.]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+<DataType Name="StateLogicControl" Family="NoFamily" Class="User">
+<Members>
+<Member Name="StateReg" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Register]]>
+</Description>
+</Member>
+<Member Name="EnaFaultDetect" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Enable Fault Detection]]>
+</Description>
+</Member>
+<Member Name="EnaTransitionTimer" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Enable State Transition Timer]]>
+</Description>
+</Member>
+<Member Name="FaultTime" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Timeout Fault Time (Msec)]]>
+</Description>
+</Member>
+<Member Name="TransitionTime" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Transition preset time (ms)]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+<DataType Name="StateLogicStatus" Family="NoFamily" Class="User">
+<Members>
+<Member Name="State" DataType="BOOL" Dimension="128" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Control Bits]]>
+</Description>
+</Member>
+<Member Name="PreviousState" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Previous State]]>
+</Description>
+</Member>
+<Member Name="StateChangeOccurred_OS" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Change Occurred]]>
+</Description>
+</Member>
+<Member Name="TimeoutFlt" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Timeout Fault]]>
+</Description>
+</Member>
+<Member Name="TransitionTimerDone" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Transition Time Done]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+<DataType Name="STRING100" Family="StringFamily" Class="User">
+<Members>
+<Member Name="LEN" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="DATA" DataType="SINT" Dimension="100" Radix="ASCII" Hidden="false" ExternalAccess="Read/Write"></Member>
+</Members>
+</DataType>
+<DataType Name="TopAlarmsDT" Family="NoFamily" Class="User">
+<Members>
+<Member Name="Message" DataType="STRING" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="AlarmCount" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+</Members>
+</DataType>
+<DataType Name="TrackingOpStatus" Family="NoFamily" Class="User">
+<Description>
+<![CDATA[JARVIS INFERENCE: member set pinned by station template reads (Lockout/DryRun/SingleStep). Grouping into one UDT is inferred.]]>
+</Description>
+<Members>
+<Member Name="Lockout" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Station or nest is locked out (skip processing)]]>
+</Description>
+</Member>
+<Member Name="DryRun" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Station runs its motions without requiring part present]]>
+</Description>
+</Member>
+<Member Name="SingleStep" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Station advances one state per HMI press]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+<DataType Name="TrackingPerformData" Family="NoFamily" Class="User">
+<Description>
+<![CDATA[Member names and types pinned exactly by the StationPerformance AOI signature.]]>
+</Description>
+<Members>
+<Member Name="Attempts" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="Successes" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="Failures" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="Efficiency" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="HMIColorStatus" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[1=Good 2=Marginal 3=Poor (StationPerformance AOI)]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+<DataType Name="TrackingStationData" Family="NoFamily" Class="User">
+<Members>
+<Member Name="NestNum" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Nest currently at this station - written ONLY by S00 R10_CalcDialStationNestNums]]>
+</Description>
+</Member>
+<Member Name="OpStatus" DataType="TrackingOpStatus" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write"></Member>
+<Member Name="PerformData" DataType="TrackingPerformData" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write"></Member>
+</Members>
+</DataType>
+<DataType Name="TrackingPartStationStatus" Family="NoFamily" Class="User">
+<Members>
+<Member Name="Attempt" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Latched by station at operation commit point]]>
+</Description>
+</Member>
+<Member Name="Success" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Latched by station at operation confirm point]]>
+</Description>
+</Member>
+<Member Name="Failure" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Read by Station Complete logic - latching station is machine-specific]]>
+</Description>
+</Member>
+<Member Name="Lockout" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Latched by station when locked out with part loaded]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+<DataType Name="TrackingPartStatus" Family="NoFamily" Class="User">
+<Members>
+<Member Name="PartLoaded" DataType="BOOL" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Latched by load station on place confirm]]>
+</Description>
+</Member>
+<Member Name="Station" DataType="TrackingPartStationStatus" Dimension="21" Radix="NullType" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Per-station attempt/success/failure record - index by StaNum]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+<DataType Name="TrackingNestData" Family="NoFamily" Class="User">
+<Members>
+<Member Name="OpStatus" DataType="TrackingOpStatus" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Per-nest operator status (nest lockout for cleanout)]]>
+</Description>
+</Member>
+<Member Name="PartStatus" DataType="TrackingPartStatus" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write"></Member>
+</Members>
+</DataType>
+<DataType Name="TrackingData" Family="NoFamily" Class="User">
+<Description>
+<![CDATA[JARVIS INFERENCE: array dimension 21 matches g_StationList[21] and a 20-nest dial (1-based indexing). Confirm nest count convention.]]>
+</Description>
+<Members>
+<Member Name="Station" DataType="TrackingStationData" Dimension="21" Radix="NullType" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Index by station number (1-based, 0 = indexer)]]>
+</Description>
+</Member>
+<Member Name="Nest" DataType="TrackingNestData" Dimension="21" Radix="NullType" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Index by nest number (1-based)]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+</DataTypes>
+<AddOnInstructionDefinitions>
+<AddOnInstructionDefinition Name="AOI_Debounce" Class="Standard" Revision="1.0" Vendor="Steven Douglas Corp." ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" SoftwareRevision="v37.00">
+<Description>
+<![CDATA[On/off delay debounce for digital inputs. STUB - interface verified against V4.2 station templates; import the SDC standard AOI over this placeholder.]]>
+</Description>
+<Parameters>
+<Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Input - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Output - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="Input" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+<Parameter Name="OnDelay" TagType="Base" DataType="DINT" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+<Parameter Name="OffDelay" TagType="Base" DataType="DINT" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+<Parameter Name="On" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+<Parameter Name="Off" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+</Parameters>
+<LocalTags></LocalTags>
+<Routines>
+<Routine Name="Logic" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Interface stub - import the SDC standard AOI definition over this placeholder before download.]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</AddOnInstructionDefinition>
+<AddOnInstructionDefinition Name="CPU_TimeDate_wJulian" Class="Standard" Revision="1.0" Vendor="Steven Douglas Corp." ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" SoftwareRevision="v37.00">
+<Description>
+<![CDATA[Populates the global CPU_TimeDate tag plus Julian date. Logic transcribed from X:\...\AOI's\CPUDateTime\CPU_TimeDate_wJulian.L5X (evidence).]]>
+</Description>
+<Parameters>
+<Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Input - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Output - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="JulianDate" TagType="Base" DataType="INT" Usage="Output" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Day of year 1-366]]>
+</Description>
+</Parameter>
+<Parameter Name="TimeDateTag" TagType="Base" DataType="CPU_TimeDate" Usage="InOut" Required="true" Visible="true" Constant="false"></Parameter>
+</Parameters>
+<LocalTags></LocalTags>
+<Routines>
+<Routine Name="Logic" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Read controller wall clock (evidence: X-drive CPU_TimeDate_wJulian.L5X)]]>
+</Comment>
+<Text>
+<![CDATA[GSV(WallClockTime,,LocalDateTime,TimeDateArray[0]);]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Text>
+<![CDATA[CLR(JulianDate)MOVE(TimeDateArray[1],Month);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Text>
+<![CDATA[LIMIT(1,Month,12)ADD(LookUp[Month],TimeDateArray[2],JulianDate);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Comment>
+<![CDATA[Leap year day]]>
+</Comment>
+<Text>
+<![CDATA[GT(TimeDateArray[1],2)CMP(((TimeDateArray[0] MOD 4) = 0))[CMP(((TimeDateArray[0] MOD 100) > 0)) ,CMP(((TimeDateArray[0] MOD 400) = 0)) ]ADD(JulianDate,1,JulianDate);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Comment>
+<![CDATA[Unpack into CPU_TimeDate]]>
+</Comment>
+<Text>
+<![CDATA[[MOVE(TimeDateArray[0],TimeDateTag.Year) ,MOVE(TimeDateArray[1],TimeDateTag.Month) ,MOVE(TimeDateArray[2],TimeDateTag.Day) ,MOVE(TimeDateArray[3],TimeDateTag.Hour) ,MOVE(TimeDateArray[4],TimeDateTag.Minutes) ,MOVE(TimeDateArray[5],TimeDateTag.Seconds) ,DIV(TimeDateArray[6],1000,TimeDateTag.Milliseconds) ,MOVE(TimeDateArray[6],TimeDateTag.Microseconds) ];]]>
+</Text>
+</Rung>
+<Rung Number="5" Type="N">
+<Text>
+<![CDATA[GSV(TimeSynchronize,,CurrentTimeMicroseconds,TimeDateTag.UTCMicroseconds);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</AddOnInstructionDefinition>
+<AddOnInstructionDefinition Name="LightStackControl" Class="Standard" Revision="1.0" Vendor="Steven Douglas Corp." ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" SoftwareRevision="v37.00">
+<Description>
+<![CDATA[JARVIS RECONSTRUCTION: no export exists. Interface inferred from Revision History V4.0 (Cycle Start Light, Green Stack Light, Alarm Horn, Amber Light states) and V4.1 (added HornOverride input). Logic below is JARVIS's proposal for the leads to correct.]]>
+</Description>
+<Parameters>
+<Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Input - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Output - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="MachineRunning" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+<Parameter Name="MachineFaulted" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+<Parameter Name="MachineWarning" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+<Parameter Name="ReadyToStart" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+<Parameter Name="ManualMode" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+<Parameter Name="SafetyOK" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+<Parameter Name="HornOverride" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Silences the alarm horn (added V4.1)]]>
+</Description>
+</Parameter>
+<Parameter Name="FlashPulse" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Wire to g_MachineBasic.Flash500msPD]]>
+</Description>
+</Parameter>
+<Parameter Name="GreenLight" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+<Parameter Name="AmberLight" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+<Parameter Name="RedLight" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+<Parameter Name="CycleStartLight" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+<Parameter Name="AlarmHorn" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+</Parameters>
+<LocalTags></LocalTags>
+<Routines>
+<Routine Name="Logic" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[JARVIS RECONSTRUCTION: Green stack light - solid while the machine is running in auto.]]>
+</Comment>
+<Text>
+<![CDATA[XIC(MachineRunning)XIO(MachineFaulted)OTE(GreenLight);]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Comment>
+<![CDATA[JARVIS RECONSTRUCTION: Amber stack light - solid in manual mode, flashing on an active warning.]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(ManualMode) ,XIC(MachineWarning) XIC(FlashPulse) ]OTE(AmberLight);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Comment>
+<![CDATA[JARVIS RECONSTRUCTION: Red stack light - flashing while faulted, solid when safety is not OK.]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(MachineFaulted) XIC(FlashPulse) ,XIO(SafetyOK) ]OTE(RedLight);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Comment>
+<![CDATA[JARVIS RECONSTRUCTION: Cycle start light - flashing when the machine is ready to start, solid while running.]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(ReadyToStart) XIO(MachineRunning) XIC(FlashPulse) ,XIC(MachineRunning) ]OTE(CycleStartLight);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Comment>
+<![CDATA[JARVIS RECONSTRUCTION: Alarm horn - sounds on an active fault until overridden. HornOverride input added V4.1.]]>
+</Comment>
+<Text>
+<![CDATA[XIC(MachineFaulted)XIO(HornOverride)OTE(AlarmHorn);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</AddOnInstructionDefinition>
+<AddOnInstructionDefinition Name="MovingAverage" Class="Standard" Revision="1.0" Vendor="Steven Douglas Corp." ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" SoftwareRevision="v37.00">
+<Description>
+<![CDATA[Circular-buffer moving average, max window 100. STUB - interface verified against X-drive MovingAverage.L5X.]]>
+</Description>
+<Parameters>
+<Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Input - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Output - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="Input" TagType="Base" DataType="REAL" Usage="Input" Radix="Float" Required="true" Visible="true" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[New input value]]>
+</Description>
+</Parameter>
+<Parameter Name="WindowSize" TagType="Base" DataType="INT" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Size of the moving average window]]>
+</Description>
+</Parameter>
+<Parameter Name="Average" TagType="Base" DataType="REAL" Usage="Output" Radix="Float" Required="true" Visible="true" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Calculated moving average]]>
+</Description>
+</Parameter>
+</Parameters>
+<LocalTags></LocalTags>
+<Routines>
+<Routine Name="Logic" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Interface stub - import the SDC standard AOI definition over this placeholder before download.]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</AddOnInstructionDefinition>
+<AddOnInstructionDefinition Name="OEE" Class="Standard" Revision="1.0" Vendor="Steven Douglas Corp." ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" SoftwareRevision="v37.00">
+<Description>
+<![CDATA[Availability / Performance / Quality / OEE. STUB - interface verified against X-drive OEE.L5X.]]>
+</Description>
+<Parameters>
+<Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Input - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Output - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="PlannedProductionTime" TagType="Base" DataType="DINT" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Total shift time in minutes minus planned downtime (breaks and lunches)]]>
+</Description>
+</Parameter>
+<Parameter Name="RunTime" TagType="Base" DataType="DINT" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Actual machine runtime in seconds]]>
+</Description>
+</Parameter>
+<Parameter Name="Downtime" TagType="Base" DataType="DINT" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Machine downtime in seconds]]>
+</Description>
+</Parameter>
+<Parameter Name="IdealCycleTime" TagType="Base" DataType="REAL" Usage="Input" Radix="Float" Required="true" Visible="true" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Time to produce one unit in seconds]]>
+</Description>
+</Parameter>
+<Parameter Name="TotalCount" TagType="Base" DataType="DINT" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+<Parameter Name="GoodCount" TagType="Base" DataType="DINT" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+<Parameter Name="Availability" TagType="Base" DataType="REAL" Usage="Output" Radix="Float" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+<Parameter Name="Performance" TagType="Base" DataType="REAL" Usage="Output" Radix="Float" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+<Parameter Name="Quality" TagType="Base" DataType="REAL" Usage="Output" Radix="Float" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+<Parameter Name="OEE" TagType="Base" DataType="REAL" Usage="Output" Radix="Float" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+</Parameters>
+<LocalTags></LocalTags>
+<Routines>
+<Routine Name="Logic" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Interface stub - import the SDC standard AOI definition over this placeholder before download.]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</AddOnInstructionDefinition>
+<AddOnInstructionDefinition Name="ProgramAlarmHandler" Class="Standard" Revision="3.0a" Vendor="Steven Douglas Corp." ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" SoftwareRevision="v37.00">
+<Description>
+<![CDATA[Creates a shared Alarm History array and a shared Active Alarms array. STUB - interface verified against the 3.0a definition embedded in every V4.2 station template. Import the standard AOI over this placeholder.]]>
+</Description>
+<Parameters>
+<Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Input - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Output - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="PublicProgramIDTag" TagType="Base" DataType="INT" Usage="InOut" Radix="Decimal" Required="true" Visible="true" Constant="false">
+<Description>
+<![CDATA[Master Program ID tag used for all handler instances to obtain a unique ID]]>
+</Description>
+</Parameter>
+<Parameter Name="LocalAlarmsArrayTag" TagType="Base" DataType="AlarmData" Dimensions="1" Usage="InOut" Required="true" Visible="true" Constant="false">
+<Description>
+<![CDATA[Local array tag. Faults, Warnings]]>
+</Description>
+</Parameter>
+<Parameter Name="AlarmActiveArrayTag" TagType="Base" DataType="AlarmData" Dimensions="1" Usage="InOut" Required="true" Visible="true" Constant="false">
+<Description>
+<![CDATA[Active array tag. \Alarms.p_Active]]>
+</Description>
+</Parameter>
+<Parameter Name="AlarmHistoryArrayTag" TagType="Base" DataType="AlarmData" Dimensions="1" Usage="InOut" Required="true" Visible="true" Constant="false">
+<Description>
+<![CDATA[History array tag. \Alarms.p_History]]>
+</Description>
+</Parameter>
+<Parameter Name="ControllerTimeClockTag" TagType="Base" DataType="CPU_TimeDate" Usage="InOut" Required="true" Visible="true" Constant="false"></Parameter>
+<Parameter Name="AlarmActiveTag" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+<Parameter Name="WarningActiveTag" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write"></Parameter>
+</Parameters>
+<LocalTags></LocalTags>
+<Routines>
+<Routine Name="Logic" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Interface stub - import the SDC standard AOI definition over this placeholder before download.]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</AddOnInstructionDefinition>
+<AddOnInstructionDefinition Name="State_Engine_128Max" Class="Standard" Revision="5.0" Vendor="Steven Douglas Corp." ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" SoftwareRevision="v37.00">
+<Description>
+<![CDATA[State Logic Engine For 128 States. STUB - interface verified against V4.2 station templates. Import the standard AOI over this placeholder.]]>
+</Description>
+<Parameters>
+<Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Input - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Output - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="StateLogicControl" TagType="Base" DataType="StateLogicControl" Usage="InOut" Required="true" Visible="true" Constant="false"></Parameter>
+<Parameter Name="StateLogicStatus" TagType="Base" DataType="StateLogicStatus" Usage="InOut" Required="true" Visible="true" Constant="false"></Parameter>
+<Parameter Name="StateHistoryArray" TagType="Base" DataType="SINT" Dimensions="1" Usage="InOut" Radix="Decimal" Required="true" Visible="true" Constant="false">
+<Description>
+<![CDATA[State history array]]>
+</Description>
+</Parameter>
+</Parameters>
+<LocalTags></LocalTags>
+<Routines>
+<Routine Name="Logic" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Interface stub - import the SDC standard AOI definition over this placeholder before download.]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</AddOnInstructionDefinition>
+<AddOnInstructionDefinition Name="TopAlarms" Class="Standard" Revision="1.0" Vendor="Steven Douglas Corp." ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" SoftwareRevision="v37.00">
+<Description>
+<![CDATA[Stores top 5 alarms since last reset and top 5 alarms per shift (added V2.2). STUB - interface verified against X-drive TopAlarms.L5X.]]>
+</Description>
+<Parameters>
+<Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Input - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Output - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="AlarmData" TagType="Base" DataType="AlarmData" Usage="InOut" Required="true" Visible="true" Constant="false">
+<Description>
+<![CDATA[The alarm that stopped the machine]]>
+</Description>
+</Parameter>
+<Parameter Name="AlarmStopTrigger" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Rising edge historizes AlarmData]]>
+</Description>
+</Parameter>
+<Parameter Name="TopAlarms" TagType="Base" DataType="TopAlarmsDT" Dimensions="5" Usage="InOut" Required="true" Visible="true" Constant="false">
+<Description>
+<![CDATA[Top 5 alarms since reset]]>
+</Description>
+</Parameter>
+<Parameter Name="TopShiftAlarms" TagType="Base" DataType="TopAlarmsDT" Dimensions="3 5" Usage="InOut" Required="true" Visible="true" Constant="false">
+<Description>
+<![CDATA[Top 5 alarms per shift, 3 shifts]]>
+</Description>
+</Parameter>
+<Parameter Name="CurrentShift" TagType="Base" DataType="DINT" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[1-3; 0 skips shift tracking]]>
+</Description>
+</Parameter>
+<Parameter Name="Reset" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Clears history and both top lists]]>
+</Description>
+</Parameter>
+<Parameter Name="NumberOfShifts" TagType="Base" DataType="DINT" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Declared but unused by AOI logic as exported]]>
+</Description>
+</Parameter>
+</Parameters>
+<LocalTags></LocalTags>
+<Routines>
+<Routine Name="Logic" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Interface stub - import the SDC standard AOI definition over this placeholder before download.]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</AddOnInstructionDefinition>
+</AddOnInstructionDefinitions>
+<Tags>
+<Tag Name="g_CPUDateTime" TagType="Base" DataType="CPU_TimeDate" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Global controller time - populated by Supervisor R10_Global via CPU_TimeDate_wJulian]]>
+</Description>
+</Tag>
+<Tag Name="g_MachineBasic" TagType="Base" DataType="MachineBasic" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Global heartbeat / scan bits - driven by Supervisor R10_Global]]>
+</Description>
+</Tag>
+<Tag Name="g_PresetStationPerformHigh" TagType="Base" DataType="REAL" Radix="Float" Constant="true" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Station efficiency green threshold (percent)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[95.0]]>
+</Data>
+</Tag>
+<Tag Name="g_PresetStationPerformLow" TagType="Base" DataType="REAL" Radix="Float" Constant="true" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Station efficiency red threshold (percent)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[75.0]]>
+</Data>
+</Tag>
+<Tag Name="g_StationList" TagType="Base" DataType="STRING" Dimensions="21" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Alarm message station-name prefixes - index by StaNum. Populate one entry per station program.]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[[[13,'S00 Indexer: '],[15,'S01 Part Load: '],[0,''],[0,''],[0,''],[15,'S05 Servo PNP: '],[0,''],[0,''],[0,''],[0,''],[0,''],[0,''],[0,''],[0,''],[0,''],[0,''],[0,''],[0,''],[0,''],[0,''],[0,'']]]]>
+</Data>
+</Tag>
+</Tags>
+<Programs>
+<Program Use="Target" Name="Supervisor" TestEdits="false" MainRoutineName="R00_Main" Disabled="false" Class="Standard" UseAsFolder="false">
+<Description>
+<![CDATA[JARVIS DRAFT - machine mode management, cycle start/stop latching, safety aggregation, fault reset distribution, light stack, machine cycle time. The Supervisor program was never exported by SDC; only its five-output station contract is evidenced. Everything else is marked JARVIS INFERENCE for the controls leads to confirm or correct.]]>
+</Description>
+<Tags>
+<Tag Name="Control" TagType="Base" DataType="StateLogicControl" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Supervisor state engine control]]>
+</Description>
+</Tag>
+<Tag Name="Status" TagType="Base" DataType="StateLogicStatus" Usage="Public" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Supervisor state engine status. State map (JARVIS INFERENCE): 0=Safety Stop, 1=Manual Mode, 2=Auto Idle Not Ready, 3=Auto Idle Ready, 4=Cycle Running, 7=Cycle Stopping, 10=Cycle Stopped, 127=Fault]]>
+</Description>
+</Tag>
+<Tag Name="StateEngine" TagType="Base" DataType="State_Engine_128Max" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+</Tag>
+<Tag Name="StateHistory" TagType="Base" DataType="SINT" Dimensions="10" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+</Tag>
+<Tag Name="ONS" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[One shot storage bits]]>
+</Description>
+</Tag>
+<Tag Name="i_SafetyRelayOK" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Input" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Safety relay reset and OK - *Map to real safety I/O]]>
+</Description>
+</Tag>
+<Tag Name="i_AirPressureOK" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Input" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Main air pressure switch OK - *Map to real safety I/O]]>
+</Description>
+</Tag>
+<Tag Name="i_CycleStartPB" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Input" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Cycle start pushbutton]]>
+</Description>
+</Tag>
+<Tag Name="i_CycleStopPB" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Input" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Cycle stop pushbutton]]>
+</Description>
+</Tag>
+<Tag Name="i_FaultResetPB" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Input" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Fault reset pushbutton]]>
+</Description>
+</Tag>
+<Tag Name="HMI_ManualMode" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[HMI toggle - manual mode selected]]>
+</Description>
+</Tag>
+<Tag Name="HMI_HornOverride" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[HMI toggle - silence alarm horn]]>
+</Description>
+</Tag>
+<Tag Name="HMI_Momentary" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[HMI momentary buttons: .0=Cycle Start .1=Cycle Stop .2=Fault Reset]]>
+</Description>
+</Tag>
+<Tag Name="HMI_MomentaryOnPrevScan" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[HMI momentary auto-clear helper]]>
+</Description>
+</Tag>
+<Tag Name="SafetyOK" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Machine safety circuit OK - local]]>
+</Description>
+</Tag>
+<Tag Name="ManualMode" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Manual mode active - local]]>
+</Description>
+</Tag>
+<Tag Name="FaultReset" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Fault reset pulse - local]]>
+</Description>
+</Tag>
+<Tag Name="AllStationsInAuto" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Every station program reports q_AutoMode]]>
+</Description>
+</Tag>
+<Tag Name="AllStationsStopped" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Every station program reports q_AutoStopped]]>
+</Description>
+</Tag>
+<Tag Name="StartOK" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Every station program reports q_StartOK]]>
+</Description>
+</Tag>
+<Tag Name="AnyStationFault" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[One or more stations report q_AlarmActive]]>
+</Description>
+</Tag>
+<Tag Name="AnyStationWarning" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[One or more stations report q_WarningActive]]>
+</Description>
+</Tag>
+<Tag Name="CycleStartRequest" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Operator requested cycle start]]>
+</Description>
+</Tag>
+<Tag Name="CycleStopRequest" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Operator requested cycle stop]]>
+</Description>
+</Tag>
+<Tag Name="IndexComplete" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Index Complete One Shot - machine cycle time capture]]>
+</Description>
+</Tag>
+<Tag Name="CycleTimer" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Machine cycle timer]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[[0,1000000,0]]]>
+</Data>
+</Tag>
+<Tag Name="p_CycleTime" TagType="Base" DataType="REAL" Radix="Float" Usage="Public" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Cycle Time For One Cycle (s)]]>
+</Description>
+</Tag>
+<Tag Name="MovingAverageA" TagType="Base" DataType="MovingAverage" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[25 Cycle Moving Average]]>
+</Description>
+</Tag>
+<Tag Name="MovingAverageB" TagType="Base" DataType="MovingAverage" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[100 Cycle Moving Average]]>
+</Description>
+</Tag>
+<Tag Name="q_ManualMode" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Output" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Manual mode active (stations read \Supervisor.q_ManualMode)]]>
+</Description>
+</Tag>
+<Tag Name="q_SafetyOK" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Output" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Safety circuit OK (stations read \Supervisor.q_SafetyOK)]]>
+</Description>
+</Tag>
+<Tag Name="q_FaultReset" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Output" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Fault reset (stations read \Supervisor.q_FaultReset)]]>
+</Description>
+</Tag>
+<Tag Name="q_CycleStartLatch" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Output" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Cycle start latched = stations run (stations read \Supervisor.q_CycleStartLatch)]]>
+</Description>
+</Tag>
+<Tag Name="q_CycleStopped" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Output" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Machine fully stopped (stations read \Supervisor.q_CycleStopped)]]>
+</Description>
+</Tag>
+<Tag Name="q_MachineRunning" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Output" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Machine running - consumed by Alarms and Production programs]]>
+</Description>
+</Tag>
+<Tag Name="q_MachineFaultActive" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Output" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Any machine or station fault - consumed by Alarms and Production]]>
+</Description>
+</Tag>
+<Tag Name="q_MachineStopReason" TagType="Base" DataType="DINT" Radix="Decimal" Usage="Output" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Why the cycle last stopped (added V4.1). JARVIS INFERENCE on code map: 0=Running/None 1=Operator 2=Manual Mode 3=Safety 4=Fault 5=Batch Complete]]>
+</Description>
+</Tag>
+<Tag Name="q_AlarmActive" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Output" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Supervisor fault active]]>
+</Description>
+</Tag>
+<Tag Name="q_WarningActive" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Output" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Supervisor warning active]]>
+</Description>
+</Tag>
+<Tag Name="q_GreenLight" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Output" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Stack light - green]]>
+</Description>
+</Tag>
+<Tag Name="q_AmberLight" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Output" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Stack light - amber]]>
+</Description>
+</Tag>
+<Tag Name="q_RedLight" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Output" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Stack light - red]]>
+</Description>
+</Tag>
+<Tag Name="q_CycleStartLight" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Output" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Cycle start pushbutton light]]>
+</Description>
+</Tag>
+<Tag Name="q_AlarmHorn" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Output" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Alarm horn]]>
+</Description>
+</Tag>
+<Tag Name="LightStack" TagType="Base" DataType="LightStackControl" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+</Tag>
+<Tag Name="PowerUpDelay" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[PLC power up complete delay]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[[0,2000,0]]]>
+</Data>
+</Tag>
+<Tag Name="MotionUpDelay" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Motion power up complete delay - *Replace with MotionGroup.GroupSynced condition on servo machines]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[[0,5000,0]]]>
+</Data>
+</Tag>
+<Tag Name="Flash500TimerA" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[0,250,0]]]>
+</Data>
+</Tag>
+<Tag Name="Flash500TimerB" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[0,250,0]]]>
+</Data>
+</Tag>
+<Tag Name="Flash1sTimerA" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[0,500,0]]]>
+</Data>
+</Tag>
+<Tag Name="Flash1sTimerB" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[0,500,0]]]>
+</Data>
+</Tag>
+<Tag Name="JulianDate" TagType="Base" DataType="INT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+</Tag>
+<Tag Name="CPUDateTimeAOI" TagType="Base" DataType="CPU_TimeDate_wJulian" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+</Tag>
+<Tag Name="Alarm" TagType="Base" DataType="AlarmData" Dimensions="10" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Supervisor alarm data]]>
+</Description>
+</Tag>
+<Tag Name="AlarmList" TagType="Base" DataType="STRING" Dimensions="10" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Alarm message bodies - prefix concatenated at runtime]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[[[29,'Machine Safety Circuit Not OK'],[24,'Machine Air Pressure Low'],[52,'Machine Did Not Stop Within 30 Seconds Of Cycle Stop'],[8,'Not Used'],[8,'Not Used'],[8,'Not Used'],[8,'Not Used'],[8,'Not Used'],[8,'Not Used'],[8,'Not Used']]]]>
+</Data>
+</Tag>
+<Tag Name="SupervisorPrefix" TagType="Base" DataType="STRING" Constant="true" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Alarm message prefix]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[[12,'Supervisor: ']]]>
+</Data>
+</Tag>
+<Tag Name="ProgramFaultHandler" TagType="Base" DataType="ProgramAlarmHandler" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+</Tag>
+</Tags>
+<Routines>
+<Routine Name="R00_Main" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Subroutine Calls]]>
+</Comment>
+<Text>
+<![CDATA[JSR(R01_Inputs,0);]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Text>
+<![CDATA[JSR(R02_StateTransitions,0);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Text>
+<![CDATA[JSR(R03_StateLogic,0);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Text>
+<![CDATA[JSR(R10_Global,0);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Text>
+<![CDATA[JSR(R20_Alarms,0);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+<Routine Name="R01_Inputs" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Logic inputs
+
+*Replace always off bits with real conditions
+
+JARVIS INFERENCE: the Supervisor program was never exported. Safety OK is aggregated here from the safety relay and air pressure; a real machine adds gate switches, light curtains muted status, etc.]]>
+</Comment>
+<Text>
+<![CDATA[XIC(i_SafetyRelayOK)XIC(i_AirPressureOK)OTE(SafetyOK);]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Comment>
+<![CDATA[Manual Mode Select]]>
+</Comment>
+<Text>
+<![CDATA[XIC(HMI_ManualMode)OTE(ManualMode);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Comment>
+<![CDATA[Fault Reset]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(i_FaultResetPB) ,XIC(HMI_Momentary.2) ]OTE(FaultReset);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Comment>
+<![CDATA[All Stations In Auto Mode
+
+*Add one contact per station program]]>
+</Comment>
+<Text>
+<![CDATA[XIC(\S00_IndexerSP.q_AutoMode)XIC(\S01_PartLoad.q_AutoMode)XIC(\S05_ServoPNP.q_AutoMode)OTE(AllStationsInAuto);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Comment>
+<![CDATA[Start OK - All Stations Ready To Start
+
+*Add one contact per station program]]>
+</Comment>
+<Text>
+<![CDATA[XIC(\S00_IndexerSP.q_StartOK)XIC(\S01_PartLoad.q_StartOK)XIC(\S05_ServoPNP.q_StartOK)OTE(StartOK);]]>
+</Text>
+</Rung>
+<Rung Number="5" Type="N">
+<Comment>
+<![CDATA[All Stations Stopped
+
+*Add one contact per station program]]>
+</Comment>
+<Text>
+<![CDATA[XIC(\S00_IndexerSP.q_AutoStopped)XIC(\S01_PartLoad.q_AutoStopped)XIC(\S05_ServoPNP.q_AutoStopped)OTE(AllStationsStopped);]]>
+</Text>
+</Rung>
+<Rung Number="6" Type="N">
+<Comment>
+<![CDATA[Any Station Fault Active]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(\S00_IndexerSP.q_AlarmActive) ,XIC(\S01_PartLoad.q_AlarmActive) ,XIC(\S05_ServoPNP.q_AlarmActive) ]OTE(AnyStationFault);]]>
+</Text>
+</Rung>
+<Rung Number="7" Type="N">
+<Comment>
+<![CDATA[Any Station Warning Active]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(\S00_IndexerSP.q_WarningActive) ,XIC(\S01_PartLoad.q_WarningActive) ,XIC(\S05_ServoPNP.q_WarningActive) ]OTE(AnyStationWarning);]]>
+</Text>
+</Rung>
+<Rung Number="8" Type="N">
+<Comment>
+<![CDATA[Cycle Start Request]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(i_CycleStartPB) ,XIC(HMI_Momentary.0) ]OTE(CycleStartRequest);]]>
+</Text>
+</Rung>
+<Rung Number="9" Type="N">
+<Comment>
+<![CDATA[Cycle Stop Request]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(i_CycleStopPB) ,XIC(HMI_Momentary.1) ]OTE(CycleStopRequest);]]>
+</Text>
+</Rung>
+<Rung Number="10" Type="N">
+<Comment>
+<![CDATA[Clear HMI Manual Triggers]]>
+</Comment>
+<Text>
+<![CDATA[XIC(HMI_MomentaryOnPrevScan)MOVE(0,HMI_Momentary);]]>
+</Text>
+</Rung>
+<Rung Number="11" Type="N">
+<Text>
+<![CDATA[NE(HMI_Momentary,0)OTE(HMI_MomentaryOnPrevScan);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+<Routine Name="R02_StateTransitions" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Start Of State Machine
+
+JARVIS INFERENCE: the Supervisor state map below mirrors the station template grammar (0=Safety Stop, 1=Manual, 2=Idle Not Ready, 3=Idle Ready, sequence on the +3 grid, 127=Fault). The real Supervisor state numbering is unconfirmed.]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Comment>
+<![CDATA[State 2: Auto mode idle not ready]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[0]) XIC(SafetyOK) ,XIC(Status.State[1]) XIO(ManualMode) ,XIC(Status.State[3]) XIO(StartOK) ,XIC(Status.State[127]) XIO(q_AlarmActive) XIO(AnyStationFault) ]MOVE(2,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Comment>
+<![CDATA[State 3: Auto mode idle ready]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[2]) ,XIC(Status.State[10]) XIO(q_CycleStartLatch) ]XIC(AllStationsInAuto)XIC(StartOK)XIO(ManualMode)MOVE(3,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Comment>
+<![CDATA[State 4: Cycle running]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[3])XIC(q_CycleStartLatch)MOVE(4,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Comment>
+<![CDATA[State 7: Cycle stopping - wait for all stations to finish their current cycle
+
+JARVIS INFERENCE: CycleStopping is implied by the station R01 pattern (XIO of q_CycleStartLatch drives CycleStopping locally); the Supervisor holds this state until every station reports q_AutoStopped.]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[4])XIO(q_CycleStartLatch)MOVE(7,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="5" Type="N">
+<Comment>
+<![CDATA[State 10: Cycle stopped]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[7])XIC(AllStationsStopped)MOVE(10,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="6" Type="N">
+<Comment>
+<![CDATA[Cycle Start Latch
+
+JARVIS INFERENCE: latch requires idle-ready, no faults, and a start request. Recovery/retry bias: a station warning does NOT block a start.]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[3])XIC(CycleStartRequest)XIC(StartOK)XIO(AnyStationFault)XIO(q_AlarmActive)OTL(q_CycleStartLatch);]]>
+</Text>
+</Rung>
+<Rung Number="7" Type="N">
+<Comment>
+<![CDATA[Cycle Start Unlatch
+
+JARVIS INFERENCE: the machine cycle-stops on operator request, manual mode, safety loss, any fault, or batch complete. QUESTION FOR LEADS: should a single-station fault unlatch the whole machine, or should the machine pause and let the station recover?]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(CycleStopRequest) ,XIC(ManualMode) ,XIO(SafetyOK) ,XIC(q_AlarmActive) ,XIC(AnyStationFault) ,XIC(\Tracking.q_BatchComplete) ]OTU(q_CycleStartLatch);]]>
+</Text>
+</Rung>
+<Rung Number="8" Type="N">
+<Comment>
+<![CDATA[State 127: Fault
+
+JARVIS INFERENCE: only Supervisor-level alarms (safety, air) fault the Supervisor itself. Station faults stop the cycle but are owned by the station programs - machines that stop less.]]>
+</Comment>
+<Text>
+<![CDATA[XIC(q_AlarmActive)MOVE(127,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="9" Type="N">
+<Comment>
+<![CDATA[State 1: Manual Mode]]>
+</Comment>
+<Text>
+<![CDATA[XIC(ManualMode)MOVE(1,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="10" Type="N">
+<Comment>
+<![CDATA[State 0: Safety Stop]]>
+</Comment>
+<Text>
+<![CDATA[[XIO(SafetyOK) ,XIC(S:FS) ]MOVE(0,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="11" Type="N">
+<Comment>
+<![CDATA[State Engine]]>
+</Comment>
+<Text>
+<![CDATA[State_Engine_128Max(StateEngine,Control,Status,StateHistory);]]>
+</Text>
+</Rung>
+<Rung Number="12" Type="N">
+<Comment>
+<![CDATA[Machine Cycle Time
+
+Evidence: X-drive Rungs\Machine Cycle Time\CycleTime.L5X. Index complete one-shot derived from the indexer arriving on station.]]>
+</Comment>
+<Text>
+<![CDATA[XIC(\S00_IndexerSP.p_OnStation)ONS(ONS.4)OTE(IndexComplete);]]>
+</Text>
+</Rung>
+<Rung Number="13" Type="N">
+<Comment>
+<![CDATA[Machine Stop Reason (V4.1 - Supervisor R02 rung 13)
+
+JARVIS INFERENCE: V4.1 added q_MachineStopReason and rungs 13-14 to R02_StateTransitions. The reason-code map is reconstructed: 1=Operator 2=Manual Mode 3=Safety 4=Fault 5=Batch Complete.]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[4])[XIC(CycleStopRequest) MOVE(1,q_MachineStopReason) ,XIC(ManualMode) MOVE(2,q_MachineStopReason) ,XIO(SafetyOK) MOVE(3,q_MachineStopReason) ,[XIC(q_AlarmActive) ,XIC(AnyStationFault) ] MOVE(4,q_MachineStopReason) ,XIC(\Tracking.q_BatchComplete) MOVE(5,q_MachineStopReason) ];]]>
+</Text>
+</Rung>
+<Rung Number="14" Type="N">
+<Comment>
+<![CDATA[Clear Stop Reason On New Cycle Start (V4.1 - Supervisor R02 rung 14)
+
+JARVIS INFERENCE.]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[3])XIC(q_CycleStartLatch)ONS(ONS.5)MOVE(0,q_MachineStopReason);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+<Routine Name="R03_StateLogic" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Output Status To Stations
+
+Evidence: every station R01_Inputs maps these five outputs 1:1 (q_ManualMode, q_SafetyOK, q_FaultReset, q_CycleStartLatch, q_CycleStopped).]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[1])OTE(q_ManualMode);]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Text>
+<![CDATA[XIC(SafetyOK)OTE(q_SafetyOK);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Text>
+<![CDATA[XIC(FaultReset)OTE(q_FaultReset);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Comment>
+<![CDATA[Cycle Stopped - stations one-shot this to clear CycleRunning
+
+JARVIS INFERENCE on state set: stopped = anything except running/stopping.]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[0]) ,XIC(Status.State[1]) ,XIC(Status.State[2]) ,XIC(Status.State[3]) ,XIC(Status.State[10]) ,XIC(Status.State[127]) ]OTE(q_CycleStopped);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Comment>
+<![CDATA[Machine Running - consumed by Alarms (stop-fault capture), Production (runtime), and cycle-time rungs
+
+JARVIS INFERENCE: running includes Cycle Stopping so the stop-fault capture in \Alarms rung 13 can see the fault that ended the cycle.]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[4]) ,XIC(Status.State[7]) ]OTE(q_MachineRunning);]]>
+</Text>
+</Rung>
+<Rung Number="5" Type="N">
+<Comment>
+<![CDATA[Machine Fault Active - any Supervisor or station fault]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(q_AlarmActive) ,XIC(AnyStationFault) ]OTE(q_MachineFaultActive);]]>
+</Text>
+</Rung>
+<Rung Number="6" Type="N">
+<Comment>
+<![CDATA[Machine Cycle Time Capture
+
+Evidence: X-drive Rungs\Machine Cycle Time\CycleTime.L5X (verbatim pattern).]]>
+</Comment>
+<Text>
+<![CDATA[XIC(IndexComplete)[DIV(CycleTimer.ACC,1000,p_CycleTime) ,MovingAverage(MovingAverageA,p_CycleTime,25) ,MovingAverage(MovingAverageB,p_CycleTime,100) ];]]>
+</Text>
+</Rung>
+<Rung Number="7" Type="N">
+<Text>
+<![CDATA[XIC(q_MachineRunning)XIO(IndexComplete)TON(CycleTimer,?,?);]]>
+</Text>
+</Rung>
+<Rung Number="8" Type="N">
+<Comment>
+<![CDATA[Light Stack Control
+
+JARVIS RECONSTRUCTION: the Light Stack Control AOI exists per Revision History (V4.0 fix, V4.1 HornOverride input) but was never exported. Interface and logic are reconstructed for review.]]>
+</Comment>
+<Text>
+<![CDATA[LightStackControl(LightStack,q_MachineRunning,q_MachineFaultActive,AnyStationWarning,StartOK,ManualMode,SafetyOK,HMI_HornOverride,g_MachineBasic.Flash500msPD,q_GreenLight,q_AmberLight,q_RedLight,q_CycleStartLight,q_AlarmHorn);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+<Routine Name="R10_Global" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Global Machine Basics
+
+JARVIS INFERENCE: some machine-level routine must drive g_MachineBasic and g_CPUDateTime - no template exports it. Placed in Supervisor R10_Global for review; the leads may keep it in a dedicated program or the MainRoutine.]]>
+</Comment>
+<Text>
+<![CDATA[OTE(g_MachineBasic.AlwaysOn);]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Text>
+<![CDATA[XIO(g_MachineBasic.AlwaysOn)OTE(g_MachineBasic.AlwaysOff);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Comment>
+<![CDATA[PLC Power Up Complete]]>
+</Comment>
+<Text>
+<![CDATA[XIC(g_MachineBasic.AlwaysOn)TON(PowerUpDelay,?,?)XIC(PowerUpDelay.DN)OTE(g_MachineBasic.PowerUpCP);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Comment>
+<![CDATA[EIP Motion Power Up Complete
+
+*Replace the delay with MotionGroup.GroupSynced on servo machines]]>
+</Comment>
+<Text>
+<![CDATA[XIC(g_MachineBasic.PowerUpCP)TON(MotionUpDelay,?,?)XIC(MotionUpDelay.DN)OTE(g_MachineBasic.MotionUpCP);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Comment>
+<![CDATA[500ms Period Flasher (250 on / 250 off)
+
+JARVIS INFERENCE: two-timer flasher pattern. 100ms and 250ms flashers follow the same pattern when needed.]]>
+</Comment>
+<Text>
+<![CDATA[XIO(Flash500TimerB.DN)TON(Flash500TimerA,?,?);]]>
+</Text>
+</Rung>
+<Rung Number="5" Type="N">
+<Text>
+<![CDATA[XIC(Flash500TimerA.DN)TON(Flash500TimerB,?,?);]]>
+</Text>
+</Rung>
+<Rung Number="6" Type="N">
+<Text>
+<![CDATA[XIC(Flash500TimerA.DN)OTE(g_MachineBasic.Flash500msPD);]]>
+</Text>
+</Rung>
+<Rung Number="7" Type="N">
+<Text>
+<![CDATA[XIC(g_MachineBasic.Flash500msPD)ONS(ONS.0)OTE(g_MachineBasic.Flash500msPS);]]>
+</Text>
+</Rung>
+<Rung Number="8" Type="N">
+<Comment>
+<![CDATA[1s Period Flasher (500 on / 500 off)]]>
+</Comment>
+<Text>
+<![CDATA[XIO(Flash1sTimerB.DN)TON(Flash1sTimerA,?,?);]]>
+</Text>
+</Rung>
+<Rung Number="9" Type="N">
+<Text>
+<![CDATA[XIC(Flash1sTimerA.DN)TON(Flash1sTimerB,?,?);]]>
+</Text>
+</Rung>
+<Rung Number="10" Type="N">
+<Text>
+<![CDATA[XIC(Flash1sTimerA.DN)OTE(g_MachineBasic.Flash1sPD);]]>
+</Text>
+</Rung>
+<Rung Number="11" Type="N">
+<Text>
+<![CDATA[XIC(g_MachineBasic.Flash1sPD)ONS(ONS.1)OTE(g_MachineBasic.Flash1sPS);]]>
+</Text>
+</Rung>
+<Rung Number="12" Type="N">
+<Comment>
+<![CDATA[Controller Time And Date
+
+Evidence: X-drive CPU_TimeDate_wJulian AOI.]]>
+</Comment>
+<Text>
+<![CDATA[CPU_TimeDate_wJulian(CPUDateTimeAOI,JulianDate,g_CPUDateTime);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+<Routine Name="R20_Alarms" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[***SUPERVISOR ALARMS***]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Comment>
+<![CDATA[Machine Safety Circuit Not OK]]>
+</Comment>
+<Text>
+<![CDATA[[XIO(SafetyOK) XIC(g_MachineBasic.PowerUpCP) ,XIC(Alarm[0].Active) XIO(FaultReset) ][OTE(Alarm[0].Active) ,ONS(ONS.8) CONCAT(SupervisorPrefix,AlarmList[0],Alarm[0].Message) ];]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Comment>
+<![CDATA[Machine Air Pressure Low]]>
+</Comment>
+<Text>
+<![CDATA[[XIO(i_AirPressureOK) XIC(g_MachineBasic.PowerUpCP) ,XIC(Alarm[1].Active) XIO(FaultReset) ][OTE(Alarm[1].Active) ,ONS(ONS.9) CONCAT(SupervisorPrefix,AlarmList[1],Alarm[1].Message) ];]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Comment>
+<![CDATA[Machine Did Not Stop After Cycle Stop
+
+JARVIS INFERENCE: warning (severity 1) - the machine keeps trying to stop; nothing is faulted. Machines that stop less: this alerts maintenance without adding a hard stop.]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[7])MOVE(30000,Control.FaultTime)XIC(Status.TimeoutFlt)[OTE(Alarm[2].Active) ,ONS(ONS.10) MOVE(1,Alarm[2].Severity) CONCAT(SupervisorPrefix,AlarmList[2],Alarm[2].Message) ];]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Comment>
+<![CDATA[Not Used]]>
+</Comment>
+<Text>
+<![CDATA[XIC(g_MachineBasic.AlwaysOff)OTE(Alarm[3].Active);]]>
+</Text>
+</Rung>
+<Rung Number="5" Type="N">
+<Comment>
+<![CDATA[Not Used]]>
+</Comment>
+<Text>
+<![CDATA[XIC(g_MachineBasic.AlwaysOff)OTE(Alarm[4].Active);]]>
+</Text>
+</Rung>
+<Rung Number="6" Type="N">
+<Comment>
+<![CDATA[Station Alarm Handler]]>
+</Comment>
+<Text>
+<![CDATA[ProgramAlarmHandler(ProgramFaultHandler,\Alarms.p_ProgramID,Alarm,\Alarms.p_Active,\Alarms.p_History,g_CPUDateTime,q_AlarmActive,q_WarningActive);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</Program>
+<Program Use="Target" Name="Alarms" TestEdits="false" MainRoutineName="R00_Main" Disabled="false" Class="Standard" UseAsFolder="false">
+<Description>
+<![CDATA[EVIDENCE-BASED - transcribed from the real SDC Alarms program export (X-drive, V2.2 era) with the station lineup updated to the V4.2 templates. p_ProgramID / p_Active / p_History are the shared arrays every ProgramAlarmHandler instance writes into.]]>
+</Description>
+<Tags>
+<Tag Name="AlarmDataEmpty" TagType="Base" DataType="AlarmData" Constant="true" ExternalAccess="None" OpcUaAccess="None">
+<Description>
+<![CDATA[Blank alarm record used to clear the active list]]>
+</Description>
+</Tag>
+<Tag Name="AlarmStop" TagType="Base" DataType="AlarmData" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[The fault that stopped the machine (V2.2)]]>
+</Description>
+</Tag>
+<Tag Name="AlarmStopTrigger" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Pulse into TopAlarms when a machine-stopping fault is captured]]>
+</Description>
+</Tag>
+<Tag Name="DelayClose" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Alarm popup close delay]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[[0,3000,0]]]>
+</Data>
+</Tag>
+<Tag Name="DisplayListPointer" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Alarm history scroll pointer]]>
+</Description>
+</Tag>
+<Tag Name="DispSize" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Size of HistoryDisplay]]>
+</Description>
+</Tag>
+<Tag Name="HistoryDisplay" TagType="Base" DataType="AlarmData" Dimensions="16" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[HMI window into the alarm history]]>
+</Description>
+</Tag>
+<Tag Name="HistoryNav" TagType="Base" DataType="DisplayListControl" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[HMI alarm history navigation buttons]]>
+</Description>
+</Tag>
+<Tag Name="HistSize" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Size of p_History]]>
+</Description>
+</Tag>
+<Tag Name="HMI_ClearTopAlarms" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[HMI - reset the top alarms lists]]>
+</Description>
+</Tag>
+<Tag Name="ONS" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[One shot storage bits]]>
+</Description>
+</Tag>
+<Tag Name="p_Active" TagType="Base" DataType="AlarmData" Dimensions="16" Usage="Public" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Shared active alarm list - newest at index 0]]>
+</Description>
+</Tag>
+<Tag Name="p_History" TagType="Base" DataType="AlarmData" Dimensions="50" Usage="Public" Constant="false" ExternalAccess="None" OpcUaAccess="None">
+<Description>
+<![CDATA[Shared alarm history - newest at index 0]]>
+</Description>
+</Tag>
+<Tag Name="p_NoMachineFaults" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Public" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[No faults anywhere on the machine]]>
+</Description>
+</Tag>
+<Tag Name="p_NoMachineWarnings" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Public" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[No warnings anywhere on the machine]]>
+</Description>
+</Tag>
+<Tag Name="p_ProgramID" TagType="Base" DataType="INT" Radix="Decimal" Usage="Public" Constant="false" ExternalAccess="None" OpcUaAccess="None">
+<Description>
+<![CDATA[Master program ID counter - zeroed here every scan, incremented by every ProgramAlarmHandler instance]]>
+</Description>
+</Tag>
+<Tag Name="TempPtrCheck" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Page-down pointer math helper]]>
+</Description>
+</Tag>
+<Tag Name="TopAlarms" TagType="Base" DataType="TopAlarmsDT" Dimensions="5" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Top 5 alarms since last reset (V2.2)]]>
+</Description>
+</Tag>
+<Tag Name="TopAlarmsBacking" TagType="Base" DataType="TopAlarms" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[TopAlarms AOI backing tag]]>
+</Description>
+</Tag>
+<Tag Name="TopShiftAlarms" TagType="Base" DataType="TopAlarmsDT" Dimensions="3 5" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Top 5 alarms per shift, 3 shifts (V2.2)]]>
+</Description>
+</Tag>
+</Tags>
+<Routines>
+<Routine Name="R00_Main" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Subroutine Calls]]>
+</Comment>
+<Text>
+<![CDATA[JSR(R01_Logic,0);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+<Routine Name="R01_Logic" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Evidence: this routine is transcribed from X:\...\Programs\Alarm\Alarms.L5X (the real SDC Alarms program), with the station fault/warning contact lineup updated from the pre-V4.0 naming (\StateMachine, \S03_PartLoad) to the four V4.2 template programs.]]>
+</Comment>
+<Text>
+<![CDATA[MOVE(0,p_ProgramID);]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Comment>
+<![CDATA[***MACHINE FAULTS***]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Comment>
+<![CDATA[Check for any machine faults present.
+
+*Add one contact per station program]]>
+</Comment>
+<Text>
+<![CDATA[XIO(\Supervisor.q_AlarmActive)XIO(\S00_IndexerSP.q_AlarmActive)XIO(\S01_PartLoad.q_AlarmActive)XIO(\S05_ServoPNP.q_AlarmActive)OTE(p_NoMachineFaults);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Comment>
+<![CDATA[***MACHINE WARNINGS***]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Comment>
+<![CDATA[Check For Any Machine Warnings Present
+
+*Add one contact per station program]]>
+</Comment>
+<Text>
+<![CDATA[XIO(\Supervisor.q_WarningActive)XIO(\S00_IndexerSP.q_WarningActive)XIO(\S01_PartLoad.q_WarningActive)XIO(\S05_ServoPNP.q_WarningActive)OTE(p_NoMachineWarnings);]]>
+</Text>
+</Rung>
+<Rung Number="5" Type="N">
+<Comment>
+<![CDATA[Clear the Active Alarm list in case it has been corrupted via a PLC program download.]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(S:FS) ,XIC(p_NoMachineWarnings) XIC(p_NoMachineFaults) ONS(ONS.5) ]COP(AlarmDataEmpty,p_Active[0],1)COP(p_Active[0],p_Active[1],15);]]>
+</Text>
+</Rung>
+<Rung Number="6" Type="N">
+<Comment>
+<![CDATA[***HMI ALARM HANDLING***
+Logic for handling the alarm displays developed for the PV5500.]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+<Rung Number="7" Type="N">
+<Comment>
+<![CDATA[Show Alarm popup when an alarm is present]]>
+</Comment>
+<Text>
+<![CDATA[XIO(p_NoMachineFaults)ONS(ONS.0)NE(\HMI.p_CurrentPopupNum,90)NE(\HMI.p_CurrentScreenNum,91)MOVE(90,\HMI.p_ReplaceScreenNum);]]>
+</Text>
+</Rung>
+<Rung Number="8" Type="N">
+<Comment>
+<![CDATA[Close "Active Alarms" popup 90 or "All Active Alarms" screen 91 (If its showing) when there are no alarms present
+
+Writing 9999 to \HMI.ReplaceScreenNum will close the pop up being displayed on the HMI
+Writing 8888 to \HMI.ReplaceScreenNum will execute a NavBack command to return to previous screen on the HMI]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(p_NoMachineFaults) ,XIC(p_NoMachineWarnings) XIC(p_NoMachineFaults) ]TON(DelayClose,?,?)XIC(DelayClose.DN)ONS(ONS.1)[EQ(\HMI.p_CurrentPopupNum,90) MOVE(9999,\HMI.p_ReplaceScreenNum) ,EQ(\HMI.p_CurrentScreenNum,91) MOVE(8888,\HMI.p_ReplaceScreenNum) ];]]>
+</Text>
+</Rung>
+<Rung Number="9" Type="N">
+<Comment>
+<![CDATA[Alarm History Display]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+<Rung Number="10" Type="N">
+<Comment>
+<![CDATA[Array sizes
+
+NOTE: the SDC standard uses SIZE(p_History[0],0,HistSize) and SIZE(HistoryDisplay[0],0,DispSize) here; constants are substituted only because this draft generator validates rung text against a fixed mnemonic set. Restore SIZE on import.]]>
+</Comment>
+<Text>
+<![CDATA[XIC(S:FS)[MOVE(50,HistSize) ,MOVE(16,DispSize) ];]]>
+</Text>
+</Rung>
+<Rung Number="11" Type="N">
+<Comment>
+<![CDATA[History list navigation (PV5500 screen 99)]]>
+</Comment>
+<Text>
+<![CDATA[EQ(\HMI.p_CurrentScreenNum,99)[ONS(ONS.2) MOVE(0,DisplayListPointer) ,XIC(HistoryNav.PageUp) ONS(ONS.3) [GE(DisplayListPointer,DispSize) CPT(DisplayListPointer,(DisplayListPointer+HistSize-DispSize-DispSize+1)MOD(HistSize-DispSize+1)) OTE(ONS.8) ,XIO(ONS.8) LT(DisplayListPointer,DispSize) MOVE(0,DisplayListPointer) ] ,XIC(HistoryNav.ScrollDown) ONS(ONS.4) CPT(DisplayListPointer,(DisplayListPointer+1)MOD(HistSize-DispSize+1)) ,XIC(HistoryNav.ScrollUp) ONS(ONS.6) CPT(DisplayListPointer,(DisplayListPointer+HistSize-DispSize)MOD(HistSize-DispSize+1)) ,XIC(HistoryNav.PageDown) ONS(ONS.7) CPT(TempPtrCheck,HistSize-DispSize-DispSize) [LT(DisplayListPointer,TempPtrCheck) CPT(DisplayListPointer,(DisplayListPointer+DispSize)MOD(HistSize-DispSize+1)) OTE(ONS.9) ,XIO(ONS.9) GE(DisplayListPointer,TempPtrCheck) CPT(DisplayListPointer,HistSize-DispSize) ] ];]]>
+</Text>
+</Rung>
+<Rung Number="12" Type="N">
+<Text>
+<![CDATA[LIMIT(0,DisplayListPointer,HistSize)CMP((HistSize - DisplayListPointer) > DispSize)COP(p_History[DisplayListPointer],HistoryDisplay[0],DispSize);]]>
+</Text>
+</Rung>
+<Rung Number="13" Type="N">
+<Comment>
+<![CDATA[Store Fault That Stopped The Machine]]>
+</Comment>
+<Text>
+<![CDATA[XIC(\Supervisor.q_MachineRunning)XIC(\Supervisor.q_MachineFaultActive)ONS(ONS.10)[XIC(p_Active[0].Active) EQ(p_Active[0].Severity,0) COP(p_Active[0],AlarmStop,1) ,XIC(p_Active[1].Active) EQ(p_Active[1].Severity,0) COP(p_Active[1],AlarmStop,1) ,XIC(p_Active[2].Active) EQ(p_Active[2].Severity,0) COP(p_Active[2],AlarmStop,1) ,XIC(p_Active[3].Active) EQ(p_Active[3].Severity,0) COP(p_Active[3],AlarmStop,1) ,XIC(p_Active[4].Active) EQ(p_Active[4].Severity,0) COP(p_Active[4],AlarmStop,1) ,XIC(p_Active[5].Active) EQ(p_Active[5].Severity,0) COP(p_Active[5],AlarmStop,1) ,XIC(p_Active[6].Active) EQ(p_Active[6].Severity,0) COP(p_Active[6],AlarmStop,1) ,XIC(p_Active[7].Active) EQ(p_Active[7].Severity,0) COP(p_Active[7],AlarmStop,1) ,XIC(p_Active[8].Active) EQ(p_Active[8].Severity,0) COP(p_Active[8],AlarmStop,1) ,XIC(p_Active[9].Active) EQ(p_Active[9].Severity,0) COP(p_Active[9],AlarmStop,1) ,XIC(p_Active[10].Active) EQ(p_Active[10].Severity,0) COP(p_Active[10],AlarmStop,1) ,XIC(p_Active[11].Active) EQ(p_Active[11].Severity,0) COP(p_Active[11],AlarmStop,1) ,XIC(p_Active[12].Active) EQ(p_Active[12].Severity,0) COP(p_Active[12],AlarmStop,1) ,XIC(p_Active[13].Active) EQ(p_Active[13].Severity,0) COP(p_Active[13],AlarmStop,1) ,XIC(p_Active[14].Active) EQ(p_Active[14].Severity,0) COP(p_Active[14],AlarmStop,1) ,XIC(p_Active[15].Active) EQ(p_Active[15].Severity,0) COP(p_Active[15],AlarmStop,1) ,OTE(AlarmStopTrigger) ];]]>
+</Text>
+</Rung>
+<Rung Number="14" Type="N">
+<Comment>
+<![CDATA[Store Top 5 Alarms Since Reset & Per Shift]]>
+</Comment>
+<Text>
+<![CDATA[TopAlarms(TopAlarmsBacking,AlarmStop,AlarmStopTrigger,TopAlarms,TopShiftAlarms,\Production.p_CurrentShift,HMI_ClearTopAlarms,3);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</Program>
+<Program Use="Target" Name="Tracking" TestEdits="false" MainRoutineName="R00_Main" Disabled="false" Class="Standard" UseAsFolder="false">
+<Description>
+<![CDATA[JARVIS DRAFT - part tracking data owner (p_Data / p_NestQty), operator status distribution (Lockout/DryRun/SingleStep per station), nest record lifecycle, batch counter. Added in V4.0 but never exported; the p_Data structure is reverse-engineered from every station access path, everything else is JARVIS INFERENCE.]]>
+</Description>
+<Tags>
+<Tag Name="p_Data" TagType="Base" DataType="TrackingData" Usage="Public" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Machine part tracking data - Station[] indexed by StaNum, Nest[] indexed by nest number. Structure reverse-engineered from every station template access path.]]>
+</Description>
+</Tag>
+<Tag Name="p_NestQty" TagType="Base" DataType="DINT" Radix="Decimal" Usage="Public" Constant="true" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Number of nests on the dial. Used by S00 R10 as the modulo base for nest numbering. JARVIS INFERENCE: 20 nests matches the S01 template StaNumPre=20 wraparound.]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[20]]>
+</Data>
+</Tag>
+<Tag Name="q_GoodPartPulse" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Output" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[One-scan pulse per good part unloaded - Production program good part trigger]]>
+</Description>
+</Tag>
+<Tag Name="q_RejectPartPulse" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Output" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[One-scan pulse per rejected part - Production program reject part trigger]]>
+</Description>
+</Tag>
+<Tag Name="q_BatchComplete" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Output" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Batch target reached - Supervisor unlatches the cycle (stop reason 5)]]>
+</Description>
+</Tag>
+<Tag Name="HMI_StationLockout" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[HMI toggles - bit number = station number - lock out a station]]>
+</Description>
+</Tag>
+<Tag Name="HMI_StationDryRun" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[HMI toggles - bit number = station number - dry run a station]]>
+</Description>
+</Tag>
+<Tag Name="HMI_StationSingleStep" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[HMI toggles - bit number = station number - single step a station]]>
+</Description>
+</Tag>
+<Tag Name="HMI_NestLockout" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[HMI toggles - bit number = nest number - lock out a nest (cleanout)]]>
+</Description>
+</Tag>
+<Tag Name="HMI_BatchTarget" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Batch size target - 0 disables the batch counter]]>
+</Description>
+</Tag>
+<Tag Name="HMI_BatchReset" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[HMI - reset the batch count]]>
+</Description>
+</Tag>
+<Tag Name="BatchCount" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Good parts produced in the current batch]]>
+</Description>
+</Tag>
+<Tag Name="LoadStaNum" TagType="Base" DataType="DINT" Radix="Decimal" Constant="true" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Station number of the load station]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[1]]>
+</Data>
+</Tag>
+<Tag Name="UnloadStaNum" TagType="Base" DataType="DINT" Radix="Decimal" Constant="true" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Station number of the final/unload station. *Set to the real unload station (S18/S19 on a full machine); 5 = S05 in this three-station draft.]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[5]]>
+</Data>
+</Tag>
+<Tag Name="UnloadNestNum" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Nest currently at the unload station]]>
+</Description>
+</Tag>
+<Tag Name="NestAtLoadPrev" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Nest number at the load station on the previous scan]]>
+</Description>
+</Tag>
+<Tag Name="NestsShifted" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[One-scan pulse when the dial has indexed (nest at load changed)]]>
+</Description>
+</Tag>
+<Tag Name="PartStatusEmpty" TagType="Base" DataType="TrackingPartStatus" Constant="true" ExternalAccess="None" OpcUaAccess="None">
+<Description>
+<![CDATA[Blank part status record used to clear a nest]]>
+</Description>
+</Tag>
+<Tag Name="ONS" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[One shot storage bits]]>
+</Description>
+</Tag>
+</Tags>
+<Routines>
+<Routine Name="R00_Main" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Subroutine Calls]]>
+</Comment>
+<Text>
+<![CDATA[JSR(R01_OpStatus,0);]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Text>
+<![CDATA[JSR(R02_PartData,0);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Text>
+<![CDATA[JSR(R03_BatchCounter,0);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+<Routine Name="R01_OpStatus" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Operator Status Distribution
+
+JARVIS INFERENCE: the V4.2 stations read Lockout/DryRun/SingleStep from \Tracking.p_Data.Station[StaNum].OpStatus (this replaced the old HMI_Toggle word in each station). Something must SET those bits - this routine maps per-function HMI toggle words (bit = station number) onto the OpStatus structure. The real mechanism (per-station HMI buttons writing the bits directly?) is unconfirmed.
+
+*Add one rung per station program]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Comment>
+<![CDATA[S00 Indexer Operator Status - single step only (the indexer has no Lockout or DryRun)]]>
+</Comment>
+<Text>
+<![CDATA[XIC(HMI_StationSingleStep.0)OTE(p_Data.Station[0].OpStatus.SingleStep);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Comment>
+<![CDATA[S01 Part Load Operator Status]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(HMI_StationLockout.1) OTE(p_Data.Station[1].OpStatus.Lockout) ,XIC(HMI_StationDryRun.1) OTE(p_Data.Station[1].OpStatus.DryRun) ,XIC(HMI_StationSingleStep.1) OTE(p_Data.Station[1].OpStatus.SingleStep) ];]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Comment>
+<![CDATA[S05 Servo PNP Operator Status]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(HMI_StationLockout.5) OTE(p_Data.Station[5].OpStatus.Lockout) ,XIC(HMI_StationDryRun.5) OTE(p_Data.Station[5].OpStatus.DryRun) ,XIC(HMI_StationSingleStep.5) OTE(p_Data.Station[5].OpStatus.SingleStep) ];]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Comment>
+<![CDATA[Nest Lockout (cleanout)
+
+JARVIS INFERENCE: per-nest lockout consumed by the S01 Cycle Station rung. Example rung for nest 1 - *add one per nest, or replace with indexed MOV logic.]]>
+</Comment>
+<Text>
+<![CDATA[XIC(HMI_NestLockout.1)OTE(p_Data.Nest[1].OpStatus.Lockout);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+<Routine Name="R02_PartData" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Nest Data Ownership
+
+Evidence boundary: stations only LATCH Attempt/Success/Lockout/PartLoaded bits and S00 only writes Station[].NestNum. Nothing in any template ever CLEARS a nest record - so the Tracking program must own clearing. Everything below is JARVIS INFERENCE.]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Comment>
+<![CDATA[Nest At Unload Station]]>
+</Comment>
+<Text>
+<![CDATA[MOVE(p_Data.Station[UnloadStaNum].NestNum,UnloadNestNum);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Comment>
+<![CDATA[Good Part Pulse - part completed the unload station successfully]]>
+</Comment>
+<Text>
+<![CDATA[XIC(p_Data.Nest[UnloadNestNum].PartStatus.Station[UnloadStaNum].Success)ONS(ONS.0)OTE(q_GoodPartPulse);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Comment>
+<![CDATA[Reject Part Pulse]]>
+</Comment>
+<Text>
+<![CDATA[XIC(p_Data.Nest[UnloadNestNum].PartStatus.Station[UnloadStaNum].Failure)ONS(ONS.1)OTE(q_RejectPartPulse);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Comment>
+<![CDATA[Detect Dial Index - nest number at the load station changed
+
+JARVIS INFERENCE: S00 R10 computes a NestsShiftedPulse locally but never publishes it; Tracking re-derives the same pulse from the NestNum it owns.]]>
+</Comment>
+<Text>
+<![CDATA[NE(p_Data.Station[LoadStaNum].NestNum,NestAtLoadPrev)[OTE(NestsShifted) ,MOVE(p_Data.Station[LoadStaNum].NestNum,NestAtLoadPrev) ];]]>
+</Text>
+</Rung>
+<Rung Number="5" Type="N">
+<Comment>
+<![CDATA[Clear Nest Record When A Finished Nest Arrives Back At The Load Station
+
+JARVIS INFERENCE - QUESTION FOR LEADS: where does the standard clear Nest[].PartStatus? This draft clears it when the nest re-arrives at load with its part already unloaded (Success, Failure, or Lockout at the unload station). An incomplete part (attempted but never unloaded) is deliberately NOT cleared so the record survives a fault recovery - machines that stop less.]]>
+</Comment>
+<Text>
+<![CDATA[XIC(NestsShifted)XIC(p_Data.Nest[NestAtLoadPrev].PartStatus.PartLoaded)[XIC(p_Data.Nest[NestAtLoadPrev].PartStatus.Station[UnloadStaNum].Success) ,XIC(p_Data.Nest[NestAtLoadPrev].PartStatus.Station[UnloadStaNum].Failure) ,XIC(p_Data.Nest[NestAtLoadPrev].PartStatus.Station[UnloadStaNum].Lockout) ]COP(PartStatusEmpty,p_Data.Nest[NestAtLoadPrev].PartStatus,1);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+<Routine Name="R03_BatchCounter" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Batch Counter (added V4.1)
+
+JARVIS INFERENCE: the revision history says only "Added batch counter" - which program owns it is unconfirmed. Placed in Tracking because it counts tracked parts. Batch complete requests a cycle stop through the Supervisor unlatch rung (stop reason 5) rather than faulting anything - machines that stop less.]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Comment>
+<![CDATA[Count Good Parts Into The Batch]]>
+</Comment>
+<Text>
+<![CDATA[XIC(q_GoodPartPulse)ADD(BatchCount,1,BatchCount);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Comment>
+<![CDATA[Batch Complete]]>
+</Comment>
+<Text>
+<![CDATA[GT(HMI_BatchTarget,0)GE(BatchCount,HMI_BatchTarget)OTE(q_BatchComplete);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Comment>
+<![CDATA[Batch Reset]]>
+</Comment>
+<Text>
+<![CDATA[XIC(HMI_BatchReset)MOVE(0,BatchCount);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</Program>
+<Program Use="Target" Name="HMI" TestEdits="false" MainRoutineName="R00_Main" Disabled="false" Class="Standard" UseAsFolder="false">
+<Description>
+<![CDATA[EVIDENCE-BASED - transcribed from the real SDC HMI program export (X-drive). Screen/popup arbitration for the PV5500. Adds q_CleanoutModeEnabled (referenced by the V4.2 S01 template but missing from the older X-drive export).]]>
+</Description>
+<Tags>
+<Tag Name="OneShot" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[One shot storage bits]]>
+</Description>
+</Tag>
+<Tag Name="PopupHidden" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Popup commanded to open but is already open, probably hidden in the background.]]>
+</Description>
+</Tag>
+<Tag Name="p_CurrentPopupNum" TagType="Base" DataType="INT" Radix="Decimal" Usage="Public" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Current Popup Number Viewed On The HMI]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[90]]>
+</Data>
+</Tag>
+<Tag Name="p_CurrentScreenNum" TagType="Base" DataType="DINT" Radix="Decimal" Usage="Public" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Current Screen Number Viewed On The HMI]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[1]]>
+</Data>
+</Tag>
+<Tag Name="p_PreviousScreenNum" TagType="Base" DataType="DINT" Radix="Decimal" Usage="Public" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[1]]>
+</Data>
+</Tag>
+<Tag Name="p_ReplaceScreenNum" TagType="Base" DataType="DINT" Radix="Decimal" Usage="Public" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Screen to open on HMI. 9999 - close popup. 8888 - previous]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+</Tag>
+<Tag Name="QueuedPopupNum" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+</Tag>
+<Tag Name="q_ScreenChangedOneShot" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Output" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+</Tag>
+<Tag Name="ResendCurrentPopup" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[0,550,0]]]>
+</Data>
+</Tag>
+<Tag Name="ResetReplaceScreen" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[0,2000,0]]]>
+</Data>
+</Tag>
+<Tag Name="SavedPopupNum" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[90]]>
+</Data>
+</Tag>
+<Tag Name="HMI_CleanoutMode" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[HMI toggle - cleanout mode (run parts out without loading new ones)]]>
+</Description>
+</Tag>
+<Tag Name="q_CleanoutModeEnabled" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Output" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Cleanout mode active - S01 skips loading new parts]]>
+</Description>
+</Tag>
+</Tags>
+<Routines>
+<Routine Name="R00_Main" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Subroutine Calls]]>
+</Comment>
+<Text>
+<![CDATA[JSR(R01_Logic,0);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+<Routine Name="R01_Logic" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Evidence: transcribed from X:\...\Programs\HMI\HMI.L5X (the real SDC HMI program). Only the cleanout rung at the end is new.]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Comment>
+<![CDATA[Screen Change]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Text>
+<![CDATA[NE(p_CurrentScreenNum,p_PreviousScreenNum)[MOVE(p_CurrentScreenNum,p_PreviousScreenNum) ,OTE(q_ScreenChangedOneShot) ];]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Comment>
+<![CDATA[Main screen handshaking]]>
+</Comment>
+<Text>
+<![CDATA[EQ(p_ReplaceScreenNum,p_CurrentScreenNum)MOVE(0,p_ReplaceScreenNum);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Comment>
+<![CDATA[popup handshaking]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+<Rung Number="5" Type="N">
+<Text>
+<![CDATA[NE(p_ReplaceScreenNum,0)ONS(OneShot.0)EQ(p_ReplaceScreenNum,p_CurrentPopupNum)OTE(PopupHidden);]]>
+</Text>
+</Rung>
+<Rung Number="6" Type="N">
+<Comment>
+<![CDATA[Popup request to open but there's already one open.
+Save the screen number and open it when the current popup closes.]]>
+</Comment>
+<Text>
+<![CDATA[NE(p_ReplaceScreenNum,0)ONS(OneShot.1)LIMIT(80,p_ReplaceScreenNum,90)NE(p_ReplaceScreenNum,p_CurrentPopupNum)NE(p_CurrentPopupNum,0)[MOVE(p_ReplaceScreenNum,QueuedPopupNum) ,MOVE(0,p_ReplaceScreenNum) ];]]>
+</Text>
+</Rung>
+<Rung Number="7" Type="N">
+<Text>
+<![CDATA[EQ(p_ReplaceScreenNum,p_CurrentPopupNum)MOVE(0,p_ReplaceScreenNum);]]>
+</Text>
+</Rung>
+<Rung Number="8" Type="N">
+<Comment>
+<![CDATA[Current popup isn't being shown if the screen changes.
+ (assuming only 1 HMI screen)
+So force the popup back up by
+closing it and resending it.]]>
+</Comment>
+<Text>
+<![CDATA[[[XIC(q_ScreenChangedOneShot) ,XIC(PopupHidden) ] NE(p_CurrentPopupNum,0) [MOVE(p_CurrentPopupNum,SavedPopupNum) ,MOVE(9999,p_ReplaceScreenNum) ] ,XIC(ResendCurrentPopup.TT) XIO(ResendCurrentPopup.DN) ]TON(ResendCurrentPopup,?,?)XIC(ResendCurrentPopup.DN)MOVE(SavedPopupNum,p_ReplaceScreenNum);]]>
+</Text>
+</Rung>
+<Rung Number="9" Type="N">
+<Text>
+<![CDATA[GT(QueuedPopupNum,0)EQ(p_CurrentPopupNum,0)[MOVE(QueuedPopupNum,p_ReplaceScreenNum) ,MOVE(0,QueuedPopupNum) ];]]>
+</Text>
+</Rung>
+<Rung Number="10" Type="N">
+<Comment>
+<![CDATA[Prevent replace screen num from getting stuck.]]>
+</Comment>
+<Text>
+<![CDATA[[EQ(p_ReplaceScreenNum,9999) ,EQ(p_ReplaceScreenNum,8888) ]TON(ResetReplaceScreen,?,?)XIC(ResetReplaceScreen.DN)MOVE(0,p_ReplaceScreenNum);]]>
+</Text>
+</Rung>
+<Rung Number="11" Type="N">
+<Comment>
+<![CDATA[Cleanout Mode
+
+JARVIS INFERENCE: q_CleanoutModeEnabled is referenced by S01 (skip loading new parts so the dial runs empty) but the X-drive HMI export predates it. Gating on the cycle being latched OFF for enable is NOT assumed - cleanout runs WITH the cycle so parts flow out. Leads: confirm any interlock.]]>
+</Comment>
+<Text>
+<![CDATA[XIC(HMI_CleanoutMode)OTE(q_CleanoutModeEnabled);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</Program>
+<Program Use="Target" Name="Production" TestEdits="false" MainRoutineName="R00_Main" Disabled="false" Class="Standard" UseAsFolder="false">
+<Description>
+<![CDATA[EVIDENCE-BASED - transcribed from the real SDC Production program export (X-drive, pre-V4.1) with the V4.1 revision-history changes applied and marked. Good/Reject triggers wired to the Tracking program pulses per the ***Replace*** notes in the original.]]>
+</Description>
+<Tags>
+<Tag Name="CycleDowntime" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[0,1000,0]]]>
+</Data>
+</Tag>
+<Tag Name="CycleRuntime" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[0,1000,0]]]>
+</Data>
+</Tag>
+<Tag Name="EmptyData" TagType="Base" DataType="ProductionData" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Blank record for count resets]]>
+</Description>
+</Tag>
+<Tag Name="HMI_ResetAllCounts" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+</Tag>
+<Tag Name="HMI_ResetAllShift" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+</Tag>
+<Tag Name="HMI_ResetCurrentShift" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+</Tag>
+<Tag Name="HMI_ResetPartCounts" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+</Tag>
+<Tag Name="HoldTimerA" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Press-and-hold reset guard]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[[0,2000,0]]]>
+</Data>
+</Tag>
+<Tag Name="HoldTimerB" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[0,2000,0]]]>
+</Data>
+</Tag>
+<Tag Name="HoldTimerC" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[0,2000,0]]]>
+</Data>
+</Tag>
+<Tag Name="ONS" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[One shot storage bits]]>
+</Description>
+</Tag>
+<Tag Name="PreviousShift" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+</Tag>
+<Tag Name="ProductionData" TagType="Base" DataType="ProductionData" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Lifetime totals since last reset]]>
+</Description>
+</Tag>
+<Tag Name="ProductionDataOEE" TagType="Base" DataType="OEE" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+</Tag>
+<Tag Name="p_CurrentShift" TagType="Base" DataType="DINT" Radix="Decimal" Usage="Public" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Current shift number 1-3 (0 until first sync)]]>
+</Description>
+</Tag>
+<Tag Name="ShiftChangedPulse" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+</Tag>
+<Tag Name="ShiftData" TagType="Base" DataType="ProductionData" Dimensions="4" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Per-shift data - uses indexes 1,2,3]]>
+</Description>
+</Tag>
+<Tag Name="ShiftDataOEE" TagType="Base" DataType="OEE" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+</Tag>
+<Tag Name="ShiftDowntime" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[0,1000,0]]]>
+</Data>
+</Tag>
+<Tag Name="ShiftRuntime" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[0,1000,0]]]>
+</Data>
+</Tag>
+<Tag Name="IdealCycleTime" TagType="Base" DataType="REAL" Radix="Float" Constant="true" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Ideal machine cycle time in seconds (V4.1 constant) - *Set per machine]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[2.0]]>
+</Data>
+</Tag>
+</Tags>
+<Routines>
+<Routine Name="R00_Main" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Subroutine Calls]]>
+</Comment>
+<Text>
+<![CDATA[JSR(R01_ProductionData,0);]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Text>
+<![CDATA[JSR(R02_ShiftData,0);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+<Routine Name="R01_ProductionData" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Production Data
+
+Evidence: transcribed from X:\...\Programs\Production Data\Production.L5X (V2.2-era export) with the ten V4.1 revision-history changes applied. V4.1 rungs are marked JARVIS INFERENCE where the revision history names the change but not the logic.]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Comment>
+<![CDATA[Good Parts
+
+Evidence rung used g_MachineBasic.AlwaysOff with ***NOTE - Replace MachineBasic.AlwaysOff With Good Part Trigger***. JARVIS wires it to the Tracking good-part pulse.]]>
+</Comment>
+<Text>
+<![CDATA[XIC(\Tracking.q_GoodPartPulse)ONS(ONS.0)ADD(ProductionData.Good,1,ProductionData.Good);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Comment>
+<![CDATA[Reject Parts]]>
+</Comment>
+<Text>
+<![CDATA[XIC(\Tracking.q_RejectPartPulse)ONS(ONS.1)ADD(ProductionData.Reject,1,ProductionData.Reject);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Comment>
+<![CDATA[Total Parts]]>
+</Comment>
+<Text>
+<![CDATA[ADD(ProductionData.Good,ProductionData.Reject,ProductionData.Total);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Comment>
+<![CDATA[Good Part Efficiency]]>
+</Comment>
+<Text>
+<![CDATA[CPT(ProductionData.GoodPercent,(ProductionData.Good/ProductionData.Total)*100);]]>
+</Text>
+</Rung>
+<Rung Number="5" Type="N">
+<Comment>
+<![CDATA[Reject Part Efficiency]]>
+</Comment>
+<Text>
+<![CDATA[CPT(ProductionData.RejectPercent,(ProductionData.Reject/ProductionData.Total)*100);]]>
+</Text>
+</Rung>
+<Rung Number="6" Type="N">
+<Comment>
+<![CDATA[Runtime (min)]]>
+</Comment>
+<Text>
+<![CDATA[XIC(\Supervisor.q_MachineRunning)[RTO(CycleRuntime,?,?) ,XIC(CycleRuntime.DN) ADD(ProductionData.RuntimeSec,1,ProductionData.RuntimeSec) DIV(ProductionData.RuntimeSec,60,ProductionData.RuntimeMin) RES(CycleRuntime) ];]]>
+</Text>
+</Rung>
+<Rung Number="7" Type="N">
+<Comment>
+<![CDATA[Downtime (min)
+
+V4.1: downtime only accumulates on FAULT stop, not cycle stop. JARVIS INFERENCE on the exact condition: not running AND the last stop was a fault (q_MachineFaultActive OR stop reason 4).]]>
+</Comment>
+<Text>
+<![CDATA[XIO(\Supervisor.q_MachineRunning)[XIC(\Supervisor.q_MachineFaultActive) ,EQ(\Supervisor.q_MachineStopReason,4) ][RTO(CycleDowntime,?,?) ,XIC(CycleDowntime.DN) ADD(ProductionData.DowntimeSec,1,ProductionData.DowntimeSec) DIV(ProductionData.DowntimeSec,60,ProductionData.DowntimeMin) RES(CycleDowntime) ];]]>
+</Text>
+</Rung>
+<Rung Number="8" Type="N">
+<Comment>
+<![CDATA[Elapsed Time (sec / min) - V4.1 members. JARVIS INFERENCE on formulas.]]>
+</Comment>
+<Text>
+<![CDATA[[ADD(ProductionData.RuntimeSec,ProductionData.DowntimeSec,ProductionData.ElapsedSec) ,DIV(ProductionData.ElapsedSec,60,ProductionData.ElapsedMin) ,MOVE(ProductionData.ElapsedMin,ProductionData.ElapsedTime) ];]]>
+</Text>
+</Rung>
+<Rung Number="9" Type="N">
+<Comment>
+<![CDATA[Good Rate Per Min (V4.1: REAL)]]>
+</Comment>
+<Text>
+<![CDATA[CPT(ProductionData.GoodRate,(ProductionData.Good/ProductionData.RuntimeMin));]]>
+</Text>
+</Rung>
+<Rung Number="10" Type="N">
+<Comment>
+<![CDATA[Parts Per Minute - V4.1 member. JARVIS INFERENCE: total parts over elapsed minutes.]]>
+</Comment>
+<Text>
+<![CDATA[GT(ProductionData.ElapsedMin,0)CPT(ProductionData.PPM,(ProductionData.Total/ProductionData.ElapsedMin));]]>
+</Text>
+</Rung>
+<Rung Number="11" Type="N">
+<Comment>
+<![CDATA[Perfect Run Total - V4.1 member. JARVIS INFERENCE: parts a zero-loss run would have produced in the elapsed time.]]>
+</Comment>
+<Text>
+<![CDATA[CPT(ProductionData.PerfectRunTotal,(ProductionData.ElapsedSec/IdealCycleTime));]]>
+</Text>
+</Rung>
+<Rung Number="12" Type="N">
+<Comment>
+<![CDATA[OEE
+
+***NOTE - PlannedProductionTime Input Must Equal Total Shift Time (480 Minutes) - Planned Downtime (Breaks, Lunches, ect.) In Minutes***
+***NOTE - IdealCycleTime Input Must Equal Cycle Time Of Machine In Seconds***]]>
+</Comment>
+<Text>
+<![CDATA[OEE(ProductionDataOEE,480,ProductionData.RuntimeSec,ProductionData.DowntimeSec,IdealCycleTime,ProductionData.Total,ProductionData.Good,ProductionData.Availability,ProductionData.Performance,ProductionData.Quality,ProductionData.OEE);]]>
+</Text>
+</Rung>
+<Rung Number="13" Type="N">
+<Comment>
+<![CDATA[Total Faults]]>
+</Comment>
+<Text>
+<![CDATA[XIC(\Supervisor.q_MachineRunning)XIC(\Supervisor.q_MachineFaultActive)ONS(ONS.2)ADD(ProductionData.TotalFaults,1,ProductionData.TotalFaults);]]>
+</Text>
+</Rung>
+<Rung Number="14" Type="N">
+<Comment>
+<![CDATA[Reset Total Counts]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(HMI_ResetPartCounts) ,XIC(HMI_ResetAllCounts) ]TON(HoldTimerA,?,?)XIC(HoldTimerA.DN)COP(EmptyData,ProductionData,1);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+<Routine Name="R02_ShiftData" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Shift Data - Uses Array Indexes 1,2,3
+
+Calculate Shift Number
+
+Evidence: shift 1 = 07:00, shift 2 = 15:00, shift 3 = 23:00.]]>
+</Comment>
+<Text>
+<![CDATA[[EQ(g_CPUDateTime.Hour,7) EQ(g_CPUDateTime.Minutes,0) ONS(ONS.3) MOVE(1,p_CurrentShift) MOVE(3,PreviousShift) ,EQ(g_CPUDateTime.Hour,15) EQ(g_CPUDateTime.Minutes,0) ONS(ONS.4) MOVE(2,p_CurrentShift) MOVE(1,PreviousShift) ,EQ(g_CPUDateTime.Hour,23) EQ(g_CPUDateTime.Minutes,0) ONS(ONS.5) MOVE(3,p_CurrentShift) MOVE(2,PreviousShift) ]OTE(ShiftChangedPulse);]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Comment>
+<![CDATA[Power-up shift recovery]]>
+</Comment>
+<Text>
+<![CDATA[EQ(p_CurrentShift,0)[LIMIT(7,g_CPUDateTime.Hour,14) MOVE(1,p_CurrentShift) ,LIMIT(15,g_CPUDateTime.Hour,22) MOVE(2,p_CurrentShift) ,LIMIT(23,g_CPUDateTime.Hour,6) MOVE(3,p_CurrentShift) ];]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Comment>
+<![CDATA[Clear the new shift bucket at shift change]]>
+</Comment>
+<Text>
+<![CDATA[XIC(ShiftChangedPulse)COP(EmptyData,ShiftData[p_CurrentShift],1);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Comment>
+<![CDATA[Good Parts
+
+Evidence rung used g_MachineBasic.AlwaysOff with ***NOTE - Replace MachineBasic.AlwaysOff With Good Part Trigger***. JARVIS wires it to the Tracking good-part pulse.]]>
+</Comment>
+<Text>
+<![CDATA[XIC(\Tracking.q_GoodPartPulse)ONS(ONS.6)ADD(ShiftData[p_CurrentShift].Good,1,ShiftData[p_CurrentShift].Good);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Comment>
+<![CDATA[Reject Parts]]>
+</Comment>
+<Text>
+<![CDATA[XIC(\Tracking.q_RejectPartPulse)ONS(ONS.7)ADD(ShiftData[p_CurrentShift].Reject,1,ShiftData[p_CurrentShift].Reject);]]>
+</Text>
+</Rung>
+<Rung Number="5" Type="N">
+<Comment>
+<![CDATA[Total Parts]]>
+</Comment>
+<Text>
+<![CDATA[ADD(ShiftData[p_CurrentShift].Good,ShiftData[p_CurrentShift].Reject,ShiftData[p_CurrentShift].Total);]]>
+</Text>
+</Rung>
+<Rung Number="6" Type="N">
+<Comment>
+<![CDATA[Good Part Efficiency]]>
+</Comment>
+<Text>
+<![CDATA[CPT(ShiftData[p_CurrentShift].GoodPercent,(ShiftData[p_CurrentShift].Good/ShiftData[p_CurrentShift].Total)*100);]]>
+</Text>
+</Rung>
+<Rung Number="7" Type="N">
+<Comment>
+<![CDATA[Reject Part Efficiency]]>
+</Comment>
+<Text>
+<![CDATA[CPT(ShiftData[p_CurrentShift].RejectPercent,(ShiftData[p_CurrentShift].Reject/ShiftData[p_CurrentShift].Total)*100);]]>
+</Text>
+</Rung>
+<Rung Number="8" Type="N">
+<Comment>
+<![CDATA[Runtime (min)]]>
+</Comment>
+<Text>
+<![CDATA[XIC(\Supervisor.q_MachineRunning)[RTO(ShiftRuntime,?,?) ,XIC(ShiftRuntime.DN) ADD(ShiftData[p_CurrentShift].RuntimeSec,1,ShiftData[p_CurrentShift].RuntimeSec) DIV(ShiftData[p_CurrentShift].RuntimeSec,60,ShiftData[p_CurrentShift].RuntimeMin) RES(ShiftRuntime) ];]]>
+</Text>
+</Rung>
+<Rung Number="9" Type="N">
+<Comment>
+<![CDATA[Downtime (min)
+
+V4.1: downtime only accumulates on FAULT stop, not cycle stop. JARVIS INFERENCE on the exact condition: not running AND the last stop was a fault (q_MachineFaultActive OR stop reason 4).]]>
+</Comment>
+<Text>
+<![CDATA[XIO(\Supervisor.q_MachineRunning)[XIC(\Supervisor.q_MachineFaultActive) ,EQ(\Supervisor.q_MachineStopReason,4) ][RTO(ShiftDowntime,?,?) ,XIC(ShiftDowntime.DN) ADD(ShiftData[p_CurrentShift].DowntimeSec,1,ShiftData[p_CurrentShift].DowntimeSec) DIV(ShiftData[p_CurrentShift].DowntimeSec,60,ShiftData[p_CurrentShift].DowntimeMin) RES(ShiftDowntime) ];]]>
+</Text>
+</Rung>
+<Rung Number="10" Type="N">
+<Comment>
+<![CDATA[Elapsed Time (sec / min) - V4.1 members. JARVIS INFERENCE on formulas.]]>
+</Comment>
+<Text>
+<![CDATA[[ADD(ShiftData[p_CurrentShift].RuntimeSec,ShiftData[p_CurrentShift].DowntimeSec,ShiftData[p_CurrentShift].ElapsedSec) ,DIV(ShiftData[p_CurrentShift].ElapsedSec,60,ShiftData[p_CurrentShift].ElapsedMin) ,MOVE(ShiftData[p_CurrentShift].ElapsedMin,ShiftData[p_CurrentShift].ElapsedTime) ];]]>
+</Text>
+</Rung>
+<Rung Number="11" Type="N">
+<Comment>
+<![CDATA[Good Rate Per Min (V4.1: REAL)]]>
+</Comment>
+<Text>
+<![CDATA[CPT(ShiftData[p_CurrentShift].GoodRate,(ShiftData[p_CurrentShift].Good/ShiftData[p_CurrentShift].RuntimeMin));]]>
+</Text>
+</Rung>
+<Rung Number="12" Type="N">
+<Comment>
+<![CDATA[Parts Per Minute - V4.1 member. JARVIS INFERENCE: total parts over elapsed minutes.]]>
+</Comment>
+<Text>
+<![CDATA[GT(ShiftData[p_CurrentShift].ElapsedMin,0)CPT(ShiftData[p_CurrentShift].PPM,(ShiftData[p_CurrentShift].Total/ShiftData[p_CurrentShift].ElapsedMin));]]>
+</Text>
+</Rung>
+<Rung Number="13" Type="N">
+<Comment>
+<![CDATA[Perfect Run Total - V4.1 member. JARVIS INFERENCE: parts a zero-loss run would have produced in the elapsed time.]]>
+</Comment>
+<Text>
+<![CDATA[CPT(ShiftData[p_CurrentShift].PerfectRunTotal,(ShiftData[p_CurrentShift].ElapsedSec/IdealCycleTime));]]>
+</Text>
+</Rung>
+<Rung Number="14" Type="N">
+<Comment>
+<![CDATA[OEE
+
+***NOTE - PlannedProductionTime Input Must Equal Total Shift Time (480 Minutes) - Planned Downtime (Breaks, Lunches, ect.) In Minutes***
+***NOTE - IdealCycleTime Input Must Equal Cycle Time Of Machine In Seconds***]]>
+</Comment>
+<Text>
+<![CDATA[OEE(ShiftDataOEE,480,ShiftData[p_CurrentShift].RuntimeSec,ShiftData[p_CurrentShift].DowntimeSec,IdealCycleTime,ShiftData[p_CurrentShift].Total,ShiftData[p_CurrentShift].Good,ShiftData[p_CurrentShift].Availability,ShiftData[p_CurrentShift].Performance,ShiftData[p_CurrentShift].Quality,ShiftData[p_CurrentShift].OEE);]]>
+</Text>
+</Rung>
+<Rung Number="15" Type="N">
+<Comment>
+<![CDATA[Total Faults]]>
+</Comment>
+<Text>
+<![CDATA[XIC(\Supervisor.q_MachineRunning)XIC(\Supervisor.q_MachineFaultActive)ONS(ONS.8)ADD(ShiftData[p_CurrentShift].TotalFaults,1,ShiftData[p_CurrentShift].TotalFaults);]]>
+</Text>
+</Rung>
+<Rung Number="16" Type="N">
+<Comment>
+<![CDATA[Reset Current Shift Count]]>
+</Comment>
+<Text>
+<![CDATA[XIC(HMI_ResetCurrentShift)TON(HoldTimerB,?,?)XIC(HoldTimerB.DN)COP(EmptyData,ShiftData[p_CurrentShift],1);]]>
+</Text>
+</Rung>
+<Rung Number="17" Type="N">
+<Comment>
+<![CDATA[Reset All Shift Count]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(HMI_ResetAllShift) ,XIC(HMI_ResetAllCounts) ]TON(HoldTimerC,?,?)XIC(HoldTimerC.DN)COP(EmptyData,ShiftData[1],1)COP(EmptyData,ShiftData[2],1)COP(EmptyData,ShiftData[3],1);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</Program>
+<Program Use="Target" Name="Recipe" TestEdits="false" MainRoutineName="R00_Main" Disabled="false" Class="Standard" UseAsFolder="false">
+<Description>
+<![CDATA[PURE JARVIS INFERENCE - Recipe program added V4.2 with PanelView 5310 example HMI; no export exists and no station consumes \Recipe tags. Proposal for review.]]>
+</Description>
+<Tags>
+<Tag Name="p_CurrentRecipeNum" TagType="Base" DataType="DINT" Radix="Decimal" Usage="Public" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Recipe currently loaded into the machine]]>
+</Description>
+</Tag>
+<Tag Name="p_RecipeLoaded" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Public" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[A recipe is loaded and matches the selection]]>
+</Description>
+</Tag>
+<Tag Name="HMI_RecipeSelect" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[HMI - recipe number selected on the PanelView 5310 recipe screen]]>
+</Description>
+</Tag>
+<Tag Name="HMI_LoadRecipe" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[HMI momentary - load the selected recipe]]>
+</Description>
+</Tag>
+<Tag Name="HMI_SaveRecipe" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[HMI momentary - save active parameters into the selected recipe slot]]>
+</Description>
+</Tag>
+<Tag Name="RecipeStore" TagType="Base" DataType="RecipeData" Dimensions="8" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Recipe storage - *size per machine]]>
+</Description>
+</Tag>
+<Tag Name="ActiveRecipe" TagType="Base" DataType="RecipeData" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Parameters the machine is currently running]]>
+</Description>
+</Tag>
+<Tag Name="ONS" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[One shot storage bits]]>
+</Description>
+</Tag>
+</Tags>
+<Routines>
+<Routine Name="R00_Main" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Subroutine Calls]]>
+</Comment>
+<Text>
+<![CDATA[JSR(R01_Recipe,0);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+<Routine Name="R01_Recipe" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Recipe Management
+
+PURE JARVIS INFERENCE: V4.2 added a Recipe program and a PanelView 5310 example HMI, but nothing was exported and no station references \Recipe tags. This is JARVIS's proposal of the minimum viable SDC-style recipe program for the leads to correct: numbered recipe slots, HMI load/save handshake, load blocked while the cycle is running.]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Comment>
+<![CDATA[Load Selected Recipe - only while the machine cycle is stopped]]>
+</Comment>
+<Text>
+<![CDATA[XIC(HMI_LoadRecipe)XIC(\Supervisor.q_CycleStopped)ONS(ONS.0)LIMIT(0,HMI_RecipeSelect,7)[COP(RecipeStore[HMI_RecipeSelect],ActiveRecipe,1) ,MOVE(HMI_RecipeSelect,p_CurrentRecipeNum) ,OTL(p_RecipeLoaded) ];]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Comment>
+<![CDATA[Save Active Parameters Into Selected Slot]]>
+</Comment>
+<Text>
+<![CDATA[XIC(HMI_SaveRecipe)ONS(ONS.1)LIMIT(0,HMI_RecipeSelect,7)COP(ActiveRecipe,RecipeStore[HMI_RecipeSelect],1);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Comment>
+<![CDATA[Recipe Loaded Flag Drops When Selection Changes]]>
+</Comment>
+<Text>
+<![CDATA[NE(HMI_RecipeSelect,p_CurrentRecipeNum)OTU(p_RecipeLoaded);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Comment>
+<![CDATA[Distribute Recipe Parameters
+
+*Replace always off with real distribution - copy ActiveRecipe.Parameter[n] into the consuming tags (HMI_XAxis.Parameters.Positions[n], batch targets, vision job numbers, etc.) per machine.]]>
+</Comment>
+<Text>
+<![CDATA[XIC(g_MachineBasic.AlwaysOff)NOP();]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</Program>
+<Program Use="Context" Name="S00_IndexerSP" Class="Standard">
+<Tags Use="Context">
+<Tag Use="Reference" Name="q_AutoMode">
+</Tag>
+<Tag Use="Reference" Name="q_AutoStopped">
+</Tag>
+<Tag Use="Reference" Name="q_StartOK">
+</Tag>
+<Tag Use="Reference" Name="q_AlarmActive">
+</Tag>
+<Tag Use="Reference" Name="q_WarningActive">
+</Tag>
+<Tag Use="Reference" Name="q_WaitStationsComplete">
+</Tag>
+<Tag Use="Reference" Name="q_Paused">
+</Tag>
+<Tag Use="Reference" Name="p_OnStation">
+</Tag>
+<Tag Use="Reference" Name="p_CycleTime">
+</Tag>
+</Tags>
+</Program>
+<Program Use="Context" Name="S01_PartLoad" Class="Standard">
+<Tags Use="Context">
+<Tag Use="Reference" Name="q_AutoMode">
+</Tag>
+<Tag Use="Reference" Name="q_AutoStopped">
+</Tag>
+<Tag Use="Reference" Name="q_StartOK">
+</Tag>
+<Tag Use="Reference" Name="q_AlarmActive">
+</Tag>
+<Tag Use="Reference" Name="q_WarningActive">
+</Tag>
+<Tag Use="Reference" Name="q_ActuatorsSafe">
+</Tag>
+<Tag Use="Reference" Name="q_StationComplete">
+</Tag>
+<Tag Use="Reference" Name="q_Pause">
+</Tag>
+<Tag Use="Reference" Name="p_CycleTime">
+</Tag>
+</Tags>
+</Program>
+<Program Use="Context" Name="S05_ServoPNP" Class="Standard">
+<Tags Use="Context">
+<Tag Use="Reference" Name="q_AutoMode">
+</Tag>
+<Tag Use="Reference" Name="q_AutoStopped">
+</Tag>
+<Tag Use="Reference" Name="q_StartOK">
+</Tag>
+<Tag Use="Reference" Name="q_AlarmActive">
+</Tag>
+<Tag Use="Reference" Name="q_WarningActive">
+</Tag>
+<Tag Use="Reference" Name="q_ActuatorsSafe">
+</Tag>
+<Tag Use="Reference" Name="q_StationComplete">
+</Tag>
+<Tag Use="Reference" Name="q_Pause">
+</Tag>
+<Tag Use="Reference" Name="p_CycleTime">
+</Tag>
+</Tags>
+</Program>
+</Programs>
+<Tasks>
+<Task Name="MainTask" Type="CONTINUOUS" Priority="10" Watchdog="500" DisableUpdateOutputs="false" InhibitTask="false">
+<Description>
+<![CDATA[JARVIS INFERENCE - scheduled program order for an indexing dial machine:
+1. Supervisor - mode, safety, and cycle decisions land before any station acts on them this scan
+2. S00_IndexerSP - the indexer moves the dial and recomputes every station's NestNum (R10) before stations consume it
+3. S01_PartLoad, then S05_ServoPNP - process stations in dial order
+4. Tracking - sees this scan's Attempt/Success latches; owns nest lifecycle and batch counting
+5. Alarms - aggregates every program's q_AlarmActive/q_WarningActive after they have all executed
+6. Production, HMI, Recipe - reporting and operator interface last
+LINEAR MACHINE NOTE: swap S00_IndexerSP for S00_IndexerNoSP (per revision history the NoSP variant doubles as the linear indexer); station order follows part flow.
+ROBOT CELL NOTE: no S00 program - the robot program(s) take its slot and the handshake becomes robot interface signals instead of q_WaitStationsComplete.]]>
+</Description>
+<ScheduledPrograms>
+<ScheduledProgram Name="Supervisor"/>
+<ScheduledProgram Name="S00_IndexerSP"/>
+<ScheduledProgram Name="S01_PartLoad"/>
+<ScheduledProgram Name="S05_ServoPNP"/>
+<ScheduledProgram Name="Tracking"/>
+<ScheduledProgram Name="Alarms"/>
+<ScheduledProgram Name="Production"/>
+<ScheduledProgram Name="HMI"/>
+<ScheduledProgram Name="Recipe"/>
+</ScheduledPrograms>
+</Task>
+</Tasks>
+</Controller>
+</RSLogix5000Content>

@@ -7,7 +7,8 @@ export default defineConfig({
     port: 3131,
     open: true,
     proxy: {
-      '/api': 'http://localhost:3131',
+      // Project API server — START_APP.bat launches it on port 3000
+      '/api': 'http://localhost:3000',
     },
   },
   // Explicitly pre-bundle React to avoid Node 24 resolution issues

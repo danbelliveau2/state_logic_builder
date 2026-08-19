@@ -1,0 +1,38 @@
+# Intermediate Representation — SDC_Servo_PNP
+Station number: 1
+
+## Devices
+- [ServoAxis] PNPXAxis "PNP_XAxis" sensorArrangement="" homePosition="ServoMove" axisNumber=1 motionType="linear" positions=[{"name":"Pick","defaultValue":350,"moveType":"Pos","isHome":true,"isRecipe":false,"type":"position"},{"name":"Place","defaultValue":50,"moveType":"Pos","isHome":false,"isRecipe":false,"type":"position"},{"name":"Reject","defaultValue":100,"moveType":"Pos","isHome":false,"isRecipe":false,"type":"position"}] speedProfiles=[{"name":"Slow","speed":100,"accel":1000,"decel":1000},{"name":"Fast","speed":2500,"accel":25000,"decel":25000}] extTimerMs=500 retTimerMs=500 engageTimerMs=300 disengageTimerMs=300 vacOnTimerMs=300 hasEject=false timerMs=1000
+- [ServoAxis] PNPZAxis "PNP_ZAxis" sensorArrangement="" homePosition="ServoMove" axisNumber=1 motionType="linear" positions=[{"name":"Clear","defaultValue":10,"moveType":"Pos","isHome":true,"isRecipe":false,"type":"position"},{"name":"Pick","defaultValue":75,"moveType":"Pos","isHome":false,"isRecipe":false,"type":"position"},{"name":"Place","defaultValue":75,"moveType":"Pos","isHome":false,"isRecipe":false,"type":"position"}] speedProfiles=[{"name":"Slow","speed":100,"accel":1000,"decel":1000},{"name":"Fast","speed":2500,"accel":25000,"decel":25000}] extTimerMs=500 retTimerMs=500 engageTimerMs=300 disengageTimerMs=300 vacOnTimerMs=300 hasEject=false timerMs=1000
+- [PneumaticGripper] PartGripper "Part_Gripper" sensorArrangement="No sensors" homePosition="Disengage" axisNumber=1 extTimerMs=500 retTimerMs=500 engageTimerMs=250 disengageTimerMs=250 vacOnTimerMs=300 hasEject=false timerMs=1000
+
+## States (assigned state numbers — these are FINAL, use them as-is)
+- State 4: "Wait for Index Complete" {INITIAL}
+- State 7: "Step 1"
+    action: ServoMove -> PNPZAxis (positionName="Pick")
+- State 10: "Step 2"
+    action: Engage -> PartGripper
+- State 13: "Step 3"
+    action: ServoMove -> PNPZAxis (positionName="Clear")
+- State 16: "Step 4"
+    action: ServoMove -> PNPXAxis (positionName="Place")
+- State 19: "Step 5"
+    action: ServoMove -> PNPZAxis (positionName="Place")
+- State 22: "Step 6"
+    action: Disengage -> PartGripper
+- State 25: "Step 7"
+    action: ServoMove -> PNPZAxis (positionName="Clear")
+- State 28: "Step 8"
+    action: ServoMove -> PNPXAxis (positionName="Pick")
+- State 31: "Step 9" {CYCLE-COMPLETE}
+
+## Transitions
+- [4] "Wait for Index Complete" -> [7] "Step 1" (type=ready label="Ready")
+- [7] "Step 1" -> [10] "Step 2" (type=ready label="Ready")
+- [10] "Step 2" -> [13] "Step 3" (type=ready label="Ready")
+- [13] "Step 3" -> [16] "Step 4" (type=ready label="Ready")
+- [16] "Step 4" -> [19] "Step 5" (type=ready label="Ready")
+- [19] "Step 5" -> [22] "Step 6" (type=ready label="Ready")
+- [22] "Step 6" -> [25] "Step 7" (type=ready label="Ready")
+- [25] "Step 7" -> [28] "Step 8" (type=ready label="Ready")
+- [28] "Step 8" -> [31] "Step 9" (type=ready label="Ready")

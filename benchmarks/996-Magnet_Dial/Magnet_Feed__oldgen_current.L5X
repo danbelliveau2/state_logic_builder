@@ -1,0 +1,2312 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<RSLogix5000Content SchemaRevision="1.0" SoftwareRevision="37.00" TargetName="S01_MagnetFeed" TargetType="Program" TargetClass="Standard" ContainsContext="true" ExportDate="Wed, 19 Aug 2026 11:36:18 GMT" ExportOptions="References NoRawData L5KData DecoratedData Context Dependencies ForceProtectedEncoding AllProjDocTrans">
+<Controller Use="Context" Name="SDCController">
+
+<DataTypes Use="Context">
+<DataType Name="CPU_TimeDate" Family="NoFamily" Class="User">
+<Description>
+<![CDATA[CPU Time And Date Array]]>
+</Description>
+<Members>
+<Member Name="Year" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Month" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Day" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Hour" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Minutes" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Seconds" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Milliseconds" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Microseconds" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="UTCMicroseconds" DataType="LINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+</DataType>
+<DataType Name="StationStatus" Family="NoFamily" Class="User">
+<Members>
+<Member Name="ZZZZZZZZZZStationSta0" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="PartPresent" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZStationSta0" BitNumber="0" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Part present at this station]]>
+</Description>
+</Member>
+<Member Name="Reject" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZStationSta0" BitNumber="1" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Part marked reject - station skips processing]]>
+</Description>
+</Member>
+<Member Name="Complete" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZStationSta0" BitNumber="2" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Station processing complete for this part]]>
+</Description>
+</Member>
+<Member Name="HeadNumber" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Head/nest number currently at this station position]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+<DataType Name="PartTracking_UDT" Family="NoFamily" Class="User">
+<Members>
+<Member Name="ZZZZZZZZZZPartTrack0" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="StationResult" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZPartTrack0" BitNumber="0" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Rolled-up station outcome — Success if no other PT reject was written this cycle]]>
+</Description>
+</Member>
+
+</Members>
+</DataType>
+<DataType Name="StateLogicControl" Family="NoFamily" Class="User">
+<Members>
+<Member Name="StateReg" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Register]]>
+</Description>
+</Member>
+<Member Name="ZZZZZZZZZZState_Logi1" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="EnaFaultDetect" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZState_Logi1" BitNumber="0" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Enable Fault Detection]]>
+</Description>
+</Member>
+<Member Name="EnaTransitionTimer" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZState_Logi1" BitNumber="1" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Enable State Transition Timer]]>
+</Description>
+</Member>
+<Member Name="FaultTime" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Timeout Fault Time (Msec)]]>
+</Description>
+</Member>
+<Member Name="TransitionTime" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Transition preset time (ms)]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+<DataType Name="StateLogicStatus" Family="NoFamily" Class="User">
+<Members>
+<Member Name="State" DataType="BOOL" Dimension="128" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Control Bits]]>
+</Description>
+</Member>
+<Member Name="PreviousState" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Previous State]]>
+</Description>
+</Member>
+<Member Name="ZZZZZZZZZZState_Logi2" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="StateChangeOccurred_OS" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZState_Logi2" BitNumber="0" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Change Occurred]]>
+</Description>
+</Member>
+<Member Name="TimeoutFlt" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZState_Logi2" BitNumber="1" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Timeout Fault]]>
+</Description>
+</Member>
+<Member Name="TransitionTimerDone" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZState_Logi2" BitNumber="2" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Transition Time Done]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+<DataType Name="STRING100" Family="StringFamily" Class="User">
+<Members>
+<Member Name="LEN" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="DATA" DataType="SINT" Dimension="100" Radix="ASCII" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+</DataType>
+<DataType Name="AlarmData" Family="NoFamily" Class="User">
+<Members>
+<Member Name="ProgramID" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Unique ID given to each AOI instance.]]>
+</Description>
+</Member>
+<Member Name="AlarmID" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Index number of the alarm taken from the array attached to the AOI.]]>
+</Description>
+</Member>
+<Member Name="Severity" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Fault = 0, Warning = 1]]>
+</Description>
+</Member>
+<Member Name="Group" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Alarm group number. 0 -31]]>
+</Description>
+</Member>
+<Member Name="Message" DataType="STRING100" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Message Description (Default Language)]]>
+</Description>
+</Member>
+<Member Name="TimeStamp" DataType="LINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[UTC microseconds. Time it went active.]]>
+</Description>
+</Member>
+<Member Name="Count" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Count of Alarm Occurrences]]>
+</Description>
+</Member>
+<Member Name="Duration" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Duration in seconds]]>
+</Description>
+</Member>
+<Member Name="ZZZZZZZZZZAlarmData8" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="Active" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZAlarmData8" BitNumber="0" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Alarm Active]]>
+</Description>
+</Member>
+<Member Name="DoNotSaveToHistory" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZAlarmData8" BitNumber="1" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Set this flag to prevent the alarm from cluttering up the history.]]>
+</Description>
+</Member>
+<Member Name="HMI_ResetCount" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZAlarmData8" BitNumber="2" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[HMI Reset input]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+</DataTypes>
+
+<AddOnInstructionDefinitions Use="Context">
+<AddOnInstructionDefinition Name="State_Engine_128Max" Class="Standard" Revision="5.0" Vendor="Steven Douglas Corp." ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" CreatedDate="2013-06-25T13:55:13.933Z" CreatedBy="SDC" EditedDate="2025-08-25T14:49:42.628Z" EditedBy="SDC"
+ SoftwareRevision="v35.00">
+<Description>
+<![CDATA[State Logic Engine For 128 States]]>
+</Description>
+<RevisionNote>
+<![CDATA[-Separated UDT into Control & Status Pieces For better use with standard "Progam" methods.
+-Removed Timer,OS,Bit, Counter from Control UDT (Use local program tags instead)
+-4.1 optimizations
+-4.2 optimizations. Ena--Timer bits no longer needed.
+-5.0 added integrated state history array (variable length) 1/14/23 D.G.]]>
+</RevisionNote>
+<Parameters>
+<Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Input - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Output - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="StateLogicControl" TagType="Base" DataType="StateLogicControl" Usage="InOut" Required="true" Visible="true" Constant="false"/>
+<Parameter Name="StateLogicStatus" TagType="Base" DataType="StateLogicStatus" Usage="InOut" Required="true" Visible="true" Constant="false"/>
+<Parameter Name="StateHistoryArray" TagType="Base" DataType="SINT" Dimensions="1" Usage="InOut" Radix="Decimal" Required="true" Visible="true" Constant="false">
+<Description>
+<![CDATA[State history array]]>
+</Description>
+</Parameter>
+</Parameters>
+<LocalTags>
+<LocalTag Name="StateDurationTimer" DataType="FBD_TIMER" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[[1,0,0,0,0,0,0,0,0,4,0,0]]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="FBD_TIMER">
+<DataValueMember Name="EnableIn" DataType="BOOL" Value="1"/>
+<DataValueMember Name="TimerEnable" DataType="BOOL" Value="0"/>
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Reset" DataType="BOOL" Value="0"/>
+<DataValueMember Name="EnableOut" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Status" DataType="DINT" Radix="Hex" Value="16#0000_0000"/>
+<DataValueMember Name="InstructFault" DataType="BOOL" Value="0"/>
+<DataValueMember Name="PresetInv" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="i" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="INT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="StateReg_Prev" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="INT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="FaultTimer" DataType="FBD_TIMER" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[[1,0,0,0,0,0,0,0,0,4,0,0]]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="FBD_TIMER">
+<DataValueMember Name="EnableIn" DataType="BOOL" Value="1"/>
+<DataValueMember Name="TimerEnable" DataType="BOOL" Value="0"/>
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Reset" DataType="BOOL" Value="0"/>
+<DataValueMember Name="EnableOut" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Status" DataType="DINT" Radix="Hex" Value="16#0000_0000"/>
+<DataValueMember Name="InstructFault" DataType="BOOL" Value="0"/>
+<DataValueMember Name="PresetInv" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="localStatus" DataType="StateLogicStatus" ExternalAccess="None">
+<Description>
+<![CDATA[Temp structure for copying to ensure data changes all at once.]]>
+</Description>
+<DefaultData Format="L5K">
+<![CDATA[[[2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0],0,0]]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="StateLogicStatus">
+<ArrayMember Name="State" DataType="BOOL" Dimensions="128" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+<Element Index="[3]" Value="0"/>
+<Element Index="[4]" Value="0"/>
+<Element Index="[5]" Value="0"/>
+<Element Index="[6]" Value="0"/>
+<Element Index="[7]" Value="0"/>
+<Element Index="[8]" Value="0"/>
+<Element Index="[9]" Value="0"/>
+<Element Index="[10]" Value="0"/>
+<Element Index="[11]" Value="0"/>
+<Element Index="[12]" Value="0"/>
+<Element Index="[13]" Value="0"/>
+<Element Index="[14]" Value="0"/>
+<Element Index="[15]" Value="0"/>
+<Element Index="[16]" Value="0"/>
+<Element Index="[17]" Value="0"/>
+<Element Index="[18]" Value="0"/>
+<Element Index="[19]" Value="0"/>
+<Element Index="[20]" Value="0"/>
+<Element Index="[21]" Value="0"/>
+<Element Index="[22]" Value="0"/>
+<Element Index="[23]" Value="0"/>
+<Element Index="[24]" Value="0"/>
+<Element Index="[25]" Value="0"/>
+<Element Index="[26]" Value="0"/>
+<Element Index="[27]" Value="0"/>
+<Element Index="[28]" Value="0"/>
+<Element Index="[29]" Value="0"/>
+<Element Index="[30]" Value="0"/>
+<Element Index="[31]" Value="0"/>
+<Element Index="[32]" Value="0"/>
+<Element Index="[33]" Value="0"/>
+<Element Index="[34]" Value="0"/>
+<Element Index="[35]" Value="0"/>
+<Element Index="[36]" Value="0"/>
+<Element Index="[37]" Value="0"/>
+<Element Index="[38]" Value="0"/>
+<Element Index="[39]" Value="0"/>
+<Element Index="[40]" Value="0"/>
+<Element Index="[41]" Value="0"/>
+<Element Index="[42]" Value="0"/>
+<Element Index="[43]" Value="0"/>
+<Element Index="[44]" Value="0"/>
+<Element Index="[45]" Value="0"/>
+<Element Index="[46]" Value="0"/>
+<Element Index="[47]" Value="0"/>
+<Element Index="[48]" Value="0"/>
+<Element Index="[49]" Value="0"/>
+<Element Index="[50]" Value="0"/>
+<Element Index="[51]" Value="0"/>
+<Element Index="[52]" Value="0"/>
+<Element Index="[53]" Value="0"/>
+<Element Index="[54]" Value="0"/>
+<Element Index="[55]" Value="0"/>
+<Element Index="[56]" Value="0"/>
+<Element Index="[57]" Value="0"/>
+<Element Index="[58]" Value="0"/>
+<Element Index="[59]" Value="0"/>
+<Element Index="[60]" Value="0"/>
+<Element Index="[61]" Value="0"/>
+<Element Index="[62]" Value="0"/>
+<Element Index="[63]" Value="0"/>
+<Element Index="[64]" Value="0"/>
+<Element Index="[65]" Value="0"/>
+<Element Index="[66]" Value="0"/>
+<Element Index="[67]" Value="0"/>
+<Element Index="[68]" Value="0"/>
+<Element Index="[69]" Value="0"/>
+<Element Index="[70]" Value="0"/>
+<Element Index="[71]" Value="0"/>
+<Element Index="[72]" Value="0"/>
+<Element Index="[73]" Value="0"/>
+<Element Index="[74]" Value="0"/>
+<Element Index="[75]" Value="0"/>
+<Element Index="[76]" Value="0"/>
+<Element Index="[77]" Value="0"/>
+<Element Index="[78]" Value="0"/>
+<Element Index="[79]" Value="0"/>
+<Element Index="[80]" Value="0"/>
+<Element Index="[81]" Value="0"/>
+<Element Index="[82]" Value="0"/>
+<Element Index="[83]" Value="0"/>
+<Element Index="[84]" Value="0"/>
+<Element Index="[85]" Value="0"/>
+<Element Index="[86]" Value="0"/>
+<Element Index="[87]" Value="0"/>
+<Element Index="[88]" Value="0"/>
+<Element Index="[89]" Value="0"/>
+<Element Index="[90]" Value="0"/>
+<Element Index="[91]" Value="0"/>
+<Element Index="[92]" Value="0"/>
+<Element Index="[93]" Value="0"/>
+<Element Index="[94]" Value="0"/>
+<Element Index="[95]" Value="0"/>
+<Element Index="[96]" Value="0"/>
+<Element Index="[97]" Value="0"/>
+<Element Index="[98]" Value="0"/>
+<Element Index="[99]" Value="0"/>
+<Element Index="[100]" Value="0"/>
+<Element Index="[101]" Value="0"/>
+<Element Index="[102]" Value="0"/>
+<Element Index="[103]" Value="0"/>
+<Element Index="[104]" Value="0"/>
+<Element Index="[105]" Value="0"/>
+<Element Index="[106]" Value="0"/>
+<Element Index="[107]" Value="0"/>
+<Element Index="[108]" Value="0"/>
+<Element Index="[109]" Value="0"/>
+<Element Index="[110]" Value="0"/>
+<Element Index="[111]" Value="0"/>
+<Element Index="[112]" Value="0"/>
+<Element Index="[113]" Value="0"/>
+<Element Index="[114]" Value="0"/>
+<Element Index="[115]" Value="0"/>
+<Element Index="[116]" Value="0"/>
+<Element Index="[117]" Value="0"/>
+<Element Index="[118]" Value="0"/>
+<Element Index="[119]" Value="0"/>
+<Element Index="[120]" Value="0"/>
+<Element Index="[121]" Value="0"/>
+<Element Index="[122]" Value="0"/>
+<Element Index="[123]" Value="0"/>
+<Element Index="[124]" Value="0"/>
+<Element Index="[125]" Value="0"/>
+<Element Index="[126]" Value="0"/>
+<Element Index="[127]" Value="0"/>
+</ArrayMember>
+<DataValueMember Name="PreviousState" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="StateChangeOccurred_OS" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TimeoutFlt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TransitionTimerDone" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="HistoryArraySize" DataType="SINT" Radix="Decimal" ExternalAccess="None">
+<Description>
+<![CDATA[Size of state history array]]>
+</Description>
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="SINT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+</LocalTags>
+<Routines>
+<Routine Name="Logic" Type="ST">
+<STContent>
+<Line Number="0">
+<![CDATA[StateDurationTimer.Reset := 0;]]>
+</Line>
+<Line Number="1">
+<![CDATA[StateDurationTimer.PRE := 2147483647;]]>
+</Line>
+<Line Number="2">
+<![CDATA[SIZE(StateHistoryArray,0,HistoryArraySize);]]>
+</Line>
+<Line Number="3">
+<![CDATA[]]>
+</Line>
+<Line Number="4">
+<![CDATA[TONR(StateDurationTimer);]]>
+</Line>
+<Line Number="5">
+<![CDATA[]]>
+</Line>
+<Line Number="6">
+<![CDATA[COP(StateLogicStatus, localStatus, 1); //localStatus used so all Status updates at the same time, at the end of this code.]]>
+</Line>
+<Line Number="7">
+<![CDATA[If (StateLogicControl.StateReg = StateReg_Prev) THEN]]>
+</Line>
+<Line Number="8">
+<![CDATA[	//Previous State equal to Current State: Still in the same state as the last scan.]]>
+</Line>
+<Line Number="9">
+<![CDATA[	localStatus.StateChangeOccurred_OS := 0;]]>
+</Line>
+<Line Number="10">
+<![CDATA[]]>
+</Line>
+<Line Number="11">
+<![CDATA[	//State Duration Timer]]>
+</Line>
+<Line Number="12">
+<![CDATA[	StateDurationTimer.TimerEnable := 1;]]>
+</Line>
+<Line Number="13">
+<![CDATA[]]>
+</Line>
+<Line Number="14">
+<![CDATA[	//State Fault Timer]]>
+</Line>
+<Line Number="15">
+<![CDATA[	IF (StateDurationTimer.ACC >= StateLogicControl.FaultTime ) THEN]]>
+</Line>
+<Line Number="16">
+<![CDATA[		localStatus.TimeoutFlt := 1;]]>
+</Line>
+<Line Number="17">
+<![CDATA[	ELSE]]>
+</Line>
+<Line Number="18">
+<![CDATA[		localStatus.TimeoutFlt := 0;]]>
+</Line>
+<Line Number="19">
+<![CDATA[	END_IF;]]>
+</Line>
+<Line Number="20">
+<![CDATA[]]>
+</Line>
+<Line Number="21">
+<![CDATA[]]>
+</Line>
+<Line Number="22">
+<![CDATA[	//State Transition Timer]]>
+</Line>
+<Line Number="23">
+<![CDATA[	IF (StateDurationTimer.ACC >= StateLogicControl.TransitionTime) THEN]]>
+</Line>
+<Line Number="24">
+<![CDATA[		localStatus.TransitionTimerDone := 1;]]>
+</Line>
+<Line Number="25">
+<![CDATA[	ELSE]]>
+</Line>
+<Line Number="26">
+<![CDATA[		localStatus.TransitionTimerDone := 0;]]>
+</Line>
+<Line Number="27">
+<![CDATA[	END_IF;]]>
+</Line>
+<Line Number="28">
+<![CDATA[ELSE]]>
+</Line>
+<Line Number="29">
+<![CDATA[	//Previous State not Current State: State Change Occurred.]]>
+</Line>
+<Line Number="30">
+<![CDATA[	localStatus.StateChangeOccurred_OS := 1;]]>
+</Line>
+<Line Number="31">
+<![CDATA[	localStatus.PreviousState := StateReg_Prev;]]>
+</Line>
+<Line Number="32">
+<![CDATA[	StateReg_Prev := StateLogicControl.StateReg;]]>
+</Line>
+<Line Number="33">
+<![CDATA[	]]>
+</Line>
+<Line Number="34">
+<![CDATA[	//Shift state history array and store last state in index 0]]>
+</Line>
+<Line Number="35">
+<![CDATA[	if HistoryArraySize > 1 then //history array size of 1 would cause an array index out of bounds controller fault]]>
+</Line>
+<Line Number="36">
+<![CDATA[		for i := HistoryArraySize-1 to 1 by -1 do]]>
+</Line>
+<Line Number="37">
+<![CDATA[			StateHistoryArray[i] := StateHistoryArray[i-1];]]>
+</Line>
+<Line Number="38">
+<![CDATA[		end_for;]]>
+</Line>
+<Line Number="39">
+<![CDATA[	end_if;]]>
+</Line>
+<Line Number="40">
+<![CDATA[	StateHistoryArray[0] := StateReg_Prev;]]>
+</Line>
+<Line Number="41">
+<![CDATA[]]>
+</Line>
+<Line Number="42">
+<![CDATA[	StateDurationTimer.Reset := 1;]]>
+</Line>
+<Line Number="43">
+<![CDATA[	StateDurationTimer.TimerEnable := 0;]]>
+</Line>
+<Line Number="44">
+<![CDATA[	//Default to DINT Max value.]]>
+</Line>
+<Line Number="45">
+<![CDATA[	//EnaTransitionTimer and EnaFaultTimer bits kept for legacy compatibility]]>
+</Line>
+<Line Number="46">
+<![CDATA[	StateLogicControl.TransitionTime := 2147483647;]]>
+</Line>
+<Line Number="47">
+<![CDATA[	StateLogicControl.FaultTime := 2147483647;]]>
+</Line>
+<Line Number="48">
+<![CDATA[]]>
+</Line>
+<Line Number="49">
+<![CDATA[	localStatus.TimeoutFlt := 0;]]>
+</Line>
+<Line Number="50">
+<![CDATA[	localStatus.TransitionTimerDone := 0;]]>
+</Line>
+<Line Number="51">
+<![CDATA[END_IF;]]>
+</Line>
+<Line Number="52">
+<![CDATA[]]>
+</Line>
+<Line Number="53">
+<![CDATA[//Set the State Bit, clear all other bits.]]>
+</Line>
+<Line Number="54">
+<![CDATA[FOR i := 0 TO 127 DO]]>
+</Line>
+<Line Number="55">
+<![CDATA[	localStatus.State[i] := 0;]]>
+</Line>
+<Line Number="56">
+<![CDATA[END_FOR;]]>
+</Line>
+<Line Number="57">
+<![CDATA[localStatus.State[StateLogicControl.StateReg] := 1;]]>
+</Line>
+<Line Number="58">
+<![CDATA[]]>
+</Line>
+<Line Number="59">
+<![CDATA[COP(localStatus, StateLogicStatus, 1);]]>
+</Line>
+<Line Number="60">
+<![CDATA[]]>
+</Line>
+</STContent>
+</Routine>
+</Routines>
+<Dependencies>
+<Dependency Type="DataType" Name="StateLogicStatus"/>
+<Dependency Type="DataType" Name="StateLogicControl"/>
+</Dependencies>
+</AddOnInstructionDefinition>
+
+<AddOnInstructionDefinition Name="ProgramAlarmHandler" Class="Standard" Revision="3.0" RevisionExtension="a" Vendor="Steven Douglas Corp." ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" CreatedDate="2017-08-23T18:02:02.410Z" CreatedBy="SDC" EditedDate="2026-03-06T16:45:45.860Z" EditedBy="SDC" SoftwareRevision="v37.00">
+<Description>
+<![CDATA[Creates a shared Alarm History array and a shared Active Alarms array.]]>
+</Description>
+<Parameters>
+<Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description><![CDATA[Enable Input - System Defined Parameter]]></Description>
+</Parameter>
+<Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description><![CDATA[Enable Output - System Defined Parameter]]></Description>
+</Parameter>
+<Parameter Name="PublicProgramIDTag" TagType="Base" DataType="INT" Usage="InOut" Radix="Decimal" Required="true" Visible="true" Constant="false">
+<Description><![CDATA[Master Program ID tag used for all handler instances to obtain a unique ID]]></Description>
+</Parameter>
+<Parameter Name="LocalAlarmsArrayTag" TagType="Base" DataType="AlarmData" Dimensions="1" Usage="InOut" Required="true" Visible="true" Constant="false">
+<Description><![CDATA[Local array tag. Faults, Warnings]]></Description>
+</Parameter>
+<Parameter Name="AlarmActiveArrayTag" TagType="Base" DataType="AlarmData" Dimensions="1" Usage="InOut" Required="true" Visible="true" Constant="false">
+<Description><![CDATA[Active array tag. \Alarms.Active]]></Description>
+</Parameter>
+<Parameter Name="AlarmHistoryArrayTag" TagType="Base" DataType="AlarmData" Dimensions="1" Usage="InOut" Required="true" Visible="true" Constant="false">
+<Description><![CDATA[History array tag. \Alarms.History]]></Description>
+</Parameter>
+<Parameter Name="ControllerTimeClockTag" TagType="Base" DataType="CPU_TimeDate" Usage="InOut" Required="true" Visible="true" Constant="false"/>
+<Parameter Name="AlarmActiveTag" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="true" Visible="true" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="ActiveAlarmArrayIndex" TagType="Base" DataType="INT" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="ActiveAlarmDuration" TagType="Base" DataType="DINT" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="DINT" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="MyProgramID" TagType="Base" DataType="INT" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="None">
+<Description><![CDATA[This alarm handler's Program ID]]></Description>
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="WarningActiveTag" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+</Parameters>
+<LocalTags>
+<LocalTag Name="ActiveIndex" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="DataIndex" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="tempLength" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="ShiftIter" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="prevSecond" DataType="SINT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="SINT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="AlarmsActive_size" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="AlarmsHistory_size" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="OneSecond" DataType="BOOL" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="EmptyAlarmData" DataType="AlarmData" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[[0,0,0,0,[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,0,0,0]]]></DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="AlarmData">
+<DataValueMember Name="ProgramID" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="AlarmID" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Severity" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Group" DataType="INT" Radix="Decimal" Value="0"/>
+<StructureMember Name="Message" DataType="STRING100">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING100" Radix="ASCII"><![CDATA[]]></DataValueMember>
+</StructureMember>
+<DataValueMember Name="TimeStamp" DataType="LINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Count" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Duration" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Active" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DoNotSaveToHistory" DataType="BOOL" Value="0"/>
+<DataValueMember Name="HMI_ResetCount" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="AlarmsLocal_size" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+</LocalTags>
+<Routines>
+<Routine Name="Logic" Type="ST">
+<STContent>
+<Line Number="0"><![CDATA[PublicProgramIDTag := PublicProgramIDTag + 1;]]></Line>
+<Line Number="1"><![CDATA[MyProgramID := PublicProgramIDTag;]]></Line>
+<Line Number="2"><![CDATA[]]></Line>
+<Line Number="3"><![CDATA[SIZE(AlarmActiveArrayTag, 0, AlarmsActive_size);]]></Line>
+<Line Number="4"><![CDATA[SIZE(AlarmHistoryArrayTag, 0, AlarmsHistory_size);]]></Line>
+<Line Number="5"><![CDATA[SIZE(LocalAlarmsArrayTag, 0, AlarmsLocal_size);]]></Line>
+<Line Number="6"><![CDATA[]]></Line>
+<Line Number="7"><![CDATA[if (ControllerTimeClockTag.Seconds <> prevSecond) then]]></Line>
+<Line Number="8"><![CDATA[	prevSecond := ControllerTimeClockTag.Seconds;]]></Line>
+<Line Number="9"><![CDATA[	OneSecond := 1;]]></Line>
+<Line Number="10"><![CDATA[else]]></Line>
+<Line Number="11"><![CDATA[	OneSecond := 0;]]></Line>
+<Line Number="12"><![CDATA[end_if;]]></Line>
+<Line Number="13"><![CDATA[]]></Line>
+<Line Number="14"><![CDATA[for ActiveIndex := 0 to AlarmsActive_size - 1 by 1 do]]></Line>
+<Line Number="15"><![CDATA[	if (AlarmActiveArrayTag[ActiveIndex].ProgramID = PublicProgramIDTag) then]]></Line>
+<Line Number="16"><![CDATA[		DataIndex := AlarmActiveArrayTag[ActiveIndex].AlarmID;]]></Line>
+<Line Number="17"><![CDATA[		if ((DataIndex < 0) OR (DataIndex >= AlarmsLocal_size)) then]]></Line>
+<Line Number="18"><![CDATA[			tempLength := AlarmsActive_size - 1 - ActiveIndex;]]></Line>
+<Line Number="19"><![CDATA[			if (tempLength > 0) then]]></Line>
+<Line Number="20"><![CDATA[				COP(AlarmActiveArrayTag[ActiveIndex + 1], AlarmActiveArrayTag[ActiveIndex], tempLength);]]></Line>
+<Line Number="21"><![CDATA[			end_if;]]></Line>
+<Line Number="22"><![CDATA[			COP(EmptyAlarmData, AlarmActiveArrayTag[AlarmsActive_size - 1], 1);]]></Line>
+<Line Number="23"><![CDATA[			exit;]]></Line>
+<Line Number="24"><![CDATA[		end_if;]]></Line>
+<Line Number="25"><![CDATA[		if (OneSecond) then]]></Line>
+<Line Number="26"><![CDATA[			LocalAlarmsArrayTag[DataIndex].Duration := LocalAlarmsArrayTag[DataIndex].Duration +1;]]></Line>
+<Line Number="27"><![CDATA[			AlarmActiveArrayTag[ActiveIndex].Duration := AlarmActiveArrayTag[ActiveIndex].Duration +1;]]></Line>
+<Line Number="28"><![CDATA[		end_if;]]></Line>
+<Line Number="29"><![CDATA[		if (NOT LocalAlarmsArrayTag[DataIndex].Active) then]]></Line>
+<Line Number="30"><![CDATA[			if (NOT LocalAlarmsArrayTag[DataIndex].DoNotSaveToHistory) then]]></Line>
+<Line Number="31"><![CDATA[				for ShiftIter := AlarmsHistory_size - 2 to 0 by -1 do]]></Line>
+<Line Number="32"><![CDATA[					COP(AlarmHistoryArrayTag[ShiftIter], AlarmHistoryArrayTag[ShiftIter + 1], 1);]]></Line>
+<Line Number="33"><![CDATA[				end_for;]]></Line>
+<Line Number="34"><![CDATA[				COP(AlarmActiveArrayTag[ActiveIndex], AlarmHistoryArrayTag[0], 1);]]></Line>
+<Line Number="35"><![CDATA[			end_if;]]></Line>
+<Line Number="36"><![CDATA[			tempLength := AlarmsActive_size - 1 - ActiveIndex;]]></Line>
+<Line Number="37"><![CDATA[			if (ActiveIndex < (AlarmsActive_size - 1)) then]]></Line>
+<Line Number="38"><![CDATA[				COP(AlarmActiveArrayTag[ActiveIndex + 1], AlarmActiveArrayTag[ActiveIndex], tempLength);]]></Line>
+<Line Number="39"><![CDATA[			end_if;]]></Line>
+<Line Number="40"><![CDATA[			COP(EmptyAlarmData, AlarmActiveArrayTag[AlarmsActive_size - 1], 1);]]></Line>
+<Line Number="41"><![CDATA[		end_if;]]></Line>
+<Line Number="42"><![CDATA[	end_if;]]></Line>
+<Line Number="43"><![CDATA[end_for;]]></Line>
+<Line Number="44"><![CDATA[]]></Line>
+<Line Number="45"><![CDATA[AlarmActiveTag := 0;]]></Line>
+<Line Number="46"><![CDATA[WarningActiveTag := 0;]]></Line>
+<Line Number="47"><![CDATA[]]></Line>
+<Line Number="48"><![CDATA[For DataIndex := 0 to AlarmsLocal_size - 1 By 1 Do]]></Line>
+<Line Number="49"><![CDATA[	If (LocalAlarmsArrayTag[DataIndex].Active) Then]]></Line>
+<Line Number="50"><![CDATA[		If (LocalAlarmsArrayTag[DataIndex].Severity = 0) Then]]></Line>
+<Line Number="51"><![CDATA[			AlarmActiveTag := 1;]]></Line>
+<Line Number="52"><![CDATA[		End_If;]]></Line>
+<Line Number="53"><![CDATA[		If (LocalAlarmsArrayTag[DataIndex].Severity = 1) Then]]></Line>
+<Line Number="54"><![CDATA[			WarningActiveTag := 1;]]></Line>
+<Line Number="55"><![CDATA[		End_If;]]></Line>
+<Line Number="56"><![CDATA[		ActiveAlarmArrayIndex := DataIndex;]]></Line>
+<Line Number="57"><![CDATA[		ActiveAlarmDuration := LocalAlarmsArrayTag[DataIndex].Duration;]]></Line>
+<Line Number="58"><![CDATA[		For ActiveIndex := 0 to AlarmsActive_size - 1 By 1 Do]]></Line>
+<Line Number="59"><![CDATA[			If ((AlarmActiveArrayTag[ActiveIndex].ProgramID = PublicProgramIDTag) AND (AlarmActiveArrayTag[ActiveIndex].AlarmID = DataIndex)) Then]]></Line>
+<Line Number="60"><![CDATA[				Exit;]]></Line>
+<Line Number="61"><![CDATA[			End_If;]]></Line>
+<Line Number="62"><![CDATA[		End_For;]]></Line>
+<Line Number="63"><![CDATA[		If (ActiveIndex > AlarmsActive_size - 1) Then]]></Line>
+<Line Number="64"><![CDATA[			For ShiftIter := AlarmsActive_size - 2 to 0 By -1 Do]]></Line>
+<Line Number="65"><![CDATA[				COP(AlarmActiveArrayTag[ShiftIter], AlarmActiveArrayTag[ShiftIter + 1], 1);]]></Line>
+<Line Number="66"><![CDATA[			End_For;]]></Line>
+<Line Number="67"><![CDATA[			LocalAlarmsArrayTag[DataIndex].ProgramID := PublicProgramIDTag;]]></Line>
+<Line Number="68"><![CDATA[			LocalAlarmsArrayTag[DataIndex].AlarmID := DataIndex;]]></Line>
+<Line Number="69"><![CDATA[			COP(ControllerTimeClockTag.UTCMicroseconds, LocalAlarmsArrayTag[DataIndex].TimeStamp, 1);]]></Line>
+<Line Number="70"><![CDATA[			LocalAlarmsArrayTag[DataIndex].Duration := 0;]]></Line>
+<Line Number="71"><![CDATA[			LocalAlarmsArrayTag[DataIndex].Count := LocalAlarmsArrayTag[DataIndex].Count +1;]]></Line>
+<Line Number="72"><![CDATA[			COP(LocalAlarmsArrayTag[DataIndex], AlarmActiveArrayTag[0], 1);]]></Line>
+<Line Number="73"><![CDATA[		End_If;]]></Line>
+<Line Number="74"><![CDATA[	End_If;]]></Line>
+<Line Number="75"><![CDATA[End_For;]]></Line>
+<Line Number="76"><![CDATA[]]></Line>
+<Line Number="77"><![CDATA[if (AlarmActiveTag) then]]></Line>
+<Line Number="78"><![CDATA[	ActiveAlarmArrayIndex := 9999;]]></Line>
+<Line Number="79"><![CDATA[	ActiveAlarmDuration := 0;]]></Line>
+<Line Number="80"><![CDATA[end_if;]]></Line>
+</STContent>
+</Routine>
+</Routines>
+</AddOnInstructionDefinition>
+
+
+
+<AddOnInstructionDefinition Name="AOI_Debounce" Class="Standard" Revision="1.0" ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" CreatedDate="2017-12-20T17:38:23.616Z" CreatedBy="SDC" EditedDate="2017-12-20T17:43:44.150Z" EditedBy="SDC" SoftwareRevision="v30.00">
+<Parameters>
+<Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description><![CDATA[Enable Input - System Defined Parameter]]></Description>
+</Parameter>
+<Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description><![CDATA[Enable Output - System Defined Parameter]]></Description>
+</Parameter>
+<Parameter Name="Input" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="OnDelay" TagType="Base" DataType="DINT" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="DINT" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="OffDelay" TagType="Base" DataType="DINT" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="DINT" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="On" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="Read Only">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="Off" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="Read Only">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+</Parameters>
+<LocalTags>
+<LocalTag Name="OnTimer" DataType="TIMER" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[[0,0,0]]]></DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="OffTimer" DataType="TIMER" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[[0,0,0]]]></DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+</LocalTags>
+<Routines>
+<Routine Name="Logic" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Text><![CDATA[[XIC(Input) MOVE(OnDelay,OnTimer.PRE) TON(OnTimer,?,?) ,XIO(Input) MOVE(OffDelay,OffTimer.PRE) TON(OffTimer,?,?) ];]]></Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Text><![CDATA[[XIC(OnTimer.DN) OTE(On) ,XIC(OffTimer.DN) OTE(Off) ];]]></Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</AddOnInstructionDefinition>
+</AddOnInstructionDefinitions>
+
+<Programs Use="Context">
+<Program Use="Target" Name="S01_MagnetFeed" TestEdits="false" MainRoutineName="R00_Main" Disabled="false" Class="Standard" UseAsFolder="false">
+<Description>
+<![CDATA[S01 Feeds magnets from a dial stack: hold-down clamps the stack, vertical shuttle lifts it, horizontal shuttle presents the top magnet (coin-changer style). Retries presentation up to 3x on missing magnet, then declares the stack exhausted and requests a dial index. Top retainer holds the magnet down during every horizontal shuttle move (extend before horizontal extend, retract after shuttle-over) so it cannot magnetize and flip up. - Auto-generated by SDC State Logic Builder]]>
+</Description>
+<Tags>
+
+<Tag Name="Control" TagType="Base" DataType="StateLogicControl" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[0,0,0,0]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="StateLogicControl">
+<DataValueMember Name="StateReg" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EnaFaultDetect" DataType="BOOL" Value="0"/>
+<DataValueMember Name="EnaTransitionTimer" DataType="BOOL" Value="0"/>
+<DataValueMember Name="FaultTime" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="TransitionTime" DataType="DINT" Radix="Decimal" Value="0"/>
+</Structure>
+</Data>
+</Tag>
+
+<Tag Name="Status" TagType="Base" DataType="StateLogicStatus" Usage="Public" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Comments>
+<Comment Operand=".STATE[1]">
+<![CDATA[Wait For Ready]]>
+</Comment>
+<Comment Operand=".STATE[4]">
+<![CDATA[Wait]]>
+</Comment>
+<Comment Operand=".STATE[7]">
+<![CDATA[Extend Hold_Down, Extend Top_Retainer]]>
+</Comment>
+<Comment Operand=".STATE[10]">
+<![CDATA[Extend Vertical_Shuttle]]>
+</Comment>
+<Comment Operand=".STATE[13]">
+<![CDATA[Extend Horizontal_Shuttle, Retract Top_Retainer, Decide]]>
+</Comment>
+<Comment Operand=".STATE[16]">
+<![CDATA[Decide]]>
+</Comment>
+<Comment Operand=".STATE[19]">
+<![CDATA[Retract Horizontal_Shuttle, Extend Top_Retainer]]>
+</Comment>
+<Comment Operand=".STATE[22]">
+<![CDATA[Wait]]>
+</Comment>
+<Comment Operand=".STATE[25]">
+<![CDATA[Retract Horizontal_Shuttle, Retract Hold_Down, Retract Vertical_Shuttle, Retract Top_Retainer]]>
+</Comment>
+<Comment Operand=".STATE[28]">
+<![CDATA[Station Complete]]>
+</Comment>
+<Comment Operand=".STATE[31]">
+<![CDATA[Retract Horizontal_Shuttle, Extend Top_Retainer]]>
+</Comment>
+<Comment Operand=".STATE[60]">
+<![CDATA[Complete]]>
+</Comment>
+</Comments>
+<Data Format="L5K">
+<![CDATA[[[2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0],0,0]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="StateLogicStatus">
+<ArrayMember Name="State" DataType="BOOL" Dimensions="128" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+<Element Index="[3]" Value="0"/>
+<Element Index="[4]" Value="0"/>
+<Element Index="[5]" Value="0"/>
+<Element Index="[6]" Value="0"/>
+<Element Index="[7]" Value="0"/>
+<Element Index="[8]" Value="0"/>
+<Element Index="[9]" Value="0"/>
+<Element Index="[10]" Value="0"/>
+<Element Index="[11]" Value="0"/>
+<Element Index="[12]" Value="0"/>
+<Element Index="[13]" Value="0"/>
+<Element Index="[14]" Value="0"/>
+<Element Index="[15]" Value="0"/>
+<Element Index="[16]" Value="0"/>
+<Element Index="[17]" Value="0"/>
+<Element Index="[18]" Value="0"/>
+<Element Index="[19]" Value="0"/>
+<Element Index="[20]" Value="0"/>
+<Element Index="[21]" Value="0"/>
+<Element Index="[22]" Value="0"/>
+<Element Index="[23]" Value="0"/>
+<Element Index="[24]" Value="0"/>
+<Element Index="[25]" Value="0"/>
+<Element Index="[26]" Value="0"/>
+<Element Index="[27]" Value="0"/>
+<Element Index="[28]" Value="0"/>
+<Element Index="[29]" Value="0"/>
+<Element Index="[30]" Value="0"/>
+<Element Index="[31]" Value="0"/>
+<Element Index="[32]" Value="0"/>
+<Element Index="[33]" Value="0"/>
+<Element Index="[34]" Value="0"/>
+<Element Index="[35]" Value="0"/>
+<Element Index="[36]" Value="0"/>
+<Element Index="[37]" Value="0"/>
+<Element Index="[38]" Value="0"/>
+<Element Index="[39]" Value="0"/>
+<Element Index="[40]" Value="0"/>
+<Element Index="[41]" Value="0"/>
+<Element Index="[42]" Value="0"/>
+<Element Index="[43]" Value="0"/>
+<Element Index="[44]" Value="0"/>
+<Element Index="[45]" Value="0"/>
+<Element Index="[46]" Value="0"/>
+<Element Index="[47]" Value="0"/>
+<Element Index="[48]" Value="0"/>
+<Element Index="[49]" Value="0"/>
+<Element Index="[50]" Value="0"/>
+<Element Index="[51]" Value="0"/>
+<Element Index="[52]" Value="0"/>
+<Element Index="[53]" Value="0"/>
+<Element Index="[54]" Value="0"/>
+<Element Index="[55]" Value="0"/>
+<Element Index="[56]" Value="0"/>
+<Element Index="[57]" Value="0"/>
+<Element Index="[58]" Value="0"/>
+<Element Index="[59]" Value="0"/>
+<Element Index="[60]" Value="0"/>
+<Element Index="[61]" Value="0"/>
+<Element Index="[62]" Value="0"/>
+<Element Index="[63]" Value="0"/>
+<Element Index="[64]" Value="0"/>
+<Element Index="[65]" Value="0"/>
+<Element Index="[66]" Value="0"/>
+<Element Index="[67]" Value="0"/>
+<Element Index="[68]" Value="0"/>
+<Element Index="[69]" Value="0"/>
+<Element Index="[70]" Value="0"/>
+<Element Index="[71]" Value="0"/>
+<Element Index="[72]" Value="0"/>
+<Element Index="[73]" Value="0"/>
+<Element Index="[74]" Value="0"/>
+<Element Index="[75]" Value="0"/>
+<Element Index="[76]" Value="0"/>
+<Element Index="[77]" Value="0"/>
+<Element Index="[78]" Value="0"/>
+<Element Index="[79]" Value="0"/>
+<Element Index="[80]" Value="0"/>
+<Element Index="[81]" Value="0"/>
+<Element Index="[82]" Value="0"/>
+<Element Index="[83]" Value="0"/>
+<Element Index="[84]" Value="0"/>
+<Element Index="[85]" Value="0"/>
+<Element Index="[86]" Value="0"/>
+<Element Index="[87]" Value="0"/>
+<Element Index="[88]" Value="0"/>
+<Element Index="[89]" Value="0"/>
+<Element Index="[90]" Value="0"/>
+<Element Index="[91]" Value="0"/>
+<Element Index="[92]" Value="0"/>
+<Element Index="[93]" Value="0"/>
+<Element Index="[94]" Value="0"/>
+<Element Index="[95]" Value="0"/>
+<Element Index="[96]" Value="0"/>
+<Element Index="[97]" Value="0"/>
+<Element Index="[98]" Value="0"/>
+<Element Index="[99]" Value="0"/>
+<Element Index="[100]" Value="0"/>
+<Element Index="[101]" Value="0"/>
+<Element Index="[102]" Value="0"/>
+<Element Index="[103]" Value="0"/>
+<Element Index="[104]" Value="0"/>
+<Element Index="[105]" Value="0"/>
+<Element Index="[106]" Value="0"/>
+<Element Index="[107]" Value="0"/>
+<Element Index="[108]" Value="0"/>
+<Element Index="[109]" Value="0"/>
+<Element Index="[110]" Value="0"/>
+<Element Index="[111]" Value="0"/>
+<Element Index="[112]" Value="0"/>
+<Element Index="[113]" Value="0"/>
+<Element Index="[114]" Value="0"/>
+<Element Index="[115]" Value="0"/>
+<Element Index="[116]" Value="0"/>
+<Element Index="[117]" Value="0"/>
+<Element Index="[118]" Value="0"/>
+<Element Index="[119]" Value="0"/>
+<Element Index="[120]" Value="0"/>
+<Element Index="[121]" Value="0"/>
+<Element Index="[122]" Value="0"/>
+<Element Index="[123]" Value="0"/>
+<Element Index="[124]" Value="0"/>
+<Element Index="[125]" Value="0"/>
+<Element Index="[126]" Value="0"/>
+<Element Index="[127]" Value="0"/>
+</ArrayMember>
+<DataValueMember Name="PreviousState" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="StateChangeOccurred_OS" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TimeoutFlt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TransitionTimerDone" DataType="BOOL" Value="0"/>
+</Structure>
+</Data>
+</Tag>
+
+<Tag Name="StateEngine" TagType="Base" DataType="State_Engine_128Max" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[1,[1,0,0,0,0,0,0,0,0,4,0,0],0,0,[1,0,0,0,0,0,0,0,0,4,0,0],[[2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0],0,0],0]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="State_Engine_128Max">
+<DataValueMember Name="EnableIn" DataType="BOOL" Value="1"/>
+<DataValueMember Name="EnableOut" DataType="BOOL" Value="0"/>
+</Structure>
+</Data>
+</Tag>
+
+<Tag Name="StateHistory" TagType="Base" DataType="SINT" Dimensions="10" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[0,0,0,0,0,0,0,0,0,0]]]>
+</Data>
+<Data Format="Decorated">
+<Array DataType="SINT" Dimensions="10" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+<Element Index="[3]" Value="0"/>
+<Element Index="[4]" Value="0"/>
+<Element Index="[5]" Value="0"/>
+<Element Index="[6]" Value="0"/>
+<Element Index="[7]" Value="0"/>
+<Element Index="[8]" Value="0"/>
+<Element Index="[9]" Value="0"/>
+</Array>
+</Data>
+</Tag>
+
+<Tag Name="CycleRunning" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Cycle Running]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="CycleStopped" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Cycle Stopped]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="CycleStopping" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Cycle Stopping]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="CycleTimer" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Cycle Time Accumulator]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[[0,0,0]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</Data>
+</Tag>
+
+<Tag Name="ManualMode" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Manual Mode (from Supervisor)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="SafetyOK" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Safety OK (from Supervisor)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="FaultReset" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Fault Reset (from Supervisor)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="Initialized" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Station Initialized]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="FaultState" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[State when fault occurred]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="RestartState" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[State to restart from after fault]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="SafetyStopState" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[State when safety stop occurred]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="SS" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Single Step Active]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="SS_OK" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Single Step OK to Advance]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="SS_ONS" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Single Step One-Shot (used by R01 SS_OK rung)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="LocalSS" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Local Single Step Request]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="LocalSSONS" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Local Single Step ONS]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="Lockout" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Station Lockout (HMI_Toggle.0 — forces Step=99)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="DryRun" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Dry Run (HMI_Toggle.1 — engineer-defined dry-cycle gate)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="HMI_Toggle" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[HMI Toggle Bits (.0 Lockout / .1 DryRun / .2 SS — fixed SDC map)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="HMI_Momentary" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[HMI Momentary Bits (auto-cleared each scan; bits assigned per-machine)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="ONS" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[One-Shot Storage Bits]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="HMI_Button" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[HMI Manual Control Buttons]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="HMI_LocalManualOverride" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Local Manual Override (bypasses Supervisor)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="Timer" TagType="Base" DataType="TIMER" Dimensions="10" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[General Purpose Timers]]>
+</Description>
+</Tag>
+
+<Tag Name="SensorTimer" TagType="Base" DataType="TIMER" Dimensions="10" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Sensor Delay Timers]]>
+</Description>
+</Tag>
+
+<Tag Name="Alarm" TagType="Base" DataType="AlarmData" Dimensions="10" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Station Alarm Data]]>
+</Description>
+</Tag>
+
+<Tag Name="Warning" TagType="Base" DataType="AlarmData" Dimensions="5" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Station Warning Data]]>
+</Description>
+</Tag>
+
+<Tag Name="ProgramFaultHandler" TagType="Base" DataType="ProgramAlarmHandler" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Program Alarm Handler Instance]]>
+</Description>
+</Tag>
+
+<Tag Name="p_CycleTime" TagType="Base" DataType="REAL" Radix="Float" Usage="Public" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Last Cycle Time (seconds)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0.000000]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="REAL" Radix="Float" Value="0.0"/>
+</Data>
+</Tag>
+
+<Tag Name="q_AlarmActive" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Alarm Active]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="q_WarningActive" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Warning Active]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="q_AutoMode" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Auto Mode Status]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="q_AutoStopped" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Auto Stopped Status]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="q_StartOK" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Station Start OK]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="Debug_DINT" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Debug Value]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="i_VerticalShuttleRetracted" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Vertical_Shuttle Is Retracted]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="VerticalShuttleExtendDelay" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Vertical_Shuttle Extended Delay Timer]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[[0,500,0]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="500"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</Data>
+</Tag>
+
+<Tag Name="q_ExtendVerticalShuttle" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Extend Vertical_Shuttle]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="q_RetractVerticalShuttle" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Retract Vertical_Shuttle]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="i_HorizontalShuttleRetracted" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Horizontal_Shuttle Is Retracted]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="HorizontalShuttleExtendDelay" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Horizontal_Shuttle Extended Delay Timer]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[[0,500,0]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="500"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</Data>
+</Tag>
+
+<Tag Name="q_ExtendHorizontalShuttle" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Extend Horizontal_Shuttle]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="q_RetractHorizontalShuttle" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Retract Horizontal_Shuttle]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="i_HoldDownRetracted" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Hold_Down Is Retracted]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="HoldDownExtendDelay" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Hold_Down Extended Delay Timer]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[[0,500,0]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="500"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</Data>
+</Tag>
+
+<Tag Name="q_ExtendHoldDown" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Extend Hold_Down]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="q_RetractHoldDown" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Retract Hold_Down]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="i_TopRetainerRetracted" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Top_Retainer Is Retracted]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="TopRetainerExtendDelay" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Top_Retainer Extended Delay Timer]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[[0,300,0]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="300"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</Data>
+</Tag>
+
+<Tag Name="q_ExtendTopRetainer" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Extend Top_Retainer]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="q_RetractTopRetainer" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Retract Top_Retainer]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="i_MagnetSensor" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Present Sensor Input]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="PartTracking" TagType="Base" DataType="PartTracking_UDT" Usage="Public" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Part Tracking Data]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[[0]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="PartTracking_UDT">
+<DataValueMember Name="StationResult" DataType="BOOL" Value="0"/>
+</Structure>
+</Data>
+</Tag>
+
+</Tags>
+<Routines>
+
+<Routine Name="R00_Main" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Subroutine Calls]]>
+</Comment>
+<Text>
+<![CDATA[JSR(R01_Inputs,0);]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Text>
+<![CDATA[JSR(R02_StateTransitions,0);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Text>
+<![CDATA[JSR(R03_StateLogic,0);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Text>
+<![CDATA[JSR(R04_Recovery,0);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Text>
+<![CDATA[JSR(R20_Alarms,0);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+
+<Routine Name="R01_Inputs" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Mapped Inputs from Supervisor]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Text>
+<![CDATA[XIC(\Supervisor.q_ManualMode)XIO(HMI_LocalManualOverride)OTE(ManualMode);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Text>
+<![CDATA[XIC(\Supervisor.q_SafetyOK)OTE(SafetyOK);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Text>
+<![CDATA[XIC(\Supervisor.q_FaultReset)OTE(FaultReset);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Text>
+<![CDATA[[XIC(\Supervisor.q_CycleStartLatch) ,XIC(HMI_LocalManualOverride) ]OTE(CycleRunning);]]>
+</Text>
+</Rung>
+<Rung Number="5" Type="N">
+<Text>
+<![CDATA[XIO(\Supervisor.q_CycleStartLatch)OTE(CycleStopping);]]>
+</Text>
+</Rung>
+<Rung Number="6" Type="N">
+<Text>
+<![CDATA[XIC(\Supervisor.q_CycleStopped)ONS(ONS.0)XIO(Status.State[2])XIO(Status.State[3])OTE(CycleStopped);]]>
+</Text>
+</Rung>
+<Rung Number="7" Type="N">
+<Comment>
+<![CDATA[Initialization]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[124])OTE(Initialized);]]>
+</Text>
+</Rung>
+<Rung Number="8" Type="N">
+<Comment>
+<![CDATA[HMI_Toggle Decode]]>
+</Comment>
+<Text>
+<![CDATA[XIC(HMI_Toggle.0)OTE(Lockout);]]>
+</Text>
+</Rung>
+<Rung Number="9" Type="N">
+<Text>
+<![CDATA[XIC(HMI_Toggle.1)OTE(DryRun);]]>
+</Text>
+</Rung>
+<Rung Number="10" Type="N">
+<Text>
+<![CDATA[XIC(HMI_Toggle.2)OTE(SS);]]>
+</Text>
+</Rung>
+<Rung Number="11" Type="N">
+<Comment>
+<![CDATA[SS_OK]]>
+</Comment>
+<Text>
+<![CDATA[[XIO(SS) ,XIC(SS) XIC(HMI_Momentary.StepAdvance) ONS(SS_ONS) ]OTE(SS_OK);]]>
+</Text>
+</Rung>
+<Rung Number="12" Type="N">
+<Comment>
+<![CDATA[HMI_Momentary Auto-Clear]]>
+</Comment>
+<Text>
+<![CDATA[XIC(HMI_Momentary.StepAdvance)OTU(HMI_Momentary.StepAdvance);]]>
+</Text>
+</Rung>
+<Rung Number="13" Type="N">
+<Text>
+<![CDATA[XIC(HMI_Momentary.FaultReset)OTU(HMI_Momentary.FaultReset);]]>
+</Text>
+</Rung>
+<Rung Number="14" Type="N">
+<Text>
+<![CDATA[XIC(HMI_Momentary.CycleStart)OTU(HMI_Momentary.CycleStart);]]>
+</Text>
+</Rung>
+<Rung Number="15" Type="N">
+<Comment>
+<![CDATA[1-Sensor Pneumatic Delay Timers]]>
+</Comment>
+<Text>
+<![CDATA[XIO(i_VerticalShuttleRetracted)TON(VerticalShuttleExtendDelay,?,?);]]>
+</Text>
+</Rung>
+<Rung Number="16" Type="N">
+<Text>
+<![CDATA[XIO(i_HorizontalShuttleRetracted)TON(HorizontalShuttleExtendDelay,?,?);]]>
+</Text>
+</Rung>
+<Rung Number="17" Type="N">
+<Text>
+<![CDATA[XIO(i_HoldDownRetracted)TON(HoldDownExtendDelay,?,?);]]>
+</Text>
+</Rung>
+<Rung Number="18" Type="N">
+<Text>
+<![CDATA[XIO(i_TopRetainerRetracted)TON(TopRetainerExtendDelay,?,?);]]>
+</Text>
+</Rung>
+<Rung Number="19" Type="N">
+<Comment>
+<![CDATA[Debounce Filters]]>
+</Comment>
+<Text>
+<![CDATA[AOI_Debounce(MagnetSensorDebounce,i_MagnetSensor,100,100);]]>
+</Text>
+</Rung>
+<Rung Number="20" Type="N">
+<Comment>
+<![CDATA[CPU Time/Date]]>
+</Comment>
+<Text>
+<![CDATA[CPU_TimeDate_wJulian(\g_CPUDateTime);]]>
+</Text>
+</Rung>
+<Rung Number="21" Type="N">
+<Comment>
+<![CDATA[Legacy LocalSS Passthrough]]>
+</Comment>
+<Text>
+<![CDATA[XIC(LocalSS)OTE(SS);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+
+<Routine Name="R02_StateTransitions" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[State 0: Safety Stop]]>
+</Comment>
+<Text>
+<![CDATA[[XIO(SafetyOK) ,XIC(S:FS) ][ONS(ONS.3) LIMIT(4,Control.StateReg,99) MOVE(Control.StateReg,SafetyStopState) MOVE(Control.StateReg,RestartState) ,MOVE(0,Control.StateReg) ];]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Comment>
+<![CDATA[State 1: Manual Mode]]>
+</Comment>
+<Text>
+<![CDATA[XIC(ManualMode)MOVE(1,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Comment>
+<![CDATA[State 2: Auto Idle NOT Ready]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[0]) XIC(SafetyOK) XIO(ManualMode) ,XIC(Status.State[1]) XIO(ManualMode) ,XIC(Status.State[127]) XIC(FaultReset) ,XIC(Status.State[124]) ]MOVE(2,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Comment>
+<![CDATA[State 3: Auto Idle Ready]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[2]) XIC(Initialized) ,XIC(Status.State[28]) ]MOVE(3,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Comment>
+<![CDATA[State 99: Lockout (HMI_Toggle.0)]]>
+</Comment>
+<Text>
+<![CDATA[XIC(HMI_Toggle.0)MOVE(99,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="5" Type="N">
+<Comment>
+<![CDATA[State 4: Wait]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[3])XIC(CycleRunning)XIC(i_VerticalShuttleRetracted)XIC(i_HorizontalShuttleRetracted)XIC(i_HoldDownRetracted)XIC(i_TopRetainerRetracted)MOVE(4,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="6" Type="N">
+<Comment>
+<![CDATA[State 7: Extend Hold_Down, Extend Top_Retainer]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[4])MOVE(7,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="7" Type="N">
+<Comment>
+<![CDATA[State 10: Extend Vertical_Shuttle]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[7])XIC(HoldDownExtendDelay.DN)XIC(TopRetainerExtendDelay.DN)MOVE(10,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="8" Type="N">
+<Comment>
+<![CDATA[State 13: Extend Horizontal_Shuttle, Retract Top_Retainer, Decide]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[10])XIC(VerticalShuttleExtendDelay.DN)MOVE(13,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="9" Type="N">
+<Comment>
+<![CDATA[State 16: Decide]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[13])XIC(HorizontalShuttleExtendDelay.DN)XIC(i_TopRetainerRetracted)MOVE(16,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="10" Type="N">
+<Comment>
+<![CDATA[State 19: Retract Horizontal_Shuttle, Extend Top_Retainer]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[16])MOVE(19,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="11" Type="N">
+<Comment>
+<![CDATA[State 22: Wait]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[19])XIC(i_HorizontalShuttleRetracted)XIC(TopRetainerExtendDelay.DN)MOVE(22,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="12" Type="N">
+<Comment>
+<![CDATA[State 25: Retract Horizontal_Shuttle, Retract Hold_Down, Retract Vertical_Shuttle, Retract Top_Retainer]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[22])MOVE(25,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="13" Type="N">
+<Comment>
+<![CDATA[State 28: Station Complete]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[25])XIC(i_HorizontalShuttleRetracted)XIC(i_HoldDownRetracted)XIC(i_VerticalShuttleRetracted)XIC(i_TopRetainerRetracted)MOVE(28,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="14" Type="N">
+<Comment>
+<![CDATA[State 127: Fault]]>
+</Comment>
+<Text>
+<![CDATA[XIC(q_AlarmActive)[ONS(ONS.2) LIMIT(4,Control.StateReg,99) MOVE(Control.StateReg,FaultState) MOVE(Control.StateReg,RestartState) ,MOVE(127,Control.StateReg) ];]]>
+</Text>
+</Rung>
+<Rung Number="15" Type="N">
+<Comment>
+<![CDATA[Cycle Time Accumulator]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[4]) ,XIC(Status.State[7]) ,XIC(Status.State[10]) ,XIC(Status.State[13]) ,XIC(Status.State[16]) ,XIC(Status.State[19]) ,XIC(Status.State[22]) ,XIC(Status.State[25]) ,XIC(Status.State[28]) ,XIC(Status.State[31])]RTO(CycleTimer,?,?);]]>
+</Text>
+</Rung>
+<Rung Number="16" Type="N">
+<Comment>
+<![CDATA[Cycle Time Compute + Reset]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[3])XIC(CycleRunning)ONS(ONS.4)[DIV(CycleTimer.ACC,1000.0,p_CycleTime) ,MOVE(0,CycleTimer.ACC) ];]]>
+</Text>
+</Rung>
+<Rung Number="17" Type="N">
+<Comment>
+<![CDATA[Fault Timer Enable]]>
+</Comment>
+<Text>
+<![CDATA[LIMIT(4,Control.StateReg,59)XIO(SS)[MOVE(5000,Control.FaultTime) ,OTE(Control.EnaFaultDetect) ];]]>
+</Text>
+</Rung>
+<Rung Number="18" Type="N">
+<Comment>
+<![CDATA[State Engine]]>
+</Comment>
+<Text>
+<![CDATA[State_Engine_128Max(StateEngine,Control,Status,StateHistory);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+
+<Routine Name="R03_StateLogic" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Vertical_Shuttle Control]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[10]) ,XIC(ManualMode) XIC(HMI_Button.0) ,XIC(q_ExtendVerticalShuttle) [XIO(ManualMode) XIO(Status.State[1]) XIO(Status.State[25]) ,XIC(ManualMode) XIO(HMI_Button.1)] ]OTE(q_ExtendVerticalShuttle);]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Text>
+<![CDATA[XIO(q_ExtendVerticalShuttle)OTE(q_RetractVerticalShuttle);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Comment>
+<![CDATA[Horizontal_Shuttle Control]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[13]) ,XIC(ManualMode) XIC(HMI_Button.2) ,XIC(q_ExtendHorizontalShuttle) [XIO(ManualMode) XIO(Status.State[1]) XIO(Status.State[19]) XIO(Status.State[25]) XIO(Status.State[31]) ,XIC(ManualMode) XIO(HMI_Button.3)] ]OTE(q_ExtendHorizontalShuttle);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Text>
+<![CDATA[XIO(q_ExtendHorizontalShuttle)OTE(q_RetractHorizontalShuttle);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Comment>
+<![CDATA[Hold_Down Control]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[7]) ,XIC(ManualMode) XIC(HMI_Button.4) ,XIC(q_ExtendHoldDown) [XIO(ManualMode) XIO(Status.State[1]) XIO(Status.State[25]) ,XIC(ManualMode) XIO(HMI_Button.5)] ]OTE(q_ExtendHoldDown);]]>
+</Text>
+</Rung>
+<Rung Number="5" Type="N">
+<Text>
+<![CDATA[XIO(q_ExtendHoldDown)OTE(q_RetractHoldDown);]]>
+</Text>
+</Rung>
+<Rung Number="6" Type="N">
+<Comment>
+<![CDATA[Top_Retainer Control]]>
+</Comment>
+<Text>
+<![CDATA[[[XIC(Status.State[7]) ,XIC(Status.State[19]) ,XIC(Status.State[31])] ,XIC(ManualMode) XIC(HMI_Button.6) ,XIC(q_ExtendTopRetainer) [XIO(ManualMode) XIO(Status.State[1]) XIO(Status.State[13]) XIO(Status.State[25]) ,XIC(ManualMode) XIO(HMI_Button.7)] ]OTE(q_ExtendTopRetainer);]]>
+</Text>
+</Rung>
+<Rung Number="7" Type="N">
+<Text>
+<![CDATA[XIO(q_ExtendTopRetainer)OTE(q_RetractTopRetainer);]]>
+</Text>
+</Rung>
+<Rung Number="8" Type="N">
+<Comment>
+<![CDATA[Part Tracking: Clear All at Cycle Start]]>
+</Comment>
+<Text>
+<![CDATA[XIC(CycleRunning)ONS(ONS.5)OTU(PartTracking.StationResult);]]>
+</Text>
+</Rung>
+<Rung Number="9" Type="N">
+<Comment>
+<![CDATA[Part Tracking: StationResult (Station Result)]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[28])OTE(PartTracking.StationResult);]]>
+</Text>
+</Rung>
+<Rung Number="10" Type="N">
+<Comment>
+<![CDATA[Station Start OK]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[1]) ,XIC(Status.State[2]) ,XIC(Status.State[3]) ]XIO(q_AlarmActive)OTE(q_StartOK);]]>
+</Text>
+</Rung>
+<Rung Number="11" Type="N">
+<Comment>
+<![CDATA[Auto Mode Status]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[2]) ,XIC(Status.State[3]) ]XIO(CycleRunning)OTE(q_AutoMode);]]>
+</Text>
+</Rung>
+<Rung Number="12" Type="N">
+<Comment>
+<![CDATA[Auto Stopped Status]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[2]) ,XIC(Status.State[3]) ,XIC(Status.State[127]) ]XIO(CycleRunning)OTE(q_AutoStopped);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+
+
+<Routine Name="R04_Recovery" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[No recovery sequence configured — manual FaultReset returns to State 2]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+
+<Routine Name="R20_Alarms" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Hold_Down Extend Timeout]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[7])TON(SensorTimer[0],?,?)XIC(SensorTimer[0].DN) ,XIC(Alarm[0].Active) XIO(FaultReset) ]OTE(Alarm[0].Active);]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Comment>
+<![CDATA[Top_Retainer Extend Timeout]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[7])TON(SensorTimer[1],?,?)XIC(SensorTimer[1].DN) ,XIC(Alarm[1].Active) XIO(FaultReset) ]OTE(Alarm[1].Active);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Comment>
+<![CDATA[Vertical_Shuttle Extend Timeout]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[10])TON(SensorTimer[2],?,?)XIC(SensorTimer[2].DN) ,XIC(Alarm[2].Active) XIO(FaultReset) ]OTE(Alarm[2].Active);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Comment>
+<![CDATA[Horizontal_Shuttle Extend Timeout]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[13])TON(SensorTimer[3],?,?)XIC(SensorTimer[3].DN) ,XIC(Alarm[3].Active) XIO(FaultReset) ]OTE(Alarm[3].Active);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Comment>
+<![CDATA[Top_Retainer Retract Timeout]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[13])TON(SensorTimer[4],?,?)XIC(SensorTimer[4].DN) ,XIC(Alarm[4].Active) XIO(FaultReset) ]OTE(Alarm[4].Active);]]>
+</Text>
+</Rung>
+<Rung Number="5" Type="N">
+<Comment>
+<![CDATA[Horizontal_Shuttle Retract Timeout]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[19])TON(SensorTimer[5],?,?)XIC(SensorTimer[5].DN) ,XIC(Alarm[5].Active) XIO(FaultReset) ]OTE(Alarm[5].Active);]]>
+</Text>
+</Rung>
+<Rung Number="6" Type="N">
+<Comment>
+<![CDATA[Top_Retainer Extend Timeout]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[19])TON(SensorTimer[6],?,?)XIC(SensorTimer[6].DN) ,XIC(Alarm[6].Active) XIO(FaultReset) ]OTE(Alarm[6].Active);]]>
+</Text>
+</Rung>
+<Rung Number="7" Type="N">
+<Comment>
+<![CDATA[Horizontal_Shuttle Retract Timeout]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[25])TON(SensorTimer[7],?,?)XIC(SensorTimer[7].DN) ,XIC(Alarm[7].Active) XIO(FaultReset) ]OTE(Alarm[7].Active);]]>
+</Text>
+</Rung>
+<Rung Number="8" Type="N">
+<Comment>
+<![CDATA[Hold_Down Retract Timeout]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[25])TON(SensorTimer[8],?,?)XIC(SensorTimer[8].DN) ,XIC(Alarm[8].Active) XIO(FaultReset) ]OTE(Alarm[8].Active);]]>
+</Text>
+</Rung>
+<Rung Number="9" Type="N">
+<Comment>
+<![CDATA[Vertical_Shuttle Retract Timeout]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[25])TON(SensorTimer[9],?,?)XIC(SensorTimer[9].DN) ,XIC(Alarm[9].Active) XIO(FaultReset) ]OTE(Alarm[9].Active);]]>
+</Text>
+</Rung>
+<Rung Number="10" Type="N">
+<Comment>
+<![CDATA[Program Alarm Handler]]>
+</Comment>
+<Text>
+<![CDATA[ProgramAlarmHandler(ProgramFaultHandler,\Alarms.p_ProgramID,Alarm,\Alarms.p_Active,\Alarms.p_History,g_CPUDateTime,q_AlarmActive,q_WarningActive);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</Program>
+</Programs>
+</Controller>
+</RSLogix5000Content>

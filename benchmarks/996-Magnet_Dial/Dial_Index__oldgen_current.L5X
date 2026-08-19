@@ -1,0 +1,2878 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<RSLogix5000Content SchemaRevision="1.0" SoftwareRevision="37.00" TargetName="S00_DialIndex" TargetType="Program" TargetClass="Standard" ContainsContext="true" ExportDate="Wed, 19 Aug 2026 11:36:18 GMT" ExportOptions="References NoRawData L5KData DecoratedData Context Dependencies ForceProtectedEncoding AllProjDocTrans">
+<Controller Use="Context" Name="SDCController">
+
+<DataTypes Use="Context">
+<DataType Name="CPU_TimeDate" Family="NoFamily" Class="User">
+<Description>
+<![CDATA[CPU Time And Date Array]]>
+</Description>
+<Members>
+<Member Name="Year" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Month" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Day" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Hour" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Minutes" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Seconds" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Milliseconds" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Microseconds" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="UTCMicroseconds" DataType="LINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+</DataType>
+<DataType Name="StationStatus" Family="NoFamily" Class="User">
+<Members>
+<Member Name="ZZZZZZZZZZStationSta0" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="PartPresent" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZStationSta0" BitNumber="0" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Part present at this station]]>
+</Description>
+</Member>
+<Member Name="Reject" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZStationSta0" BitNumber="1" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Part marked reject - station skips processing]]>
+</Description>
+</Member>
+<Member Name="Complete" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZStationSta0" BitNumber="2" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Station processing complete for this part]]>
+</Description>
+</Member>
+<Member Name="HeadNumber" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Head/nest number currently at this station position]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+<DataType Name="MAMParam" Family="NoFamily" Class="User">
+<Members>
+<Member Name="MoveType" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Position" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Speed" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Accel" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Decel" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+</DataType>
+<DataType Name="ServoMomentary" Family="NoFamily" Class="User">
+<Members>
+<Member Name="ZZZZZZZZZZServoMomen0" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="Enable" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoMomen0" BitNumber="0" ExternalAccess="Read/Write"/>
+<Member Name="Disable" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoMomen0" BitNumber="1" ExternalAccess="Read/Write"/>
+<Member Name="JogPositive" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoMomen0" BitNumber="2" ExternalAccess="Read/Write"/>
+<Member Name="JogNegative" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoMomen0" BitNumber="3" ExternalAccess="Read/Write"/>
+<Member Name="InchPositive" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoMomen0" BitNumber="4" ExternalAccess="Read/Write"/>
+<Member Name="InchNegative" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoMomen0" BitNumber="5" ExternalAccess="Read/Write"/>
+<Member Name="HomeRequest" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoMomen0" BitNumber="6" ExternalAccess="Read/Write"/>
+<Member Name="HomeConfirm" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoMomen0" BitNumber="7" ExternalAccess="Read/Write"/>
+<Member Name="ZZZZZZZZZZServoMomen9" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="SetTorquePos" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoMomen9" BitNumber="0" ExternalAccess="Read/Write"/>
+<Member Name="SetTorqueNeg" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoMomen9" BitNumber="1" ExternalAccess="Read/Write"/>
+<Member Name="ManMoves" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+</DataType>
+<DataType Name="ServoParameters" Family="NoFamily" Class="User">
+<Members>
+<Member Name="Accel" DataType="REAL" Dimension="2" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Decel" DataType="REAL" Dimension="2" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="JogSpeed" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="ManualSpeed" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="AutoSpeed" DataType="REAL" Dimension="5" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="InchAmount" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Positions" DataType="REAL" Dimension="12" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="TorquePos" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="TorqueNeg" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+</DataType>
+<DataType Name="ServoStatus" Family="NoFamily" Class="User">
+<Members>
+<Member Name="ZZZZZZZZZZServoStatu0" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="HomeRequested" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoStatu0" BitNumber="0" ExternalAccess="Read/Write"/>
+<Member Name="HomeInProcess" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoStatu0" BitNumber="1" ExternalAccess="Read/Write"/>
+<Member Name="HomeComplete" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZServoStatu0" BitNumber="2" ExternalAccess="Read/Write"/>
+<Member Name="ActualTorque" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="ActualVelocity" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="ActualPosition" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="MaxVelocity" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="MaxAccel" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="MaxDecel" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+</DataType>
+<DataType Name="ServoOverall" Family="NoFamily" Class="User">
+<Members>
+<Member Name="Status" DataType="ServoStatus" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Control" DataType="ServoMomentary" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Parameters" DataType="ServoParameters" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+<Dependencies>
+<Dependency Type="DataType" Name="ServoStatus"/>
+<Dependency Type="DataType" Name="ServoMomentary"/>
+<Dependency Type="DataType" Name="ServoParameters"/>
+</Dependencies>
+</DataType>
+<DataType Name="PartTracking_UDT" Family="NoFamily" Class="User">
+<Members>
+<Member Name="ZZZZZZZZZZPartTrack0" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="StationResult" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZPartTrack0" BitNumber="0" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Rolled-up station outcome — Success if no other PT reject was written this cycle]]>
+</Description>
+</Member>
+
+</Members>
+</DataType>
+<DataType Name="StateLogicControl" Family="NoFamily" Class="User">
+<Members>
+<Member Name="StateReg" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Register]]>
+</Description>
+</Member>
+<Member Name="ZZZZZZZZZZState_Logi1" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="EnaFaultDetect" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZState_Logi1" BitNumber="0" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Enable Fault Detection]]>
+</Description>
+</Member>
+<Member Name="EnaTransitionTimer" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZState_Logi1" BitNumber="1" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Enable State Transition Timer]]>
+</Description>
+</Member>
+<Member Name="FaultTime" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Timeout Fault Time (Msec)]]>
+</Description>
+</Member>
+<Member Name="TransitionTime" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Transition preset time (ms)]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+<DataType Name="StateLogicStatus" Family="NoFamily" Class="User">
+<Members>
+<Member Name="State" DataType="BOOL" Dimension="128" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Control Bits]]>
+</Description>
+</Member>
+<Member Name="PreviousState" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Previous State]]>
+</Description>
+</Member>
+<Member Name="ZZZZZZZZZZState_Logi2" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="StateChangeOccurred_OS" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZState_Logi2" BitNumber="0" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Change Occurred]]>
+</Description>
+</Member>
+<Member Name="TimeoutFlt" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZState_Logi2" BitNumber="1" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Timeout Fault]]>
+</Description>
+</Member>
+<Member Name="TransitionTimerDone" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZState_Logi2" BitNumber="2" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Transition Time Done]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+<DataType Name="STRING100" Family="StringFamily" Class="User">
+<Members>
+<Member Name="LEN" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="DATA" DataType="SINT" Dimension="100" Radix="ASCII" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+</DataType>
+<DataType Name="AlarmData" Family="NoFamily" Class="User">
+<Members>
+<Member Name="ProgramID" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Unique ID given to each AOI instance.]]>
+</Description>
+</Member>
+<Member Name="AlarmID" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Index number of the alarm taken from the array attached to the AOI.]]>
+</Description>
+</Member>
+<Member Name="Severity" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Fault = 0, Warning = 1]]>
+</Description>
+</Member>
+<Member Name="Group" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Alarm group number. 0 -31]]>
+</Description>
+</Member>
+<Member Name="Message" DataType="STRING100" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Message Description (Default Language)]]>
+</Description>
+</Member>
+<Member Name="TimeStamp" DataType="LINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[UTC microseconds. Time it went active.]]>
+</Description>
+</Member>
+<Member Name="Count" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Count of Alarm Occurrences]]>
+</Description>
+</Member>
+<Member Name="Duration" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Duration in seconds]]>
+</Description>
+</Member>
+<Member Name="ZZZZZZZZZZAlarmData8" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="Active" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZAlarmData8" BitNumber="0" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Alarm Active]]>
+</Description>
+</Member>
+<Member Name="DoNotSaveToHistory" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZAlarmData8" BitNumber="1" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Set this flag to prevent the alarm from cluttering up the history.]]>
+</Description>
+</Member>
+<Member Name="HMI_ResetCount" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZAlarmData8" BitNumber="2" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[HMI Reset input]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+</DataTypes>
+
+<AddOnInstructionDefinitions Use="Context">
+<AddOnInstructionDefinition Name="State_Engine_128Max" Class="Standard" Revision="5.0" Vendor="Steven Douglas Corp." ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" CreatedDate="2013-06-25T13:55:13.933Z" CreatedBy="SDC" EditedDate="2025-08-25T14:49:42.628Z" EditedBy="SDC"
+ SoftwareRevision="v35.00">
+<Description>
+<![CDATA[State Logic Engine For 128 States]]>
+</Description>
+<RevisionNote>
+<![CDATA[-Separated UDT into Control & Status Pieces For better use with standard "Progam" methods.
+-Removed Timer,OS,Bit, Counter from Control UDT (Use local program tags instead)
+-4.1 optimizations
+-4.2 optimizations. Ena--Timer bits no longer needed.
+-5.0 added integrated state history array (variable length) 1/14/23 D.G.]]>
+</RevisionNote>
+<Parameters>
+<Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Input - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Output - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="StateLogicControl" TagType="Base" DataType="StateLogicControl" Usage="InOut" Required="true" Visible="true" Constant="false"/>
+<Parameter Name="StateLogicStatus" TagType="Base" DataType="StateLogicStatus" Usage="InOut" Required="true" Visible="true" Constant="false"/>
+<Parameter Name="StateHistoryArray" TagType="Base" DataType="SINT" Dimensions="1" Usage="InOut" Radix="Decimal" Required="true" Visible="true" Constant="false">
+<Description>
+<![CDATA[State history array]]>
+</Description>
+</Parameter>
+</Parameters>
+<LocalTags>
+<LocalTag Name="StateDurationTimer" DataType="FBD_TIMER" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[[1,0,0,0,0,0,0,0,0,4,0,0]]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="FBD_TIMER">
+<DataValueMember Name="EnableIn" DataType="BOOL" Value="1"/>
+<DataValueMember Name="TimerEnable" DataType="BOOL" Value="0"/>
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Reset" DataType="BOOL" Value="0"/>
+<DataValueMember Name="EnableOut" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Status" DataType="DINT" Radix="Hex" Value="16#0000_0000"/>
+<DataValueMember Name="InstructFault" DataType="BOOL" Value="0"/>
+<DataValueMember Name="PresetInv" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="i" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="INT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="StateReg_Prev" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="INT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="FaultTimer" DataType="FBD_TIMER" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[[1,0,0,0,0,0,0,0,0,4,0,0]]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="FBD_TIMER">
+<DataValueMember Name="EnableIn" DataType="BOOL" Value="1"/>
+<DataValueMember Name="TimerEnable" DataType="BOOL" Value="0"/>
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Reset" DataType="BOOL" Value="0"/>
+<DataValueMember Name="EnableOut" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Status" DataType="DINT" Radix="Hex" Value="16#0000_0000"/>
+<DataValueMember Name="InstructFault" DataType="BOOL" Value="0"/>
+<DataValueMember Name="PresetInv" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="localStatus" DataType="StateLogicStatus" ExternalAccess="None">
+<Description>
+<![CDATA[Temp structure for copying to ensure data changes all at once.]]>
+</Description>
+<DefaultData Format="L5K">
+<![CDATA[[[2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0],0,0]]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="StateLogicStatus">
+<ArrayMember Name="State" DataType="BOOL" Dimensions="128" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+<Element Index="[3]" Value="0"/>
+<Element Index="[4]" Value="0"/>
+<Element Index="[5]" Value="0"/>
+<Element Index="[6]" Value="0"/>
+<Element Index="[7]" Value="0"/>
+<Element Index="[8]" Value="0"/>
+<Element Index="[9]" Value="0"/>
+<Element Index="[10]" Value="0"/>
+<Element Index="[11]" Value="0"/>
+<Element Index="[12]" Value="0"/>
+<Element Index="[13]" Value="0"/>
+<Element Index="[14]" Value="0"/>
+<Element Index="[15]" Value="0"/>
+<Element Index="[16]" Value="0"/>
+<Element Index="[17]" Value="0"/>
+<Element Index="[18]" Value="0"/>
+<Element Index="[19]" Value="0"/>
+<Element Index="[20]" Value="0"/>
+<Element Index="[21]" Value="0"/>
+<Element Index="[22]" Value="0"/>
+<Element Index="[23]" Value="0"/>
+<Element Index="[24]" Value="0"/>
+<Element Index="[25]" Value="0"/>
+<Element Index="[26]" Value="0"/>
+<Element Index="[27]" Value="0"/>
+<Element Index="[28]" Value="0"/>
+<Element Index="[29]" Value="0"/>
+<Element Index="[30]" Value="0"/>
+<Element Index="[31]" Value="0"/>
+<Element Index="[32]" Value="0"/>
+<Element Index="[33]" Value="0"/>
+<Element Index="[34]" Value="0"/>
+<Element Index="[35]" Value="0"/>
+<Element Index="[36]" Value="0"/>
+<Element Index="[37]" Value="0"/>
+<Element Index="[38]" Value="0"/>
+<Element Index="[39]" Value="0"/>
+<Element Index="[40]" Value="0"/>
+<Element Index="[41]" Value="0"/>
+<Element Index="[42]" Value="0"/>
+<Element Index="[43]" Value="0"/>
+<Element Index="[44]" Value="0"/>
+<Element Index="[45]" Value="0"/>
+<Element Index="[46]" Value="0"/>
+<Element Index="[47]" Value="0"/>
+<Element Index="[48]" Value="0"/>
+<Element Index="[49]" Value="0"/>
+<Element Index="[50]" Value="0"/>
+<Element Index="[51]" Value="0"/>
+<Element Index="[52]" Value="0"/>
+<Element Index="[53]" Value="0"/>
+<Element Index="[54]" Value="0"/>
+<Element Index="[55]" Value="0"/>
+<Element Index="[56]" Value="0"/>
+<Element Index="[57]" Value="0"/>
+<Element Index="[58]" Value="0"/>
+<Element Index="[59]" Value="0"/>
+<Element Index="[60]" Value="0"/>
+<Element Index="[61]" Value="0"/>
+<Element Index="[62]" Value="0"/>
+<Element Index="[63]" Value="0"/>
+<Element Index="[64]" Value="0"/>
+<Element Index="[65]" Value="0"/>
+<Element Index="[66]" Value="0"/>
+<Element Index="[67]" Value="0"/>
+<Element Index="[68]" Value="0"/>
+<Element Index="[69]" Value="0"/>
+<Element Index="[70]" Value="0"/>
+<Element Index="[71]" Value="0"/>
+<Element Index="[72]" Value="0"/>
+<Element Index="[73]" Value="0"/>
+<Element Index="[74]" Value="0"/>
+<Element Index="[75]" Value="0"/>
+<Element Index="[76]" Value="0"/>
+<Element Index="[77]" Value="0"/>
+<Element Index="[78]" Value="0"/>
+<Element Index="[79]" Value="0"/>
+<Element Index="[80]" Value="0"/>
+<Element Index="[81]" Value="0"/>
+<Element Index="[82]" Value="0"/>
+<Element Index="[83]" Value="0"/>
+<Element Index="[84]" Value="0"/>
+<Element Index="[85]" Value="0"/>
+<Element Index="[86]" Value="0"/>
+<Element Index="[87]" Value="0"/>
+<Element Index="[88]" Value="0"/>
+<Element Index="[89]" Value="0"/>
+<Element Index="[90]" Value="0"/>
+<Element Index="[91]" Value="0"/>
+<Element Index="[92]" Value="0"/>
+<Element Index="[93]" Value="0"/>
+<Element Index="[94]" Value="0"/>
+<Element Index="[95]" Value="0"/>
+<Element Index="[96]" Value="0"/>
+<Element Index="[97]" Value="0"/>
+<Element Index="[98]" Value="0"/>
+<Element Index="[99]" Value="0"/>
+<Element Index="[100]" Value="0"/>
+<Element Index="[101]" Value="0"/>
+<Element Index="[102]" Value="0"/>
+<Element Index="[103]" Value="0"/>
+<Element Index="[104]" Value="0"/>
+<Element Index="[105]" Value="0"/>
+<Element Index="[106]" Value="0"/>
+<Element Index="[107]" Value="0"/>
+<Element Index="[108]" Value="0"/>
+<Element Index="[109]" Value="0"/>
+<Element Index="[110]" Value="0"/>
+<Element Index="[111]" Value="0"/>
+<Element Index="[112]" Value="0"/>
+<Element Index="[113]" Value="0"/>
+<Element Index="[114]" Value="0"/>
+<Element Index="[115]" Value="0"/>
+<Element Index="[116]" Value="0"/>
+<Element Index="[117]" Value="0"/>
+<Element Index="[118]" Value="0"/>
+<Element Index="[119]" Value="0"/>
+<Element Index="[120]" Value="0"/>
+<Element Index="[121]" Value="0"/>
+<Element Index="[122]" Value="0"/>
+<Element Index="[123]" Value="0"/>
+<Element Index="[124]" Value="0"/>
+<Element Index="[125]" Value="0"/>
+<Element Index="[126]" Value="0"/>
+<Element Index="[127]" Value="0"/>
+</ArrayMember>
+<DataValueMember Name="PreviousState" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="StateChangeOccurred_OS" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TimeoutFlt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TransitionTimerDone" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="HistoryArraySize" DataType="SINT" Radix="Decimal" ExternalAccess="None">
+<Description>
+<![CDATA[Size of state history array]]>
+</Description>
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="SINT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+</LocalTags>
+<Routines>
+<Routine Name="Logic" Type="ST">
+<STContent>
+<Line Number="0">
+<![CDATA[StateDurationTimer.Reset := 0;]]>
+</Line>
+<Line Number="1">
+<![CDATA[StateDurationTimer.PRE := 2147483647;]]>
+</Line>
+<Line Number="2">
+<![CDATA[SIZE(StateHistoryArray,0,HistoryArraySize);]]>
+</Line>
+<Line Number="3">
+<![CDATA[]]>
+</Line>
+<Line Number="4">
+<![CDATA[TONR(StateDurationTimer);]]>
+</Line>
+<Line Number="5">
+<![CDATA[]]>
+</Line>
+<Line Number="6">
+<![CDATA[COP(StateLogicStatus, localStatus, 1); //localStatus used so all Status updates at the same time, at the end of this code.]]>
+</Line>
+<Line Number="7">
+<![CDATA[If (StateLogicControl.StateReg = StateReg_Prev) THEN]]>
+</Line>
+<Line Number="8">
+<![CDATA[	//Previous State equal to Current State: Still in the same state as the last scan.]]>
+</Line>
+<Line Number="9">
+<![CDATA[	localStatus.StateChangeOccurred_OS := 0;]]>
+</Line>
+<Line Number="10">
+<![CDATA[]]>
+</Line>
+<Line Number="11">
+<![CDATA[	//State Duration Timer]]>
+</Line>
+<Line Number="12">
+<![CDATA[	StateDurationTimer.TimerEnable := 1;]]>
+</Line>
+<Line Number="13">
+<![CDATA[]]>
+</Line>
+<Line Number="14">
+<![CDATA[	//State Fault Timer]]>
+</Line>
+<Line Number="15">
+<![CDATA[	IF (StateDurationTimer.ACC >= StateLogicControl.FaultTime ) THEN]]>
+</Line>
+<Line Number="16">
+<![CDATA[		localStatus.TimeoutFlt := 1;]]>
+</Line>
+<Line Number="17">
+<![CDATA[	ELSE]]>
+</Line>
+<Line Number="18">
+<![CDATA[		localStatus.TimeoutFlt := 0;]]>
+</Line>
+<Line Number="19">
+<![CDATA[	END_IF;]]>
+</Line>
+<Line Number="20">
+<![CDATA[]]>
+</Line>
+<Line Number="21">
+<![CDATA[]]>
+</Line>
+<Line Number="22">
+<![CDATA[	//State Transition Timer]]>
+</Line>
+<Line Number="23">
+<![CDATA[	IF (StateDurationTimer.ACC >= StateLogicControl.TransitionTime) THEN]]>
+</Line>
+<Line Number="24">
+<![CDATA[		localStatus.TransitionTimerDone := 1;]]>
+</Line>
+<Line Number="25">
+<![CDATA[	ELSE]]>
+</Line>
+<Line Number="26">
+<![CDATA[		localStatus.TransitionTimerDone := 0;]]>
+</Line>
+<Line Number="27">
+<![CDATA[	END_IF;]]>
+</Line>
+<Line Number="28">
+<![CDATA[ELSE]]>
+</Line>
+<Line Number="29">
+<![CDATA[	//Previous State not Current State: State Change Occurred.]]>
+</Line>
+<Line Number="30">
+<![CDATA[	localStatus.StateChangeOccurred_OS := 1;]]>
+</Line>
+<Line Number="31">
+<![CDATA[	localStatus.PreviousState := StateReg_Prev;]]>
+</Line>
+<Line Number="32">
+<![CDATA[	StateReg_Prev := StateLogicControl.StateReg;]]>
+</Line>
+<Line Number="33">
+<![CDATA[	]]>
+</Line>
+<Line Number="34">
+<![CDATA[	//Shift state history array and store last state in index 0]]>
+</Line>
+<Line Number="35">
+<![CDATA[	if HistoryArraySize > 1 then //history array size of 1 would cause an array index out of bounds controller fault]]>
+</Line>
+<Line Number="36">
+<![CDATA[		for i := HistoryArraySize-1 to 1 by -1 do]]>
+</Line>
+<Line Number="37">
+<![CDATA[			StateHistoryArray[i] := StateHistoryArray[i-1];]]>
+</Line>
+<Line Number="38">
+<![CDATA[		end_for;]]>
+</Line>
+<Line Number="39">
+<![CDATA[	end_if;]]>
+</Line>
+<Line Number="40">
+<![CDATA[	StateHistoryArray[0] := StateReg_Prev;]]>
+</Line>
+<Line Number="41">
+<![CDATA[]]>
+</Line>
+<Line Number="42">
+<![CDATA[	StateDurationTimer.Reset := 1;]]>
+</Line>
+<Line Number="43">
+<![CDATA[	StateDurationTimer.TimerEnable := 0;]]>
+</Line>
+<Line Number="44">
+<![CDATA[	//Default to DINT Max value.]]>
+</Line>
+<Line Number="45">
+<![CDATA[	//EnaTransitionTimer and EnaFaultTimer bits kept for legacy compatibility]]>
+</Line>
+<Line Number="46">
+<![CDATA[	StateLogicControl.TransitionTime := 2147483647;]]>
+</Line>
+<Line Number="47">
+<![CDATA[	StateLogicControl.FaultTime := 2147483647;]]>
+</Line>
+<Line Number="48">
+<![CDATA[]]>
+</Line>
+<Line Number="49">
+<![CDATA[	localStatus.TimeoutFlt := 0;]]>
+</Line>
+<Line Number="50">
+<![CDATA[	localStatus.TransitionTimerDone := 0;]]>
+</Line>
+<Line Number="51">
+<![CDATA[END_IF;]]>
+</Line>
+<Line Number="52">
+<![CDATA[]]>
+</Line>
+<Line Number="53">
+<![CDATA[//Set the State Bit, clear all other bits.]]>
+</Line>
+<Line Number="54">
+<![CDATA[FOR i := 0 TO 127 DO]]>
+</Line>
+<Line Number="55">
+<![CDATA[	localStatus.State[i] := 0;]]>
+</Line>
+<Line Number="56">
+<![CDATA[END_FOR;]]>
+</Line>
+<Line Number="57">
+<![CDATA[localStatus.State[StateLogicControl.StateReg] := 1;]]>
+</Line>
+<Line Number="58">
+<![CDATA[]]>
+</Line>
+<Line Number="59">
+<![CDATA[COP(localStatus, StateLogicStatus, 1);]]>
+</Line>
+<Line Number="60">
+<![CDATA[]]>
+</Line>
+</STContent>
+</Routine>
+</Routines>
+<Dependencies>
+<Dependency Type="DataType" Name="StateLogicStatus"/>
+<Dependency Type="DataType" Name="StateLogicControl"/>
+</Dependencies>
+</AddOnInstructionDefinition>
+<AddOnInstructionDefinition Name="AOI_RangeCheck" Class="Standard" Revision="0.1" ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" CreatedDate="2010-03-29T16:58:02.278Z" CreatedBy="SDC" EditedDate="2026-04-22T19:54:09.008Z" EditedBy="SDC" SoftwareRevision="v37.00">
+<Parameters>
+<Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Input - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Output - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="Value" TagType="Base" DataType="REAL" Usage="Input" Radix="Float" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K">
+<![CDATA[0.00000000e+000]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="REAL" Radix="Float" Value="0.0"/>
+</DefaultData>
+</Parameter>
+<Parameter Name="Deadband" TagType="Base" DataType="REAL" Usage="Input" Radix="Float" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K">
+<![CDATA[0.00000000e+000]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="REAL" Radix="Float" Value="0.0"/>
+</DefaultData>
+</Parameter>
+<Parameter Name="Actual" TagType="Base" DataType="REAL" Usage="Input" Radix="Float" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K">
+<![CDATA[0.00000000e+000]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="REAL" Radix="Float" Value="0.0"/>
+</DefaultData>
+</Parameter>
+<Parameter Name="InPos" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="Read Only">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</DefaultData>
+</Parameter>
+<Parameter Name="DeadbandWide" TagType="Base" DataType="REAL" Usage="Input" Radix="Float" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K">
+<![CDATA[0.00000000e+000]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="REAL" Radix="Float" Value="0.0"/>
+</DefaultData>
+</Parameter>
+<Parameter Name="InPosWide" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="Read Only">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</DefaultData>
+</Parameter>
+</Parameters>
+<LocalTags>
+<LocalTag Name="Max" DataType="REAL" Radix="Float" ExternalAccess="Read/Write">
+<DefaultData Format="L5K">
+<![CDATA[0.00000000e+000]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="REAL" Radix="Float" Value="0.0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="Min" DataType="REAL" Radix="Float" ExternalAccess="Read/Write">
+<DefaultData Format="L5K">
+<![CDATA[0.00000000e+000]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="REAL" Radix="Float" Value="0.0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="MaxWide" DataType="REAL" Radix="Float" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0.00000000e+000]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="REAL" Radix="Float" Value="0.0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="MinWide" DataType="REAL" Radix="Float" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0.00000000e+000]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="REAL" Radix="Float" Value="0.0"/>
+</DefaultData>
+</LocalTag>
+</LocalTags>
+<Routines>
+<Routine Name="Logic" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Text>
+<![CDATA[[ADD(Value,Deadband,Max) ,SUB(Value,Deadband,Min) ];]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Text>
+<![CDATA[LIMIT(Min,Actual,Max)OTE(InPos);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Text>
+<![CDATA[[ADD(Value,DeadbandWide,MaxWide) ,SUB(Value,Deadband,MinWide) ];]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Text>
+<![CDATA[LIMIT(MinWide,Actual,MaxWide)OTE(InPosWide);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</AddOnInstructionDefinition>
+
+<AddOnInstructionDefinition Name="ProgramAlarmHandler" Class="Standard" Revision="3.0" RevisionExtension="a" Vendor="Steven Douglas Corp." ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" CreatedDate="2017-08-23T18:02:02.410Z" CreatedBy="SDC" EditedDate="2026-03-06T16:45:45.860Z" EditedBy="SDC" SoftwareRevision="v37.00">
+<Description>
+<![CDATA[Creates a shared Alarm History array and a shared Active Alarms array.]]>
+</Description>
+<Parameters>
+<Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description><![CDATA[Enable Input - System Defined Parameter]]></Description>
+</Parameter>
+<Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description><![CDATA[Enable Output - System Defined Parameter]]></Description>
+</Parameter>
+<Parameter Name="PublicProgramIDTag" TagType="Base" DataType="INT" Usage="InOut" Radix="Decimal" Required="true" Visible="true" Constant="false">
+<Description><![CDATA[Master Program ID tag used for all handler instances to obtain a unique ID]]></Description>
+</Parameter>
+<Parameter Name="LocalAlarmsArrayTag" TagType="Base" DataType="AlarmData" Dimensions="1" Usage="InOut" Required="true" Visible="true" Constant="false">
+<Description><![CDATA[Local array tag. Faults, Warnings]]></Description>
+</Parameter>
+<Parameter Name="AlarmActiveArrayTag" TagType="Base" DataType="AlarmData" Dimensions="1" Usage="InOut" Required="true" Visible="true" Constant="false">
+<Description><![CDATA[Active array tag. \Alarms.Active]]></Description>
+</Parameter>
+<Parameter Name="AlarmHistoryArrayTag" TagType="Base" DataType="AlarmData" Dimensions="1" Usage="InOut" Required="true" Visible="true" Constant="false">
+<Description><![CDATA[History array tag. \Alarms.History]]></Description>
+</Parameter>
+<Parameter Name="ControllerTimeClockTag" TagType="Base" DataType="CPU_TimeDate" Usage="InOut" Required="true" Visible="true" Constant="false"/>
+<Parameter Name="AlarmActiveTag" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="true" Visible="true" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="ActiveAlarmArrayIndex" TagType="Base" DataType="INT" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="ActiveAlarmDuration" TagType="Base" DataType="DINT" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="DINT" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="MyProgramID" TagType="Base" DataType="INT" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="None">
+<Description><![CDATA[This alarm handler's Program ID]]></Description>
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="WarningActiveTag" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+</Parameters>
+<LocalTags>
+<LocalTag Name="ActiveIndex" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="DataIndex" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="tempLength" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="ShiftIter" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="prevSecond" DataType="SINT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="SINT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="AlarmsActive_size" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="AlarmsHistory_size" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="OneSecond" DataType="BOOL" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="EmptyAlarmData" DataType="AlarmData" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[[0,0,0,0,[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,0,0,0]]]></DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="AlarmData">
+<DataValueMember Name="ProgramID" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="AlarmID" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Severity" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Group" DataType="INT" Radix="Decimal" Value="0"/>
+<StructureMember Name="Message" DataType="STRING100">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING100" Radix="ASCII"><![CDATA[]]></DataValueMember>
+</StructureMember>
+<DataValueMember Name="TimeStamp" DataType="LINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Count" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Duration" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Active" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DoNotSaveToHistory" DataType="BOOL" Value="0"/>
+<DataValueMember Name="HMI_ResetCount" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="AlarmsLocal_size" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="INT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+</LocalTags>
+<Routines>
+<Routine Name="Logic" Type="ST">
+<STContent>
+<Line Number="0"><![CDATA[PublicProgramIDTag := PublicProgramIDTag + 1;]]></Line>
+<Line Number="1"><![CDATA[MyProgramID := PublicProgramIDTag;]]></Line>
+<Line Number="2"><![CDATA[]]></Line>
+<Line Number="3"><![CDATA[SIZE(AlarmActiveArrayTag, 0, AlarmsActive_size);]]></Line>
+<Line Number="4"><![CDATA[SIZE(AlarmHistoryArrayTag, 0, AlarmsHistory_size);]]></Line>
+<Line Number="5"><![CDATA[SIZE(LocalAlarmsArrayTag, 0, AlarmsLocal_size);]]></Line>
+<Line Number="6"><![CDATA[]]></Line>
+<Line Number="7"><![CDATA[if (ControllerTimeClockTag.Seconds <> prevSecond) then]]></Line>
+<Line Number="8"><![CDATA[	prevSecond := ControllerTimeClockTag.Seconds;]]></Line>
+<Line Number="9"><![CDATA[	OneSecond := 1;]]></Line>
+<Line Number="10"><![CDATA[else]]></Line>
+<Line Number="11"><![CDATA[	OneSecond := 0;]]></Line>
+<Line Number="12"><![CDATA[end_if;]]></Line>
+<Line Number="13"><![CDATA[]]></Line>
+<Line Number="14"><![CDATA[for ActiveIndex := 0 to AlarmsActive_size - 1 by 1 do]]></Line>
+<Line Number="15"><![CDATA[	if (AlarmActiveArrayTag[ActiveIndex].ProgramID = PublicProgramIDTag) then]]></Line>
+<Line Number="16"><![CDATA[		DataIndex := AlarmActiveArrayTag[ActiveIndex].AlarmID;]]></Line>
+<Line Number="17"><![CDATA[		if ((DataIndex < 0) OR (DataIndex >= AlarmsLocal_size)) then]]></Line>
+<Line Number="18"><![CDATA[			tempLength := AlarmsActive_size - 1 - ActiveIndex;]]></Line>
+<Line Number="19"><![CDATA[			if (tempLength > 0) then]]></Line>
+<Line Number="20"><![CDATA[				COP(AlarmActiveArrayTag[ActiveIndex + 1], AlarmActiveArrayTag[ActiveIndex], tempLength);]]></Line>
+<Line Number="21"><![CDATA[			end_if;]]></Line>
+<Line Number="22"><![CDATA[			COP(EmptyAlarmData, AlarmActiveArrayTag[AlarmsActive_size - 1], 1);]]></Line>
+<Line Number="23"><![CDATA[			exit;]]></Line>
+<Line Number="24"><![CDATA[		end_if;]]></Line>
+<Line Number="25"><![CDATA[		if (OneSecond) then]]></Line>
+<Line Number="26"><![CDATA[			LocalAlarmsArrayTag[DataIndex].Duration := LocalAlarmsArrayTag[DataIndex].Duration +1;]]></Line>
+<Line Number="27"><![CDATA[			AlarmActiveArrayTag[ActiveIndex].Duration := AlarmActiveArrayTag[ActiveIndex].Duration +1;]]></Line>
+<Line Number="28"><![CDATA[		end_if;]]></Line>
+<Line Number="29"><![CDATA[		if (NOT LocalAlarmsArrayTag[DataIndex].Active) then]]></Line>
+<Line Number="30"><![CDATA[			if (NOT LocalAlarmsArrayTag[DataIndex].DoNotSaveToHistory) then]]></Line>
+<Line Number="31"><![CDATA[				for ShiftIter := AlarmsHistory_size - 2 to 0 by -1 do]]></Line>
+<Line Number="32"><![CDATA[					COP(AlarmHistoryArrayTag[ShiftIter], AlarmHistoryArrayTag[ShiftIter + 1], 1);]]></Line>
+<Line Number="33"><![CDATA[				end_for;]]></Line>
+<Line Number="34"><![CDATA[				COP(AlarmActiveArrayTag[ActiveIndex], AlarmHistoryArrayTag[0], 1);]]></Line>
+<Line Number="35"><![CDATA[			end_if;]]></Line>
+<Line Number="36"><![CDATA[			tempLength := AlarmsActive_size - 1 - ActiveIndex;]]></Line>
+<Line Number="37"><![CDATA[			if (ActiveIndex < (AlarmsActive_size - 1)) then]]></Line>
+<Line Number="38"><![CDATA[				COP(AlarmActiveArrayTag[ActiveIndex + 1], AlarmActiveArrayTag[ActiveIndex], tempLength);]]></Line>
+<Line Number="39"><![CDATA[			end_if;]]></Line>
+<Line Number="40"><![CDATA[			COP(EmptyAlarmData, AlarmActiveArrayTag[AlarmsActive_size - 1], 1);]]></Line>
+<Line Number="41"><![CDATA[		end_if;]]></Line>
+<Line Number="42"><![CDATA[	end_if;]]></Line>
+<Line Number="43"><![CDATA[end_for;]]></Line>
+<Line Number="44"><![CDATA[]]></Line>
+<Line Number="45"><![CDATA[AlarmActiveTag := 0;]]></Line>
+<Line Number="46"><![CDATA[WarningActiveTag := 0;]]></Line>
+<Line Number="47"><![CDATA[]]></Line>
+<Line Number="48"><![CDATA[For DataIndex := 0 to AlarmsLocal_size - 1 By 1 Do]]></Line>
+<Line Number="49"><![CDATA[	If (LocalAlarmsArrayTag[DataIndex].Active) Then]]></Line>
+<Line Number="50"><![CDATA[		If (LocalAlarmsArrayTag[DataIndex].Severity = 0) Then]]></Line>
+<Line Number="51"><![CDATA[			AlarmActiveTag := 1;]]></Line>
+<Line Number="52"><![CDATA[		End_If;]]></Line>
+<Line Number="53"><![CDATA[		If (LocalAlarmsArrayTag[DataIndex].Severity = 1) Then]]></Line>
+<Line Number="54"><![CDATA[			WarningActiveTag := 1;]]></Line>
+<Line Number="55"><![CDATA[		End_If;]]></Line>
+<Line Number="56"><![CDATA[		ActiveAlarmArrayIndex := DataIndex;]]></Line>
+<Line Number="57"><![CDATA[		ActiveAlarmDuration := LocalAlarmsArrayTag[DataIndex].Duration;]]></Line>
+<Line Number="58"><![CDATA[		For ActiveIndex := 0 to AlarmsActive_size - 1 By 1 Do]]></Line>
+<Line Number="59"><![CDATA[			If ((AlarmActiveArrayTag[ActiveIndex].ProgramID = PublicProgramIDTag) AND (AlarmActiveArrayTag[ActiveIndex].AlarmID = DataIndex)) Then]]></Line>
+<Line Number="60"><![CDATA[				Exit;]]></Line>
+<Line Number="61"><![CDATA[			End_If;]]></Line>
+<Line Number="62"><![CDATA[		End_For;]]></Line>
+<Line Number="63"><![CDATA[		If (ActiveIndex > AlarmsActive_size - 1) Then]]></Line>
+<Line Number="64"><![CDATA[			For ShiftIter := AlarmsActive_size - 2 to 0 By -1 Do]]></Line>
+<Line Number="65"><![CDATA[				COP(AlarmActiveArrayTag[ShiftIter], AlarmActiveArrayTag[ShiftIter + 1], 1);]]></Line>
+<Line Number="66"><![CDATA[			End_For;]]></Line>
+<Line Number="67"><![CDATA[			LocalAlarmsArrayTag[DataIndex].ProgramID := PublicProgramIDTag;]]></Line>
+<Line Number="68"><![CDATA[			LocalAlarmsArrayTag[DataIndex].AlarmID := DataIndex;]]></Line>
+<Line Number="69"><![CDATA[			COP(ControllerTimeClockTag.UTCMicroseconds, LocalAlarmsArrayTag[DataIndex].TimeStamp, 1);]]></Line>
+<Line Number="70"><![CDATA[			LocalAlarmsArrayTag[DataIndex].Duration := 0;]]></Line>
+<Line Number="71"><![CDATA[			LocalAlarmsArrayTag[DataIndex].Count := LocalAlarmsArrayTag[DataIndex].Count +1;]]></Line>
+<Line Number="72"><![CDATA[			COP(LocalAlarmsArrayTag[DataIndex], AlarmActiveArrayTag[0], 1);]]></Line>
+<Line Number="73"><![CDATA[		End_If;]]></Line>
+<Line Number="74"><![CDATA[	End_If;]]></Line>
+<Line Number="75"><![CDATA[End_For;]]></Line>
+<Line Number="76"><![CDATA[]]></Line>
+<Line Number="77"><![CDATA[if (AlarmActiveTag) then]]></Line>
+<Line Number="78"><![CDATA[	ActiveAlarmArrayIndex := 9999;]]></Line>
+<Line Number="79"><![CDATA[	ActiveAlarmDuration := 0;]]></Line>
+<Line Number="80"><![CDATA[end_if;]]></Line>
+</STContent>
+</Routine>
+</Routines>
+</AddOnInstructionDefinition>
+
+
+<AddOnInstructionDefinition Name="AOI_TorqueHome" Class="Standard" Revision="1.0" ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="true" CreatedDate="2014-09-18T14:11:39.176Z" CreatedBy="SDC" EditedDate="2019-09-25T15:36:56.907Z" EditedBy="SDC" SoftwareRevision="v31.00">
+<Description><![CDATA[Home Servo Axis By Using Torque Limit]]></Description>
+<Parameters>
+<Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description><![CDATA[Enable Input - System Defined Parameter]]></Description>
+</Parameter>
+<Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description><![CDATA[Enable Output - System Defined Parameter]]></Description>
+</Parameter>
+<Parameter Name="Axis" TagType="Base" DataType="AXIS_CIP_DRIVE" Usage="InOut" Required="true" Visible="true"/>
+<Parameter Name="HomingTorque" TagType="Base" DataType="REAL" Usage="Input" Radix="Float" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K"><![CDATA[0.00000000e+000]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="REAL" Radix="Float" Value="0.0"/></DefaultData>
+</Parameter>
+<Parameter Name="RunTorque" TagType="Base" DataType="REAL" Usage="Input" Radix="Float" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K"><![CDATA[0.00000000e+000]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="REAL" Radix="Float" Value="0.0"/></DefaultData>
+</Parameter>
+<Parameter Name="Error" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="Read Only">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="IP" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="Read Only">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="PC" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="Read Only">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="HomingSpeed" TagType="Base" DataType="REAL" Usage="Input" Radix="Float" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K"><![CDATA[0.00000000e+000]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="REAL" Radix="Float" Value="0.0"/></DefaultData>
+</Parameter>
+<Parameter Name="OvertorqueLimit" TagType="Base" DataType="REAL" Usage="Input" Radix="Float" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K"><![CDATA[0.00000000e+000]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="REAL" Radix="Float" Value="0.0"/></DefaultData>
+</Parameter>
+<Parameter Name="HomeOffsetDist" TagType="Base" DataType="REAL" Usage="Input" Radix="Float" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K"><![CDATA[0.00000000e+000]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="REAL" Radix="Float" Value="0.0"/></DefaultData>
+</Parameter>
+<Parameter Name="HomeDirection" TagType="Base" DataType="DINT" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="DINT" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+</Parameters>
+<LocalTags>
+<LocalTag Name="TorqueHome_CS" DataType="DINT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="DINT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="TorqueHome_SW" DataType="DINT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="DINT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="Axis_MSO" DataType="MOTION_INSTRUCTION" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[[0,0,0,0,0,0,0,0,0]]]></DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="MOTION_INSTRUCTION">
+<DataValueMember Name="FLAGS" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ER" DataType="BOOL" Value="0"/>
+<DataValueMember Name="PC" DataType="BOOL" Value="0"/>
+<DataValueMember Name="IP" DataType="BOOL" Value="0"/>
+<DataValueMember Name="AC" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ACCEL" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DECEL" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TrackingMaster" DataType="BOOL" Value="0"/>
+<DataValueMember Name="CalculatedDataAvailable" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ERR" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="STATUS" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="STATE" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="SEGMENT" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EXERR" DataType="SINT" Radix="Decimal" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="Axis_MSF" DataType="MOTION_INSTRUCTION" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[[0,0,0,0,0,0,0,0,0]]]></DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="MOTION_INSTRUCTION">
+<DataValueMember Name="FLAGS" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ER" DataType="BOOL" Value="0"/>
+<DataValueMember Name="PC" DataType="BOOL" Value="0"/>
+<DataValueMember Name="IP" DataType="BOOL" Value="0"/>
+<DataValueMember Name="AC" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ACCEL" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DECEL" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TrackingMaster" DataType="BOOL" Value="0"/>
+<DataValueMember Name="CalculatedDataAvailable" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ERR" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="STATUS" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="STATE" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="SEGMENT" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EXERR" DataType="SINT" Radix="Decimal" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="Axis_MAJ" DataType="MOTION_INSTRUCTION" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[[0,0,0,0,0,0,0,0,0]]]></DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="MOTION_INSTRUCTION">
+<DataValueMember Name="FLAGS" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ER" DataType="BOOL" Value="0"/>
+<DataValueMember Name="PC" DataType="BOOL" Value="0"/>
+<DataValueMember Name="IP" DataType="BOOL" Value="0"/>
+<DataValueMember Name="AC" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ACCEL" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DECEL" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TrackingMaster" DataType="BOOL" Value="0"/>
+<DataValueMember Name="CalculatedDataAvailable" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ERR" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="STATUS" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="STATE" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="SEGMENT" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EXERR" DataType="SINT" Radix="Decimal" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="OvertorqueLimitTime" DataType="REAL" Radix="Float" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0.00000000e+000]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="REAL" Radix="Float" Value="0.0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="Axis_MAFR" DataType="MOTION_INSTRUCTION" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[[0,0,0,0,0,0,0,0,0]]]></DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="MOTION_INSTRUCTION">
+<DataValueMember Name="FLAGS" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ER" DataType="BOOL" Value="0"/>
+<DataValueMember Name="PC" DataType="BOOL" Value="0"/>
+<DataValueMember Name="IP" DataType="BOOL" Value="0"/>
+<DataValueMember Name="AC" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ACCEL" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DECEL" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TrackingMaster" DataType="BOOL" Value="0"/>
+<DataValueMember Name="CalculatedDataAvailable" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ERR" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="STATUS" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="STATE" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="SEGMENT" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EXERR" DataType="SINT" Radix="Decimal" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="Axis_MAM" DataType="MOTION_INSTRUCTION" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[[0,0,0,0,0,0,0,0,0]]]></DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="MOTION_INSTRUCTION">
+<DataValueMember Name="FLAGS" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ER" DataType="BOOL" Value="0"/>
+<DataValueMember Name="PC" DataType="BOOL" Value="0"/>
+<DataValueMember Name="IP" DataType="BOOL" Value="0"/>
+<DataValueMember Name="AC" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ACCEL" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DECEL" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TrackingMaster" DataType="BOOL" Value="0"/>
+<DataValueMember Name="CalculatedDataAvailable" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ERR" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="STATUS" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="STATE" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="SEGMENT" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EXERR" DataType="SINT" Radix="Decimal" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="FaultTimer" DataType="TIMER" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[[0,0,0]]]></DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="TorqueHome_CS_Pre" DataType="DINT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="DINT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="TorqueHomeSC" DataType="BOOL" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="Axis_MAH" DataType="MOTION_INSTRUCTION" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[[0,0,0,0,0,0,0,0,0]]]></DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="MOTION_INSTRUCTION">
+<DataValueMember Name="FLAGS" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ER" DataType="BOOL" Value="0"/>
+<DataValueMember Name="PC" DataType="BOOL" Value="0"/>
+<DataValueMember Name="IP" DataType="BOOL" Value="0"/>
+<DataValueMember Name="AC" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ACCEL" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DECEL" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TrackingMaster" DataType="BOOL" Value="0"/>
+<DataValueMember Name="CalculatedDataAvailable" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ERR" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="STATUS" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="STATE" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="SEGMENT" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EXERR" DataType="SINT" Radix="Decimal" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="SoftOTCheck" DataType="DINT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="DINT" Radix="Decimal" Value="0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="Axis_MAS" DataType="MOTION_INSTRUCTION" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[[0,0,0,0,0,0,0,0,0]]]></DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="MOTION_INSTRUCTION">
+<DataValueMember Name="FLAGS" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ER" DataType="BOOL" Value="0"/>
+<DataValueMember Name="PC" DataType="BOOL" Value="0"/>
+<DataValueMember Name="IP" DataType="BOOL" Value="0"/>
+<DataValueMember Name="AC" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ACCEL" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DECEL" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TrackingMaster" DataType="BOOL" Value="0"/>
+<DataValueMember Name="CalculatedDataAvailable" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ERR" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="STATUS" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="STATE" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="SEGMENT" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EXERR" DataType="SINT" Radix="Decimal" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="TorqueHome_ST6_TMR" DataType="TIMER" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[[0,500,0]]]></DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="500"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="PosSettleTimer" DataType="TIMER" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[[0,0,0]]]></DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="TorqueHome_ST2_TMR" DataType="TIMER" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[[0,100,0]]]></DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="100"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="TorqueHome_ST6A_TMR" DataType="TIMER" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[[0,100,0]]]></DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="100"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="AxisScalingNumerator" DataType="REAL" Radix="Float" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0.00000000e+000]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="REAL" Radix="Float" Value="0.0"/></DefaultData>
+</LocalTag>
+<LocalTag Name="OffsetMoveSpeed" DataType="REAL" Radix="Float" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[0.00000000e+000]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="REAL" Radix="Float" Value="0.0"/></DefaultData>
+</LocalTag>
+</LocalTags>
+<Routines>
+<Routine Name="EnableInFalse" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N"><Text><![CDATA[XIC(IP)OTU(IP);]]></Text></Rung>
+</RLLContent>
+</Routine>
+<Routine Name="Logic" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N"><Text><![CDATA[XIC(EnableIn)XIO(IP)[MOVE(0,TorqueHome_CS) ,OTL(IP) ,OTU(Error) ,OTU(PC) ];]]></Text></Rung>
+<Rung Number="1" Type="N"><Text><![CDATA[XIC(TorqueHome_SW.0)XIC(Axis.ServoActionStatus)MOVE(1,TorqueHome_CS);]]></Text></Rung>
+<Rung Number="2" Type="N"><Text><![CDATA[[XIC(TorqueHome_SW.1) MSF(Axis,Axis_MSF) ,XIC(TorqueHome_SW.0) ]XIO(Axis.ServoActionStatus)MOVE(2,TorqueHome_CS);]]></Text></Rung>
+<Rung Number="3" Type="N"><Text><![CDATA[XIC(TorqueHome_SW.2)[SSV(Axis,Axis,TorqueLimitNegative,HomingTorque) ,SSV(Axis,Axis,OvertorqueLimit,OvertorqueLimit) ,MOVE(0.1,OvertorqueLimitTime) SSV(Axis,Axis,OvertorqueLimitTime,OvertorqueLimitTime) ,MOVE(0,SoftOTCheck) SSV(Axis,Axis,SoftTravelLimitChecking,SoftOTCheck) ]MOVE(100,TorqueHome_ST2_TMR.PRE)TON(TorqueHome_ST2_TMR,?,?)XIC(TorqueHome_ST2_TMR.DN)MOVE(3,TorqueHome_CS);]]></Text></Rung>
+<Rung Number="4" Type="N"><Text><![CDATA[XIC(TorqueHome_SW.3)MSO(Axis,Axis_MSO)XIC(Axis.ServoActionStatus)MOVE(4,TorqueHome_CS);]]></Text></Rung>
+<Rung Number="5" Type="N"><Text><![CDATA[XIC(TorqueHome_SW.4)MAJ(Axis,Axis_MAJ,HomeDirection,HomingSpeed,Units per sec,50,Units per sec2,50,Units per sec2,Trapezoidal,0,0,Units per sec3,Disabled,0,0,None)XIC(Axis_MAJ.IP)MOVE(5,TorqueHome_CS);]]></Text></Rung>
+<Rung Number="6" Type="N"><Text><![CDATA[XIC(TorqueHome_SW.5)[XIC(Axis.OvertorqueLimitFault) ,XIC(Axis.ExcessivePositionErrorFault) ]XIO(Axis.ServoActionStatus)MOVE(6,TorqueHome_CS);]]></Text></Rung>
+<Rung Number="7" Type="N"><Text><![CDATA[XIC(TorqueHome_SW.6)MAFR(Axis,Axis_MAFR)EQ(Axis.AxisFault,0)[SSV(Axis,Axis,TorqueLimitNegative,RunTorque) ,MOVE(0,OvertorqueLimitTime) SSV(Axis,Axis,OvertorqueLimitTime,OvertorqueLimitTime) ,MOVE(1,SoftOTCheck) SSV(Axis,Axis,SoftTravelLimitChecking,SoftOTCheck) ]MOVE(1000,TorqueHome_ST6A_TMR.PRE)TON(TorqueHome_ST6A_TMR,?,?)XIC(TorqueHome_ST6A_TMR.DN)MOVE(7,TorqueHome_CS);]]></Text></Rung>
+<Rung Number="8" Type="N"><Text><![CDATA[XIC(TorqueHome_SW.7)MSO(Axis,Axis_MSO)XIC(Axis.ServoActionStatus)MOVE(8,TorqueHome_CS)GSV(Axis,Axis,PositionScalingNumerator,AxisScalingNumerator);]]></Text></Rung>
+<Rung Number="9" Type="N"><Text><![CDATA[XIC(TorqueHome_SW.8)[EQ(AxisScalingNumerator,360.0) MOVE(15.0,OffsetMoveSpeed) ,NE(AxisScalingNumerator,360.0) MOVE(1.0,OffsetMoveSpeed) ]MAM(Axis,Axis_MAM,1,HomeOffsetDist,OffsetMoveSpeed,Units per sec,150,Units per sec2,150,Units per sec2,Trapezoidal,0,0,Units per sec3,Disabled,0,0,None,0,0)XIC(Axis_MAM.PC)MOVE(250,PosSettleTimer.PRE)TON(PosSettleTimer,?,?)XIC(PosSettleTimer.DN)MOVE(10,TorqueHome_CS);]]></Text></Rung>
+<Rung Number="10" Type="N"><Text><![CDATA[AFI()XIC(TorqueHome_SW.9)MSF(Axis,Axis_MSF)XIO(Axis.ServoActionStatus)MOVE(10,TorqueHome_CS);]]></Text></Rung>
+<Rung Number="11" Type="N"><Text><![CDATA[XIC(TorqueHome_SW.10)MAH(Axis,Axis_MAH)XIC(Axis_MAH.PC)MOVE(11,TorqueHome_CS)OTL(PC);]]></Text></Rung>
+<Rung Number="12" Type="N"><Text><![CDATA[XIO(TorqueHomeSC)[[XIC(TorqueHome_SW.1) ,XIC(TorqueHome_SW.2) ,XIC(TorqueHome_SW.3) ,XIC(TorqueHome_SW.4) ,XIC(TorqueHome_SW.6) ,XIC(TorqueHome_SW.7) ,XIC(TorqueHome_SW.9) ,XIC(TorqueHome_SW.10) ] MOVE(2000,FaultTimer.PRE) ,XIC(TorqueHome_SW.5) MOVE(60000,FaultTimer.PRE) ,XIC(TorqueHome_SW.8) MOVE(5000,FaultTimer.PRE) ]TON(FaultTimer,?,?)XIC(FaultTimer.DN)[SSV(Axis,Axis,TorqueLimitNegative,RunTorque) ,MOVE(0,OvertorqueLimitTime) SSV(Axis,Axis,OvertorqueLimitTime,OvertorqueLimitTime) ,MOVE(1,SoftOTCheck) SSV(Axis,Axis,SoftTravelLimitChecking,SoftOTCheck) ]MOVE(31,TorqueHome_CS)[OTL(Error) ,MAS(Axis,Axis_MAS,All,Yes,150,Units per sec2,No,0,Units per sec3) ];]]></Text></Rung>
+<Rung Number="13" Type="N"><Text><![CDATA[[CLR(TorqueHome_SW) ,OTE(TorqueHome_SW.[TorqueHome_CS]) ];]]></Text></Rung>
+<Rung Number="14" Type="N"><Text><![CDATA[NE(TorqueHome_CS,TorqueHome_CS_Pre)MOVE(TorqueHome_CS,TorqueHome_CS_Pre)OTE(TorqueHomeSC);]]></Text></Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</AddOnInstructionDefinition>
+
+<AddOnInstructionDefinition Name="AOI_Debounce" Class="Standard" Revision="1.0" ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" CreatedDate="2017-12-20T17:38:23.616Z" CreatedBy="SDC" EditedDate="2017-12-20T17:43:44.150Z" EditedBy="SDC" SoftwareRevision="v30.00">
+<Parameters>
+<Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description><![CDATA[Enable Input - System Defined Parameter]]></Description>
+</Parameter>
+<Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description><![CDATA[Enable Output - System Defined Parameter]]></Description>
+</Parameter>
+<Parameter Name="Input" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="OnDelay" TagType="Base" DataType="DINT" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="DINT" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="OffDelay" TagType="Base" DataType="DINT" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="DINT" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="On" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="Read Only">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+<Parameter Name="Off" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="Read Only">
+<DefaultData Format="L5K"><![CDATA[0]]></DefaultData>
+<DefaultData Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></DefaultData>
+</Parameter>
+</Parameters>
+<LocalTags>
+<LocalTag Name="OnTimer" DataType="TIMER" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[[0,0,0]]]></DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="OffTimer" DataType="TIMER" ExternalAccess="None">
+<DefaultData Format="L5K"><![CDATA[[0,0,0]]]></DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+</LocalTags>
+<Routines>
+<Routine Name="Logic" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Text><![CDATA[[XIC(Input) MOVE(OnDelay,OnTimer.PRE) TON(OnTimer,?,?) ,XIO(Input) MOVE(OffDelay,OffTimer.PRE) TON(OffTimer,?,?) ];]]></Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Text><![CDATA[[XIC(OnTimer.DN) OTE(On) ,XIC(OffTimer.DN) OTE(Off) ];]]></Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</AddOnInstructionDefinition>
+</AddOnInstructionDefinitions>
+<Tags Use="Context">
+<Tag Name="a01_DialServo" Class="Standard" TagType="Base" DataType="AXIS_CIP_DRIVE" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="Axis">
+<AxisParameters MotionGroup="MotionGroup" CIPDriveSetAttrUpdateBits="16#3fff_fe03 16#d000_0380 16#01f1_007e 16#cf80_0000 16#bbf7_fdff 16#a07f_ffff 16#721d_c018 16#c0f4_2075 16#0088_0217 16#0000_0000 16#0000_0000 16#ffff_fff0 16#0000_01ff 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_0000" CIPDriveGetAttrUpdateBits="16#0000_0070 16#ff7b_f76e 16#f3e0_007f 16#0012_0980 16#0c00_0090 16#0000_0603 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_07ff 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_0000 16#0000_0000" CIPControllerSetAttrUpdateBits="16#3fef_fe1f 16#edbf_ffff 16#fff5_fbff 16#e001_1aff 16#0000_03e1" CIPControllerGetAttrUpdateBits="16#f7ff_ffff 16#30fe_7fbf 16#effb_fdff 16#0000_87ff 16#0000_0000" MotionModule="sd01_DialServo:Ch1" ApplicationCatalogNumberInstance="0" ApplicationCatalogNumberVersion="0" AxisConfiguration="Position Loop" FeedbackConfiguration="Motor Feedback" MotorDataSource="Database" MotorCatalogNumber="TLP-A070-040-Dxxx2x" Feedback1Type="Nikon Serial" MotorType="Rotary Permanent Magnet" MotionScalingConfiguration="Control Scaling" ConversionConstant="10000.0" OutputCamExecutionTargets="0" PositionUnits="mm" AverageVelocityTimebase="0.25" PositionUnwind="1000000" HomeMode="Active" HomeDirection="Bi-directional Forward" HomeSequence="Immediate" HomeConfigurationBits="16#0000_0000" HomePosition="0.0" HomeOffset="0.0" HomeSpeed="0.0" HomeReturnSpeed="0.0" MaximumSpeed="425.0" MaximumAcceleration="122772.125" MaximumDeceleration="122772.125" ProgrammedStopMode="Fast Stop" MasterInputConfigurationBits="1" MasterPositionFilterBandwidth="0.1" VelocityFeedforwardGain="0.0" AccelerationFeedforwardGain="0.0" PositionErrorTolerance="8.102869" PositionLockTolerance="0.099999994" VelocityOffset="0.0" TorqueOffset="0.0" FrictionCompensationWindow="0.0" BacklashReversalOffset="0.0" TuningTravelLimit="0.0" TuningSpeed="0.0" TuningTorque="100.0" DampingFactor="1.0" DriveModelTimeConstant="5.06429351e-004" PositionServoBandwidth="19.6418" VelocityServoBandwidth="78.5672" VelocityDroop="0.0" VelocityLimitPositive="1180.0" VelocityLimitNegative="-1180.0" VelocityThreshold="450.0" VelocityStandstillWindow="5.0" TorqueLimitPositive="351.85184" TorqueLimitNegative="-351.85184" TorqueThreshold="316.66666" StoppingTorque="351.85184" StoppingTimeLimit="1.0" LoadInertiaRatio="0.0" RegistrationInputs="2" MaximumAccelerationJerk="35465868.0" MaximumDecelerationJerk="35465868.0" DynamicsConfigurationBits="7" FeedbackUnitRatio="1.0" AccelerationLimit="350777.5" DecelerationLimit="350777.5" RampJerkControl="0.0" PositionIntegratorBandwidth="4.91045" PositionErrorToleranceTime="0.0" PositionIntegratorControl="1" VelocityErrorTolerance="710.57605" VelocityErrorToleranceTime="0.01" VelocityIntegratorControl="1" VelocityLockTolerance="5.0" SystemInertia="0.020061255" TorqueLowPassFilterBandwidth="0.0" TorqueNotchFilterFrequency="0.0" TorqueRateLimit="1000000.0" OvertorqueLimit="200.0" OvertorqueLimitTime="0.0" UndertorqueLimit="10.0" UndertorqueLimitTime="0.0" FluxCurrentReference="0.0" CurrentError="0.0" TorqueLoopBandwidth="1000.0" FluxLoopBandwidth="1000.0" StoppingAction="Current Decel Disable" MechanicalBrakeControl="Automatic" MechanicalBrakeReleaseDelay="0.0" MechanicalBrakeEngageDelay="0.0" PowerLossThreshold="0.0" InverterCapacity="0.0" ConverterCapacity="0.0" InverterOverloadAction="None" MotorOverloadAction="None" CIPAxisExceptionAction="Unsupported Unsupported Disable Disable Disable Disable Unsupported Disable Disable Disable Disable Disable Unsupported Disable Disable Disable Unsupported Unsupported Disable Unsupported Disable Disable Unsupported Disable Unsupported Disable Unsupported Unsupported Unsupported Disable Disable Disable Unsupported Disable Disable Disable Unsupported Unsupported Unsupported Unsupported Unsupported Disable Unsupported Disable Disable Disable Disable Disable Unsupported Disable Disable Disable Unsupported Unsupported Disable Disable Disable Disable Unsupported Unsupported Unsupported Disable Unsupported Unsupported" CIPAxisExceptionActionRA="Unsupported Disable Disable Unsupported Unsupported Disable Alarm Disable Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Disable Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Disable Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported" MotorOverspeedUserLimit="120.0" MotorThermalOverloadUserLimit="110.0" InverterThermalOverloadUserLimit="110.0" PositionLeadLagFilterBandwidth="0.0" PositionLeadLagFilterGain="0.0" PositionNotchFilterFrequency="0.0" VelocityNegativeFeedforwardGain="0.0" BacklashCompensationWindow="0.0" TorqueLeadLagFilterBandwidth="0.0" TorqueLeadLagFilterGain="1.0" CommutationSelfSensingCurrent="100.0" MotorDeviceCode="16#0000_143b" MotorUnit="Rev" MotorPolarity="Inverted" MotorRatedVoltage="230.0" MotorRatedContinuousCurrent="2.7" MotorRatedPeakCurrent="9.5" MotorRatedOutputPower="0.4" MotorOverloadLimit="100.0" MotorIntegralThermalSwitch="false" MotorMaxWindingTemperature="105.0" MotorWindingToAmbientCapacitance="597.0" MotorWindingToAmbientResistance="1.2676" PMMotorResistance="3.28" PMMotorInductance="0.00698" RotaryMotorPoles="10" RotaryMotorInertia="0.000045" RotaryMotorRatedSpeed="3000.0" RotaryMotorMaxSpeed="6000.0" PMMotorRatedTorque="1.27" PMMotorTorqueConstant="0.522" PMMotorRotaryVoltageConstant="31.557966" Feedback1Unit="Rev" Feedback1Polarity="Inverted" Feedback1StartupMethod="Absolute" Feedback1CycleResolution="16777216" Feedback1CycleInterpolation="1" Feedback1Turns="65536" Feedback1VelocityFilterBandwidth="260759.45" Feedback1AccelFilterBandwidth="0.0" PMMotorFluxSaturation="100.0 91.3 86.5 82.3 78.9 77.0 75.1 73.5" Feedback1VelocityFilterTaps="1" Feedback1AccelFilterTaps="1" CyclicReadUpdateList="TorqueNotchFilterFrequencyEstimate TorqueNotchFilterMagnitudeEstimate" CyclicWriteUpdateList="TorqueLimitNegative TorqueLimitPositive" ScalingSource="From Calculator" LoadType="Linear Actuator" ActuatorType="Screw" TravelMode="Limited" PositionScalingNumerator="1.0" PositionScalingDenominator="1.0" PositionUnwindNumerator="1.0" PositionUnwindDenominator="1.0" TravelRange="1000.0" MotionResolution="10000" MotionPolarity="Normal" MotorTestResistance="0.0" MotorTestInductance="0.0" TuneFriction="0.0" TuneLoadOffset="0.0" TotalInertia="0.000045" TuningSelect="Total Inertia" TuningDirection="Uni-directional Forward" ApplicationType="Custom" LoopResponse="Medium" FeedbackCommutationAligned="Motor Offset" FrictionCompensationSliding="0.0" FrictionCompensationStatic="0.0" FrictionCompensationViscous="0.0" PositionLoopBandwidth="19.6418" VelocityLoopBandwidth="78.5672" VelocityIntegratorBandwidth="0.0" FeedbackSignalLossUserLimit="100.0" FeedbackDataLossUserLimit="4" Feedback1BatteryAbsolute="true" MotionExceptionAction="Unsupported Disable Disable Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported Unsupported" SoftTravelLimitChecking="false" LoadRatio="0.0" TuneInertiaMass="0.0" SoftTravelLimitPositive="0.0" SoftTravelLimitNegative="0.0" GainTuningConfigurationBits="16#0013" CommutationOffset="0.0" SystemBandwidth="0.0" VelocityLowPassFilterBandwidth="0.0" TransmissionRatioInput="1" TransmissionRatioOutput="1" ActuatorLead="10.0" ActuatorLeadUnit="Millimeter/Rev" ActuatorDiameter="1.0" ActuatorDiameterUnit="Millimeter" SystemAccelerationBase="4984.733" DriveModelTimeConstantBase="0.000505819" DriveRatedPeakCurrent="9.5" HookupTestDistance="1.0" HookupTestFeedbackChannel="Feedback 1" LoadCoupling="Rigid" SystemDamping="1.0" CurrentVectorLimit="351.85184" CommutationPolarity="Normal" LoadObserverConfiguration="Load Observer with Velocity Estimate" LoadObserverBandwidth="314.2688" LoadObserverIntegratorBandwidth="0.0" LoadObserverFeedbackGain="0.5" AxisID="2640443043" InterpolatedPositionConfiguration="16#0000_0002" AxisUpdateSchedule="Base" ProvingConfiguration="Disabled" TorqueProveCurrent="0.0" BrakeTestTorque="0.0" BrakeSlipTolerance="0.0" ZeroSpeed="1.0" ZeroSpeedTime="0.0" AdaptiveTuningConfiguration="Tracking Notch" TorqueNotchFilterHighFrequencyLimit="4000.0" TorqueNotchFilterLowFrequencyLimit="377.12256" TorqueNotchFilterTuningThreshold="5.0" CoastingTimeLimit="0.0" BusOvervoltageOperationalLimit="0.0" ConnectionLossStoppingAction="Current Decel Disable" VerticalLoadControl="Disabled" CurrentLoopBandwidthScalingFactor="1.0" CurrentLoopBandwidth="1000.0" DriveRatedVoltage="230.0" MaxOutputFrequency="590.0" MotorTestDataValid="False" CommandNotchFilterFrequency="0.0" CommandNotchFilterWidth="0.707" CommandNotchFilterDepth="0.0" CommandNotchFilterGain="1.0" CommandNotchFilter2Frequency="0.0" CommandNotchFilter2Width="0.707" CommandNotchFilter2Depth="0.0" CommandNotchFilter2Gain="1.0" TorqueNotchFilter2Frequency="0.0" TorqueNotchFilter3Frequency="0.0" TorqueNotchFilter4Frequency="0.0" TorqueNotchFilterWidth="0.707" TorqueNotchFilterDepth="0.0" TorqueNotchFilterGain="1.0" TorqueNotchFilter2Width="0.707" TorqueNotchFilter2Depth="0.0" TorqueNotchFilter2Gain="1.0" TorqueNotchFilter3Width="0.707" TorqueNotchFilter3Depth="0.0" TorqueNotchFilter3Gain="1.0" TorqueNotchFilter4Width="0.707" TorqueNotchFilter4Depth="0.0" TorqueNotchFilter4Gain="1.0" AdaptiveTuningTrackingNotchFilters="4" AdaptiveTuningGainScalingFactorMin="0.1" TorqueLowPassFilterBandwidthMin="157.1344" TorqueNotchFilterWidthMin="0.707" TorqueNotchFilterWidthMax="0.707" HookupTestSpeed="0.0" TorqueEstimateCrossoverSpeed="100.0" TorqueEstimateNotch1Frequency="100.0" TorqueEstimateNotch1Width="1.0" TorqueEstimateNotch1Depth="0.0" TorqueEstimateNotch1Gain="0.0" TorqueEstimateNotch2Frequency="0.0" TorqueEstimateNotch2Width="0.707" TorqueEstimateNotch2Depth="0.0" TorqueEstimateNotch2Gain="1.0" TestModeConfiguration="Controller Loop Back" TestModeEnable="Disabled"/>
+</Data>
+</Tag>
+<Tag Name="MotionGroup" Class="Standard" TagType="Base" DataType="MOTION_GROUP" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="MotionGroup">
+<MotionGroupParameters CoarseUpdatePeriod="2000" PhaseShift="0" GeneralFaultType="Non Major Fault" AutoTagUpdate="Enabled" Alternate1UpdateMultiplier="1" Alternate2UpdateMultiplier="1"/>
+</Data>
+</Tag>
+</Tags>
+<Programs Use="Context">
+<Program Use="Target" Name="S00_DialIndex" TestEdits="false" MainRoutineName="R00_Main" Disabled="false" Class="Standard" UseAsFolder="false">
+<Description>
+<![CDATA[S00 10-station magnet dial indexer. Indexes one station (36 deg) when the feed station reports complete. Actuators-safe interlock (all stations retracted before index) is handled by the standard indexer template. - Auto-generated by SDC State Logic Builder]]>
+</Description>
+<Tags>
+
+<Tag Name="Control" TagType="Base" DataType="StateLogicControl" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[0,0,0,0]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="StateLogicControl">
+<DataValueMember Name="StateReg" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EnaFaultDetect" DataType="BOOL" Value="0"/>
+<DataValueMember Name="EnaTransitionTimer" DataType="BOOL" Value="0"/>
+<DataValueMember Name="FaultTime" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="TransitionTime" DataType="DINT" Radix="Decimal" Value="0"/>
+</Structure>
+</Data>
+</Tag>
+
+<Tag Name="Status" TagType="Base" DataType="StateLogicStatus" Usage="Public" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Comments>
+<Comment Operand=".STATE[1]">
+<![CDATA[Wait For Ready]]>
+</Comment>
+<Comment Operand=".STATE[4]">
+<![CDATA[Wait]]>
+</Comment>
+<Comment Operand=".STATE[7]">
+<![CDATA[Index Magnet_Dial (10-pos)]]>
+</Comment>
+<Comment Operand=".STATE[10]">
+<![CDATA[Index Complete]]>
+</Comment>
+<Comment Operand=".STATE[60]">
+<![CDATA[Complete]]>
+</Comment>
+</Comments>
+<Data Format="L5K">
+<![CDATA[[[2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0],0,0]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="StateLogicStatus">
+<ArrayMember Name="State" DataType="BOOL" Dimensions="128" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+<Element Index="[3]" Value="0"/>
+<Element Index="[4]" Value="0"/>
+<Element Index="[5]" Value="0"/>
+<Element Index="[6]" Value="0"/>
+<Element Index="[7]" Value="0"/>
+<Element Index="[8]" Value="0"/>
+<Element Index="[9]" Value="0"/>
+<Element Index="[10]" Value="0"/>
+<Element Index="[11]" Value="0"/>
+<Element Index="[12]" Value="0"/>
+<Element Index="[13]" Value="0"/>
+<Element Index="[14]" Value="0"/>
+<Element Index="[15]" Value="0"/>
+<Element Index="[16]" Value="0"/>
+<Element Index="[17]" Value="0"/>
+<Element Index="[18]" Value="0"/>
+<Element Index="[19]" Value="0"/>
+<Element Index="[20]" Value="0"/>
+<Element Index="[21]" Value="0"/>
+<Element Index="[22]" Value="0"/>
+<Element Index="[23]" Value="0"/>
+<Element Index="[24]" Value="0"/>
+<Element Index="[25]" Value="0"/>
+<Element Index="[26]" Value="0"/>
+<Element Index="[27]" Value="0"/>
+<Element Index="[28]" Value="0"/>
+<Element Index="[29]" Value="0"/>
+<Element Index="[30]" Value="0"/>
+<Element Index="[31]" Value="0"/>
+<Element Index="[32]" Value="0"/>
+<Element Index="[33]" Value="0"/>
+<Element Index="[34]" Value="0"/>
+<Element Index="[35]" Value="0"/>
+<Element Index="[36]" Value="0"/>
+<Element Index="[37]" Value="0"/>
+<Element Index="[38]" Value="0"/>
+<Element Index="[39]" Value="0"/>
+<Element Index="[40]" Value="0"/>
+<Element Index="[41]" Value="0"/>
+<Element Index="[42]" Value="0"/>
+<Element Index="[43]" Value="0"/>
+<Element Index="[44]" Value="0"/>
+<Element Index="[45]" Value="0"/>
+<Element Index="[46]" Value="0"/>
+<Element Index="[47]" Value="0"/>
+<Element Index="[48]" Value="0"/>
+<Element Index="[49]" Value="0"/>
+<Element Index="[50]" Value="0"/>
+<Element Index="[51]" Value="0"/>
+<Element Index="[52]" Value="0"/>
+<Element Index="[53]" Value="0"/>
+<Element Index="[54]" Value="0"/>
+<Element Index="[55]" Value="0"/>
+<Element Index="[56]" Value="0"/>
+<Element Index="[57]" Value="0"/>
+<Element Index="[58]" Value="0"/>
+<Element Index="[59]" Value="0"/>
+<Element Index="[60]" Value="0"/>
+<Element Index="[61]" Value="0"/>
+<Element Index="[62]" Value="0"/>
+<Element Index="[63]" Value="0"/>
+<Element Index="[64]" Value="0"/>
+<Element Index="[65]" Value="0"/>
+<Element Index="[66]" Value="0"/>
+<Element Index="[67]" Value="0"/>
+<Element Index="[68]" Value="0"/>
+<Element Index="[69]" Value="0"/>
+<Element Index="[70]" Value="0"/>
+<Element Index="[71]" Value="0"/>
+<Element Index="[72]" Value="0"/>
+<Element Index="[73]" Value="0"/>
+<Element Index="[74]" Value="0"/>
+<Element Index="[75]" Value="0"/>
+<Element Index="[76]" Value="0"/>
+<Element Index="[77]" Value="0"/>
+<Element Index="[78]" Value="0"/>
+<Element Index="[79]" Value="0"/>
+<Element Index="[80]" Value="0"/>
+<Element Index="[81]" Value="0"/>
+<Element Index="[82]" Value="0"/>
+<Element Index="[83]" Value="0"/>
+<Element Index="[84]" Value="0"/>
+<Element Index="[85]" Value="0"/>
+<Element Index="[86]" Value="0"/>
+<Element Index="[87]" Value="0"/>
+<Element Index="[88]" Value="0"/>
+<Element Index="[89]" Value="0"/>
+<Element Index="[90]" Value="0"/>
+<Element Index="[91]" Value="0"/>
+<Element Index="[92]" Value="0"/>
+<Element Index="[93]" Value="0"/>
+<Element Index="[94]" Value="0"/>
+<Element Index="[95]" Value="0"/>
+<Element Index="[96]" Value="0"/>
+<Element Index="[97]" Value="0"/>
+<Element Index="[98]" Value="0"/>
+<Element Index="[99]" Value="0"/>
+<Element Index="[100]" Value="0"/>
+<Element Index="[101]" Value="0"/>
+<Element Index="[102]" Value="0"/>
+<Element Index="[103]" Value="0"/>
+<Element Index="[104]" Value="0"/>
+<Element Index="[105]" Value="0"/>
+<Element Index="[106]" Value="0"/>
+<Element Index="[107]" Value="0"/>
+<Element Index="[108]" Value="0"/>
+<Element Index="[109]" Value="0"/>
+<Element Index="[110]" Value="0"/>
+<Element Index="[111]" Value="0"/>
+<Element Index="[112]" Value="0"/>
+<Element Index="[113]" Value="0"/>
+<Element Index="[114]" Value="0"/>
+<Element Index="[115]" Value="0"/>
+<Element Index="[116]" Value="0"/>
+<Element Index="[117]" Value="0"/>
+<Element Index="[118]" Value="0"/>
+<Element Index="[119]" Value="0"/>
+<Element Index="[120]" Value="0"/>
+<Element Index="[121]" Value="0"/>
+<Element Index="[122]" Value="0"/>
+<Element Index="[123]" Value="0"/>
+<Element Index="[124]" Value="0"/>
+<Element Index="[125]" Value="0"/>
+<Element Index="[126]" Value="0"/>
+<Element Index="[127]" Value="0"/>
+</ArrayMember>
+<DataValueMember Name="PreviousState" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="StateChangeOccurred_OS" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TimeoutFlt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TransitionTimerDone" DataType="BOOL" Value="0"/>
+</Structure>
+</Data>
+</Tag>
+
+<Tag Name="StateEngine" TagType="Base" DataType="State_Engine_128Max" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[1,[1,0,0,0,0,0,0,0,0,4,0,0],0,0,[1,0,0,0,0,0,0,0,0,4,0,0],[[2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0],0,0],0]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="State_Engine_128Max">
+<DataValueMember Name="EnableIn" DataType="BOOL" Value="1"/>
+<DataValueMember Name="EnableOut" DataType="BOOL" Value="0"/>
+</Structure>
+</Data>
+</Tag>
+
+<Tag Name="StateHistory" TagType="Base" DataType="SINT" Dimensions="10" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[0,0,0,0,0,0,0,0,0,0]]]>
+</Data>
+<Data Format="Decorated">
+<Array DataType="SINT" Dimensions="10" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+<Element Index="[3]" Value="0"/>
+<Element Index="[4]" Value="0"/>
+<Element Index="[5]" Value="0"/>
+<Element Index="[6]" Value="0"/>
+<Element Index="[7]" Value="0"/>
+<Element Index="[8]" Value="0"/>
+<Element Index="[9]" Value="0"/>
+</Array>
+</Data>
+</Tag>
+
+<Tag Name="CycleRunning" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Cycle Running]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="CycleStopped" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Cycle Stopped]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="CycleStopping" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Cycle Stopping]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="CycleTimer" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Cycle Time Accumulator]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[[0,0,0]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</Data>
+</Tag>
+
+<Tag Name="ManualMode" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Manual Mode (from Supervisor)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="SafetyOK" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Safety OK (from Supervisor)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="FaultReset" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Fault Reset (from Supervisor)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="Initialized" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Station Initialized]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="FaultState" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[State when fault occurred]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="RestartState" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[State to restart from after fault]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="SafetyStopState" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[State when safety stop occurred]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="SS" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Single Step Active]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="SS_OK" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Single Step OK to Advance]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="SS_ONS" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Single Step One-Shot (used by R01 SS_OK rung)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="LocalSS" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Local Single Step Request]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="LocalSSONS" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Local Single Step ONS]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="Lockout" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Station Lockout (HMI_Toggle.0 — forces Step=99)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="DryRun" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Dry Run (HMI_Toggle.1 — engineer-defined dry-cycle gate)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="HMI_Toggle" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[HMI Toggle Bits (.0 Lockout / .1 DryRun / .2 SS — fixed SDC map)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="HMI_Momentary" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[HMI Momentary Bits (auto-cleared each scan; bits assigned per-machine)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="ONS" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[One-Shot Storage Bits]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="HMI_Button" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[HMI Manual Control Buttons]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="HMI_LocalManualOverride" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Local Manual Override (bypasses Supervisor)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="Timer" TagType="Base" DataType="TIMER" Dimensions="10" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[General Purpose Timers]]>
+</Description>
+</Tag>
+
+<Tag Name="SensorTimer" TagType="Base" DataType="TIMER" Dimensions="10" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Sensor Delay Timers]]>
+</Description>
+</Tag>
+
+<Tag Name="Alarm" TagType="Base" DataType="AlarmData" Dimensions="10" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Station Alarm Data]]>
+</Description>
+</Tag>
+
+<Tag Name="Warning" TagType="Base" DataType="AlarmData" Dimensions="5" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Station Warning Data]]>
+</Description>
+</Tag>
+
+<Tag Name="ProgramFaultHandler" TagType="Base" DataType="ProgramAlarmHandler" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Program Alarm Handler Instance]]>
+</Description>
+</Tag>
+
+<Tag Name="p_CycleTime" TagType="Base" DataType="REAL" Radix="Float" Usage="Public" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Last Cycle Time (seconds)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0.000000]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="REAL" Radix="Float" Value="0.0"/>
+</Data>
+</Tag>
+
+<Tag Name="q_AlarmActive" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Alarm Active]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="q_WarningActive" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Warning Active]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="q_AutoMode" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Auto Mode Status]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="q_AutoStopped" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Auto Stopped Status]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="q_StartOK" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read Only" OpcUaAccess="None">
+<Description>
+<![CDATA[Station Start OK]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="Debug_DINT" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Debug Value]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="iq_DialServo" TagType="Base" DataType="AXIS_CIP_DRIVE" Usage="InOut" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - CIP Axis]]>
+</Description>
+</Tag>
+        <Tag Name="HMI_DialServo" TagType="Base" DataType="ServoOverall" Constant="false" ExternalAccess="Read/Write">
+          <Description>
+            <![CDATA[Magnet_Dial - HMI block]]>
+          </Description>
+          <Data Format="Decorated"><Structure DataType="ServoOverall"/></Data>
+        </Tag>
+
+<Tag Name="DialServo_MSO" TagType="Base" DataType="MOTION_INSTRUCTION" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - MSO - Servo On]]>
+</Description>
+</Tag>
+
+<Tag Name="DialServo_MSF" TagType="Base" DataType="MOTION_INSTRUCTION" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - MSF - Servo Off]]>
+</Description>
+</Tag>
+
+<Tag Name="DialServo_MAFR" TagType="Base" DataType="MOTION_INSTRUCTION" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - MAFR - Axis Fault Reset]]>
+</Description>
+</Tag>
+
+<Tag Name="DialServo_MASR" TagType="Base" DataType="MOTION_INSTRUCTION" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - MASR - Shutdown Reset]]>
+</Description>
+</Tag>
+
+<Tag Name="DialServo_MAJ" TagType="Base" DataType="MOTION_INSTRUCTION" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - MAJ - Jog]]>
+</Description>
+</Tag>
+
+<Tag Name="DialServo_MAS_Jog" TagType="Base" DataType="MOTION_INSTRUCTION" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - MAS - Stop Jog]]>
+</Description>
+</Tag>
+
+<Tag Name="DialServo_MAS_All" TagType="Base" DataType="MOTION_INSTRUCTION" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - MAS - Stop All (permissive lost)]]>
+</Description>
+</Tag>
+
+<Tag Name="DialServo_MAH" TagType="Base" DataType="MOTION_INSTRUCTION" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - MAH - Home]]>
+</Description>
+</Tag>
+
+<Tag Name="DialServo_MAM" TagType="Base" DataType="MOTION_INSTRUCTION" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - MAM - Auto Move]]>
+</Description>
+</Tag>
+
+<Tag Name="DialServo_Inch" TagType="Base" DataType="MOTION_INSTRUCTION" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - MAM - Inch]]>
+</Description>
+</Tag>
+
+<Tag Name="DialServoReady" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - Ready]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="DialServoPermissive" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - Motion Permissive]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="DialServoAutoEnable" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - Auto Enable]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="DialServoHomeConfimed" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - Home Confirmed]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="DialServoHomeRequested" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - Home Requested]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="DialServoHomeSelect" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - Home Select]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="DialServoManMoveTrig" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - Manual Move Trigger]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="DialServoEnableDelay" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - Enable Debounce]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[[0,0,0]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</Data>
+</Tag>
+
+<Tag Name="DialServoHomeConfirmDelay" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - Home Confirm Delay]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[[0,0,0]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</Data>
+</Tag>
+
+<Tag Name="DialServoONS" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - ONS Bits]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="DialServoJogDirection" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - Jog Direction (0=+, 1=-)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="DialServoInchAmount" TagType="Base" DataType="REAL" Radix="Float" Usage="Public" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - Inch Amount]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0.000000]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="REAL" Radix="Float" Value="0.000000"/>
+</Data>
+</Tag>
+
+<Tag Name="DialServoMotionParameters" TagType="Base" DataType="MAMParam" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[0,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="MAMParam">
+<DataValueMember Name="MoveType" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Position" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="Speed" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="Accel" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="Decel" DataType="REAL" Radix="Float" Value="0.0"/>
+</Structure>
+</Data>
+</Tag>
+
+<Tag Name="DialServoTorqueHome" TagType="Base" DataType="AOI_TorqueHome" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - Torque Home]]>
+</Description>
+</Tag>
+
+<Tag Name="p_DialServoIncrDist" TagType="Base" DataType="REAL" Radix="Float" Usage="Public" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - Increment Distance]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0.000000]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="REAL" Radix="Float" Value="0.000000"/>
+</Data>
+</Tag>
+
+<Tag Name="p_DialServoIndexAngle" TagType="Base" DataType="REAL" Radix="Float" Usage="Public" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - Index Angle]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0.000000]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="REAL" Radix="Float" Value="0.000000"/>
+</Data>
+</Tag>
+
+<Tag Name="i_StackCheckSensor" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Stack_Check Sensor Input]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+
+<Tag Name="PartTracking" TagType="Base" DataType="PartTracking_UDT" Usage="Public" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Part Tracking Data]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[[0]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="PartTracking_UDT">
+<DataValueMember Name="StationResult" DataType="BOOL" Value="0"/>
+</Structure>
+</Data>
+</Tag>
+
+<Tag Name="DialServoHome" TagType="Base" DataType="AOI_RangeCheck" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Magnet_Dial - Home position check]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[[1,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000,0]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="AOI_RangeCheck">
+<DataValueMember Name="EnableIn" DataType="BOOL" Value="1"/>
+<DataValueMember Name="EnableOut" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Value" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="Deadband" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="Actual" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="InPos" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DeadbandWide" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="InPosWide" DataType="BOOL" Value="0"/>
+</Structure>
+</Data>
+</Tag>
+</Tags>
+<Routines>
+
+<Routine Name="R00_Main" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Subroutine Calls]]>
+</Comment>
+<Text>
+<![CDATA[JSR(R01_Inputs,0);]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Text>
+<![CDATA[JSR(R02_StateTransitions,0);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Text>
+<![CDATA[JSR(R03_StateLogic,0);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Text>
+<![CDATA[JSR(R04_DialServoServo,0);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Text>
+<![CDATA[JSR(R05_Recovery,0);]]>
+</Text>
+</Rung>
+<Rung Number="5" Type="N">
+<Text>
+<![CDATA[JSR(R20_Alarms,0);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+
+<Routine Name="R01_Inputs" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Mapped Inputs from Supervisor]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Text>
+<![CDATA[XIC(\Supervisor.q_ManualMode)XIO(HMI_LocalManualOverride)OTE(ManualMode);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Text>
+<![CDATA[XIC(\Supervisor.q_SafetyOK)OTE(SafetyOK);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Text>
+<![CDATA[XIC(\Supervisor.q_FaultReset)OTE(FaultReset);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Text>
+<![CDATA[[XIC(\Supervisor.q_CycleStartLatch) ,XIC(HMI_LocalManualOverride) ]OTE(CycleRunning);]]>
+</Text>
+</Rung>
+<Rung Number="5" Type="N">
+<Text>
+<![CDATA[XIO(\Supervisor.q_CycleStartLatch)OTE(CycleStopping);]]>
+</Text>
+</Rung>
+<Rung Number="6" Type="N">
+<Text>
+<![CDATA[XIC(\Supervisor.q_CycleStopped)ONS(ONS.0)XIO(Status.State[2])XIO(Status.State[3])OTE(CycleStopped);]]>
+</Text>
+</Rung>
+<Rung Number="7" Type="N">
+<Comment>
+<![CDATA[Initialization]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[124])OTE(Initialized);]]>
+</Text>
+</Rung>
+<Rung Number="8" Type="N">
+<Comment>
+<![CDATA[HMI_Toggle Decode]]>
+</Comment>
+<Text>
+<![CDATA[XIC(HMI_Toggle.0)OTE(Lockout);]]>
+</Text>
+</Rung>
+<Rung Number="9" Type="N">
+<Text>
+<![CDATA[XIC(HMI_Toggle.1)OTE(DryRun);]]>
+</Text>
+</Rung>
+<Rung Number="10" Type="N">
+<Text>
+<![CDATA[XIC(HMI_Toggle.2)OTE(SS);]]>
+</Text>
+</Rung>
+<Rung Number="11" Type="N">
+<Comment>
+<![CDATA[SS_OK]]>
+</Comment>
+<Text>
+<![CDATA[[XIO(SS) ,XIC(SS) XIC(HMI_Momentary.StepAdvance) ONS(SS_ONS) ]OTE(SS_OK);]]>
+</Text>
+</Rung>
+<Rung Number="12" Type="N">
+<Comment>
+<![CDATA[HMI_Momentary Auto-Clear]]>
+</Comment>
+<Text>
+<![CDATA[XIC(HMI_Momentary.StepAdvance)OTU(HMI_Momentary.StepAdvance);]]>
+</Text>
+</Rung>
+<Rung Number="13" Type="N">
+<Text>
+<![CDATA[XIC(HMI_Momentary.FaultReset)OTU(HMI_Momentary.FaultReset);]]>
+</Text>
+</Rung>
+<Rung Number="14" Type="N">
+<Text>
+<![CDATA[XIC(HMI_Momentary.CycleStart)OTU(HMI_Momentary.CycleStart);]]>
+</Text>
+</Rung>
+<Rung Number="15" Type="N">
+<Comment>
+<![CDATA[Debounce Filters]]>
+</Comment>
+<Text>
+<![CDATA[AOI_Debounce(StackCheckSensorDebounce,i_StackCheckSensor,100,100);]]>
+</Text>
+</Rung>
+<Rung Number="16" Type="N">
+<Comment>
+<![CDATA[CPU Time/Date]]>
+</Comment>
+<Text>
+<![CDATA[CPU_TimeDate_wJulian(\g_CPUDateTime);]]>
+</Text>
+</Rung>
+<Rung Number="17" Type="N">
+<Comment>
+<![CDATA[Legacy LocalSS Passthrough]]>
+</Comment>
+<Text>
+<![CDATA[XIC(LocalSS)OTE(SS);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+
+<Routine Name="R02_StateTransitions" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[State 0: Safety Stop]]>
+</Comment>
+<Text>
+<![CDATA[[XIO(SafetyOK) ,XIC(S:FS) ][ONS(ONS.3) LIMIT(4,Control.StateReg,99) MOVE(Control.StateReg,SafetyStopState) MOVE(Control.StateReg,RestartState) ,MOVE(0,Control.StateReg) ];]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Comment>
+<![CDATA[State 1: Manual Mode]]>
+</Comment>
+<Text>
+<![CDATA[XIC(ManualMode)MOVE(1,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Comment>
+<![CDATA[State 2: Auto Idle NOT Ready]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[0]) XIC(SafetyOK) XIO(ManualMode) ,XIC(Status.State[1]) XIO(ManualMode) ,XIC(Status.State[127]) XIC(FaultReset) ,XIC(Status.State[124]) ]MOVE(2,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Comment>
+<![CDATA[State 3: Auto Idle Ready]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[2]) XIC(Initialized) ,XIC(Status.State[10]) ]MOVE(3,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Comment>
+<![CDATA[State 99: Lockout (HMI_Toggle.0)]]>
+</Comment>
+<Text>
+<![CDATA[XIC(HMI_Toggle.0)MOVE(99,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="5" Type="N">
+<Comment>
+<![CDATA[State 4: Wait]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[3])XIC(CycleRunning)XIC(DialServo_MAM.PC)MOVE(4,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="6" Type="N">
+<Comment>
+<![CDATA[State 7: Index Magnet_Dial (10-pos)]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[4])MOVE(7,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="7" Type="N">
+<Comment>
+<![CDATA[State 10: Index Complete]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[7])XIC(DialServo_MAM.PC)MOVE(10,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="8" Type="N">
+<Comment>
+<![CDATA[State 127: Fault]]>
+</Comment>
+<Text>
+<![CDATA[XIC(q_AlarmActive)[ONS(ONS.2) LIMIT(4,Control.StateReg,99) MOVE(Control.StateReg,FaultState) MOVE(Control.StateReg,RestartState) ,MOVE(127,Control.StateReg) ];]]>
+</Text>
+</Rung>
+<Rung Number="9" Type="N">
+<Comment>
+<![CDATA[Cycle Time Accumulator]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[4]) ,XIC(Status.State[7]) ,XIC(Status.State[10])]RTO(CycleTimer,?,?);]]>
+</Text>
+</Rung>
+<Rung Number="10" Type="N">
+<Comment>
+<![CDATA[Cycle Time Compute + Reset]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[3])XIC(CycleRunning)ONS(ONS.4)[DIV(CycleTimer.ACC,1000.0,p_CycleTime) ,MOVE(0,CycleTimer.ACC) ];]]>
+</Text>
+</Rung>
+<Rung Number="11" Type="N">
+<Comment>
+<![CDATA[Fault Timer Enable]]>
+</Comment>
+<Text>
+<![CDATA[LIMIT(4,Control.StateReg,59)XIO(SS)[MOVE(5000,Control.FaultTime) ,OTE(Control.EnaFaultDetect) ];]]>
+</Text>
+</Rung>
+<Rung Number="12" Type="N">
+<Comment>
+<![CDATA[State Engine]]>
+</Comment>
+<Text>
+<![CDATA[State_Engine_128Max(StateEngine,Control,Status,StateHistory);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+
+<Routine Name="R03_StateLogic" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Part Tracking: Clear All at Cycle Start]]>
+</Comment>
+<Text>
+<![CDATA[XIC(CycleRunning)ONS(ONS.5)OTU(PartTracking.StationResult);]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Comment>
+<![CDATA[Part Tracking: StationResult (Station Result)]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[10])OTE(PartTracking.StationResult);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Comment>
+<![CDATA[Station Start OK]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[1]) ,XIC(Status.State[2]) ,XIC(Status.State[3]) ]XIO(q_AlarmActive)OTE(q_StartOK);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Comment>
+<![CDATA[Auto Mode Status]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[2]) ,XIC(Status.State[3]) ]XIO(CycleRunning)OTE(q_AutoMode);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Comment>
+<![CDATA[Auto Stopped Status]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[2]) ,XIC(Status.State[3]) ,XIC(Status.State[127]) ]XIO(CycleRunning)OTE(q_AutoStopped);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+
+<Routine Name="R04_DialServoServo" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Axis Is Ready For Operation]]>
+</Comment>
+<Text>
+<![CDATA[XIC(MotionGroup.GroupSynced)XIO(iq_DialServo.SafeTorqueOffActiveInhibit)OTE(DialServoReady);]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Text>
+<![CDATA[XIC(SafetyOK)XIC(DialServoReady)TON(DialServoEnableDelay,?,?)XIC(DialServoEnableDelay.DN)ONS(DialServoONS.0)OTE(DialServoAutoEnable);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Comment>
+<![CDATA[Axis Motion Permissive (Add more conditions if necessary. Permissive should be based on the physical state of itself potentially interfering devices)]]>
+</Comment>
+<Text>
+<![CDATA[OTE(DialServoPermissive);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Comment>
+<![CDATA[Enable Axis]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[1]) XIC(HMI_DialServo.Control.Enable) XIC(DialServoReady) ,XIC(DialServoAutoEnable) ]XIO(iq_DialServo.ServoActionStatus)MSO(iq_DialServo,DialServo_MSO);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Comment>
+<![CDATA[Disable Axis]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[1])XIC(HMI_DialServo.Control.Disable)MSF(iq_DialServo,DialServo_MSF);]]>
+</Text>
+</Rung>
+<Rung Number="5" Type="N">
+<Comment>
+<![CDATA[Fault Reset Axis]]>
+</Comment>
+<Text>
+<![CDATA[NE(iq_DialServo.AxisFault,0)XIC(FaultReset)[XIO(iq_DialServo.ShutdownStatus) MAFR(iq_DialServo,DialServo_MAFR) ,XIC(iq_DialServo.ShutdownStatus) MASR(iq_DialServo,DialServo_MASR) ];]]>
+</Text>
+</Rung>
+<Rung Number="6" Type="N">
+<Comment>
+<![CDATA[Jog Axis]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[1])XIC(DialServoPermissive)XIC(iq_DialServo.ServoActionStatus)XIO(iq_DialServo.JogStatus)XIO(iq_DialServo.MoveStatus)[XIC(HMI_DialServo.Control.JogPositive) XIO(HMI_DialServo.Control.JogNegative) MOVE(0,DialServoJogDirection) ,XIC(HMI_DialServo.Control.JogNegative) XIO(HMI_DialServo.Control.JogPositive) MOVE(1,DialServoJogDirection) ]MAJ(iq_DialServo,DialServo_MAJ,DialServoJogDirection,HMI_DialServo.Parameters.JogSpeed,Units per sec,HMI_DialServo.Parameters.Accel[0],Units per sec2,HMI_DialServo.Parameters.Decel[0],Units per sec2,Trapezoidal,0,0,Units per MasterUnit3,Disabled,0,0,None);]]>
+</Text>
+</Rung>
+<Rung Number="7" Type="N">
+<Text>
+<![CDATA[XIC(DialServo_MAJ.IP)XIO(HMI_DialServo.Control.JogPositive)XIO(HMI_DialServo.Control.JogNegative)MAS(iq_DialServo,DialServo_MAS_Jog,Jog,Yes,HMI_DialServo.Parameters.Decel[0],Units per sec2,No,0,Units per sec3);]]>
+</Text>
+</Rung>
+<Rung Number="8" Type="N">
+<Comment>
+<![CDATA[Inch Axis]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[1])XIC(DialServoPermissive)XIC(iq_DialServo.ServoActionStatus)XIO(iq_DialServo.JogStatus)XIO(iq_DialServo.MoveStatus)[XIC(HMI_DialServo.Control.InchPositive) ONS(DialServoONS.1) MOVE(HMI_DialServo.Parameters.InchAmount,DialServoInchAmount) ,XIC(HMI_DialServo.Control.InchNegative) ONS(DialServoONS.2) NEG(HMI_DialServo.Parameters.InchAmount,DialServoInchAmount) ]MAM(iq_DialServo,DialServo_Inch,1,DialServoInchAmount,HMI_DialServo.Parameters.ManualSpeed,Units per sec,HMI_DialServo.Parameters.Accel[0],Units per sec2,HMI_DialServo.Parameters.Decel[0],Units per sec2,Trapezoidal,0,0,Units per sec3,Disabled,0,0,None,0,0);]]>
+</Text>
+</Rung>
+<Rung Number="9" Type="N">
+<Comment>
+<![CDATA[Home Axis]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[1])[XIC(HMI_DialServo.Control.HomeRequest) ONS(DialServoONS.3) XIO(DialServoTorqueHome.IP) ,XIC(DialServoHomeRequested) XIO(DialServoHomeConfirmDelay.DN) XIO(DialServoHomeConfimed) ]XIC(DialServoReady)[OTE(DialServoHomeRequested) ,TON(DialServoHomeConfirmDelay,?,?) ];]]>
+</Text>
+</Rung>
+<Rung Number="10" Type="N">
+<Text>
+<![CDATA[XIC(Status.State[1])[XIC(HMI_DialServo.Control.HomeConfirm) ONS(DialServoONS.4) ,XIC(DialServoHomeConfimed) XIC(DialServoHomeSelect) XIO(DialServoTorqueHome.PC) XIO(DialServoTorqueHome.Error) ]OTE(DialServoHomeConfimed);]]>
+</Text>
+</Rung>
+<Rung Number="11" Type="N">
+<Comment>
+<![CDATA[Home Select = 0 is for Immediate Home (Example, servo indexer)
+Home Select = 1 is for Home To Torque (Example, PNP)
+
+Homing Torque = Start at 25%, Increase In 5% Increments If Not Enough
+Run Torque = Normal Running Torque Of Axis
+Homing Speed = Homing Speed in units/s
+Overtorque Limit = Set The Same As Homing Torque
+Home Offset Distance = Distance Moved Off Of Hard Stop When Homing Complete
+Home Direction = 0 Is Positive, 1 Is Negative]]>
+</Comment>
+<Text>
+<![CDATA[XIC(DialServoHomeConfimed)[XIO(DialServoHomeSelect) MAH(iq_DialServo,DialServo_MAH) ,XIC(DialServoHomeSelect) AOI_TorqueHome(DialServoTorqueHome,iq_DialServo,25.0,100.0,5.0,25.0,0.5,1) ];]]>
+</Text>
+</Rung>
+<Rung Number="12" Type="N">
+<Text>
+<![CDATA[[XIC(DialServoHomeRequested) OTE(HMI_DialServo.Status.HomeRequested) ,[XIC(DialServoTorqueHome.IP) ,XIC(DialServo_MAH.IP) ] OTE(HMI_DialServo.Status.HomeInProcess) ,[XIC(DialServoTorqueHome.PC) ,XIC(DialServo_MAH.PC) ] OTE(HMI_DialServo.Status.HomeComplete) ];]]>
+</Text>
+</Rung>
+<Rung Number="13" Type="N">
+<Comment>
+<![CDATA[Manual Mode]]>
+</Comment>
+<Text>
+<![CDATA[XIC(SafetyOK)XIC(Status.State[1])[MOVE(HMI_DialServo.Parameters.ManualSpeed,DialServoMotionParameters.Speed) ,XIC(DialServoPermissive) [XIC(HMI_DialServo.Control.ManMoves.0) MOVE(HMI_DialServo.Parameters.Positions[0],DialServoMotionParameters.Position) ] OTE(DialServoManMoveTrig) ];]]>
+</Text>
+</Rung>
+<Rung Number="14" Type="N">
+<Comment>
+<![CDATA[Auto Mode]]>
+</Comment>
+<Text>
+<![CDATA[XIC(SafetyOK)XIO(Status.State[1])[MOVE(0,DialServoMotionParameters.MoveType) ,MOVE(HMI_DialServo.Parameters.AutoSpeed[0],DialServoMotionParameters.Speed) ,MOVE(HMI_DialServo.Parameters.Accel[0],DialServoMotionParameters.Accel) ,MOVE(HMI_DialServo.Parameters.Decel[0],DialServoMotionParameters.Decel) ];]]>
+</Text>
+</Rung>
+<Rung Number="15" Type="N">
+<Comment>
+<![CDATA[Axis Motion Command]]>
+</Comment>
+<Text>
+<![CDATA[XIC(SafetyOK)[XIC(Status.State[1]) XIC(DialServoManMoveTrig) ,XIO(Status.State[1]) ]XIC(iq_DialServo.ServoActionStatus)XIC(iq_DialServo.AxisHomedStatus)XIC(DialServoPermissive)MAM(iq_DialServo,DialServo_MAM,DialServoMotionParameters.MoveType,DialServoMotionParameters.Position,DialServoMotionParameters.Speed,Units per sec,DialServoMotionParameters.Accel,Units per sec2,DialServoMotionParameters.Decel,Units per sec2,Trapezoidal,0,0,Units per sec3,Disabled,0,0,None,0,0);]]>
+</Text>
+</Rung>
+<Rung Number="16" Type="N">
+<Comment>
+<![CDATA[Stop axis if permissive turns off while in motion and use max or close to max decel value]]>
+</Comment>
+<Text>
+<![CDATA[XIO(iq_DialServo.MotionStatus.0)[XIO(DialServoPermissive) ,XIO(SafetyOK) ]MAS(iq_DialServo,DialServo_MAS_All,All,Yes,90,% of Maximum,Yes,90,% of Maximum);]]>
+</Text>
+</Rung>
+<Rung Number="17" Type="N">
+<Comment>
+<![CDATA[Set torque]]>
+</Comment>
+<Text>
+<![CDATA[XIC(HMI_DialServo.Control.SetTorquePos)MOVE(HMI_DialServo.Parameters.TorquePos,iq_DialServo.TorqueLimitPositive);]]>
+</Text>
+</Rung>
+<Rung Number="18" Type="N">
+<Text>
+<![CDATA[XIC(HMI_DialServo.Control.SetTorqueNeg)MOVE(HMI_DialServo.Parameters.TorqueNeg,iq_DialServo.TorqueLimitNegative);]]>
+</Text>
+</Rung>
+<Rung Number="19" Type="N">
+<Comment>
+<![CDATA[Retrieve values from axis]]>
+</Comment>
+<Text>
+<![CDATA[MOVE(iq_DialServo.ActualPosition,HMI_DialServo.Status.ActualPosition)MOVE(iq_DialServo.ActualVelocity,HMI_DialServo.Status.ActualVelocity)MOVE(iq_DialServo.TorqueReferenceFiltered,HMI_DialServo.Status.ActualTorque);]]>
+</Text>
+</Rung>
+<Rung Number="20" Type="N">
+<Comment>
+<![CDATA[Retrieve the max values from the drive and adjust them for your application if necessary with math instructions]]>
+</Comment>
+<Text>
+<![CDATA[XIC(S:FS)GSV(Axis,iq_DialServo,MaximumAcceleration,HMI_DialServo.Status.MaxAccel)GSV(Axis,iq_DialServo,MaximumDeceleration,HMI_DialServo.Status.MaxDecel)GSV(Axis,iq_DialServo,MaximumSpeed,HMI_DialServo.Status.MaxVelocity);]]>
+</Text>
+</Rung>
+<Rung Number="21" Type="N">
+<Comment>
+<![CDATA[Axis Position Monitor]]>
+</Comment>
+<Text>
+<![CDATA[[AOI_RangeCheck(DialServoHome,HMI_DialServo.Parameters.Positions[0],0.5,HMI_DialServo.Status.ActualPosition,5) ];]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+
+<Routine Name="R05_Recovery" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[No recovery sequence configured — manual FaultReset returns to State 2]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+
+<Routine Name="R20_Alarms" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Magnet_Dial Motion Timeout]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[7])TON(SensorTimer[0],?,?)XIC(SensorTimer[0].DN) ,XIC(Alarm[0].Active) XIO(FaultReset) ]OTE(Alarm[0].Active);]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Comment>
+<![CDATA[Program Alarm Handler]]>
+</Comment>
+<Text>
+<![CDATA[ProgramAlarmHandler(ProgramFaultHandler,\Alarms.p_ProgramID,Alarm,\Alarms.p_Active,\Alarms.p_History,g_CPUDateTime,q_AlarmActive,q_WarningActive);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</Program>
+</Programs>
+</Controller>
+</RSLogix5000Content>

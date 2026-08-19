@@ -9,6 +9,10 @@ import { downloadL5X, downloadAllL5XAsZip, exportProjectJSON } from '../lib/l5xE
 import { downloadControllerL5X } from '../lib/controllerL5xExporter.js';
 import { buildProgramName } from '../lib/tagNaming.js';
 import { getProjectIoMap, IO_SECTION_ORDER, IO_SECTION_META } from '../lib/getProjectIoMap.js';
+import { ProjectPickerModal } from './modals/ProjectPickerModal.jsx';
+import { JarvisGenerateModal } from './modals/JarvisGenerateModal.jsx';
+import { JarvisDescribeModal } from './modals/JarvisDescribeModal.jsx';
+import { SpecEditorModal } from './modals/SpecEditorModal.jsx';
 
 // ── Reorderable list popup ──────────────────────────────────────────────────────
 function ReorderPopup({ items, labelFn, onReorder, onClose, title }) {
@@ -342,7 +346,32 @@ export function Toolbar() {
   const [recipeReorderOpen, setRecipeReorderOpen] = useState(false);
   // I/O quick-look popup
   const [ioPopupOpen, setIoPopupOpen] = useState(false);
+  const [projectPickerOpen, setProjectPickerOpen] = useState(false);
+  // JARVIS AI modals + dropdown
+  const [jarvisGenerateOpen, setJarvisGenerateOpen] = useState(false);
+  const [jarvisDescribeOpen, setJarvisDescribeOpen] = useState(false);
+  const [specEditorOpen, setSpecEditorOpen] = useState(false);
+  const [jarvisMenuOpen, setJarvisMenuOpen] = useState(false);
   const ioPopupRef = useRef(null);
+  const jarvisMenuRef = useRef(null);
+
+  // Jarvis dropdown — close on outside click / Esc (capture phase, same
+  // reasoning as the I/O popup below).
+  useEffect(() => {
+    if (!jarvisMenuOpen) return;
+    function onClick(e) {
+      if (jarvisMenuRef.current && !jarvisMenuRef.current.contains(e.target)) {
+        setJarvisMenuOpen(false);
+      }
+    }
+    function onKey(e) { if (e.key === 'Escape') setJarvisMenuOpen(false); }
+    document.addEventListener('mousedown', onClick, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onClick, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [jarvisMenuOpen]);
 
   // I/O popup — close on outside click and Esc. Uses CAPTURE phase so
   // React Flow / nested stopPropagation handlers can't swallow the click
@@ -461,7 +490,7 @@ export function Toolbar() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleSaveProject]);
 
-  function handleLoadProject() {
+  function handleBrowseFile() {
     // Electron: use native open dialog to get the real file path,
     // then cache it so Save can overwrite directly with no prompts.
     if (window.electronAPI?.openFile) {
@@ -558,6 +587,66 @@ export function Toolbar() {
       >
         ⚙ Setup
       </button>
+      {/* Jarvis dropdown — groups the Jarvis entry points (Describe, Station
+          Spec) behind one button; the toolbar is width-crowded at 1280px. */}
+      <div style={{ position: 'relative' }} ref={jarvisMenuRef}>
+        <button
+          className="btn btn--ghost"
+          onClick={() => setJarvisMenuOpen(o => !o)}
+          title="JARVIS — describe your station or explain it for the station spec"
+          style={{
+            fontWeight: 600,
+            color: '#fff',
+            background: jarvisMenuOpen ? '#0072B5' : 'rgba(255,255,255,0.10)',
+            border: '1px solid ' + (jarvisMenuOpen ? '#0072B5' : 'rgba(255,255,255,0.25)'),
+            borderRadius: 6,
+          }}
+        >
+          ✨ Jarvis ▾
+        </button>
+        {jarvisMenuOpen && (
+          <div style={{
+            position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 1000,
+            minWidth: 220, background: '#fff', border: '1px solid #cbd5e1',
+            borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+            padding: 4, display: 'flex', flexDirection: 'column',
+          }}>
+            {[
+              {
+                icon: '🎙', label: 'Describe Station',
+                hint: 'Talk through the station; JARVIS drafts the diagram',
+                onClick: () => { setJarvisMenuOpen(false); setJarvisDescribeOpen(true); },
+              },
+              {
+                icon: '📋', label: 'Station Spec',
+                hint: 'Explain the station in your own words; JARVIS extracts the spec',
+                onClick: () => { setJarvisMenuOpen(false); setSpecEditorOpen(true); },
+                disabled: !sm,
+              },
+            ].map(item => (
+              <button
+                key={item.label}
+                onClick={item.onClick}
+                disabled={item.disabled}
+                style={{
+                  display: 'flex', gap: 8, alignItems: 'flex-start', textAlign: 'left',
+                  background: 'none', border: 'none', borderRadius: 6,
+                  padding: '8px 10px', cursor: item.disabled ? 'default' : 'pointer',
+                  opacity: item.disabled ? 0.45 : 1,
+                }}
+                onMouseEnter={e => { if (!item.disabled) e.currentTarget.style.background = '#e8f0fa'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
+              >
+                <span style={{ fontSize: 15, lineHeight: 1.2 }}>{item.icon}</span>
+                <span>
+                  <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#0f172a' }}>{item.label}</span>
+                  <span style={{ display: 'block', fontSize: 10, color: '#64748b' }}>{item.hint}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="toolbar__divider" />
 
       {/* SM dropdown selector */}
@@ -753,11 +842,20 @@ export function Toolbar() {
 
         <button
           className="btn btn--primary"
+          onClick={() => setJarvisGenerateOpen(true)}
+          disabled={!sm || (sm.nodes ?? []).length === 0}
+          title="Generate L5X with JARVIS AI — live progress, validation, and auto-save"
+        >
+          ✨ Generate (Jarvis)
+        </button>
+
+        <button
+          className="btn btn--primary"
           onClick={handleExportL5X}
           disabled={!sm}
-          title="Export current state machine to L5X"
+          title="Export current state machine to L5X (legacy rule-based exporter)"
         >
-          ↓ Export L5X
+          ↓ Export L5X (legacy)
         </button>
 
         {sms.length > 1 && (
@@ -792,13 +890,33 @@ export function Toolbar() {
         </button>
         <button
           className="btn btn--ghost"
-          onClick={handleLoadProject}
+          onClick={() => setProjectPickerOpen(true)}
           title="Load project from JSON"
         >
           📂 Load
         </button>
         <input ref={fileInputRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleFileChange} />
       </div>
+
+      {/* Project picker */}
+      {projectPickerOpen && (
+        <ProjectPickerModal
+          mode="currentTab"
+          onClose={() => setProjectPickerOpen(false)}
+          onBrowseFile={handleBrowseFile}
+        />
+      )}
+
+      {/* JARVIS modals */}
+      {jarvisGenerateOpen && (
+        <JarvisGenerateModal onClose={() => setJarvisGenerateOpen(false)} />
+      )}
+      {jarvisDescribeOpen && (
+        <JarvisDescribeModal onClose={() => setJarvisDescribeOpen(false)} />
+      )}
+      {specEditorOpen && (
+        <SpecEditorModal onClose={() => setSpecEditorOpen(false)} />
+      )}
 
       {/* SM reorder popup */}
       {smReorderOpen && (

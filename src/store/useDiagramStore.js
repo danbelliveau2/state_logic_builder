@@ -2486,7 +2486,9 @@ export const useDiagramStore = create(
         const passNode = {
           id: passId,
           type: 'stateNode',
-          position: { x: decisionNode.position.x - 280, y: decisionNode.position.y + 220 },
+          // v1.34: exit-pass is the BOTTOM handle (primary path) — spawn the
+          // pass branch straight below so the edge drops vertically.
+          position: { x: decisionNode.position.x, y: decisionNode.position.y + 220 },
           data: { label: exit1Label, actions: [], isInitial: false, stepNumber: cNodes.length },
         };
         const passEdge = {

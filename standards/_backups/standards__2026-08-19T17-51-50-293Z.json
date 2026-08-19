@@ -1,0 +1,579 @@
+[
+  {
+    "id": "8fd7ad5e-ee2f-4fab-a330-a919ef0da80b",
+    "name": "PartPresentCheck",
+    "description": "Verifies a part is seated in the dial nest after each index; warns and holds for operator intervention if not seated.",
+    "category": "",
+    "savedAt": "2026-08-19T17:51:46.180Z",
+    "nodes": [
+      {
+        "id": "id_e85486fc-871b-49cb-89f4-ebfa5482f1e8",
+        "type": "stateNode",
+        "position": {
+          "x": 300,
+          "y": 80
+        },
+        "data": {
+          "stepNumber": 0,
+          "label": "Wait for Start / Dial Index Complete",
+          "actions": [],
+          "isInitial": true,
+          "indexSync": "independent",
+          "entryRule": "always"
+        }
+      },
+      {
+        "id": "id_89a6923e-52c6-4499-a81a-f0f6f4294307",
+        "type": "stateNode",
+        "position": {
+          "x": 300,
+          "y": 270
+        },
+        "data": {
+          "stepNumber": 1,
+          "label": "Confirm Index Complete and Settle Nest",
+          "actions": [
+            {
+              "id": "a1",
+              "deviceId": "id_2f984242-d459-4147-a264-b913bd9bff71",
+              "operation": "SetOff",
+              "advanceCondition": {
+                "type": "none"
+              }
+            },
+            {
+              "id": "a2",
+              "deviceId": "id_1d50a492-e2c0-442b-a06c-26b94b35b726",
+              "operation": "WaitOn",
+              "advanceCondition": {
+                "type": "onComplete"
+              }
+            },
+            {
+              "id": "a3",
+              "deviceId": "id_03526f15-2f64-4e9f-8176-042fb6b29909",
+              "operation": "Wait",
+              "advanceCondition": {
+                "type": "onComplete"
+              }
+            }
+          ],
+          "isInitial": false
+        }
+      },
+      {
+        "id": "id_cf13c70b-5c8d-4dd6-8a7b-03257b07f30b",
+        "type": "stateNode",
+        "position": {
+          "x": 300,
+          "y": 590
+        },
+        "data": {
+          "stepNumber": 2,
+          "label": "Check Part Seated In Nest",
+          "actions": [
+            {
+              "id": "a4",
+              "deviceId": "_decision",
+              "operation": "Decide",
+              "decisionType": "signal",
+              "nodeMode": "decide",
+              "signalName": "Part_Seated",
+              "signalSource": "Part_Seated_Sensor",
+              "signalType": "condition",
+              "conditionType": "sensorOn",
+              "exitCount": 2,
+              "exit1Label": "Seated",
+              "exit2Label": "Not Seated",
+              "exitLabelsCustomized": true,
+              "sensorRef": "id_42f94454-619f-4522-93af-c4b1ed91b996",
+              "sensorInputType": "bool",
+              "retryEnabled": false,
+              "ptEnabled": false,
+              "conditions": [
+                {
+                  "ref": "device_d2",
+                  "tag": "",
+                  "label": "Part_Seated_Sensor",
+                  "inputType": "bool",
+                  "conditionType": "on",
+                  "signalType": "condition",
+                  "group": "Part_Present_Check"
+                }
+              ]
+            }
+          ],
+          "isInitial": false
+        }
+      },
+      {
+        "id": "id_51253495-e020-4925-9bdc-ec9047411e76",
+        "type": "stateNode",
+        "position": {
+          "x": 300,
+          "y": 815
+        },
+        "data": {
+          "stepNumber": 3,
+          "label": "Part Seated - Clear Warning and Release Dial",
+          "actions": [
+            {
+              "id": "a5",
+              "deviceId": "id_42f94454-619f-4522-93af-c4b1ed91b996",
+              "operation": "Verify",
+              "advanceCondition": {
+                "type": "onComplete"
+              }
+            },
+            {
+              "id": "a6",
+              "deviceId": "id_5789fd41-7235-4426-b8bc-917c17f24271",
+              "operation": "SetOff",
+              "advanceCondition": {
+                "type": "none"
+              }
+            },
+            {
+              "id": "a7",
+              "deviceId": "id_2f984242-d459-4147-a264-b913bd9bff71",
+              "operation": "SetOn",
+              "advanceCondition": {
+                "type": "onComplete"
+              }
+            }
+          ],
+          "isInitial": false
+        }
+      },
+      {
+        "id": "id_49a47373-fdb5-4760-868f-1a3d1281c0fc",
+        "type": "stateNode",
+        "position": {
+          "x": 300,
+          "y": 1145
+        },
+        "data": {
+          "stepNumber": 4,
+          "label": "Cycle Complete",
+          "actions": [],
+          "isInitial": false,
+          "isComplete": true,
+          "isFault": false
+        }
+      },
+      {
+        "id": "id_861c8c46-e88c-43da-be79-41e9064673eb",
+        "type": "stateNode",
+        "position": {
+          "x": 720,
+          "y": 815
+        },
+        "data": {
+          "stepNumber": 5,
+          "label": "Not Seated - Warn Operator and Hold Dial",
+          "actions": [
+            {
+              "id": "a8",
+              "deviceId": "id_2f984242-d459-4147-a264-b913bd9bff71",
+              "operation": "SetOff",
+              "advanceCondition": {
+                "type": "none"
+              }
+            },
+            {
+              "id": "a9",
+              "deviceId": "id_5789fd41-7235-4426-b8bc-917c17f24271",
+              "operation": "SetOn",
+              "advanceCondition": {
+                "type": "none"
+              }
+            },
+            {
+              "id": "a10",
+              "deviceId": "id_ffacc78e-1477-4cb4-a336-5f91aa3b4e73",
+              "operation": "WaitOn",
+              "advanceCondition": {
+                "type": "onComplete"
+              }
+            }
+          ],
+          "isInitial": false
+        }
+      },
+      {
+        "id": "id_54ffb475-9325-480e-9e10-bd3fb6057b63",
+        "type": "stateNode",
+        "position": {
+          "x": 720,
+          "y": 1145
+        },
+        "data": {
+          "stepNumber": 6,
+          "label": "Operator Cleared - Reset Warning and Recheck Nest",
+          "actions": [
+            {
+              "id": "a11",
+              "deviceId": "id_5789fd41-7235-4426-b8bc-917c17f24271",
+              "operation": "SetOff",
+              "advanceCondition": {
+                "type": "none"
+              }
+            },
+            {
+              "id": "a12",
+              "deviceId": "id_ffacc78e-1477-4cb4-a336-5f91aa3b4e73",
+              "operation": "SetOff",
+              "advanceCondition": {
+                "type": "none"
+              }
+            },
+            {
+              "id": "a13",
+              "deviceId": "id_03526f15-2f64-4e9f-8176-042fb6b29909",
+              "operation": "Wait",
+              "advanceCondition": {
+                "type": "onComplete"
+              }
+            }
+          ],
+          "isInitial": false
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "id_6202e888-cfdf-475a-a786-0c7823e1794a",
+        "source": "id_e85486fc-871b-49cb-89f4-ebfa5482f1e8",
+        "sourceHandle": null,
+        "target": "id_89a6923e-52c6-4499-a81a-f0f6f4294307",
+        "targetHandle": null,
+        "type": "routableEdge",
+        "animated": false,
+        "style": {
+          "stroke": "#6b7280",
+          "strokeWidth": 2
+        },
+        "markerEnd": {
+          "type": "ArrowClosed",
+          "color": "#6b7280"
+        },
+        "label": "Ready",
+        "labelStyle": {
+          "fill": "#374151",
+          "fontWeight": 500,
+          "fontSize": 9,
+          "fontFamily": "Consolas, Menlo, Monaco, monospace",
+          "whiteSpace": "pre-line",
+          "textAlign": "left",
+          "lineHeight": "1.3"
+        },
+        "labelBgStyle": {
+          "fill": "#f9fafb",
+          "fillOpacity": 0.95
+        },
+        "data": {
+          "conditionType": "trigger",
+          "label": "Ready"
+        }
+      },
+      {
+        "id": "id_fdaa0719-f6be-46ca-91a5-0b070f1c54fd",
+        "source": "id_89a6923e-52c6-4499-a81a-f0f6f4294307",
+        "sourceHandle": null,
+        "target": "id_cf13c70b-5c8d-4dd6-8a7b-03257b07f30b",
+        "targetHandle": null,
+        "type": "routableEdge",
+        "animated": false,
+        "style": {
+          "stroke": "#6b7280",
+          "strokeWidth": 2
+        },
+        "markerEnd": {
+          "type": "ArrowClosed",
+          "color": "#6b7280"
+        },
+        "label": "Ready",
+        "labelStyle": {
+          "fill": "#374151",
+          "fontWeight": 500,
+          "fontSize": 9,
+          "fontFamily": "Consolas, Menlo, Monaco, monospace",
+          "whiteSpace": "pre-line",
+          "textAlign": "left",
+          "lineHeight": "1.3"
+        },
+        "labelBgStyle": {
+          "fill": "#f9fafb",
+          "fillOpacity": 0.95
+        },
+        "data": {
+          "conditionType": "trigger",
+          "label": "Ready"
+        }
+      },
+      {
+        "id": "id_ce4938c8-f41b-49d3-8b5a-aa3a7cda061e",
+        "source": "id_cf13c70b-5c8d-4dd6-8a7b-03257b07f30b",
+        "sourceHandle": "exit-pass",
+        "target": "id_51253495-e020-4925-9bdc-ec9047411e76",
+        "targetHandle": null,
+        "type": "routableEdge",
+        "animated": false,
+        "style": {
+          "stroke": "#16a34a",
+          "strokeWidth": 2
+        },
+        "markerEnd": {
+          "type": "ArrowClosed",
+          "color": "#16a34a"
+        },
+        "label": "Seated",
+        "labelStyle": {
+          "fill": "#fff",
+          "fontWeight": 600,
+          "fontSize": 11
+        },
+        "labelBgStyle": {
+          "fill": "#16a34a",
+          "rx": 4,
+          "ry": 4
+        },
+        "labelBgPadding": [
+          4,
+          8
+        ],
+        "data": {
+          "conditionType": "trigger",
+          "label": "Seated",
+          "outcomeLabel": "Pass",
+          "isDecisionExit": true,
+          "exitColor": "pass"
+        }
+      },
+      {
+        "id": "id_62360e98-8793-41fb-a383-69135cb541cf",
+        "source": "id_cf13c70b-5c8d-4dd6-8a7b-03257b07f30b",
+        "sourceHandle": "exit-fail",
+        "target": "id_861c8c46-e88c-43da-be79-41e9064673eb",
+        "targetHandle": null,
+        "type": "routableEdge",
+        "animated": false,
+        "style": {
+          "stroke": "#dc2626",
+          "strokeWidth": 2
+        },
+        "markerEnd": {
+          "type": "ArrowClosed",
+          "color": "#dc2626"
+        },
+        "label": "Not Seated",
+        "labelStyle": {
+          "fill": "#fff",
+          "fontWeight": 600,
+          "fontSize": 11
+        },
+        "labelBgStyle": {
+          "fill": "#dc2626",
+          "rx": 4,
+          "ry": 4
+        },
+        "labelBgPadding": [
+          4,
+          8
+        ],
+        "data": {
+          "conditionType": "trigger",
+          "label": "Not Seated",
+          "outcomeLabel": "Fail",
+          "isDecisionExit": true,
+          "exitColor": "fail"
+        }
+      },
+      {
+        "id": "id_a7252a2e-8795-48b6-b56a-abb8d4ef4473",
+        "source": "id_51253495-e020-4925-9bdc-ec9047411e76",
+        "sourceHandle": null,
+        "target": "id_49a47373-fdb5-4760-868f-1a3d1281c0fc",
+        "targetHandle": null,
+        "type": "routableEdge",
+        "animated": false,
+        "style": {
+          "stroke": "#6b7280",
+          "strokeWidth": 2
+        },
+        "markerEnd": {
+          "type": "ArrowClosed",
+          "color": "#6b7280"
+        },
+        "label": "Ready",
+        "labelStyle": {
+          "fill": "#374151",
+          "fontWeight": 500,
+          "fontSize": 9,
+          "fontFamily": "Consolas, Menlo, Monaco, monospace",
+          "whiteSpace": "pre-line",
+          "textAlign": "left",
+          "lineHeight": "1.3"
+        },
+        "labelBgStyle": {
+          "fill": "#f9fafb",
+          "fillOpacity": 0.95
+        },
+        "data": {
+          "conditionType": "trigger",
+          "label": "Ready"
+        }
+      },
+      {
+        "id": "id_ed6ebdab-08c4-4d83-b549-3e07d270849d",
+        "source": "id_861c8c46-e88c-43da-be79-41e9064673eb",
+        "sourceHandle": null,
+        "target": "id_54ffb475-9325-480e-9e10-bd3fb6057b63",
+        "targetHandle": null,
+        "type": "routableEdge",
+        "animated": false,
+        "style": {
+          "stroke": "#6b7280",
+          "strokeWidth": 2
+        },
+        "markerEnd": {
+          "type": "ArrowClosed",
+          "color": "#6b7280"
+        },
+        "label": "Operator Acknowledge",
+        "labelStyle": {
+          "fill": "#374151",
+          "fontWeight": 500,
+          "fontSize": 9,
+          "fontFamily": "Consolas, Menlo, Monaco, monospace",
+          "whiteSpace": "pre-line",
+          "textAlign": "left",
+          "lineHeight": "1.3"
+        },
+        "labelBgStyle": {
+          "fill": "#f9fafb",
+          "fillOpacity": 0.95
+        },
+        "data": {
+          "conditionType": "trigger",
+          "label": "Operator Acknowledge"
+        }
+      },
+      {
+        "id": "id_6420cb75-d73e-41d2-a55e-f29a439e80b8",
+        "source": "id_54ffb475-9325-480e-9e10-bd3fb6057b63",
+        "sourceHandle": null,
+        "target": "id_cf13c70b-5c8d-4dd6-8a7b-03257b07f30b",
+        "targetHandle": null,
+        "type": "routableEdge",
+        "animated": false,
+        "style": {
+          "stroke": "#6b7280",
+          "strokeWidth": 2
+        },
+        "markerEnd": {
+          "type": "ArrowClosed",
+          "color": "#6b7280"
+        },
+        "label": "Recheck Nest",
+        "labelStyle": {
+          "fill": "#374151",
+          "fontWeight": 500,
+          "fontSize": 9,
+          "fontFamily": "Consolas, Menlo, Monaco, monospace",
+          "whiteSpace": "pre-line",
+          "textAlign": "left",
+          "lineHeight": "1.3"
+        },
+        "labelBgStyle": {
+          "fill": "#f9fafb",
+          "fillOpacity": 0.95
+        },
+        "data": {
+          "conditionType": "trigger",
+          "label": "Recheck Nest"
+        }
+      }
+    ],
+    "devices": [
+      {
+        "id": "id_1d50a492-e2c0-442b-a06c-26b94b35b726",
+        "type": "Parameter",
+        "name": "DialIndexComplete",
+        "displayName": "Dial_Index_Complete",
+        "sensorArrangement": "",
+        "homePosition": "WaitOn",
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "timerMs": 1000
+      },
+      {
+        "id": "id_42f94454-619f-4522-93af-c4b1ed91b996",
+        "type": "DigitalSensor",
+        "name": "PartSeatedSensor",
+        "displayName": "Part_Seated_Sensor",
+        "sensorArrangement": "",
+        "homePosition": "WaitOff",
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "timerMs": 1000
+      },
+      {
+        "id": "id_03526f15-2f64-4e9f-8176-042fb6b29909",
+        "type": "Timer",
+        "name": "NestSettleTimer",
+        "displayName": "Nest_Settle_Timer",
+        "sensorArrangement": "",
+        "homePosition": "Wait",
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "timerMs": 250
+      },
+      {
+        "id": "id_5789fd41-7235-4426-b8bc-917c17f24271",
+        "type": "Parameter",
+        "name": "PartNotSeatedWarning",
+        "displayName": "Part_Not_Seated_Warning",
+        "sensorArrangement": "",
+        "homePosition": "SetOff",
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "timerMs": 1000
+      },
+      {
+        "id": "id_ffacc78e-1477-4cb4-a336-5f91aa3b4e73",
+        "type": "Parameter",
+        "name": "OperatorClearAcknowledge",
+        "displayName": "Operator_Clear_Acknowledge",
+        "sensorArrangement": "",
+        "homePosition": "WaitOn",
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "timerMs": 1000
+      },
+      {
+        "id": "id_2f984242-d459-4147-a264-b913bd9bff71",
+        "type": "Parameter",
+        "name": "StationReleaseToDial",
+        "displayName": "Station_Release_To_Dial",
+        "sensorArrangement": "",
+        "homePosition": "SetOff",
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "timerMs": 1000
+      }
+    ]
+  }
+]

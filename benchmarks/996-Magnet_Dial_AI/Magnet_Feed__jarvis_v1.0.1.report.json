@@ -1,0 +1,670 @@
+{
+  "jarvisVersion": "1.0.1",
+  "project": "996-Magnet_Dial_AI",
+  "smName": "Magnet_Feed",
+  "smId": "99600000-ae00-4a02-9d02-996000000002",
+  "ranAt": "2026-08-19T12:24:35.212Z",
+  "durationMs": 818663,
+  "ok": true,
+  "validation": {
+    "ok": true,
+    "errors": [],
+    "warnings": []
+  },
+  "attemptsUsed": 3,
+  "repairRounds": 2,
+  "attempts": [
+    {
+      "attempt": 1,
+      "stage": "truncated",
+      "ok": false,
+      "errors": 1,
+      "warnings": 0,
+      "usage": {
+        "input": 3239,
+        "output": 32000,
+        "cacheRead": 0,
+        "cacheWrite": 18106
+      },
+      "costUSD": 0.9294,
+      "model": "claude-opus-5"
+    },
+    {
+      "attempt": 2,
+      "stage": "truncated",
+      "ok": false,
+      "errors": 1,
+      "warnings": 0,
+      "usage": {
+        "input": 3315,
+        "output": 32000,
+        "cacheRead": 0,
+        "cacheWrite": 18106
+      },
+      "costUSD": 0.9297,
+      "model": "claude-opus-5"
+    },
+    {
+      "attempt": 3,
+      "stage": "ok",
+      "ok": true,
+      "errors": 0,
+      "warnings": 0,
+      "usage": {
+        "input": 9532,
+        "output": 18210,
+        "cacheRead": 0,
+        "cacheWrite": 18106
+      },
+      "costUSD": 0.6161,
+      "model": "claude-opus-5"
+    }
+  ],
+  "tokenUsage": {
+    "input": 16086,
+    "output": 82210,
+    "cacheRead": 0,
+    "cacheWrite": 54318
+  },
+  "costEstimate": {
+    "totalUSD": 2.4752,
+    "model": "claude-opus-5",
+    "pricingPerM": [
+      5,
+      25
+    ],
+    "note": "input + 1.25x cache-write + 0.10x cache-read + output, per attempt"
+  },
+  "editPlanOps": 91,
+  "editPlan": {
+    "programName": "S01_MagnetFeed",
+    "operations": [
+      {
+        "op": "renameTag",
+        "from": "ZAxisExtendedDelay",
+        "to": "VerticalShuttleExtendDelay"
+      },
+      {
+        "op": "renameTag",
+        "from": "i_ZAxisRetracted",
+        "to": "i_VerticalShuttleRetracted"
+      },
+      {
+        "op": "renameTag",
+        "from": "q_ExtendZAxis",
+        "to": "q_ExtendVerticalShuttle"
+      },
+      {
+        "op": "renameTag",
+        "from": "q_RetractZAxis",
+        "to": "q_RetractVerticalShuttle"
+      },
+      {
+        "op": "renameTag",
+        "from": "ZAxisExtended",
+        "to": "VerticalShuttleExtended"
+      },
+      {
+        "op": "renameTag",
+        "from": "ZAxisRetracted",
+        "to": "VerticalShuttleRetracted"
+      },
+      {
+        "op": "renameTag",
+        "from": "AlarmTimerZAxisExtended",
+        "to": "AlarmTimerVerticalShuttleExtended"
+      },
+      {
+        "op": "renameTag",
+        "from": "AlarmTimerZAxisRetracted",
+        "to": "AlarmTimerVerticalShuttleRetracted"
+      },
+      {
+        "op": "renameTag",
+        "from": "i_XAxisRetracted",
+        "to": "i_HorizontalShuttleRetracted"
+      },
+      {
+        "op": "renameTag",
+        "from": "i_XAxisExtended",
+        "to": "i_HoldDownRetracted"
+      },
+      {
+        "op": "renameTag",
+        "from": "q_ExtendXAxis",
+        "to": "q_ExtendHorizontalShuttle"
+      },
+      {
+        "op": "renameTag",
+        "from": "q_RetractXAxis",
+        "to": "q_RetractHorizontalShuttle"
+      },
+      {
+        "op": "renameTag",
+        "from": "XAxisExtended",
+        "to": "HorizontalShuttleExtended"
+      },
+      {
+        "op": "renameTag",
+        "from": "XAxisRetracted",
+        "to": "HorizontalShuttleRetracted"
+      },
+      {
+        "op": "renameTag",
+        "from": "AlarmTimerXAxisExtended",
+        "to": "AlarmTimerHorizontalShuttleExtended"
+      },
+      {
+        "op": "renameTag",
+        "from": "AlarmTimerXAxisRetracted",
+        "to": "AlarmTimerHorizontalShuttleRetracted"
+      },
+      {
+        "op": "renameTag",
+        "from": "AlarmTimerXAxisMisconfigured",
+        "to": "AlarmTimerHoldDown"
+      },
+      {
+        "op": "renameTag",
+        "from": "OkManExtendX",
+        "to": "OkManExtendHorizontal"
+      },
+      {
+        "op": "renameTag",
+        "from": "OkManRetractX",
+        "to": "OkManRetractHorizontal"
+      },
+      {
+        "op": "renameTag",
+        "from": "CloseGripperDelay",
+        "to": "TopRetainerExtendDelay"
+      },
+      {
+        "op": "renameTag",
+        "from": "OpenGripperDelay",
+        "to": "TopRetainerRetractDelay"
+      },
+      {
+        "op": "renameTag",
+        "from": "q_CloseGripper",
+        "to": "q_ExtendTopRetainer"
+      },
+      {
+        "op": "renameTag",
+        "from": "q_OpenGripper",
+        "to": "q_RetractTopRetainer"
+      },
+      {
+        "op": "renameTag",
+        "from": "GripperClosed",
+        "to": "TopRetainerExtended"
+      },
+      {
+        "op": "renameTag",
+        "from": "GripperOpened",
+        "to": "TopRetainerRetracted"
+      },
+      {
+        "op": "renameTag",
+        "from": "i_PartPresent",
+        "to": "i_MagnetSensor"
+      },
+      {
+        "op": "renameTag",
+        "from": "PartPresentDebounce",
+        "to": "MagnetSensorDebounce"
+      },
+      {
+        "op": "addTag",
+        "name": "q_ExtendHoldDown",
+        "dataType": "BOOL",
+        "description": "Output: Extend Hold Down"
+      },
+      {
+        "op": "addTag",
+        "name": "q_RetractHoldDown",
+        "dataType": "BOOL",
+        "description": "Output: Retract Hold Down"
+      },
+      {
+        "op": "addTag",
+        "name": "HoldDownExtended",
+        "dataType": "BOOL",
+        "description": "Hold Down Extended - timer confirmed, no extend sensor"
+      },
+      {
+        "op": "addTag",
+        "name": "HoldDownRetracted",
+        "dataType": "BOOL",
+        "description": "Hold Down Retracted - sensor confirmed"
+      },
+      {
+        "op": "addTag",
+        "name": "HoldDownExtendDelay",
+        "dataType": "TIMER",
+        "value": 500,
+        "description": "Hold Down Extend Confirm Delay"
+      },
+      {
+        "op": "addTag",
+        "name": "HorizontalShuttleExtendDelay",
+        "dataType": "TIMER",
+        "value": 500,
+        "description": "Horizontal Shuttle Extend Confirm Delay"
+      },
+      {
+        "op": "addTag",
+        "name": "MagnetCheckDelay",
+        "dataType": "TIMER",
+        "value": 300,
+        "description": "Settle Delay Before Declaring Presented Magnet Missing"
+      },
+      {
+        "op": "addTag",
+        "name": "MagnetMissing",
+        "dataType": "BOOL",
+        "description": "No Magnet At Presented Position After Settle Delay"
+      },
+      {
+        "op": "addTag",
+        "name": "MagnetRetryCount",
+        "dataType": "DINT",
+        "description": "Presentation Retry Counter - 3 retries then stack exhausted"
+      },
+      {
+        "op": "addTag",
+        "name": "AlarmTimerTopRetainer",
+        "dataType": "TIMER",
+        "value": 2000,
+        "description": "Alarm Timer - Top Retainer Failed To Move"
+      },
+      {
+        "op": "addTag",
+        "name": "p_MagnetReady",
+        "dataType": "BOOL",
+        "description": "SM Output Signal: Magnet_Ready - magnet presented for pick"
+      },
+      {
+        "op": "addTag",
+        "name": "p_StackEmpty",
+        "dataType": "BOOL",
+        "description": "SM Output Signal: Stack_Empty - stack exhausted, dial index requested"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R01_Inputs",
+        "match": "OTE(HorizontalShuttleExtended)",
+        "newText": "XIO(i_HorizontalShuttleRetracted)XIC(q_ExtendHorizontalShuttle)XIO(q_RetractHorizontalShuttle)TON(HorizontalShuttleExtendDelay,?,?)XIC(HorizontalShuttleExtendDelay.DN)OTE(HorizontalShuttleExtended);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R01_Inputs",
+        "match": "OTE(HorizontalShuttleRetracted)",
+        "newText": "XIC(i_HorizontalShuttleRetracted)XIC(q_RetractHorizontalShuttle)XIO(q_ExtendHorizontalShuttle)OTE(HorizontalShuttleRetracted);"
+      },
+      {
+        "op": "spliceRungs",
+        "routine": "R01_Inputs",
+        "after": "OTE(HorizontalShuttleRetracted)",
+        "insert": [
+          {
+            "comment": "Hold down extended - timer confirmed, no extend sensor",
+            "text": "XIO(i_HoldDownRetracted)XIC(q_ExtendHoldDown)XIO(q_RetractHoldDown)TON(HoldDownExtendDelay,?,?)XIC(HoldDownExtendDelay.DN)OTE(HoldDownExtended);"
+          },
+          {
+            "comment": "Hold down retracted",
+            "text": "XIC(i_HoldDownRetracted)XIC(q_RetractHoldDown)XIO(q_ExtendHoldDown)OTE(HoldDownRetracted);"
+          }
+        ]
+      },
+      {
+        "op": "spliceRungs",
+        "routine": "R01_Inputs",
+        "after": "AOI_Debounce(MagnetSensorDebounce",
+        "insert": [
+          {
+            "comment": "Magnet missing at presented position - settle delay so a slow magnet is not called a miss",
+            "text": "XIC(Status.State[13])XIC(HorizontalShuttleExtended)XIC(TopRetainerRetracted)XIO(MagnetSensorDebounce.On)TON(MagnetCheckDelay,?,?)XIC(MagnetCheckDelay.DN)OTE(MagnetMissing);"
+          }
+        ]
+      },
+      {
+        "op": "updateRung",
+        "routine": "R01_Inputs",
+        "match": "OTE(Initialized)",
+        "newText": "XIO(PartStarted)XIC(i_VerticalShuttleRetracted)XIC(i_HorizontalShuttleRetracted)XIC(i_HoldDownRetracted)XIC(TopRetainerRetracted)OTE(Initialized);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(3,Control.StateReg)",
+        "newComment": "State 3: Auto mode idle ready",
+        "newText": "[[XIC(Status.State[2]) ,XIC(CycleStopped) ] XIC(Initialized) ,[XIC(Status.State[4]) ,XIC(Status.State[31]) ,XIC(Status.State[124]) ] XIO(CycleRunning) ]MOVE(3,Control.StateReg);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(4,Control.StateReg)",
+        "newComment": "State 4: Start of sequence, wait for index complete - clear presentation retry counter",
+        "newText": "[[XIC(Status.State[3]) XIC(Initialized) ,XIC(Status.State[124]) ] ,XIC(Status.State[31]) XIC(SS_OK) ]XIC(CycleRunning)MOVE(4,Control.StateReg)CLR(MagnetRetryCount);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(7,Control.StateReg)",
+        "newComment": "State 7: Clamp stack - extend hold down and top retainer\n\n*Replace AlwaysOff bit with the real Index_Complete signal from the Dial_Index state machine.",
+        "newText": "XIC(Status.State[4])[XIC(g_MachineBasic.AlwaysOff) ,XIC(DryRun) ]XIC(SS_OK)MOVE(7,Control.StateReg)OTL(\\Tracking.p_Data.Nest[NestNumCurrent].PartStatus.Station[StaNum].Attempt);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(10,Control.StateReg)",
+        "newComment": "State 10: Raise vertical shuttle",
+        "newText": "XIC(Status.State[7])XIC(HoldDownExtended)XIC(TopRetainerExtended)XIC(SS_OK)MOVE(10,Control.StateReg);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(13,Control.StateReg)",
+        "newComment": "State 13: Present magnet - extend horizontal shuttle, then retract top retainer (entered from raise, retry reload or normal reload)",
+        "newText": "[XIC(Status.State[10]) XIC(VerticalShuttleExtended) ,[XIC(Status.State[16]) ,XIC(Status.State[22]) ] XIC(HorizontalShuttleRetracted) XIC(TopRetainerExtended) ]XIC(SS_OK)MOVE(13,Control.StateReg);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(16,Control.StateReg)",
+        "newComment": "State 16: Reload shuttle retry - no magnet presented, reload and retry (up to 3 attempts before declaring the stack exhausted)",
+        "newText": "XIC(Status.State[13])XIC(MagnetMissing)LES(MagnetRetryCount,3)XIC(SS_OK)ADD(MagnetRetryCount,1,MagnetRetryCount)MOVE(16,Control.StateReg);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(19,Control.StateReg)",
+        "newComment": "State 19: Magnet ready - magnet detected at presented position",
+        "newText": "XIC(Status.State[13])XIC(HorizontalShuttleExtended)XIC(TopRetainerRetracted)XIC(MagnetSensorDebounce.On)XIC(SS_OK)MOVE(19,Control.StateReg)CLR(MagnetRetryCount);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(22,Control.StateReg)",
+        "newComment": "State 22: Reload shuttle - magnet taken, or new magnet requested after the wait state\n\n*Replace the first AlwaysOff bit with Magnet_Taken and the second with Present_New_Magnet from the Magnet_Pick state machine.",
+        "newText": "[XIC(Status.State[19]) [XIC(g_MachineBasic.AlwaysOff) ,XIC(DryRun) ] OTL(\\Tracking.p_Data.Nest[NestNumCurrent].PartStatus.Station[StaNum].Success) ,XIC(Status.State[25]) [XIC(g_MachineBasic.AlwaysOff) ,XIC(DryRun) ] ]XIC(SS_OK)MOVE(22,Control.StateReg);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(25,Control.StateReg)",
+        "newComment": "State 25: Wait for new magnet request - magnet not taken yet\n\n*Replace AlwaysOff bit with the real 'magnet not taken / hold' condition from the Magnet_Pick state machine.",
+        "newText": "XIC(Status.State[19])[XIC(g_MachineBasic.AlwaysOff) ,XIC(DryRun) ]XIC(SS_OK)MOVE(25,Control.StateReg);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(28,Control.StateReg)",
+        "newComment": "State 28: Unload station - stack exhausted after 3 presentation retries, retract all actuators",
+        "newText": "XIC(Status.State[13])XIC(MagnetMissing)GEQ(MagnetRetryCount,3)XIC(SS_OK)MOVE(28,Control.StateReg);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(31,Control.StateReg)",
+        "newComment": "State 31: Station complete - all actuators safe, release the dial",
+        "newText": "XIC(Status.State[28])XIC(HorizontalShuttleRetracted)XIC(VerticalShuttleRetracted)XIC(HoldDownRetracted)XIC(TopRetainerRetracted)XIC(SS_OK)MOVE(31,Control.StateReg);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(103,Control.StateReg)",
+        "newComment": "State 103: Initialization retract hold down and top retainer",
+        "newText": "XIC(Status.State[100])XIC(HorizontalShuttleRetracted)XIC(VerticalShuttleRetracted)XIC(SS_OK)MOVE(103,Control.StateReg);"
+      },
+      {
+        "op": "spliceRungs",
+        "routine": "R02_StateTransitions",
+        "after": "MOVE(103,Control.StateReg)",
+        "remove": 1,
+        "insert": []
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(124,Control.StateReg)",
+        "newComment": "State 124: Initialization complete",
+        "newText": "XIC(Status.State[103])XIC(HoldDownRetracted)XIC(TopRetainerRetracted)MOVE(124,Control.StateReg);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R03_StateLogic",
+        "match": "OTE(q_ActuatorsSafe)",
+        "newComment": "Actuators Safe For Index",
+        "newText": "XIC(HorizontalShuttleRetracted)XIC(VerticalShuttleRetracted)XIC(HoldDownRetracted)XIC(TopRetainerRetracted)OTE(q_ActuatorsSafe);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R03_StateLogic",
+        "match": "OTE(PartStarted)",
+        "newText": "[XIC(Status.State[7]) ,XIC(PartStarted) XIO(Status.State[31]) XIO(g_MachineBasic.PowerUpCP) ]OTE(PartStarted);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R03_StateLogic",
+        "match": "OTE(OkManExtendHorizontal)",
+        "newComment": "Horizontal Shuttle Control",
+        "newText": "XIC(Status.State[1])XIC(TopRetainerExtended)[XIC(HMI_Momentary.0) OTE(OkManExtendHorizontal) ,XIC(HMI_Momentary.1) OTE(OkManRetractHorizontal) ];"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R03_StateLogic",
+        "match": "OTE(q_ExtendHorizontalShuttle)",
+        "newText": "[XIO(Status.State[1]) [XIC(Status.State[13]) ,XIC(q_ExtendHorizontalShuttle) XIO(Status.State[16]) XIO(Status.State[22]) XIO(Status.State[28]) XIO(Status.State[100]) ] ,XIC(Status.State[1]) [XIC(OkManExtendHorizontal) ,XIC(q_ExtendHorizontalShuttle) XIO(OkManRetractHorizontal) ] ]OTE(q_ExtendHorizontalShuttle);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R03_StateLogic",
+        "match": "OTE(q_RetractHorizontalShuttle)",
+        "newText": "[XIO(Status.State[1]) [XIC(Status.State[16]) ,XIC(Status.State[22]) ,XIC(Status.State[28]) ,XIC(Status.State[100]) ,XIC(q_RetractHorizontalShuttle) XIO(Status.State[13]) ] ,XIC(Status.State[1]) [XIC(OkManRetractHorizontal) ,XIC(q_RetractHorizontalShuttle) XIO(OkManExtendHorizontal) ] ]OTE(q_RetractHorizontalShuttle);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R03_StateLogic",
+        "match": "OTE(q_ExtendVerticalShuttle)",
+        "newComment": "Vertical Shuttle Control",
+        "newText": "[XIO(Status.State[1]) [XIC(Status.State[10]) ,XIC(q_ExtendVerticalShuttle) XIO(Status.State[28]) XIO(Status.State[100]) ] ,XIC(Status.State[1]) [XIC(HMI_Momentary.2) XIC(HoldDownExtended) ,XIC(q_ExtendVerticalShuttle) XIO(HMI_Momentary.3) ] ]OTE(q_ExtendVerticalShuttle);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R03_StateLogic",
+        "match": "OTE(q_RetractVerticalShuttle)",
+        "newText": "[XIO(Status.State[1]) [XIC(Status.State[28]) XIC(HorizontalShuttleRetracted) ,XIC(Status.State[100]) ,XIC(q_RetractVerticalShuttle) XIO(Status.State[10]) ] ,XIC(Status.State[1]) [XIC(HMI_Momentary.3) ,XIC(q_RetractVerticalShuttle) XIO(HMI_Momentary.2) ] ]OTE(q_RetractVerticalShuttle);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R03_StateLogic",
+        "match": "OTE(q_ExtendTopRetainer)",
+        "newComment": "Top Retainer Control - retainer holds the magnet down for every horizontal shuttle move",
+        "newText": "[XIO(Status.State[1]) [XIC(Status.State[7]) ,XIC(Status.State[16]) ,XIC(Status.State[22]) ,XIC(Status.State[100]) ,XIC(q_ExtendTopRetainer) [XIO(Status.State[13]) ,XIO(HorizontalShuttleExtended) ] XIO(Status.State[28]) XIO(Status.State[103]) ] ,XIC(Status.State[1]) [XIC(HMI_Momentary.4) ,XIC(q_ExtendTopRetainer) XIO(HMI_Momentary.5) ] ]OTE(q_ExtendTopRetainer);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R03_StateLogic",
+        "match": "OTE(q_RetractTopRetainer)",
+        "newText": "[XIO(Status.State[1]) [XIC(Status.State[13]) XIC(HorizontalShuttleExtended) ,XIC(Status.State[28]) XIC(HorizontalShuttleRetracted) ,XIC(Status.State[103]) ,XIC(q_RetractTopRetainer) XIO(Status.State[7]) XIO(Status.State[16]) XIO(Status.State[22]) XIO(Status.State[100]) ] ,XIC(Status.State[1]) [XIC(HMI_Momentary.5) ,XIC(q_RetractTopRetainer) XIO(HMI_Momentary.4) ] ]OTE(q_RetractTopRetainer);"
+      },
+      {
+        "op": "spliceRungs",
+        "routine": "R03_StateLogic",
+        "after": "OTE(q_RetractTopRetainer)",
+        "insert": [
+          {
+            "comment": "Hold Down Control",
+            "text": "[XIO(Status.State[1]) [XIC(Status.State[7]) ,XIC(q_ExtendHoldDown) XIO(Status.State[28]) XIO(Status.State[103]) ] ,XIC(Status.State[1]) [XIC(HMI_Momentary.6) ,XIC(q_ExtendHoldDown) XIO(HMI_Momentary.7) ] ]OTE(q_ExtendHoldDown);"
+          },
+          {
+            "comment": "Hold down releases only after the vertical shuttle is back down",
+            "text": "[XIO(Status.State[1]) [XIC(Status.State[28]) XIC(VerticalShuttleRetracted) ,XIC(Status.State[103]) ,XIC(q_RetractHoldDown) XIO(Status.State[7]) ] ,XIC(Status.State[1]) [XIC(HMI_Momentary.7) ,XIC(q_RetractHoldDown) XIO(HMI_Momentary.6) ] ]OTE(q_RetractHoldDown);"
+          },
+          {
+            "comment": "SM Output Signal: Magnet_Ready - magnet presented and available to the pick station",
+            "text": "[XIC(Status.State[19]) ,XIC(Status.State[25]) ]OTE(p_MagnetReady);"
+          },
+          {
+            "comment": "SM Output Signal: Stack_Empty - stack exhausted after 3 presentation retries, dial index requested",
+            "text": "[XIC(Status.State[28]) ,XIC(Status.State[31]) ]OTE(p_StackEmpty);"
+          }
+        ]
+      },
+      {
+        "op": "updateRung",
+        "routine": "R20_Alarms",
+        "match": "AlarmList[3]",
+        "newComment": "Waiting For Hold Down To Move",
+        "newText": "XIO(Lockout)[[XIC(q_ExtendHoldDown) XIO(HoldDownExtended) ,XIC(q_RetractHoldDown) XIO(HoldDownRetracted) ] TON(AlarmTimerHoldDown,?,?) XIC(AlarmTimerHoldDown.DN) ,XIC(Alarm[3].Active) XIO(FaultReset) ][OTE(Alarm[3].Active) ,ONS(ONS.8) CONCAT(g_StationList[StaNum],AlarmList[3],Alarm[3].Message) ];"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R20_Alarms",
+        "match": "AlarmList[6]",
+        "newComment": "Waiting For Top Retainer To Move",
+        "newText": "XIO(Lockout)[[XIC(q_ExtendTopRetainer) XIO(TopRetainerExtended) ,XIC(q_RetractTopRetainer) XIO(TopRetainerRetracted) ] TON(AlarmTimerTopRetainer,?,?) XIC(AlarmTimerTopRetainer.DN) ,XIC(Alarm[6].Active) XIO(FaultReset) ][OTE(Alarm[6].Active) ,ONS(ONS.11) CONCAT(g_StationList[StaNum],AlarmList[6],Alarm[6].Message) ];"
+      },
+      {
+        "op": "setStringData",
+        "tag": "AlarmList",
+        "oldText": "Waiting For Part Present",
+        "newText": "Waiting For Index Complete"
+      },
+      {
+        "op": "setStringData",
+        "tag": "AlarmList",
+        "oldText": "Waiting For X Axis To Extend",
+        "newText": "Waiting For Horizontal Shuttle To Extend"
+      },
+      {
+        "op": "setStringData",
+        "tag": "AlarmList",
+        "oldText": "Waiting For X Axis To Retract",
+        "newText": "Waiting For Horizontal Shuttle To Retract"
+      },
+      {
+        "op": "setStringData",
+        "tag": "AlarmList",
+        "oldText": "X Axis Sensors/Outputs Misconfigured",
+        "newText": "Waiting For Hold Down To Move"
+      },
+      {
+        "op": "setStringData",
+        "tag": "AlarmList",
+        "oldText": "Waiting For Z Axis To Extend",
+        "newText": "Waiting For Vertical Shuttle To Extend"
+      },
+      {
+        "op": "setStringData",
+        "tag": "AlarmList",
+        "oldText": "Waiting For Z Axis To Retract",
+        "newText": "Waiting For Vertical Shuttle To Retract"
+      },
+      {
+        "op": "setStringData",
+        "tag": "AlarmList",
+        "oldText": "Z Axis Sensors/Outputs Misconfigured",
+        "newText": "Waiting For Top Retainer To Move"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[4]",
+        "text": "Wait For Index Complete"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[7]",
+        "text": "Clamp Stack - Extend Hold Down And Top Retainer"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[10]",
+        "text": "Raise Vertical Shuttle"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[13]",
+        "text": "Present Magnet"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[16]",
+        "text": "Reload Shuttle Retry"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[19]",
+        "text": "Magnet Ready"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[22]",
+        "text": "Reload Shuttle"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[25]",
+        "text": "Wait New Magnet Request"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[28]",
+        "text": "Unload Station - Stack Exhausted"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[31]",
+        "text": "Station Complete"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[100]",
+        "text": "Initialization Retract Horizontal And Vertical Shuttle"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[103]",
+        "text": "Initialization Retract Hold Down And Top Retainer"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[106]",
+        "remove": true
+      },
+      {
+        "op": "setProgramDescription",
+        "text": "S01 Magnet Feed - coin-changer magnet feeder. Hold down clamps the stack, vertical shuttle lifts it, horizontal shuttle presents the top magnet. Presentation retries 3x on a missing magnet, then declares the stack exhausted (p_StackEmpty) and releases the dial. Top retainer is extended for every horizontal shuttle move and retracted only after shuttle-over."
+      }
+    ]
+  },
+  "promptChars": 41939,
+  "systemChars": 378,
+  "template": "C:\\SDC-StateLogic\\plc-reference\\standard\\S01_PartLoad.L5X",
+  "templateReason": "pneumatic-only station",
+  "model": "claude-opus-5",
+  "reviewNotes": [
+    "*Replace always off bits with real conditions",
+    "*Replace AlwaysOff bit with the real Index_Complete signal from the Dial_Index state machine.",
+    "*Replace the first AlwaysOff bit with Magnet_Taken and the second with Present_New_Magnet from the Magnet_Pick state machine.",
+    "*Replace AlwaysOff bit with the real 'magnet not taken / hold' condition from the Magnet_Pick state machine.",
+    "*Replace always off with real conditions"
+  ],
+  "l5xFile": "Magnet_Feed__jarvis_v1.0.1.L5X",
+  "l5xChars": 153736
+}

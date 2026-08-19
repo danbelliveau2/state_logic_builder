@@ -1,0 +1,17 @@
+{
+  "subject": "benchmarks/996-Magnet_Dial/Dial_Index__oldgen_current.L5X",
+  "generator": "old rule engine (src/lib/l5xExporter.js, current main) — era A, defects preserved as data",
+  "validatorVersion": "JARVIS v1.0.0 validator",
+  "ranAt": "2026-08-19T11:36:30.126Z",
+  "ok": false,
+  "errorCount": 5,
+  "warningCount": 0,
+  "errors": [
+    "Unknown instruction \"CPU_TimeDate_wJulian\" in R01_Inputs — not a Logix mnemonic or declared AOI",
+    "Program reference \\Supervisor does not resolve — no <Program Name=\"Supervisor\"> declared (first seen in R01_Inputs: XIC(...\\Supervisor.q_ManualMode...))",
+    "Program reference \\Alarms does not resolve — no <Program Name=\"Alarms\"> declared (first seen in R20_Alarms: ProgramAlarmHandler(...\\Alarms.p_ProgramID...))",
+    "Undeclared identifier \"StackCheckSensorDebounce\" — not a declared tag, AOI, or routine (first seen in R01_Inputs: AOI_Debounce(StackCheckSensorDebounce))",
+    "Undeclared identifier \"g_CPUDateTime\" — not a declared tag, AOI, or routine (first seen in R20_Alarms: ProgramAlarmHandler(g_CPUDateTime))"
+  ],
+  "warnings": []
+}

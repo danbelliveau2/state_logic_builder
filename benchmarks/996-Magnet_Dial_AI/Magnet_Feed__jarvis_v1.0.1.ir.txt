@@ -1,0 +1,54 @@
+# Intermediate Representation — Magnet_Feed
+Station number: 1
+Description: Feeds magnets from a dial stack: hold-down clamps the stack, vertical shuttle lifts it, horizontal shuttle presents the top magnet (coin-changer style). Retries presentation up to 3x on missing magnet, then declares the stack exhausted and requests a dial index. Top retainer holds the magnet down during every horizontal shuttle move (extend before horizontal extend, retract after shuttle-over) so it cannot magnetize and flip up.
+
+## Devices
+- [PneumaticLinearActuator] VerticalShuttle "Vertical_Shuttle" sensorArrangement="1-sensor (Ret only)" homePosition="Retract" axisNumber=1 extTimerMs=500 retTimerMs=500 engageTimerMs=300 disengageTimerMs=300 vacOnTimerMs=300 hasEject=false timerMs=1000
+- [PneumaticLinearActuator] HorizontalShuttle "Horizontal_Shuttle" sensorArrangement="1-sensor (Ret only)" homePosition="Retract" axisNumber=1 extTimerMs=500 retTimerMs=500 engageTimerMs=300 disengageTimerMs=300 vacOnTimerMs=300 hasEject=false timerMs=1000
+- [PneumaticLinearActuator] HoldDown "Hold_Down" sensorArrangement="1-sensor (Ret only)" homePosition="Retract" axisNumber=1 extTimerMs=500 retTimerMs=500 engageTimerMs=300 disengageTimerMs=300 vacOnTimerMs=300 hasEject=false timerMs=1000
+- [PneumaticLinearActuator] TopRetainer "Top_Retainer" sensorArrangement="1-sensor (Ret only)" homePosition="Retract" axisNumber=1 extTimerMs=300 retTimerMs=500 engageTimerMs=300 disengageTimerMs=300 vacOnTimerMs=300 hasEject=false timerMs=1000
+- [DigitalSensor] MagnetSensor "Magnet_Present" sensorArrangement="" homePosition="" axisNumber=1 extTimerMs=500 retTimerMs=500 engageTimerMs=300 disengageTimerMs=300 vacOnTimerMs=300 hasEject=false timerMs=1000
+
+## States (assigned state numbers — these are FINAL, use them as-is)
+- State 4: "Wait for Index Complete" {INITIAL}
+    action: Wait -> _decision (decisionType="signal" signalId="id_aisidx" signalName="Index_Complete" signalSource="Dial_Index → Index Complete" signalType="state" signalSmName="Dial_Index" nodeMode="wait" conditionType="sensorOn" exitCount=1 exit1Label="True" exit2Label="False" autoOpenPopup=false exitLabelsCustomized=false sensorInputType="bool" retryEnabled=false ptEnabled=false conditions=[{"ref":"signal_id_aisidx","tag":"","label":"Index_Complete","inputType":"bool","conditionType":"on","signalType":"state","group":"Dial_Index → Index Complete"}])
+- State 7: "Clamp Stack"
+    action: Extend -> HoldDown (advanceCondition={"type":"onComplete"})
+    action: Extend -> TopRetainer
+- State 10: "Raise Vertical Shuttle"
+    action: Extend -> VerticalShuttle
+- State 13: "Present Magnet"
+    action: Extend -> HorizontalShuttle (advanceCondition={"type":"onComplete"})
+    action: Retract -> TopRetainer (advanceCondition={"type":"onComplete"})
+    action: Decide -> _decision (decisionType="signal" signalName="Magnet_Present" signalSource="Magnet_Present" signalType="sensor" nodeMode="decide" conditionType="on" sensorRef="id_aimsen:sensor" sensorTag="i_MagnetSensor" sensorInputType="bool" exitCount=2 exit1Label="On" exit2Label="Off" exitLabelsCustomized=false retryEnabled=true ptEnabled=false updatePartTracking=false autoOpenPopup=false conditions=[{"ref":"id_aimsen:sensor","tag":"i_MagnetSensor","label":"Magnet_Present","inputType":"bool","conditionType":"on","signalType":"sensor","group":"Sensors"}] retryMax=3)
+- State 16: "Reload Shuttle Retry"
+    action: Retract -> HorizontalShuttle (advanceCondition={"type":"onComplete"})
+    action: Extend -> TopRetainer
+- State 19: "Magnet Ready"
+    action: Decide -> _decision (decisionType="signal" signalId="id_aismt" signalName="Magnet_Taken" signalSource="Magnet_Pick → Magnet Taken" signalSmName="Magnet_Pick" signalType="state" nodeMode="decide" conditionType="sensorOn" sensorInputType="bool" exitCount=2 exit1Label="On" exit2Label="Off" exitLabelsCustomized=false retryEnabled=false ptEnabled=false updatePartTracking=false autoOpenPopup=false conditions=[{"ref":"signal_id_aismt","tag":"","label":"Magnet_Taken","inputType":"bool","conditionType":"on","signalType":"state","group":"Magnet_Pick → Magnet Taken"}])
+- State 22: "Reload Shuttle"
+    action: Retract -> HorizontalShuttle (advanceCondition={"type":"onComplete"})
+    action: Extend -> TopRetainer
+- State 25: "Wait New Magnet Request"
+    action: Wait -> _decision (decisionType="signal" signalId="id_aispnm" signalName="Present_New_Magnet" signalSource="Magnet_Pick → Request New Magnet" signalSmName="Magnet_Pick" signalType="state" nodeMode="wait" conditionType="sensorOn" sensorInputType="bool" exitCount=1 exit1Label="True" exit2Label="False" exitLabelsCustomized=false retryEnabled=false ptEnabled=false updatePartTracking=false autoOpenPopup=false conditions=[{"ref":"signal_id_aispnm","tag":"","label":"Present_New_Magnet","inputType":"bool","conditionType":"on","signalType":"state","group":"Magnet_Pick → Request New Magnet"}])
+- State 28: "Unload Station"
+    action: Retract -> HorizontalShuttle (advanceCondition={"type":"onComplete"})
+    action: Retract -> HoldDown (advanceCondition={"type":"none"})
+    action: Retract -> VerticalShuttle (advanceCondition={"type":"none"})
+    action: Retract -> TopRetainer
+- State 31: "Station Complete" {CYCLE-COMPLETE}
+
+## Transitions
+- [4] "Wait for Index Complete" -> [7] "Clamp Stack" (type=ready label="Ready")
+- [7] "Clamp Stack" -> [10] "Raise Vertical Shuttle" (type=ready label="Ready")
+- [10] "Raise Vertical Shuttle" -> [13] "Present Magnet" (type=ready label="Ready")
+- [13] "Present Magnet" -> [19] "Magnet Ready" (type=ready label="On" outcome="On" branch=pass)
+- [13] "Present Magnet" -> [28] "Unload Station" (type=ready label="Off" outcome="Off" branch=fail)
+- [13] "Present Magnet" -> [16] "Reload Shuttle Retry" (type=ready label="Retry_Fail" outcome="Retry_Fail" branch=retry)
+- [19] "Magnet Ready" -> [22] "Reload Shuttle" (type=ready label="On" outcome="On" branch=pass)
+- [19] "Magnet Ready" -> [25] "Wait New Magnet Request" (type=ready label="Off" outcome="Off" branch=fail)
+- [25] "Wait New Magnet Request" -> [22] "Reload Shuttle" (type=ready)
+- [22] "Reload Shuttle" -> [13] "Present Magnet" (type=ready label="Ready")
+- [16] "Reload Shuttle Retry" -> [13] "Present Magnet" (type=ready label="Ready")
+- [28] "Unload Station" -> [31] "Station Complete" (type=ready label="Ready")
+- [31] "Station Complete" -> [4] "Wait for Index Complete" (type=ready label="Ready")

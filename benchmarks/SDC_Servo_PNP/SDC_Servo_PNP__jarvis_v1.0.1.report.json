@@ -1,0 +1,507 @@
+{
+  "jarvisVersion": "1.0.1",
+  "project": "SDC_Servo_PNP",
+  "smName": "SDC_Servo_PNP",
+  "smId": "64bece3c-08f4-4a1a-aec4-025cf5d8608f",
+  "ranAt": "2026-08-19T12:10:26.873Z",
+  "durationMs": 306540,
+  "ok": true,
+  "validation": {
+    "ok": true,
+    "errors": [],
+    "warnings": []
+  },
+  "attemptsUsed": 1,
+  "repairRounds": 0,
+  "attempts": [
+    {
+      "attempt": 1,
+      "stage": "ok",
+      "ok": true,
+      "errors": 0,
+      "warnings": 0,
+      "usage": {
+        "input": 1707,
+        "output": 31077,
+        "cacheRead": 0,
+        "cacheWrite": 25206
+      },
+      "costUSD": 0.943,
+      "model": "claude-opus-5"
+    }
+  ],
+  "tokenUsage": {
+    "input": 1707,
+    "output": 31077,
+    "cacheRead": 0,
+    "cacheWrite": 25206
+  },
+  "costEstimate": {
+    "totalUSD": 0.943,
+    "model": "claude-opus-5",
+    "pricingPerM": [
+      5,
+      25
+    ],
+    "note": "input + 1.25x cache-write + 0.10x cache-read + output, per attempt"
+  },
+  "editPlanOps": 68,
+  "editPlan": {
+    "programName": "S01_ServoPNP",
+    "notes": "S01 SDC_Servo_PNP. Position renames: XAxisExtend->XAxisPlace (HMI_XAxis.Parameters.Positions[0]), XAxisRetract->XAxisPick (Positions[1]), ZAxisRetract->ZAxisClear (Positions[2]); ZAxisPick stays Positions[0], ZAxisPlace stays Positions[1]. Template RangeCheck index mapping was left untouched, so tune values as: X Positions[0]=Place(50), X Positions[1]=Pick(350); Z Positions[0]=Pick(75), Z Positions[1]=Place(75), Z Positions[2]=Clear(10). The X 'Reject' position from the IR is not used by any flowchart state and was NOT added - add a third X RangeCheck instance + position index if reject handling is added later. Sequence: 4 wait index -> 7 Z Pick -> 10 close gripper -> 13 Z Clear -> 16 X Place -> 19 Z Place -> 22 open gripper -> 25 Z Clear -> 28 X Pick -> 31 cycle complete. Part tracking: Attempt latched on 10->13 (gripper confirmed closed = committed to the part), Success latched on 22->25 (part released). Wait-for-index at state 4 is a WARNING (Alarm[5], Severity 1) that drives q_Pause - never a hard fault, per the prime directive. Two new waiting alarms were added for the gripper (Alarm[6] close / Alarm[7] open, 2000 ms): AlarmList[6] and AlarmList[7] are empty in the template string data and could not be written with setStringData - please type 'Waiting For Gripper To Close' / 'Waiting For Gripper To Open' into those two AlarmList elements after import. i_PartPresent / PartPresentDebounce conditioning is left in R01 but is no longer used by a transition - wire it into the state 4 rung in place of the AlwaysOff placeholder if the pick location has a part-present sensor. StaNum set to 1 / StaNumPre to 0 - verify the upstream station number.",
+    "operations": [
+      {
+        "op": "renameTag",
+        "from": "XAxisExtend",
+        "to": "XAxisPlace"
+      },
+      {
+        "op": "renameTag",
+        "from": "XAxisRetract",
+        "to": "XAxisPick"
+      },
+      {
+        "op": "renameTag",
+        "from": "ZAxisRetract",
+        "to": "ZAxisClear"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R01_Inputs",
+        "match": "MOVE(5,StaNum)",
+        "newComment": "Nest & Station Numbers\n\n*Verify StaNumPre is the actual upstream station feeding this one",
+        "newText": "[MOVE(1,StaNum) MOVE(0,StaNumPre) ,MOVE(\\Tracking.p_Data.Station[StaNum].NestNum,NestNumCurrent) MOVE(\\Tracking.p_Data.Station[StaNumPre].NestNum,NestNumIncoming) ];"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(3,Control.StateReg)",
+        "newComment": "State 3: Auto mode idle ready",
+        "newText": "[[XIC(Status.State[2]) ,XIC(CycleStopped) ] XIC(Initialized) ,[XIC(Status.State[4]) ,XIC(Status.State[31]) XIC(XAxis_MAM.PC) XIC(XAxisPick.InPos) ,XIC(Status.State[124]) ] XIO(CycleRunning) ]MOVE(3,Control.StateReg);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(4,Control.StateReg)",
+        "newComment": "State 4: Start of sequence, wait for index complete",
+        "newText": "[[XIC(Status.State[3]) XIC(Initialized) ,XIC(Status.State[124]) ] XIC(GripperOpened) ,XIC(Status.State[31]) XIC(XAxis_MAM.PC) XIC(XAxisPick.InPos) ]XIC(CycleRunning)XIO(Lockout)MOVE(4,Control.StateReg);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(7,Control.StateReg)",
+        "newComment": "State 7: Move Z axis down to pick position\n\n*Replace AlwaysOff bit with the real index-complete signal from the dial indexer (and/or the upstream part-ready sensor at the pick location).",
+        "newText": "XIC(Status.State[4])XIC(\\S00_IndexerSP.q_WaitStationsComplete)XIC(CycleStationA)[XIC(g_MachineBasic.AlwaysOff) ,XIC(DryRun) ]XIC(SS_OK)MOVE(7,Control.StateReg);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(10,Control.StateReg)",
+        "newComment": "State 10: Close gripper on part",
+        "newText": "XIC(Status.State[7])XIC(ZAxis_MAM.PC)XIC(ZAxisPick.InPos)XIC(SS_OK)MOVE(10,Control.StateReg);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(13,Control.StateReg)",
+        "newComment": "State 13: Move Z axis up to clear position\n\nGripper confirmed closed - station has committed to the part, latch part tracking Attempt",
+        "newText": "[XIC(Status.State[10]) ,XIC(Status.State[2]) XIO(Initialized) XIC(PartStarted) XIC(CycleRunning) ]XIC(GripperClosed)XIC(SS_OK)MOVE(13,Control.StateReg)OTL(\\Tracking.p_Data.Nest[NestNumCurrent].PartStatus.Station[StaNum].Attempt);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(16,Control.StateReg)",
+        "newComment": "State 16: Move X axis to place position (Application dependent - add wideband positioning permissive to advance to next state before move finishes)",
+        "newText": "XIC(Status.State[13])[XIC(ZAxis_MAM.PC) XIC(ZAxisClear.InPos) ,XIC(ZAxis_MAM.IP) XIC(ZAxisClear.InPosWide) ]XIC(SS_OK)MOVE(16,Control.StateReg);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(19,Control.StateReg)",
+        "newComment": "State 19: Move Z axis down to place position (Application dependent - add wideband positioning permissive to advance to next state before move finishes)\n\nAlso the restart entry point when initialization completes with a part still held in the gripper",
+        "newText": "[[XIC(Status.State[3]) XIC(Initialized) ,XIC(Status.State[124]) ] XIC(GripperClosed) XIC(CycleRunning) ,XIC(Status.State[16]) [XIC(XAxis_MAM.PC) XIC(XAxisPlace.InPos) ,XIC(XAxis_MAM.IP) XIC(XAxisPlace.InPosWide) ] XIC(SS_OK) ]MOVE(19,Control.StateReg);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(22,Control.StateReg)",
+        "newComment": "State 22: Open gripper to release the part",
+        "newText": "XIC(Status.State[19])XIC(ZAxis_MAM.PC)XIC(ZAxisPlace.InPos)XIC(SS_OK)MOVE(22,Control.StateReg);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(25,Control.StateReg)",
+        "newComment": "State 25: Move Z axis up to clear position\n\nPart released - station work confirmed complete, latch part tracking Success",
+        "newText": "XIC(Status.State[22])XIC(GripperOpened)XIC(SS_OK)MOVE(25,Control.StateReg)OTL(\\Tracking.p_Data.Nest[NestNumCurrent].PartStatus.Station[StaNum].Success);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(28,Control.StateReg)",
+        "newComment": "State 28: Move X axis back to pick position (Application dependent - add wideband positioning permissive to advance to next state before move finishes)",
+        "newText": "XIC(Status.State[25])[XIC(ZAxis_MAM.PC) XIC(ZAxisClear.InPos) ,XIC(ZAxis_MAM.IP) XIC(ZAxisClear.InPosWide) ]XIC(SS_OK)MOVE(28,Control.StateReg);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(31,Control.StateReg)",
+        "newComment": "State 31: Cycle complete - station back at pick position and clear for the next index",
+        "newText": "XIC(Status.State[28])[XIC(XAxis_MAM.PC) XIC(XAxisPick.InPos) ,XIC(XAxis_MAM.IP) XIC(XAxisPick.InPosWide) ]XIC(SS_OK)MOVE(31,Control.StateReg);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(100,Control.StateReg)",
+        "newComment": "State 100:Start of initialization sequence, move Z axis to clear position",
+        "newText": "XIC(Status.State[2])XIO(Initialized)XIO(PartStarted)XIC(CycleRunning)XIC(SS_OK)MOVE(100,Control.StateReg);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(103,Control.StateReg)",
+        "newComment": "State 103: Initialization move X axis to pick position",
+        "newText": "XIC(Status.State[100])XIC(ZAxis_MAM.PC)XIC(ZAxisClear.InPos)XIC(GripperOpened)XIC(SS_OK)MOVE(103,Control.StateReg);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R02_StateTransitions",
+        "match": "MOVE(106,Control.StateReg)",
+        "newComment": "State 106: Initialization move X axis to place position (part still held from a previous cycle)",
+        "newText": "XIC(Status.State[100])XIC(ZAxis_MAM.PC)XIC(ZAxisClear.InPos)XIC(GripperClosed)XIC(SS_OK)MOVE(106,Control.StateReg);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R03_StateLogic",
+        "match": "OTE(PartStarted)",
+        "newComment": "Set the part started bit once the process gets to a point where if interrupted you want to resume or perform some other operation upon restart. Use states and/or part tracking to set this bit. Fill in additional conditions to clear this bit if necessary.",
+        "newText": "[XIC(Status.State[13]) ,XIC(PartStarted) XIO(Status.State[25]) XIO(g_MachineBasic.PowerUpCP) XIO(GripperClosed) ]OTE(PartStarted);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R03_StateLogic",
+        "match": "OTE(q_CloseGripper)",
+        "newComment": "Gripper Control",
+        "newText": "[XIO(Status.State[1]) [XIC(Status.State[10]) ,XIC(q_CloseGripper) XIO(Status.State[22]) ] ,XIC(Status.State[1]) [XIC(HMI_Momentary.0) ,XIC(q_CloseGripper) XIO(HMI_Momentary.1) ] ]OTE(q_CloseGripper);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R03_StateLogic",
+        "match": "OTE(q_OpenGripper)",
+        "newText": "[XIO(Status.State[1]) [XIC(Status.State[22]) ,XIC(q_OpenGripper) XIO(Status.State[10]) ] ,XIC(Status.State[1]) [XIC(HMI_Momentary.1) ,XIC(q_OpenGripper) XIO(HMI_Momentary.0) ] ]OTE(q_OpenGripper);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R04_XAxisServo",
+        "match": "MOVE(HMI_XAxis.Parameters.AutoSpeed[0],XAxisMotionParameters.Speed)",
+        "newComment": "Auto Mode",
+        "newText": "XIC(SafetyOK)XIO(Status.State[1])[MOVE(0,XAxisMotionParameters.MoveType) ,MOVE(HMI_XAxis.Parameters.AutoSpeed[0],XAxisMotionParameters.Speed) ,MOVE(HMI_XAxis.Parameters.Accel[0],XAxisMotionParameters.Accel) ,MOVE(HMI_XAxis.Parameters.Decel[0],XAxisMotionParameters.Decel) ,[XIC(Status.State[16]) ,XIC(Status.State[106]) ] MOVE(HMI_XAxis.Parameters.Positions[0],XAxisMotionParameters.Position) ,[XIC(Status.State[28]) ,XIC(Status.State[103]) ] MOVE(HMI_XAxis.Parameters.Positions[1],XAxisMotionParameters.Position) ];"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R04_XAxisServo",
+        "match": "MAM(iq_XAxis,XAxis_MAM,",
+        "newComment": "Axis Motion Command",
+        "newText": "XIC(SafetyOK)[XIC(Status.State[1]) XIC(XAxisManMoveTrig) ,XIO(Status.State[1]) [XIC(Status.State[16]) ,XIC(Status.State[28]) ,XIC(Status.State[103]) ,XIC(Status.State[106]) ] ]XIC(iq_XAxis.ServoActionStatus)XIC(iq_XAxis.AxisHomedStatus)XIC(XAxisPermissive)MAM(iq_XAxis,XAxis_MAM,XAxisMotionParameters.MoveType,XAxisMotionParameters.Position,XAxisMotionParameters.Speed,Units per sec,XAxisMotionParameters.Accel,Units per sec2,XAxisMotionParameters.Decel,Units per sec2,Trapezoidal,0,0,Units per sec3,Disabled,0,0,None,0,0);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R05_ZAxisServo",
+        "match": "MOVE(HMI_ZAxis.Parameters.AutoSpeed[0],ZAxisMotionParameters.Speed)",
+        "newComment": "Auto Mode",
+        "newText": "XIC(SafetyOK)XIO(Status.State[1])[MOVE(0,ZAxisMotionParameters.MoveType) ,MOVE(HMI_ZAxis.Parameters.AutoSpeed[0],ZAxisMotionParameters.Speed) ,MOVE(HMI_ZAxis.Parameters.Accel[0],ZAxisMotionParameters.Accel) ,MOVE(HMI_ZAxis.Parameters.Decel[0],ZAxisMotionParameters.Decel) ,XIC(Status.State[7]) MOVE(HMI_ZAxis.Parameters.Positions[0],ZAxisMotionParameters.Position) ,XIC(Status.State[19]) MOVE(HMI_ZAxis.Parameters.Positions[1],ZAxisMotionParameters.Position) ,[XIC(Status.State[13]) ,XIC(Status.State[25]) ,XIC(Status.State[100]) ] MOVE(HMI_ZAxis.Parameters.Positions[2],ZAxisMotionParameters.Position) ];"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R05_ZAxisServo",
+        "match": "MAM(iq_ZAxis,ZAxis_MAM,",
+        "newComment": "Axis Motion Command",
+        "newText": "XIC(SafetyOK)[XIC(Status.State[1]) XIC(ZAxisManMoveTrig) ,XIO(Status.State[1]) [XIC(Status.State[7]) ,XIC(Status.State[13]) ,XIC(Status.State[19]) ,XIC(Status.State[25]) ,XIC(Status.State[100]) ] ]XIC(iq_ZAxis.ServoActionStatus)XIC(iq_ZAxis.AxisHomedStatus)XIC(ZAxisPermissive)MAM(iq_ZAxis,ZAxis_MAM,ZAxisMotionParameters.MoveType,ZAxisMotionParameters.Position,ZAxisMotionParameters.Speed,Units per sec,ZAxisMotionParameters.Accel,Units per sec2,ZAxisMotionParameters.Decel,Units per sec2,Trapezoidal,0,0,Units per sec3,Disabled,0,0,None,0,0);"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R20_Alarms",
+        "match": "ONS(ONS.9)",
+        "newComment": "Waiting For X Axis To Reach Place Position",
+        "newText": "[[XIC(Status.State[16]) ,XIC(Status.State[106]) ] MOVE(3000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[0].Active) XIO(FaultReset) ][OTE(Alarm[0].Active) ,ONS(ONS.9) CONCAT(g_StationList[StaNum],AlarmList[0],Alarm[0].Message) ];"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R20_Alarms",
+        "match": "ONS(ONS.10)",
+        "newComment": "Waiting For X Axis To Reach Pick Position",
+        "newText": "[[XIC(Status.State[28]) ,XIC(Status.State[103]) ] MOVE(3000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[1].Active) XIO(FaultReset) ][OTE(Alarm[1].Active) ,ONS(ONS.10) CONCAT(g_StationList[StaNum],AlarmList[1],Alarm[1].Message) ];"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R20_Alarms",
+        "match": "ONS(ONS.11)",
+        "newComment": "Waiting For Z Axis To Reach Pick Position",
+        "newText": "[XIC(Status.State[7]) MOVE(3000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[2].Active) XIO(FaultReset) ][OTE(Alarm[2].Active) ,ONS(ONS.11) CONCAT(g_StationList[StaNum],AlarmList[2],Alarm[2].Message) ];"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R20_Alarms",
+        "match": "ONS(ONS.12)",
+        "newComment": "Waiting For Z Axis To Reach Place Position",
+        "newText": "[XIC(Status.State[19]) MOVE(3000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[3].Active) XIO(FaultReset) ][OTE(Alarm[3].Active) ,ONS(ONS.12) CONCAT(g_StationList[StaNum],AlarmList[3],Alarm[3].Message) ];"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R20_Alarms",
+        "match": "ONS(ONS.13)",
+        "newComment": "Waiting For Z Axis To Reach Clear Position",
+        "newText": "[[XIC(Status.State[13]) ,XIC(Status.State[25]) ,XIC(Status.State[100]) ] MOVE(3000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[4].Active) XIO(FaultReset) ][OTE(Alarm[4].Active) ,ONS(ONS.13) CONCAT(g_StationList[StaNum],AlarmList[4],Alarm[4].Message) ];"
+      },
+      {
+        "op": "updateRung",
+        "routine": "R20_Alarms",
+        "match": "ONS(ONS.14)",
+        "newComment": "Waiting For Index Complete - warning only (Severity 1), drives q_Pause so the machine holds instead of faulting",
+        "newText": "XIC(Status.State[4])MOVE(10000,Control.FaultTime)XIC(Status.TimeoutFlt)[OTE(Alarm[5].Active) ,ONS(ONS.14) MOVE(1,Alarm[5].Severity) CONCAT(g_StationList[StaNum],AlarmList[5],Alarm[5].Message) ];"
+      },
+      {
+        "op": "spliceRungs",
+        "routine": "R20_Alarms",
+        "after": "ONS(ONS.14)",
+        "insert": [
+          {
+            "comment": "Waiting For Gripper To Close\n\n*Type 'Waiting For Gripper To Close' into AlarmList[6] after import",
+            "text": "[XIC(Status.State[10]) MOVE(2000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[6].Active) XIO(FaultReset) ][OTE(Alarm[6].Active) ,ONS(ONS.15) CONCAT(g_StationList[StaNum],AlarmList[6],Alarm[6].Message) ];"
+          },
+          {
+            "comment": "Waiting For Gripper To Open\n\n*Type 'Waiting For Gripper To Open' into AlarmList[7] after import",
+            "text": "[XIC(Status.State[22]) MOVE(2000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[7].Active) XIO(FaultReset) ][OTE(Alarm[7].Active) ,ONS(ONS.16) CONCAT(g_StationList[StaNum],AlarmList[7],Alarm[7].Message) ];"
+          }
+        ]
+      },
+      {
+        "op": "setTagData",
+        "tag": "CloseGripperDelay",
+        "member": "PRE",
+        "value": 250
+      },
+      {
+        "op": "setTagData",
+        "tag": "OpenGripperDelay",
+        "member": "PRE",
+        "value": 250
+      },
+      {
+        "op": "setStringData",
+        "tag": "AlarmList",
+        "oldText": "Waiting For X Axis To Reach Extend Position",
+        "newText": "Waiting For X Axis To Reach Place Position"
+      },
+      {
+        "op": "setStringData",
+        "tag": "AlarmList",
+        "oldText": "Waiting For X Axis To Reach Retract Position",
+        "newText": "Waiting For X Axis To Reach Pick Position"
+      },
+      {
+        "op": "setStringData",
+        "tag": "AlarmList",
+        "oldText": "Waiting For Z Axis To Reach Pick Extend Position",
+        "newText": "Waiting For Z Axis To Reach Pick Position"
+      },
+      {
+        "op": "setStringData",
+        "tag": "AlarmList",
+        "oldText": "Waiting For Z Axis To Reach Place Extend Position",
+        "newText": "Waiting For Z Axis To Reach Place Position"
+      },
+      {
+        "op": "setStringData",
+        "tag": "AlarmList",
+        "oldText": "Waiting For Z Axis To Reach Retract Position",
+        "newText": "Waiting For Z Axis To Reach Clear Position"
+      },
+      {
+        "op": "setStringData",
+        "tag": "AlarmList",
+        "oldText": "Waiting For Part Present",
+        "newText": "Waiting For Index Complete"
+      },
+      {
+        "op": "setStringData",
+        "tag": "Alarm",
+        "oldText": "S05 Servo PNP: Waiting For X Axis To Reach Extend Position",
+        "newText": "S01 Servo PNP: Waiting For X Axis To Reach Place Position"
+      },
+      {
+        "op": "setStringData",
+        "tag": "Alarm",
+        "oldText": "S05 Servo PNP: Waiting For X Axis To Reach Retract Position",
+        "newText": "S01 Servo PNP: Waiting For X Axis To Reach Pick Position"
+      },
+      {
+        "op": "setStringData",
+        "tag": "Alarm",
+        "oldText": "S05 Servo PNP: Waiting For Z Axis To Reach Pick Extend Position",
+        "newText": "S01 Servo PNP: Waiting For Z Axis To Reach Pick Position"
+      },
+      {
+        "op": "setStringData",
+        "tag": "Alarm",
+        "oldText": "S05 Servo PNP: Waiting For Z Axis To Reach Place Extend Position",
+        "newText": "S01 Servo PNP: Waiting For Z Axis To Reach Place Position"
+      },
+      {
+        "op": "setStringData",
+        "tag": "Alarm",
+        "oldText": "S05 Servo PNP: Waiting For Z Axis To Reach Retract Position",
+        "newText": "S01 Servo PNP: Waiting For Z Axis To Reach Clear Position"
+      },
+      {
+        "op": "setStringData",
+        "tag": "ServoAlarm",
+        "oldText": "S05 Servo PNP: X Axis Servo Drive Fault",
+        "newText": "S01 Servo PNP: X Axis Servo Drive Fault"
+      },
+      {
+        "op": "setStringData",
+        "tag": "ServoAlarm",
+        "oldText": "S05 Servo PNP: X Axis Loss Of Absolute Home Position",
+        "newText": "S01 Servo PNP: X Axis Loss Of Absolute Home Position"
+      },
+      {
+        "op": "setStringData",
+        "tag": "ServoAlarm",
+        "oldText": "S05 Servo PNP: Z Axis Servo Drive Fault",
+        "newText": "S01 Servo PNP: Z Axis Servo Drive Fault"
+      },
+      {
+        "op": "setStringData",
+        "tag": "ServoAlarm",
+        "oldText": "S05 Servo PNP: Z Axis Loss Of Absolute Home Position",
+        "newText": "S01 Servo PNP: Z Axis Loss Of Absolute Home Position"
+      },
+      {
+        "op": "setStringData",
+        "tag": "ServoAlarm",
+        "oldText": "S05 Servo PNP: X Axis quickstop warning",
+        "newText": "S01 Servo PNP: X Axis quickstop warning"
+      },
+      {
+        "op": "setStringData",
+        "tag": "XAxisFaultMessage",
+        "oldText": "S05 Servo PNP: X Axis Servo Drive Fault",
+        "newText": "S01 Servo PNP: X Axis Servo Drive Fault"
+      },
+      {
+        "op": "setStringData",
+        "tag": "ZAxisFaultMessage",
+        "oldText": "S05 Servo PNP: Z Axis Servo Drive Fault",
+        "newText": "S01 Servo PNP: Z Axis Servo Drive Fault"
+      },
+      {
+        "op": "setStringData",
+        "tag": "ZAxisQuickstopReason",
+        "oldText": "- Z axis not retracted",
+        "newText": "- Z axis not at clear position"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[4]",
+        "text": "Start Of Sequence, Wait For Index Complete"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[7]",
+        "text": "Move Z Axis To Pick Position"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[10]",
+        "text": "Close Gripper On Part"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[13]",
+        "text": "Move Z Axis To Clear Position"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[16]",
+        "text": "Move X Axis To Place Position"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[19]",
+        "text": "Move Z Axis To Place Position"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[22]",
+        "text": "Open Gripper To Release Part"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[25]",
+        "text": "Move Z Axis To Clear Position"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[28]",
+        "text": "Move X Axis To Pick Position"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[31]",
+        "text": "Cycle Complete"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[50]",
+        "remove": true
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[100]",
+        "text": "Initialization Move Z Axis To Clear Position"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[103]",
+        "text": "Initialization Move X Axis To Pick Position"
+      },
+      {
+        "op": "setTagComment",
+        "tag": "Status",
+        "operand": ".STATE[106]",
+        "text": "Initialization Move X Axis To Place Position"
+      },
+      {
+        "op": "setProgramDescription",
+        "text": "S01 SDC_Servo_PNP - two axis servo pick and place with pneumatic gripper. Sequence: wait for index complete (4), Z to pick (7), close gripper (10), Z to clear (13), X to place (16), Z to place (19), open gripper (22), Z to clear (25), X to pick (28), cycle complete (31). X positions: Positions[0]=Place, Positions[1]=Pick. Z positions: Positions[0]=Pick, Positions[1]=Place, Positions[2]=Clear."
+      }
+    ]
+  },
+  "promptChars": 49700,
+  "systemChars": 378,
+  "template": "C:\\SDC-StateLogic\\plc-reference\\standard\\S05_ServoPNP.L5X",
+  "templateReason": "servo axes present",
+  "model": "claude-opus-5",
+  "reviewNotes": [
+    "*Verify StaNumPre is the actual upstream station feeding this one",
+    "*Replace always off bits with real conditions",
+    "*Replace AlwaysOff bit with the real index-complete signal from the dial indexer (and/or the upstream part-ready sensor at the pick location).",
+    "*Replace always off with real conditions"
+  ],
+  "l5xFile": "SDC_Servo_PNP__jarvis_v1.0.1.L5X",
+  "l5xChars": 282311
+}

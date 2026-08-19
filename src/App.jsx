@@ -12,7 +12,7 @@ import { Canvas } from './components/Canvas.jsx';
 import { PropertiesPanel } from './components/PropertiesPanel.jsx';
 import { ProjectSetup } from './components/ProjectSetup.jsx';
 import { StandardsView } from './components/StandardsView.jsx';
-import { NewStateMachineModal } from './components/modals/NewStateMachineModal.jsx';
+import { CreateStationModal } from './components/modals/CreateStationModal.jsx';
 import { AddDeviceModal } from './components/modals/AddDeviceModal.jsx';
 import { ActionModal } from './components/modals/ActionModal.jsx';
 import { ProjectManagerModal } from './components/modals/ProjectManagerModal.jsx';
@@ -129,7 +129,7 @@ export function App() {
           )}
         </div>
 
-        {showNewSmModal && <NewStateMachineModal />}
+        {showNewSmModal && <CreateStationModal />}
         {(showAddDeviceModal || showEditDeviceModal) && <AddDeviceModal />}
         {showActionModal && <ActionModal />}
         {showProjectManager && <ProjectManagerModal />}

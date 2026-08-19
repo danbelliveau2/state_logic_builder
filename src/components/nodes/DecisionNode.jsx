@@ -3862,12 +3862,19 @@ export function DecisionNode({ data, selected, id }) {
         />
       )}
 
-      {/* Side handles for 2-exit branching */}
+      {/* Branch handles for 2-exit branching.
+          v1.34 layout (matches StateNode's embedded-decision convention and
+          edgeRouting.js — preferred path goes DOWN, alternates kick out the side):
+            exit-pass  → Bottom (PRIMARY outcome / preferred path)
+            exit-fail  → Right  (alternate / secondary)
+            exit-retry → Left   (retry / loop-back)
+          Pre-v1.34 had exit-pass=Left / exit-retry=Bottom, which made the pass
+          edge drop vertically alongside the node's left face. */}
       {exitCount === 2 && signalName && signalName !== 'Select Signal...' && (
         <>
           <Handle
             type="source"
-            position={Position.Left}
+            position={Position.Bottom}
             id="exit-pass"
             className="sdc-handle sdc-handle--pass"
           />
@@ -3877,18 +3884,18 @@ export function DecisionNode({ data, selected, id }) {
             id="exit-fail"
             className="sdc-handle sdc-handle--fail"
           />
+          {/* Retry handle on the LEFT (loop-back direction). Only renders
+              when the node explicitly opts in via `retryEnabled`. */}
+          {retryEnabled && (
+            <Handle
+              type="source"
+              position={Position.Left}
+              id="exit-retry"
+              className="sdc-handle sdc-handle--retry"
+              isConnectable
+            />
+          )}
         </>
-      )}
-
-      {/* Bottom handle for retry branch (only when retry is enabled + 2-exit) */}
-      {retryEnabled && exitCount === 2 && signalName && signalName !== 'Select Signal...' && (
-        <Handle
-          type="source"
-          position={Position.Bottom}
-          id="exit-retry"
-          className="sdc-handle sdc-handle--retry"
-          isConnectable
-        />
       )}
 
       {/* Multi-outcome bottom handles (exitCount > 2) — evenly spaced */}
