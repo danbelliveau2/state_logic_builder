@@ -7,6 +7,7 @@
 | Popup viewport overflow | `DecisionNode.jsx` | Popup positioned `rect.right + 8` with no right-edge overflow check; disappears off-screen on far-right nodes |
 | Label midpoint on manual waypoints | `RoutableEdge.jsx` | After user manually moves edge waypoints, label may not stay at true midpoint of vertical segment |
 | Stale L-bend waypoints on old edges | stored project data | Edges created before the exit-single routing fix have stale L-bend waypoints stored as `manualRoute: true` — delete and re-draw to fix |
+| Stale pass-edge waypoints after v1.34 decision-handle move | stored project data | Standalone decisionNode `exit-pass` handle moved Left→Bottom (and `exit-retry` Bottom→Left) to match the v1.34 convention. Manual-routed pass/retry edges saved before the move keep waypoints anchored to the old handle face (e.g. 2 such edges in `projects/1119-Stamper_Machine.json` StamperPNP) — delete and re-draw to fix. Auto-routed edges re-route correctly on load. |
 
 ---
 

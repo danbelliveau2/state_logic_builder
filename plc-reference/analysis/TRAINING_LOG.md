@@ -1,0 +1,1 @@
+2026-08-19 | 1116_Molex.json | 90-position brazing dial: 15 small template-shaped station SMs coordinated solely by an AllStationsReady/IndexComplete indexer barrier — the real generation work is the coordination layer (indexer, nest-shift part tracking, pass/fail sorting), not the per-station logic.

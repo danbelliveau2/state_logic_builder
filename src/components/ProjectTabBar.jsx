@@ -5,8 +5,9 @@
  * The "+" button opens a file picker to load a .json project file into a new tab.
  */
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useDiagramStore } from '../store/useDiagramStore.js';
+import { ProjectPickerModal } from './modals/ProjectPickerModal.jsx';
 
 export function ProjectTabBar() {
   const openTabs = useDiagramStore(s => s.openTabs) ?? [];
@@ -18,6 +19,7 @@ export function ProjectTabBar() {
   const activeView = useDiagramStore(s => s.activeView);
   const setActiveView = useDiagramStore(s => s.setActiveView);
   const fileInputRef = useRef(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   // Build effective tab list — if openTabs is empty, synthesize one from current project
   let tabs = openTabs;
@@ -96,7 +98,7 @@ export function ProjectTabBar() {
       </div>
       <button
         className="project-tabs__add"
-        onClick={() => fileInputRef.current?.click()}
+        onClick={() => setPickerOpen(true)}
         title="Open project file in new tab"
       >
         <span className="project-tabs__add-icon">+</span>
@@ -109,6 +111,13 @@ export function ProjectTabBar() {
         style={{ display: 'none' }}
         onChange={handleFileOpen}
       />
+      {pickerOpen && (
+        <ProjectPickerModal
+          mode="newTab"
+          onClose={() => setPickerOpen(false)}
+          onBrowseFile={() => fileInputRef.current?.click()}
+        />
+      )}
     </div>
   );
 }

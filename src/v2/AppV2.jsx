@@ -1,0 +1,174 @@
+/**
+ * AppV2 — v2 application shell (Jarvis-centered workflow).
+ *
+ * Layout (CSS grid, see v2.css):
+ *   ┌──────────────── TopBarV2 (48px) ────────────────┐
+ *   │ Stations (260px) │  Canvas + view switcher │ Context (300px) │
+ *   └──────────────────────────────────────────────────┘
+ *
+ * Everything below the shell is REUSED from the classic app:
+ *   - useDiagramStore  — same store, same localStorage key, same server API
+ *   - Canvas           — full React Flow canvas incl. Normal/Recovery toggle,
+ *                        undo/redo keyboard shortcuts (Ctrl+Z / Ctrl+Y are
+ *                        wired inside Canvas on window, so v2 gets them free)
+ *   - Modals           — JarvisGenerateModal, SpecEditorModal,
+ *                        ProjectPickerModal, plus the store-flag modals below
+ *
+ * View switcher: "Mechanical" is the canvas as-is; "Full Controls" shows an
+ * honest placeholder banner — the compiled-IR rendering lands with the
+ * Jarvis tier-2 integration milestone.
+ */
+
+import { useEffect, useState, useCallback, Component } from 'react';
+import { ReactFlowProvider } from '@xyflow/react';
+import { Canvas } from '../components/Canvas.jsx';
+import { NewStateMachineModal } from '../components/modals/NewStateMachineModal.jsx';
+import { AddDeviceModal } from '../components/modals/AddDeviceModal.jsx';
+import { ActionModal } from '../components/modals/ActionModal.jsx';
+import { ProjectManagerModal } from '../components/modals/ProjectManagerModal.jsx';
+import { RecipeManagerModal } from '../components/modals/RecipeManagerModal.jsx';
+import { useDiagramStore } from '../store/useDiagramStore.js';
+import { initStandardsLibrary } from '../lib/standardsLibrary.js';
+import { exportProjectJSON } from '../lib/l5xExporter.js';
+import { TopBarV2 } from './TopBarV2.jsx';
+import { StationsPanel } from './StationsPanel.jsx';
+import { ContextPanelV2 } from './ContextPanelV2.jsx';
+
+// ── Error Boundary (same behavior as classic App) ───────────────────────────
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null };
+  }
+  static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  componentDidCatch(error, errorInfo) {
+    console.error('AppV2 crash caught by ErrorBoundary:', error, errorInfo);
+    this.setState({ errorInfo });
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 40, maxWidth: 600, margin: '60px auto', fontFamily: 'system-ui, sans-serif' }}>
+          <h1 style={{ color: '#b83c3c', fontSize: 22 }}>Something went wrong</h1>
+          <p style={{ color: '#5a6a7e', marginTop: 8 }}>
+            The v2 shell crashed during rendering. Try refreshing, or open the
+            classic app at <a href="/">/</a> — projects are shared between both.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            style={{ marginTop: 16, padding: '8px 20px', background: '#1574C4', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14 }}
+          >Reload</button>
+          <pre style={{ marginTop: 20, padding: 16, background: '#1e293b', color: '#f87171', borderRadius: 6, fontSize: 12, overflow: 'auto', maxHeight: 300 }}>
+            {this.state.error?.toString()}
+            {'\n\n'}
+            {this.state.errorInfo?.componentStack}
+          </pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ── View switcher (house style: canvas-mode-toggle pill) ────────────────────
+function ViewSwitcher({ view, onChange }) {
+  return (
+    <div className="v2-view-switcher">
+      <div className="canvas-mode-toggle">
+        <button
+          className={`canvas-mode-btn${view === 'mechanical' ? ' canvas-mode-btn--active' : ''}`}
+          onClick={() => onChange('mechanical')}
+          title="Mechanical view — the flowchart as drawn"
+        >Mechanical</button>
+        <button
+          className={`canvas-mode-btn${view === 'controls' ? ' canvas-mode-btn--active' : ''}`}
+          onClick={() => onChange('controls')}
+          title="Full Controls view — compiled logic (coming with Jarvis tier-2)"
+        >Full Controls</button>
+      </div>
+    </div>
+  );
+}
+
+export function AppV2() {
+  const store = useDiagramStore();
+  const {
+    showNewSmModal,
+    showAddDeviceModal,
+    showEditDeviceModal,
+    showActionModal,
+    showProjectManager,
+    showRecipeManager,
+  } = store;
+
+  const [view, setView] = useState('mechanical');
+  const [contextCollapsed, setContextCollapsed] = useState(false);
+
+  // Bootstrap — identical to classic App so both entries share behavior.
+  useEffect(() => {
+    store.deduplicateAutoVisionParams();
+    store.initializeProjects();
+    initStandardsLibrary();
+  }, []);
+
+  // Ctrl+S save (replicates Toolbar's handleSaveProject: JSON download +
+  // background server save). Ctrl+Z / Ctrl+Y live inside Canvas already.
+  const handleSave = useCallback(async () => {
+    const { project, serverAvailable, saveCurrentProject } = useDiagramStore.getState();
+    exportProjectJSON(project);
+    if (serverAvailable) {
+      try { await saveCurrentProject(); }
+      catch (err) { console.warn('Server save failed (JSON download still succeeded):', err.message); }
+    }
+  }, []);
+  useEffect(() => {
+    function onKey(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSave();
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [handleSave]);
+
+  return (
+    <ErrorBoundary>
+      <ReactFlowProvider>
+        <div className="v2-app">
+          <TopBarV2 />
+          <div className={`v2-body${contextCollapsed ? ' v2-body--context-collapsed' : ''}`}>
+            <StationsPanel />
+            <main className="v2-center">
+              <ViewSwitcher view={view} onChange={setView} />
+              {view === 'controls' && (
+                <div className="v2-controls-banner">
+                  Compiled view — coming with Jarvis tier-2 integration
+                </div>
+              )}
+              {/* Same canvas in both views for now. When the compiled-IR
+                  rendering lands (Jarvis tier-2), 'controls' swaps in the
+                  compiled representation instead of the banner. */}
+              <Canvas />
+            </main>
+            <ContextPanelV2
+              collapsed={contextCollapsed}
+              onToggle={() => setContextCollapsed(c => !c)}
+            />
+          </div>
+        </div>
+
+        {/* Store-flag modals — same set the classic App mounts, so canvas
+            interactions (add device, edit action…) keep working in v2. */}
+        {/* TODO(v2 integration point): swap NewStateMachineModal for the
+            describe-first CreateStationModal once it lands (being built in a
+            parallel session — not imported yet on purpose). */}
+        {showNewSmModal && <NewStateMachineModal />}
+        {(showAddDeviceModal || showEditDeviceModal) && <AddDeviceModal />}
+        {showActionModal && <ActionModal />}
+        {showProjectManager && <ProjectManagerModal />}
+        {showRecipeManager && <RecipeManagerModal />}
+      </ReactFlowProvider>
+    </ErrorBoundary>
+  );
+}

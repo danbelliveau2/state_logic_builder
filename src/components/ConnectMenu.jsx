@@ -57,7 +57,9 @@ export function computePresetWaypoints(preset, src, tgt, handleId, allNodes) {
   if (!isFinite(leftBound))  leftBound  = Math.min(src.x, tgt.x) - PAD;
   if (!isFinite(rightBound)) rightBound = Math.max(src.x, tgt.x) + NODE_WIDTH;
 
-  const isSideHandle = handleId === 'exit-pass' || handleId === 'exit-fail';
+  // v1.34: side handles are exit-fail (right) and exit-retry (left).
+  // exit-pass moved to bottom-center — treated like other bottom handles.
+  const isSideHandle = handleId === 'exit-fail' || handleId === 'exit-retry';
 
   switch (preset) {
     // Loop presets store ONLY the user-picked side as `loopSide`. Auto-route
@@ -70,7 +72,7 @@ export function computePresetWaypoints(preset, src, tgt, handleId, allNodes) {
       return { waypoints: [], manualRoute: false, loopSide: 'right' };
 
     case 'connectDown': {
-      // SIDE HANDLES (exit-pass/exit-fail): delegate to auto-route.
+      // SIDE HANDLES (exit-fail/exit-retry): delegate to auto-route.
       // Pre-computing waypoints with manualRoute:true was freezing the
       // routing in place — when the user dragged the source node, the stored
       // waypoints stayed at the old positions, producing parallel-to-edge
@@ -293,10 +295,13 @@ export function ConnectMenu({ nodeId, nodeType, exitCount, signalName, smId }) {
       else if (isRetryHandle) offset = { x: -X_OFF,   y: Y_OFF };
       else                    offset = { x: 0,        y: Y_OFF };
     } else if (isPassHandle) {
-      // Legacy verify-mode source: pass handle is the LEFT side. Spawn left.
-      offset = { x: -X_OFF, y: Y_OFF };
+      // v1.34: pass handle is the BOTTOM (primary path). Spawn straight below.
+      offset = { x: 0, y: Y_OFF };
     } else if (isFailHandle) {
       offset = { x: +X_OFF, y: Y_OFF };
+    } else if (isRetryHandle) {
+      // Retry handle is the LEFT side (loop-back direction). Spawn left.
+      offset = { x: -X_OFF, y: Y_OFF };
     } else {
       // Non-branch state with bottom handle — straight below at the same
       // distance branch primaries use (Branch Y setting).

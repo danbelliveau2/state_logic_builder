@@ -14,6 +14,26 @@
  *   POST   /api/projects/:filename    save / overwrite a project
  *   DELETE /api/projects/:filename    delete a project
  *
+ *   POST   /api/generate              AI L5X generation: { filename | projectJson, smId }
+ *                                     -> { ok, l5x, validation, reviewNotes, meta }
+ *                                     503 when ANTHROPIC_API_KEY is not configured
+ *   GET    /api/generate/stream       Same pipeline with LIVE PROGRESS over SSE.
+ *                                     ?filename=<project.json>&smId=<sm id>
+ *                                     Events: progress {pct,stage,detail},
+ *                                     done {result..., savedPath}, error {error}.
+ *                                     Closing the connection cancels the model stream.
+ *                                     On success the L5X is also saved to
+ *                                     generated/<project>/<sm>__jarvis_v<ver>__<date>.L5X
+ *   POST   /api/jarvis/diagram        Describe-your-station -> project draft:
+ *                                     { description, images:[{name,base64,mediaType}] }
+ *                                     -> { ok, filename, summary, openQuestions, fixups, meta }
+ *                                     Draft saved to projects/<name>_draft.json
+ *   POST   /api/jarvis/spec           Explain-this-station -> machineSpec extraction:
+ *                                     { description, images, sm:{id,name,displayName,devices,drawnSteps},
+ *                                       otherSms:[{id,name,displayName}], existingSpec }
+ *                                     -> { ok, spec, proposedDevices, unmentionedDeviceIds,
+ *                                          questions, fixups, meta }. Stateless — nothing saved.
+ *
  *   GET    /api/standards             get the entire shared standards library (array)
  *   POST   /api/standards             replace the entire library with the POST body
  *   POST   /api/standards/:id         upsert a single standard by id
@@ -152,6 +172,218 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     catch (e) { sendJson(res, 500, { error: e.message }); }
   }
 
+  // ── AI L5X Generation (agentGenerator) ─────────────────────────────────────
+
+  /** POST /api/generate — body: { filename | projectJson, smId, options? }.
+   *  Runs promptBuilder -> Claude -> validator (with self-repair) and returns
+   *  { ok, l5x, validation, reviewNotes, meta }. The agentGenerator module is
+   *  required lazily so the server still runs with only Node built-ins when
+   *  node_modules is absent; missing ANTHROPIC_API_KEY surfaces as a 503. */
+  async function handleGenerate(req, res) {
+    let gen;
+    try {
+      gen = require('./src/lib/agentGenerator/client.js');
+    } catch (e) {
+      return sendJson(res, 503, {
+        error: 'AI generation not available — run npm install (agentGenerator dependencies missing): ' + e.message,
+      });
+    }
+    try {
+      const body = JSON.parse(await readBody(req) || '{}');
+      let projectJson = body.projectJson;
+      if (!projectJson && body.filename) {
+        const safe = safeFilename(body.filename);
+        if (!safe) return sendJson(res, 400, { error: 'Invalid filename' });
+        const fp = path.join(DATA_DIR_, safe);
+        if (!fs.existsSync(fp)) return sendJson(res, 404, { error: 'Project not found' });
+        projectJson = JSON.parse(fs.readFileSync(fp, 'utf8'));
+      }
+      if (!projectJson) return sendJson(res, 400, { error: 'Provide filename or projectJson' });
+
+      const result = await gen.generateL5X(projectJson, body.smId, body.options || {});
+      sendJson(res, 200, result);
+    } catch (e) {
+      if (e && e.code === 'AI_NOT_CONFIGURED') {
+        return sendJson(res, 503, { error: e.message });
+      }
+      sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  /** GET /api/generate/stream?filename=&smId= — SSE live-progress generation.
+   *  One connection runs the whole pipeline: progress events stream as the
+   *  model works, the final `done` event carries the full result payload
+   *  (minus nothing — l5x included), and closing the connection aborts the
+   *  in-flight SDK stream. On success the L5X is also written to
+   *  generated/<project>/<sm>__jarvis_v<version>__<date>.L5X. */
+  async function handleGenerateStream(req, res, query) {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'X-Accel-Buffering': 'no',
+    });
+    const send = (event, data) => {
+      try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch (_) {}
+    };
+
+    let gen;
+    try {
+      gen = require('./src/lib/agentGenerator/client.js');
+    } catch (e) {
+      send('error', { error: 'AI generation not available — run npm install: ' + e.message });
+      return res.end();
+    }
+
+    const abort = new AbortController();
+    let clientGone = false;
+    req.on('close', () => { clientGone = true; abort.abort(); });
+
+    // Monotonic progress guard — repair rounds report inside 88-92 which
+    // could otherwise step backward past the validate marker.
+    let lastPct = 0;
+    const onProgress = (pct, stage, detail) => {
+      const p = Math.max(lastPct, Math.min(Math.round(pct * 10) / 10, 99));
+      lastPct = p;
+      send('progress', { pct: p, stage, detail });
+    };
+
+    try {
+      const safe = safeFilename(query.filename || '');
+      if (!safe) { send('error', { error: 'Invalid or missing filename' }); return res.end(); }
+      const fp = path.join(DATA_DIR_, safe);
+      if (!fs.existsSync(fp)) { send('error', { error: 'Project not found: ' + safe }); return res.end(); }
+      const projectJson = JSON.parse(fs.readFileSync(fp, 'utf8'));
+
+      send('progress', { pct: 2, stage: 'start', detail: `Loaded ${safe}` });
+      const result = await gen.generateL5X(projectJson, query.smId || undefined, {
+        onProgress, signal: abort.signal,
+      });
+
+      // Auto-save the generated program so the user always knows where it is.
+      let savedPath = null;
+      if (result.l5x) {
+        try {
+          const clean = (s) => String(s || 'unnamed').replace(/[^a-zA-Z0-9_\-]/g, '_');
+          const ver = result.meta?.jarvisVersion || '0';
+          const date = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '');
+          const dir = path.join(__dirname, 'generated', clean(projectJson.name || safe.replace('.json', '')));
+          fs.mkdirSync(dir, { recursive: true });
+          savedPath = path.join(dir, `${clean(result.meta?.smName)}__jarvis_v${ver}__${date}.L5X`);
+          fs.writeFileSync(savedPath, result.l5x, 'utf8');
+        } catch (e) {
+          console.warn('[generate] auto-save failed:', e.message);
+        }
+      }
+
+      send('progress', { pct: 100, stage: 'done', detail: result.ok ? 'Generation complete' : 'Finished with validation errors' });
+      send('done', { ...result, savedPath });
+    } catch (e) {
+      if (clientGone || (e && (e.name === 'AbortError' || e.name === 'APIUserAbortError'))) {
+        // Client cancelled — nothing to report.
+      } else if (e && e.code === 'AI_NOT_CONFIGURED') {
+        send('error', { error: e.message });
+      } else {
+        send('error', { error: e.message || String(e) });
+      }
+    }
+    res.end();
+  }
+
+  // ── JARVIS describe-your-station -> diagram draft ──────────────────────────
+
+  /** POST /api/jarvis/diagram — body: { description, images: [{name, base64,
+   *  mediaType}] }. Authors a State Logic Builder project draft via Claude,
+   *  validates it, saves it to projects/<name>_draft.json, and returns
+   *  { ok, filename, summary, openQuestions, fixups, meta }. */
+  async function handleJarvisDiagram(req, res) {
+    let author;
+    try {
+      author = require('./src/lib/agentGenerator/diagramAuthor.js');
+    } catch (e) {
+      return sendJson(res, 503, { error: 'Diagram author not available — run npm install: ' + e.message });
+    }
+    try {
+      const body = JSON.parse(await readBody(req) || '{}');
+      if (!body.description || !String(body.description).trim()) {
+        return sendJson(res, 400, { error: 'description is required' });
+      }
+      const result = await author.authorDiagram({
+        description: body.description,
+        images: Array.isArray(body.images) ? body.images : [],
+        station: body.station && typeof body.station === 'object' ? body.station : null,
+      });
+
+      // Single-SM mode (Create Station flow): no draft file — the client
+      // inserts the SM into its CURRENT project via store actions.
+      if (body.station && body.station.name) {
+        return sendJson(res, 200, {
+          ok: true,
+          sm: result.project.stateMachines[0],
+          summary: result.summary,
+          openQuestions: result.openQuestions,
+          fixups: result.fixups,
+          meta: result.meta,
+        });
+      }
+
+      // Save the draft into the projects dir so the app can open it directly.
+      const base = String(result.project.name || 'JarvisDraft')
+        .replace(/[^a-zA-Z0-9_\- ]/g, '').replace(/\s+/g, '_') || 'JarvisDraft';
+      let filename = `${base}_draft.json`;
+      // Don't clobber an existing draft silently — suffix a counter.
+      let n = 2;
+      while (fs.existsSync(path.join(DATA_DIR_, filename))) {
+        filename = `${base}_draft${n++}.json`;
+        if (n > 50) break;
+      }
+      fs.writeFileSync(path.join(DATA_DIR_, filename), JSON.stringify(result.project, null, 2), 'utf8');
+
+      sendJson(res, 200, {
+        ok: true,
+        filename,
+        summary: result.summary,
+        openQuestions: result.openQuestions,
+        fixups: result.fixups,
+        meta: result.meta,
+      });
+    } catch (e) {
+      if (e && e.code === 'AI_NOT_CONFIGURED') return sendJson(res, 503, { error: e.message });
+      sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  /** POST /api/jarvis/spec — body: { description, images, sm, otherSms,
+   *  existingSpec }. Extracts a machineSpec + devices delta from a free-form
+   *  station explanation. Stateless: the client renders a review screen and
+   *  persists via its own store on Save. */
+  async function handleJarvisSpec(req, res) {
+    let author;
+    try {
+      author = require('./src/lib/agentGenerator/specAuthor.js');
+    } catch (e) {
+      return sendJson(res, 503, { error: 'Spec author not available — run npm install: ' + e.message });
+    }
+    try {
+      const body = JSON.parse(await readBody(req) || '{}');
+      if (!body.description || !String(body.description).trim()) {
+        return sendJson(res, 400, { error: 'description is required' });
+      }
+      const result = await author.authorSpec({
+        description: body.description,
+        images: Array.isArray(body.images) ? body.images : [],
+        sm: body.sm && typeof body.sm === 'object' ? body.sm : {},
+        otherSms: Array.isArray(body.otherSms) ? body.otherSms : [],
+        existingSpec: body.existingSpec || null,
+      });
+      sendJson(res, 200, { ok: true, ...result });
+    } catch (e) {
+      if (e && e.code === 'AI_NOT_CONFIGURED') return sendJson(res, 503, { error: e.message });
+      sendJson(res, 500, { error: e.message });
+    }
+  }
+
   // ── Standards Library (shared across all clients) ─────────────────────────
 
   /** Read the full standards array from disk. Returns [] if the file is
@@ -251,7 +483,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
   }
 
   const server = http.createServer(async (req, res) => {
-    const { pathname = '/' } = url.parse(req.url || '/');
+    const { pathname = '/', query = {} } = url.parse(req.url || '/', true);
     const method = (req.method || 'GET').toUpperCase();
 
     if (method === 'OPTIONS') {
@@ -270,6 +502,26 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       if (filename  && method === 'GET')    return handleLoad(res, filename);
       if (filename  && method === 'POST')   return handleSave(req, res, filename);
       if (filename  && method === 'DELETE') return handleDelete(res, filename);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    if (pathname === '/api/generate') {
+      if (method === 'POST') return handleGenerate(req, res);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    if (pathname === '/api/generate/stream') {
+      if (method === 'GET') return handleGenerateStream(req, res, query);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    if (pathname === '/api/jarvis/diagram') {
+      if (method === 'POST') return handleJarvisDiagram(req, res);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    if (pathname === '/api/jarvis/spec') {
+      if (method === 'POST') return handleJarvisSpec(req, res);
       return sendJson(res, 405, { error: 'Method not allowed' });
     }
 
