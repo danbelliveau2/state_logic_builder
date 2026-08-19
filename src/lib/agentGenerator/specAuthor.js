@@ -279,13 +279,20 @@ async function authorSpec({ description, images = [], sm = {}, otherSms = [], ex
 // ── summarizeDescription — "Done explaining" cleanup + coverage verdict ─────
 //
 // Cheap, fast call: restates the engineer's raw explanation as a clean,
-// well-organized summary (short paragraphs under the four checklist
-// headings), gives a per-checklist-item coverage verdict (replacing the
-// local regex heuristics once it exists), and asks 2-4 "anything to
-// change?" questions. Used by CreateStationPage's summary loop; the final
-// Build then runs on the summary (+ original appended as reference).
+// STRUCTURED summary — four scannable sections (devices, sequence,
+// failureHandling, interactions) returned as JSON arrays — plus a
+// per-checklist-item coverage verdict (replacing the local regex heuristics
+// once it exists) and 2-4 questions back to the engineer. Used by
+// CreateStationPage's summary loop; the final Build then runs on the
+// serialized summary (+ original appended as reference).
 
-const SUMMARIZE_MAX_TOKENS = parseInt(process.env.JARVIS_SUMMARIZE_MAX_TOKENS, 10) || 2000;
+// Token budget is generous on purpose — the user's explanation length is
+// sacred and a structured JSON summary won't come near 16K. Never tell the
+// user to shorten their description. The real limit is COST, enforced by the
+// client per summary loop (JARVIS_SUMMARIZE_MAX_COST_USD, default $5,
+// surfaced via meta.maxCostUSD below).
+const SUMMARIZE_MAX_TOKENS = parseInt(process.env.JARVIS_SUMMARIZE_MAX_TOKENS, 10) || 16000;
+const SUMMARIZE_MAX_COST_USD = parseFloat(process.env.JARVIS_SUMMARIZE_MAX_COST_USD) || 5;
 
 const COVERAGE_KEYS = ['devices', 'sequence', 'failures', 'interactions'];
 
@@ -294,23 +301,34 @@ const SUMMARIZE_OUTPUT = `
 
 Respond with ONLY one JSON object (no markdown fences, no prose):
 {
-  "summary": "<the cleaned restatement — plain text, four sections, each a heading line then 1-3 short paragraphs>",
+  "devices": [
+    { "name": "<device name, the engineer's term>", "purpose": "<one short line: what it is for>" }
+  ],
+  "sequence": ["<one short line per cycle step, in order>", ...],
+  "failureHandling": [
+    { "when": "<the failure case>", "then": "<what should happen>",
+      "retries": <integer, ONLY if a number of tries was stated>,
+      "whenExhausted": "<what happens when the tries run out — omit if not stated>" }
+  ],
+  "interactions": [
+    { "station": "<other station's name>", "how": "<one short line: the interaction>" }
+  ],
   "coverage": {
     "devices":      { "score": 0|1|2, "missing": "<one short line: what is still missing — '' when score is 2>" },
     "sequence":     { "score": 0|1|2, "missing": "..." },
     "failures":     { "score": 0|1|2, "missing": "..." },
     "interactions": { "score": 0|1|2, "missing": "..." }
   },
-  "questions": ["<2-4 short 'anything to change?' questions about genuine gaps or ambiguities>"]
+  "questions": ["<2-4 short questions back to the engineer about genuine gaps or ambiguities>"]
 }
 
 Summary rules:
-- Use EXACTLY these four heading lines, in this order, each on its own line:
-  "DEVICES", "SEQUENCE", "FAILURE HANDLING", "STATION INTERACTIONS".
-- Under each heading: short readable paragraphs restating what the engineer SAID — their
-  intent, cleaned up and organized. Faithful: never invent devices, steps, numbers, or
-  behavior they did not state. If a section has nothing, write one line: "(not described yet)".
+- Each array restates what the engineer SAID — their intent, cleaned up and organized into
+  short scannable lines. Faithful: never invent devices, steps, numbers, or behavior they
+  did not state. A section with nothing stated is an EMPTY array.
 - Keep the engineer's device names/terms. Fix grammar and rambling, not meaning.
+- sequence: one physical step per line, no numbering prefix (the UI numbers them).
+- interactions: "station" should match one of the project's other station names when possible.
 
 Coverage rules (2 = fully covered, 1 = mentioned briefly, 0 = not covered):
 - devices: are the physical devices named with what each is for?
@@ -328,14 +346,23 @@ Coverage rules (2 = fully covered, 1 = mentioned briefly, 0 = not covered):
  * @param {object} [opts.checklist]       local heuristic scores (context only)
  * @param {object} [opts.sm]              { name, displayName }
  * @param {Array}  [opts.otherSms]        [{ name, displayName }]
- * @param {string} [opts.priorSummary]    previous summary being revised
+ * @param {string} [opts.priorSummary]    previous summary being revised (serialized text)
  * @param {string} [opts.corrections]     the engineer's correction text
  * @param {AbortSignal} [opts.signal]
- * @returns {Promise<{ summary, coverage, questions, meta }>}
+ * @param {function} [opts.onProgress]    (pct, stage) — real progress, 0-100.
+ *   5 = request sent, 10-95 ramps with streamed output (thinking deltas at
+ *   half weight, like client.js), 100 = response parsed. stage is one of
+ *   'sent' | 'reading' | 'writing' | 'done'.
+ * @returns {Promise<{ summary: {devices,sequence,failureHandling,interactions}, coverage, questions, meta }>}
  */
+
+// Expected summary output for the streaming progress ramp. The response is
+// typically 700-1500 tokens of JSON; ~1200 keeps the ramp honest.
+const SUMMARIZE_EXPECTED_OUTPUT_TOKENS = 1200;
+
 async function summarizeDescription({
   description, images = [], checklist = null, sm = {}, otherSms = [],
-  priorSummary = '', corrections = '', signal = null,
+  priorSummary = '', corrections = '', signal = null, onProgress = null,
 } = {}) {
   if (!description || !String(description).trim()) {
     throw new Error('description is required');
@@ -375,18 +402,54 @@ async function summarizeDescription({
   if (images.length) text += `\n\n(${images.length} image(s) of the station/CAD are attached above.)`;
   content.push({ type: 'text', text });
 
-  const req = { model: MODEL, max_tokens: SUMMARIZE_MAX_TOKENS, system, messages: [{ role: 'user', content }] };
-  if (/^claude-(fable|opus)-/.test(MODEL)) {
-    req.betas = ['server-side-fallback-2026-07-01'];
-    req.fallbacks = 'default';
-  }
-  const stream = client.beta.messages.stream(req, signal ? { signal } : undefined);
-  const response = await stream.finalMessage();
-  if (response.stop_reason === 'refusal') {
-    throw new Error('Model refused the request: ' + (response.stop_details?.explanation || 'no reason given'));
-  }
-  if (response.stop_reason === 'max_tokens') {
-    throw new Error(`Summary truncated at ${SUMMARIZE_MAX_TOKENS} tokens — try a shorter description`);
+  const progress = typeof onProgress === 'function' ? onProgress : null;
+  if (progress) { try { progress(5, 'sent'); } catch (_) {} }
+
+  // Never punish a long explanation: if a response somehow hits the token
+  // budget, auto-retry ONCE with double the budget before surfacing anything.
+  let response = null;
+  let totalCostUSD = 0;
+  let maxTokens = SUMMARIZE_MAX_TOKENS;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const req = { model: MODEL, max_tokens: maxTokens, system, messages: [{ role: 'user', content }] };
+    if (/^claude-(fable|opus)-/.test(MODEL)) {
+      req.betas = ['server-side-fallback-2026-07-01'];
+      req.fallbacks = 'default';
+    }
+    const stream = client.beta.messages.stream(req, signal ? { signal } : undefined);
+    if (progress) {
+      // Same pattern as client.js callModel: text deltas ramp the bar against
+      // the expected output size; adaptive thinking can run before any text
+      // streams, so thinking deltas count at half weight to keep it moving.
+      const expectedChars = SUMMARIZE_EXPECTED_OUTPUT_TOKENS * 4; // rough tokens->chars
+      let chars = 0;
+      let thinkingChars = 0;
+      const emit = () => {
+        const frac = Math.min((chars + thinkingChars * 0.5) / expectedChars, 1);
+        const pct = 10 + 85 * frac; // 10 -> 95
+        try { progress(pct, chars > 0 ? 'writing' : 'reading'); } catch (_) {}
+      };
+      stream.on('text', (delta) => { chars += delta.length; emit(); });
+      stream.on('streamEvent', (event) => {
+        if (event.type === 'content_block_delta' && event.delta?.type === 'thinking_delta') {
+          thinkingChars += (event.delta.thinking || '').length;
+          emit();
+        }
+      });
+    }
+    response = await stream.finalMessage();
+    if (response.usage) totalCostUSD += costOfUsage(response.usage, MODEL);
+    if (response.stop_reason === 'refusal') {
+      throw new Error('Model refused the request: ' + (response.stop_details?.explanation || 'no reason given'));
+    }
+    if (response.stop_reason === 'max_tokens') {
+      if (attempt === 1) { maxTokens *= 2; continue; }
+      throw new Error(
+        `Summary response hit the ${maxTokens}-token output budget twice — ` +
+        'raise JARVIS_SUMMARIZE_MAX_TOKENS in .env'
+      );
+    }
+    break;
   }
   const raw = response.content.filter(b => b.type === 'text').map(b => b.text).join('');
   const parsed = extractJson(raw);
@@ -398,12 +461,35 @@ async function summarizeDescription({
     const score = c && [0, 1, 2].includes(Number(c.score)) ? Number(c.score) : 0;
     coverage[k] = { score, missing: String((c && c.missing) || '').trim() };
   }
-  const summary = String(parsed.summary || '').trim();
-  if (!summary) throw new Error('Model returned an empty summary');
+  const str = (v) => String(v == null ? '' : v).trim();
+  const arr = (v) => (Array.isArray(v) ? v : []);
+  const summary = {
+    devices: arr(parsed.devices)
+      .map(d => ({ name: str(d && d.name), purpose: str(d && d.purpose) }))
+      .filter(d => d.name || d.purpose),
+    sequence: arr(parsed.sequence).map(str).filter(Boolean),
+    failureHandling: arr(parsed.failureHandling)
+      .map(f => {
+        const rule = { when: str(f && f.when), then: str(f && f.then) };
+        const n = Number(f && f.retries);
+        if (Number.isFinite(n) && n > 0) rule.retries = Math.round(n);
+        const ex = str(f && f.whenExhausted);
+        if (ex) rule.whenExhausted = ex;
+        return rule;
+      })
+      .filter(f => f.when || f.then),
+    interactions: arr(parsed.interactions)
+      .map(x => ({ station: str(x && x.station), how: str(x && x.how) }))
+      .filter(x => x.station || x.how),
+  };
+  if (!summary.devices.length && !summary.sequence.length
+    && !summary.failureHandling.length && !summary.interactions.length) {
+    throw new Error('Model returned an empty summary');
+  }
   const questions = (Array.isArray(parsed.questions) ? parsed.questions : [])
     .map(q => String(q).trim()).filter(Boolean).slice(0, 4);
+  if (progress) { try { progress(100, 'done'); } catch (_) {} }
 
-  const costUSD = response.usage ? costOfUsage(response.usage, MODEL) : 0;
   return {
     summary,
     coverage,
@@ -411,7 +497,9 @@ async function summarizeDescription({
     meta: {
       model: response.model || MODEL,
       usage: response.usage || null,
-      costUSD: Number(costUSD.toFixed(4)),
+      costUSD: Number(totalCostUSD.toFixed(4)),
+      // Per-summary-loop cost ceiling — the CLIENT gates on its running total.
+      maxCostUSD: SUMMARIZE_MAX_COST_USD,
     },
   };
 }

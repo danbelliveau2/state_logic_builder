@@ -14,32 +14,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useDiagramStore } from '../../store/useDiagramStore.js';
 import { buildProgramName } from '../../lib/tagNaming.js';
-
-const RING_R = 52;
-const RING_C = 2 * Math.PI * RING_R;
-
-function ProgressRing({ pct, failed }) {
-  const color = failed ? '#b83c3c' : pct >= 100 ? '#5a9a48' : '#1574C4';
-  return (
-    <svg width="128" height="128" viewBox="0 0 128 128">
-      <circle cx="64" cy="64" r={RING_R} fill="none" stroke="#e5e7eb" strokeWidth="10" />
-      <circle
-        cx="64" cy="64" r={RING_R} fill="none"
-        stroke={color} strokeWidth="10" strokeLinecap="round"
-        strokeDasharray={RING_C}
-        strokeDashoffset={RING_C * (1 - Math.min(pct, 100) / 100)}
-        transform="rotate(-90 64 64)"
-        style={{ transition: 'stroke-dashoffset 0.3s ease, stroke 0.3s ease' }}
-      />
-      <text x="64" y="60" textAnchor="middle" fontSize="24" fontWeight="700" fill="#0f172a">
-        {Math.floor(pct)}%
-      </text>
-      <text x="64" y="80" textAnchor="middle" fontSize="10" fill="#64748b">
-        {failed ? 'failed' : pct >= 100 ? 'done' : 'working'}
-      </text>
-    </svg>
-  );
-}
+import { ProgressRing } from '../jarvis/ProgressRing.jsx';
 
 const STAGE_LABELS = {
   start: 'Loading project',

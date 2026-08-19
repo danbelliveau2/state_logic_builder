@@ -15,15 +15,19 @@
  *   3. Clipboard paste: DescribeSurface mounts a window-level paste
  *      listener, so Ctrl+V of a Snipping Tool capture lands as a thumbnail
  *      no matter where focus is (and never dumps junk into the textarea).
- *   4. "Done explaining →" summary loop: POST /api/jarvis/summarize returns
- *      a cleaned restatement (editable working text), per-checklist-item
- *      coverage verdicts (which REPLACE the local heuristics from then on),
- *      and 2-4 follow-up questions. The engineer types OR dictates
+ *   4. "Done explaining →" summary loop: POST /api/jarvis/summarize/stream
+ *      (SSE — real 0-100% progress driving a ProgressRing; plain POST kept
+ *      as fallback) returns a STRUCTURED restatement — four scannable
+ *      sections (devices / sequence / failure handling / interactions),
+ *      each rendered as an editable card with its coverage verdict in the
+ *      header (verdicts REPLACE the local heuristics from then on) — plus
+ *      2-4 questions back to the engineer. The engineer types OR dictates
  *      corrections -> "Apply changes" re-summarizes -> iterate -> add
- *      pictures -> Build. Build then runs on the SUMMARY (+ the original
- *      appended as reference). The old direct path (heuristic-gated Build
- *      straight from the raw text) still works if Done explaining is never
- *      clicked.
+ *      pictures -> Build. Build then runs on the SERIALIZED summary (+ the
+ *      original appended as reference). The old direct path (heuristic-gated
+ *      Build straight from the raw text) still works if Done explaining is
+ *      never clicked. Summarize cost is capped per station draft
+ *      (JARVIS_SUMMARIZE_MAX_COST_USD, default $5) — never by input length.
  *
  * Build inserts the drawn SM into the CURRENT project via store actions and
  * then extracts the spec — identical to the modal's pipeline.
@@ -36,6 +40,7 @@ import { useDiagramStore } from '../../store/useDiagramStore.js';
 import { buildProgramName } from '../../lib/tagNaming.js';
 import { COVERAGE_ITEMS, assessCoverage } from '../../lib/coverageChecklist.js';
 import { DescribeSurface, useDictation, MicButton, ListeningIndicator } from './DescribeSurface.jsx';
+import { ProgressRing } from './ProgressRing.jsx';
 import { NewStateMachineModal } from '../modals/NewStateMachineModal.jsx';
 import { SpecEditorModal } from '../modals/SpecEditorModal.jsx';
 
@@ -120,6 +125,189 @@ const STAGES = [
   { until: 92, label: 'JARVIS is extracting the station spec…', ms: 30000 },
 ];
 
+// ── Structured summary helpers ──────────────────────────────────────────────
+//
+// summarizeDescription now returns a STRUCTURED summary:
+//   { devices:[{name,purpose}], sequence:[string],
+//     failureHandling:[{when,then,retries?,whenExhausted?}],
+//     interactions:[{station,how}] }
+// The UI renders it as four scannable section cards; Build (and priorSummary
+// on Apply changes) consume the serialized text form.
+
+function isStructuredSummary(s) {
+  return !!s && typeof s === 'object'
+    && Array.isArray(s.devices) && Array.isArray(s.sequence)
+    && Array.isArray(s.failureHandling) && Array.isArray(s.interactions);
+}
+
+function summaryHasContent(s) {
+  return isStructuredSummary(s)
+    && (s.devices.length > 0 || s.sequence.length > 0
+      || s.failureHandling.length > 0 || s.interactions.length > 0);
+}
+
+/** One display/edit line per item of a section. */
+function sectionToLines(key, items) {
+  switch (key) {
+    case 'devices':
+      return items.map(d => `${d.name}${d.purpose ? ` — ${d.purpose}` : ''}`);
+    case 'sequence':
+      return items.slice();
+    case 'failureHandling':
+      return items.map(f => {
+        let then = f.then || '';
+        const extras = [];
+        if (f.retries) extras.push(`retries: ${f.retries}`);
+        if (f.whenExhausted) extras.push(`when exhausted: ${f.whenExhausted}`);
+        if (extras.length) then += `${then ? ' ' : ''}(${extras.join('; ')})`;
+        return f.when ? `${f.when} → ${then}` : then;
+      });
+    case 'interactions':
+      return items.map(x => (x.station ? `${x.station}: ${x.how}` : x.how));
+    default:
+      return [];
+  }
+}
+
+/** Parse edited textarea lines back into a section's items. Tolerant —
+ *  a line that doesn't match the pattern still survives as text. */
+function linesToSection(key, text) {
+  const lines = String(text).split('\n').map(s => s.trim()).filter(Boolean);
+  switch (key) {
+    case 'devices':
+      return lines.map(l => {
+        const m = l.split(/\s+—\s+|\s+-\s+/);
+        return { name: m[0].trim(), purpose: m.slice(1).join(' - ').trim() };
+      });
+    case 'sequence':
+      return lines.map(l => l.replace(/^\d+[.)]\s*/, ''));
+    case 'failureHandling':
+      return lines.map(l => {
+        const m = l.split(/\s*(?:->|→)\s*/);
+        return { when: m[0].trim(), then: m.slice(1).join(' → ').trim() };
+      });
+    case 'interactions':
+      return lines.map(l => {
+        const i = l.indexOf(':');
+        return i === -1
+          ? { station: '', how: l }
+          : { station: l.slice(0, i).trim(), how: l.slice(i + 1).trim() };
+      });
+    default:
+      return [];
+  }
+}
+
+/** Serialize the structured summary to labeled text — the Build input and
+ *  the priorSummary sent with Apply changes. */
+function summaryToText(s) {
+  if (!isStructuredSummary(s)) return '';
+  const block = (title, lines, numbered = false) =>
+    `${title}\n${lines.length
+      ? lines.map((l, i) => (numbered ? `${i + 1}. ${l}` : `- ${l}`)).join('\n')
+      : '(not described yet)'}`;
+  return [
+    block('DEVICES', sectionToLines('devices', s.devices)),
+    block('SEQUENCE', sectionToLines('sequence', s.sequence), true),
+    block('FAILURE HANDLING', sectionToLines('failureHandling', s.failureHandling)),
+    block('STATION INTERACTIONS', sectionToLines('interactions', s.interactions)),
+  ].join('\n\n');
+}
+
+// Section cards: how each summary section renders + edits.
+const SUMMARY_SECTIONS = [
+  { key: 'devices', covKey: 'devices', title: 'Devices I heard', editHint: 'one per line:  Name — what it is for' },
+  { key: 'sequence', covKey: 'sequence', title: 'Sequence', editHint: 'one step per line, in order' },
+  { key: 'failureHandling', covKey: 'failures', title: 'What can go wrong', editHint: 'one per line:  when it happens → what to do' },
+  { key: 'interactions', covKey: 'interactions', title: 'Interactions with other stations', editHint: 'one per line:  Station: the interaction' },
+];
+
+// ── SSE-over-fetch (POST /api/jarvis/summarize/stream) ──────────────────────
+
+/** Minimal SSE reader over a fetch Response body. Calls onEvent(event, data)
+ *  per event; resolves when the stream closes. */
+async function readSse(res, onEvent) {
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf('\n\n')) !== -1) {
+      const chunk = buf.slice(0, idx);
+      buf = buf.slice(idx + 2);
+      let event = 'message';
+      let dataStr = '';
+      for (const line of chunk.split('\n')) {
+        if (line.startsWith('event:')) event = line.slice(6).trim();
+        else if (line.startsWith('data:')) dataStr += line.slice(5).trim();
+      }
+      if (dataStr) {
+        try { onEvent(event, JSON.parse(dataStr)); } catch { /* skip bad frame */ }
+      }
+    }
+  }
+}
+
+/** Summarize with REAL progress: streams the SSE endpoint, falling back to
+ *  the plain POST (no live progress) if the stream endpoint isn't available.
+ *  onProgress(pct, stage) — stage: 'sent'|'reading'|'writing'|'done'. */
+async function summarizeRequest(payload, onProgress) {
+  let res = null;
+  try {
+    res = await fetch('/api/jarvis/summarize/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch { res = null; }
+
+  const isSse = !!res && res.ok
+    && (res.headers.get('content-type') || '').includes('text/event-stream')
+    && !!res.body;
+
+  if (isSse) {
+    let result = null;
+    let err = null;
+    await readSse(res, (event, data) => {
+      if (event === 'progress') onProgress?.(data.pct, data.stage);
+      else if (event === 'done') result = data;
+      else if (event === 'error') err = new Error(data.error || 'Summarize failed');
+    });
+    if (err) throw err;
+    if (!result || !result.ok) throw new Error(result?.error || 'Summarize stream ended without a result');
+    onProgress?.(100, 'done');
+    return result;
+  }
+
+  // The stream endpoint answered with a real (non-SSE) error — surface it.
+  if (res && !res.ok && res.status !== 404 && res.status !== 405) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Summarize request failed (${res.status})`);
+  }
+
+  // Fallback: plain POST (older server) — no live progress.
+  const res2 = await fetch('/api/jarvis/summarize', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await res2.json().catch(() => ({}));
+  if (!res2.ok || !data.ok) throw new Error(data.error || `Summarize request failed (${res2.status})`);
+  onProgress?.(100, 'done');
+  return data;
+}
+
+// Honest stage lines for the summarize progress ring.
+const SUMMARIZE_STAGE_TEXT = {
+  sent: 'JARVIS is reading your explanation…',
+  reading: 'JARVIS is reading your explanation…',
+  writing: 'Writing the summary…',
+  done: 'Done',
+};
+
 // ── Checklist rendering ─────────────────────────────────────────────────────
 
 function CoverageItem({ item, score, message, optional }) {
@@ -188,6 +376,139 @@ function ChecklistPanel({ scores, messages, hasOtherSms, sourceLabel }) {
   );
 }
 
+// ── Summary section card ────────────────────────────────────────────────────
+//
+// One compact, scannable card per summary section. The header carries the
+// section's checklist verdict (✓ / what's missing) so understanding and
+// coverage read together. "edit" toggles a plain-lines textarea (one item
+// per line) — the cleaner alternative to per-row inline editing.
+
+function SummarySection({ section, items, cov, optional, onChange }) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState('');
+  const lines = sectionToLines(section.key, items);
+  const score = cov?.score ?? 0;
+
+  const startEdit = () => { setText(lines.join('\n')); setEditing(true); };
+  const commit = () => { onChange(linesToSection(section.key, text)); setEditing(false); };
+
+  const badge = score === 2 ? (
+    <span style={{ fontSize: 10, fontWeight: 700, color: C.success }}>✓ covered</span>
+  ) : optional && items.length === 0 ? (
+    <span style={{ fontSize: 10, color: C.light }}>optional — fine to leave empty</span>
+  ) : (
+    <span style={{ fontSize: 10, color: '#6b5513', fontWeight: 600 }}>
+      {score === 1 ? 'mentioned briefly' : 'not covered'}
+      {cov?.missing ? ` — ${cov.missing}` : ''}
+    </span>
+  );
+
+  return (
+    <div
+      data-testid={`summary-section-${section.key}`}
+      style={{
+        border: `1px solid ${C.border}`, borderRadius: 8, background: '#fff',
+        padding: '10px 14px', marginBottom: 10,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
+        <span style={{
+          fontSize: 11, fontWeight: 700, color: C.text,
+          letterSpacing: '0.04em', textTransform: 'uppercase',
+        }}>
+          {section.title}
+          {optional && <span style={{ fontWeight: 400, textTransform: 'none', color: C.light }}> (optional — no other stations yet)</span>}
+        </span>
+        <span style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>{badge}</span>
+        {editing ? (
+          <span style={{ display: 'inline-flex', gap: 8 }}>
+            <button
+              type="button"
+              onClick={commit}
+              style={{
+                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                fontSize: 11, fontWeight: 700, color: C.primary, textDecoration: 'underline',
+              }}
+            >done</button>
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              style={{
+                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                fontSize: 11, color: C.muted, textDecoration: 'underline',
+              }}
+            >cancel</button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            data-testid={`summary-section-${section.key}-edit`}
+            onClick={startEdit}
+            style={{
+              background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+              fontSize: 11, color: C.muted, textDecoration: 'underline',
+            }}
+          >edit</button>
+        )}
+      </div>
+
+      {editing ? (
+        <>
+          <textarea
+            className="form-input form-textarea"
+            rows={Math.max(3, lines.length + 1)}
+            style={{ lineHeight: 1.5, fontFamily: 'inherit', resize: 'vertical', fontSize: 12 }}
+            value={text}
+            onChange={e => setText(e.target.value)}
+            autoFocus
+          />
+          <div style={{ fontSize: 10, color: C.light, marginTop: 3 }}>{section.editHint}</div>
+        </>
+      ) : items.length === 0 ? (
+        <div style={{ fontSize: 12, color: C.light, fontStyle: 'italic' }}>(not described yet)</div>
+      ) : section.key === 'devices' ? (
+        items.map((d, i) => (
+          <div key={i} style={{ fontSize: 12, color: C.text, lineHeight: 1.55, padding: '1px 0' }}>
+            <span style={{ fontWeight: 700 }}>{d.name}</span>
+            {d.purpose && <span style={{ color: C.muted }}> — {d.purpose}</span>}
+          </div>
+        ))
+      ) : section.key === 'sequence' ? (
+        items.map((s, i) => (
+          <div key={i} style={{ display: 'flex', gap: 8, fontSize: 12, color: C.text, lineHeight: 1.55, padding: '1px 0' }}>
+            <span style={{ color: C.muted, fontWeight: 700, width: 18, textAlign: 'right', flexShrink: 0 }}>{i + 1}.</span>
+            <span>{s}</span>
+          </div>
+        ))
+      ) : section.key === 'failureHandling' ? (
+        items.map((f, i) => (
+          <div key={i} style={{ fontSize: 12, color: C.text, lineHeight: 1.55, padding: '1px 0' }}>
+            <span style={{ fontWeight: 600 }}>{f.when}</span>
+            {(f.then || f.retries || f.whenExhausted) && <span style={{ color: C.muted }}> → </span>}
+            <span>{f.then}</span>
+            {(f.retries || f.whenExhausted) && (
+              <span style={{ color: C.muted }}>
+                {' ('}
+                {[f.retries ? `retries: ${f.retries}` : null,
+                  f.whenExhausted ? `when exhausted: ${f.whenExhausted}` : null]
+                  .filter(Boolean).join('; ')}
+                {')'}
+              </span>
+            )}
+          </div>
+        ))
+      ) : (
+        items.map((x, i) => (
+          <div key={i} style={{ fontSize: 12, color: C.text, lineHeight: 1.55, padding: '1px 0' }}>
+            {x.station && <span style={{ fontWeight: 700 }}>{x.station}: </span>}
+            <span>{x.how}</span>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
 // ── The page ────────────────────────────────────────────────────────────────
 
 export function CreateStationPage() {
@@ -202,11 +523,15 @@ export function CreateStationPage() {
   if (draftRef.current === undefined) draftRef.current = loadDraft(draftKey);
   const draft = draftRef.current;
 
+  // Structured summaries only — a pre-rework draft with a string summary
+  // falls back to the input phase (the raw explanation is preserved).
+  const draftSummary = isStructuredSummary(draft?.summary) ? draft.summary : null;
+
   // mode: 'describe' | 'blank' (old form-first flow)
   const [mode, setMode] = useState('describe');
   // phase: 'input' | 'summarizing' | 'summary' | 'building' | 'review' | 'specFailed'
   const [phase, setPhase] = useState(() =>
-    (draft && draft.phase === 'summary' && draft.summary) ? 'summary' : 'input');
+    (draft && draft.phase === 'summary' && draftSummary) ? 'summary' : 'input');
   const [name, setName] = useState(draft?.name ?? '');
   const [station, setStation] = useState(() => {
     if (draft?.station) return String(draft.station);
@@ -222,14 +547,21 @@ export function CreateStationPage() {
   const [draftNote, setDraftNote] = useState(!!draft);
   const [draftImagesDropped, setDraftImagesDropped] = useState(0);
 
-  // Summary loop state
-  const [summary, setSummary] = useState(draft?.summary ?? '');
+  // Summary loop state (summary is the STRUCTURED object, or null)
+  const [summary, setSummary] = useState(draftSummary);
   const [jarvisCoverage, setJarvisCoverage] = useState(draft?.jarvisCoverage ?? null);
   const [questions, setQuestions] = useState(draft?.questions ?? []);
   const [changes, setChanges] = useState('');
   const [applying, setApplying] = useState(false);
   const [summarizeCost, setSummarizeCost] = useState(draft?.summarizeCost ?? 0);
+  // Per-station-draft summarize cost ceiling ($). Server reports the real
+  // configured value in meta.maxCostUSD; 5 is the documented default.
+  const [summarizeCostCap, setSummarizeCostCap] = useState(5);
   const [pulseDone, setPulseDone] = useState(false);
+  // Real summarize progress (drives the ProgressRing during
+  // 'summarizing' and during Apply changes)
+  const [sumPct, setSumPct] = useState(0);
+  const [sumStage, setSumStage] = useState('sent');
 
   const [error, setError] = useState(null);
   const [pct, setPct] = useState(0);
@@ -260,7 +592,7 @@ export function CreateStationPage() {
     if (phase === 'building' || phase === 'review' || phase === 'specFailed') return;
     const t = setTimeout(() => {
       if (buildSucceededRef.current) return;
-      const hasContent = description.trim() || images.length || summary.trim() || name.trim();
+      const hasContent = description.trim() || images.length || summaryHasContent(summary) || name.trim();
       try {
         if (!hasContent) {
           localStorage.removeItem(draftKey);
@@ -298,7 +630,7 @@ export function CreateStationPage() {
     clearDraft();
     buildSucceededRef.current = false;
     setName(''); setDescription(''); setImages([]);
-    setSummary(''); setJarvisCoverage(null); setQuestions([]); setChanges('');
+    setSummary(null); setJarvisCoverage(null); setQuestions([]); setChanges('');
     setSummarizeCost(0); setError(null); setDraftNote(false); setDraftImagesDropped(0);
     setPhase('input');
   }
@@ -320,34 +652,43 @@ export function CreateStationPage() {
 
   const preview = name ? buildProgramName(station || 1, name.replace(/[^a-zA-Z0-9_]/g, '')) : '—';
   const canBuild = !!name.trim()
-    && !!(usingJarvisVerdicts ? summary.trim() : description.trim())
+    && !!(usingJarvisVerdicts ? summaryHasContent(summary) : description.trim())
     && allCovered;
 
-  // ── Summarize loop ───────────────────────────────────────────────────────
+  // Cost gate: the limit is money, never the user's explanation length.
+  const overSummarizeBudget = summarizeCost >= summarizeCostCap;
+  const budgetMessage = `This station's summary work has reached the $${summarizeCostCap.toFixed(2)} ceiling — raise JARVIS_SUMMARIZE_MAX_COST_USD in .env to continue`;
+
+  // ── Summarize loop (streams real progress) ───────────────────────────────
   async function callSummarize({ priorSummary = '', corrections = '' } = {}) {
-    const res = await fetch('/api/jarvis/summarize', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        description: description.trim(),
-        images: images.map(i => ({ name: i.name, base64: i.base64, mediaType: i.mediaType })),
-        checklist: coverage.scores,
-        sm: { name: name.trim().replace(/\s+/g, ''), displayName: name.trim() || 'New Station' },
-        otherSms: otherSms.map(s => ({ name: s.name, displayName: s.displayName ?? s.name })),
-        priorSummary,
-        corrections,
-      }),
+    setSumPct(0);
+    setSumStage('sent');
+    const data = await summarizeRequest({
+      description: description.trim(),
+      images: images.map(i => ({ name: i.name, base64: i.base64, mediaType: i.mediaType })),
+      checklist: coverage.scores,
+      sm: { name: name.trim().replace(/\s+/g, ''), displayName: name.trim() || 'New Station' },
+      otherSms: otherSms.map(s => ({ name: s.name, displayName: s.displayName ?? s.name })),
+      priorSummary,
+      corrections,
+    }, (pct, stage) => {
+      setSumPct(pct);
+      setSumStage(stage);
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.ok) throw new Error(data.error || `Summarize request failed (${res.status})`);
+    if (!isStructuredSummary(data.summary)) {
+      throw new Error('Server returned an unstructured summary — restart the API server (server.js / specAuthor.js changed)');
+    }
     setSummary(data.summary);
     setJarvisCoverage(data.coverage);
     setQuestions(data.questions ?? []);
     setSummarizeCost(c => Number((c + (Number(data.meta?.costUSD) || 0)).toFixed(4)));
+    const cap = Number(data.meta?.maxCostUSD);
+    if (Number.isFinite(cap) && cap > 0) setSummarizeCostCap(cap);
   }
 
   async function handleDoneExplaining() {
     if (!description.trim()) return;
+    if (overSummarizeBudget) { setError(budgetMessage); return; }
     setError(null);
     setPhase('summarizing');
     try {
@@ -361,10 +702,11 @@ export function CreateStationPage() {
 
   async function handleApplyChanges() {
     if (!changes.trim()) return;
+    if (overSummarizeBudget) { setError(budgetMessage); return; }
     setError(null);
     setApplying(true);
     try {
-      await callSummarize({ priorSummary: summary, corrections: changes.trim() });
+      await callSummarize({ priorSummary: summaryToText(summary), corrections: changes.trim() });
       setChanges('');
     } catch (e) {
       setError(e.message);
@@ -415,7 +757,7 @@ export function CreateStationPage() {
     // Once a summary exists, IT is the build input — the raw explanation
     // rides along as reference so nothing the engineer said is lost.
     const desc = usingJarvisVerdicts
-      ? `${summary.trim()}\n\n---\nOriginal explanation (reference only — the summary above is authoritative):\n\n${description.trim()}`
+      ? `${summaryToText(summary)}\n\n---\nOriginal explanation (reference only — the summary above is authoritative):\n\n${description.trim()}`
       : description.trim();
     try {
       // ── 1. Draw the station (one SM, Dan's layout rules) ────────────────
@@ -530,7 +872,7 @@ export function CreateStationPage() {
   // ── Back / leave ─────────────────────────────────────────────────────────
   function handleBack() {
     if (phase === 'building' || phase === 'summarizing') return;
-    const hasContent = description.trim() || images.length > 0 || summary.trim();
+    const hasContent = description.trim() || images.length > 0 || summaryHasContent(summary);
     if (hasContent && !window.confirm('Your explanation is saved as a draft — leave anyway?')) return;
     store.closeNewSmModal();
   }
@@ -678,7 +1020,21 @@ export function CreateStationPage() {
                   onDictationEnd={() => setPulseDone(true)}
                 />
 
-                {/* Action row */}
+                {/* Action row — real progress ring while JARVIS summarizes */}
+                {phase === 'summarizing' ? (
+                  <div
+                    data-testid="summarize-progress"
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+                      gap: 14, marginTop: 16, minHeight: 76,
+                    }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
+                      {SUMMARIZE_STAGE_TEXT[sumStage] ?? 'Working…'}
+                    </div>
+                    <ProgressRing pct={sumPct} size={76} subLabel="" />
+                  </div>
+                ) : (
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 16 }}>
                   <button
                     type="button"
@@ -729,9 +1085,10 @@ export function CreateStationPage() {
                         ? 'sdc-mic-pulse 1.6s ease-in-out 3' : 'none',
                     }}
                   >
-                    {phase === 'summarizing' ? 'JARVIS is reading…' : 'Done explaining →'}
+                    Done explaining →
                   </button>
                 </div>
+                )}
                 <div style={{ fontSize: 11, color: C.light, marginTop: 8, textAlign: 'right', lineHeight: 1.5 }}>
                   JARVIS restates your explanation cleanly, marks what's still
                   missing, and asks a few questions — then you Build from the reviewed summary.
@@ -752,16 +1109,18 @@ export function CreateStationPage() {
             <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <label className="form-label" style={{ fontSize: 14, marginTop: 0 }}>
-                  JARVIS's understanding — edit anything that's wrong
+                  This is what JARVIS is seeing so far — check each section, edit anything wrong
                 </label>
-                <textarea
-                  className="form-input form-textarea"
-                  data-testid="summary-textarea"
-                  rows={16}
-                  style={{ lineHeight: 1.55, fontFamily: 'inherit', resize: 'vertical' }}
-                  value={summary}
-                  onChange={e => setSummary(e.target.value)}
-                />
+                {summary && SUMMARY_SECTIONS.map(section => (
+                  <SummarySection
+                    key={section.key}
+                    section={section}
+                    items={summary[section.key]}
+                    cov={jarvisCoverage ? jarvisCoverage[section.covKey] : null}
+                    optional={section.key === 'interactions' && !hasOtherSms}
+                    onChange={items => setSummary(s => ({ ...s, [section.key]: items }))}
+                  />
+                ))}
 
                 {questions.length > 0 && (
                   <div style={{
@@ -772,7 +1131,7 @@ export function CreateStationPage() {
                       fontSize: 10, fontWeight: 700, color: C.primary,
                       letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 4,
                     }}>
-                      Anything to change?
+                      Questions
                     </div>
                     {questions.map((q, i) => (
                       <div key={i} style={{ fontSize: 12, color: C.text, lineHeight: 1.5, padding: '2px 0' }}>
@@ -822,14 +1181,35 @@ export function CreateStationPage() {
                     </div>
                   )}
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+                {overSummarizeBudget && (
+                  <div style={{
+                    marginTop: 8, fontSize: 11, color: '#6b5513',
+                    background: '#fdf6e3', border: '1px solid #e6d9a8',
+                    borderRadius: 6, padding: '6px 12px',
+                  }}>
+                    {budgetMessage}. Building from the current summary still works.
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 6 }}>
+                  {applying && (
+                    <div
+                      data-testid="apply-changes-progress"
+                      style={{ display: 'flex', alignItems: 'center', gap: 10 }}
+                    >
+                      <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>
+                        {SUMMARIZE_STAGE_TEXT[sumStage] ?? 'Working…'}
+                      </span>
+                      <ProgressRing pct={sumPct} size={44} subLabel="" />
+                    </div>
+                  )}
                   <button
                     className="btn btn--secondary"
                     data-testid="apply-changes-btn"
                     onClick={handleApplyChanges}
-                    disabled={!changes.trim() || applying}
+                    disabled={!changes.trim() || applying || overSummarizeBudget}
+                    title={overSummarizeBudget ? budgetMessage : undefined}
                   >
-                    {applying ? 'JARVIS is revising…' : 'Apply changes'}
+                    Apply changes
                   </button>
                 </div>
 
@@ -905,10 +1285,11 @@ export function CreateStationPage() {
                   sourceLabel="JARVIS's verdict from your explanation — this gates the Build."
                 />
                 <div style={{
-                  fontSize: 10, color: C.light, marginTop: 8, textAlign: 'right',
+                  fontSize: 11, color: overSummarizeBudget ? '#6b5513' : C.muted,
+                  fontWeight: 600, marginTop: 8, textAlign: 'right',
                   fontFamily: 'Consolas, monospace',
                 }}>
-                  summary cost so far: ${summarizeCost.toFixed(4)}
+                  summary cost so far: ${summarizeCost.toFixed(4)} of ${summarizeCostCap.toFixed(2)} ceiling
                 </div>
               </div>
             </div>

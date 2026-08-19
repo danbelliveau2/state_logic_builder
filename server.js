@@ -37,6 +37,15 @@
  *                                     { description, images, checklist, sm, otherSms,
  *                                       priorSummary, corrections }
  *                                     -> { ok, summary, coverage, questions, meta }. Stateless.
+ *   POST   /api/jarvis/summarize/stream  Same call with LIVE PROGRESS over SSE
+ *                                     (chunked response; body identical to
+ *                                     /api/jarvis/summarize). Events:
+ *                                     progress {pct,stage}, done {ok,...result},
+ *                                     error {error}. Closing the connection
+ *                                     aborts the model stream. POST (not GET)
+ *                                     because the description/images ride in
+ *                                     the body — read it with fetch(), not
+ *                                     EventSource.
  *
  *   GET    /api/standards             get the entire shared standards library (array)
  *   POST   /api/standards             replace the entire library with the POST body
@@ -420,6 +429,76 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     }
   }
 
+  /** POST /api/jarvis/summarize/stream — same body as /api/jarvis/summarize,
+   *  but the response is SSE (chunked): `progress` events with real 0-100
+   *  model progress, then one `done` event carrying the full result (or an
+   *  `error` event). Closing the connection aborts the in-flight SDK stream.
+   *  The plain POST endpoint above stays for non-streaming callers. */
+  async function handleJarvisSummarizeStream(req, res) {
+    // Read the body BEFORE switching the response to SSE so a bad request
+    // can still fail as plain JSON.
+    let body;
+    try {
+      body = JSON.parse(await readBody(req) || '{}');
+    } catch (e) {
+      return sendJson(res, 400, { error: 'Invalid JSON body: ' + e.message });
+    }
+    if (!body.description || !String(body.description).trim()) {
+      return sendJson(res, 400, { error: 'description is required' });
+    }
+    let author;
+    try {
+      author = require('./src/lib/agentGenerator/specAuthor.js');
+    } catch (e) {
+      return sendJson(res, 503, { error: 'Spec author not available — run npm install: ' + e.message });
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'X-Accel-Buffering': 'no',
+    });
+    const send = (event, data) => {
+      try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch (_) {}
+    };
+
+    const abort = new AbortController();
+    let clientGone = false;
+    req.on('close', () => { clientGone = true; abort.abort(); });
+
+    // Monotonic guard (matches /api/generate/stream).
+    let lastPct = 0;
+    const onProgress = (pct, stage) => {
+      const p = Math.max(lastPct, Math.min(Math.round(pct * 10) / 10, 100));
+      lastPct = p;
+      send('progress', { pct: p, stage });
+    };
+
+    try {
+      const result = await author.summarizeDescription({
+        description: body.description,
+        images: Array.isArray(body.images) ? body.images : [],
+        checklist: body.checklist && typeof body.checklist === 'object' ? body.checklist : null,
+        sm: body.sm && typeof body.sm === 'object' ? body.sm : {},
+        otherSms: Array.isArray(body.otherSms) ? body.otherSms : [],
+        priorSummary: typeof body.priorSummary === 'string' ? body.priorSummary : '',
+        corrections: typeof body.corrections === 'string' ? body.corrections : '',
+        signal: abort.signal,
+        onProgress,
+      });
+      send('done', { ok: true, ...result });
+    } catch (e) {
+      if (clientGone || (e && (e.name === 'AbortError' || e.name === 'APIUserAbortError'))) {
+        // Client cancelled — nothing to report.
+      } else {
+        send('error', { error: e.message || String(e) });
+      }
+    }
+    res.end();
+  }
+
   // ── Standards Library (shared across all clients) ─────────────────────────
 
   /** Read the full standards array from disk. Returns [] if the file is
@@ -563,6 +642,11 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
 
     if (pathname === '/api/jarvis/summarize') {
       if (method === 'POST') return handleJarvisSummarize(req, res);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    if (pathname === '/api/jarvis/summarize/stream') {
+      if (method === 'POST') return handleJarvisSummarizeStream(req, res);
       return sendJson(res, 405, { error: 'Method not allowed' });
     }
 
