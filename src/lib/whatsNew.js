@@ -10,12 +10,27 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.0.5';
+export const UI_BUILD = 'v2.0.6';
 
 export const BUILT_AT = '2026-08-20';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.0.6',
+    date: '2026-08-20',
+    items: [
+      'Generate now asks what you\'re generating — tiers: station sequence (pick one or several), multi-station integration (early), full machine (coming)',
+      'Pick several stations and Jarvis generates each in turn — "Station 2 of 3" progress, one L5X per station, a score row for every build',
+      'Cancel mid-run stops after the in-flight station and reports which ones completed',
+      'No more "is it frozen?" — you now WATCH Jarvis think: live reasoning summaries stream into the log while it works, with a pulsing alive dot',
+      'The ring moves honestly through the thinking phase (15→45%) and holds rather than fakes when reasoning runs long; when writing starts the status flips to "Writing the edit plan — N tokens" (45→70%)',
+      'Typical-duration hint under the timer (from Jarvis\'s own build history), and an amber "connection may be stalled" warning only if the stream truly goes silent for 90+ seconds (the server now heartbeats every 15s)',
+      'Dead stream mid-run? One-click "Retry generation" re-runs the station on a fresh connection; Cancel becomes "Cancel & clean up"',
+      'Tree counts drop the ~ (looked like negative numbers)',
+      'App-wide UI scaling control (−/100%/+ in the top bar), like the other SDC Tools apps',
+    ],
+  },
   {
     version: 'v2.0.5',
     date: '2026-08-20',

@@ -16,7 +16,7 @@
  * edited while another agent owns it.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useDiagramStore } from '../store/useDiagramStore.js';
 import { downloadL5X, downloadAllL5XAsZip, exportProjectJSON } from '../lib/l5xExporter.js';
 import { downloadControllerL5X } from '../lib/controllerL5xExporter.js';
@@ -25,6 +25,10 @@ import { JarvisPage } from '../components/jarvis/JarvisPage.jsx';
 import { ProjectPickerModal } from '../components/modals/ProjectPickerModal.jsx';
 import { useAutoSaveStatus } from './useAutoSaveStatus.js';
 import { useV2Shell, closeAllProjectsToHome } from './useV2Shell.js';
+import {
+  DEFAULT_SCALE, currentScale, isMaxScale, isMinScale, readScale,
+  scaleLabel, stepScale, subscribeScale, writeScale,
+} from './appScale.js';
 
 function SdcLogo() {
   // Same brand mark as the classic Toolbar.
@@ -257,7 +261,7 @@ function BuildMenu() {
             disabled={!sm || (sm.nodes ?? []).length === 0}
             onClick={() => { setOpen(false); setGenerateOpen(true); }}
           >
-            <span className="v2-build__item-label">✨ Generate this station (Jarvis)</span>
+            <span className="v2-build__item-label">✨ Generate with Jarvis…</span>
             <span className="v2-build__item-hint">AI L5X with live progress + validation</span>
           </button>
 
@@ -308,6 +312,43 @@ function BuildMenu() {
   );
 }
 
+// ── App-wide UI scale control (− / 100% / +) ────────────────────────────────
+// Same control as the other SDC Tools apps (estimate builder top bar,
+// sdc-sheets sidebar footer). The % readout doubles as the reset. Steppers
+// step from currentScale() (read off the DOM), not the rendered value — two
+// fast clicks before a re-render must both land. No Ctrl+/− binding: those
+// are the browser's, and browser zoom composes with this one.
+function ScaleControl() {
+  const scale = useSyncExternalStore(subscribeScale, readScale, () => DEFAULT_SCALE);
+  return (
+    <div className="v2-scale" data-testid="app-scale-control" title="App-wide UI scale — like the other SDC Tools apps">
+      <button
+        className="v2-scale__btn"
+        data-testid="app-scale-minus"
+        onClick={() => writeScale(stepScale(currentScale(), -1))}
+        disabled={isMinScale(scale)}
+        aria-label="Make the whole app smaller"
+        title="Make the whole app smaller"
+      >−</button>
+      <button
+        className="v2-scale__readout"
+        data-testid="app-scale-readout"
+        onClick={() => writeScale(DEFAULT_SCALE)}
+        aria-label={`UI scale ${scaleLabel(scale)} — reset to 100%`}
+        title="Reset to 100%"
+      >{scaleLabel(scale)}</button>
+      <button
+        className="v2-scale__btn"
+        data-testid="app-scale-plus"
+        onClick={() => writeScale(stepScale(currentScale(), 1))}
+        disabled={isMaxScale(scale)}
+        aria-label="Make the whole app larger"
+        title="Make the whole app larger"
+      >+</button>
+    </div>
+  );
+}
+
 // ── Jarvis button (learning-being surface) ──────────────────────────────────
 function JarvisButton() {
   const [open, setOpen] = useState(false);
@@ -351,6 +392,7 @@ export function TopBarV2() {
       <V2TabStrip />
       <div className="v2-topbar__spacer" />
       <AutoSaveIndicator />
+      <ScaleControl />
       <JarvisButton />
       <BuildMenu />
     </header>

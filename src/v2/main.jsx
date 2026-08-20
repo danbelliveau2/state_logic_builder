@@ -11,8 +11,12 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { AppV2 } from './AppV2.jsx';
+import { initAppScale } from './appScale.js';
 import '../index.css';
 import './v2.css';
+
+// Restore the persisted UI scale BEFORE first paint — no 100% flash.
+initAppScale();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

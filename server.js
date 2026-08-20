@@ -256,6 +256,11 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     }
   }
 
+  // In-flight generation counter — exposed at GET /api/health so tooling
+  // (and humans) can check {activeGenerations} BEFORE restarting this server.
+  // Restarting mid-generation kills the SSE and loses a paid model run.
+  let activeGenerations = 0;
+
   /** GET /api/generate/stream?filename=&smId= — SSE live-progress generation.
    *  One connection runs the whole pipeline: progress events stream as the
    *  model works, the final `done` event carries the full result payload
@@ -263,6 +268,11 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
    *  in-flight SDK stream. On success the L5X is also written to
    *  generated/<project>/<sm>__jarvis_v<version>__<date>.L5X. */
   async function handleGenerateStream(req, res, query) {
+    activeGenerations++;
+    let counted = true;
+    const releaseGeneration = () => {
+      if (counted) { counted = false; activeGenerations = Math.max(0, activeGenerations - 1); }
+    };
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
@@ -279,12 +289,17 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       gen = require('./src/lib/agentGenerator/client.js');
     } catch (e) {
       send('error', { error: 'AI generation not available — run npm install: ' + e.message });
+      releaseGeneration();
       return res.end();
     }
 
     const abort = new AbortController();
     let clientGone = false;
-    req.on('close', () => { clientGone = true; abort.abort(); });
+    // Keepalive ping every 15s — the model's silent reasoning phase can run
+    // minutes with zero progress events; the client uses pings to tell
+    // "alive but thinking" apart from "connection stalled" (>90s of silence).
+    const keepalive = setInterval(() => send('ping', { t: Date.now() }), 15000);
+    req.on('close', () => { clientGone = true; clearInterval(keepalive); releaseGeneration(); abort.abort(); });
 
     const startedAt = Date.now(); // wall-clock duration for the build record
 
@@ -299,9 +314,9 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
 
     try {
       const safe = safeFilename(query.filename || '');
-      if (!safe) { send('error', { error: 'Invalid or missing filename' }); return res.end(); }
+      if (!safe) { send('error', { error: 'Invalid or missing filename' }); clearInterval(keepalive); releaseGeneration(); return res.end(); }
       const fp = path.join(DATA_DIR_, safe);
-      if (!fs.existsSync(fp)) { send('error', { error: 'Project not found: ' + safe }); return res.end(); }
+      if (!fs.existsSync(fp)) { send('error', { error: 'Project not found: ' + safe }); clearInterval(keepalive); releaseGeneration(); return res.end(); }
       const projectJson = JSON.parse(fs.readFileSync(fp, 'utf8'));
 
       send('progress', { pct: 2, stage: 'start', detail: `Loaded ${safe}` });
@@ -370,6 +385,8 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         send('error', { error: e.message || String(e) });
       }
     }
+    clearInterval(keepalive);
+    releaseGeneration();
     res.end();
   }
 
@@ -1091,6 +1108,13 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       if (filename  && method === 'GET')    return handleLoad(res, filename);
       if (filename  && method === 'POST')   return handleSave(req, res, filename);
       if (filename  && method === 'DELETE') return handleDelete(res, filename);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    // Health/liveness — check activeGenerations BEFORE restarting this server:
+    // a restart mid-generation kills the SSE and loses a paid model run.
+    if (pathname === '/api/health') {
+      if (method === 'GET') return sendJson(res, 200, { ok: true, activeGenerations, uptimeS: Math.round(process.uptime()) });
       return sendJson(res, 405, { error: 'Method not allowed' });
     }
 

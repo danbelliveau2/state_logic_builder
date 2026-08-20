@@ -4,10 +4,29 @@
  */
 
 /* ── App frame ─────────────────────────────────────────────────────────── */
+
+/* App-wide UI scale — same mechanism as sdc-sheets / the estimate builder:
+   CSS `zoom` on <html>, driven by --app-scale (set pre-paint by appScale.js,
+   changed by the − / % / + control in the top bar). `zoom` participates in
+   layout, so hit-testing and sticky positioning stay correct — unlike
+   transform: scale(). v2.css is only loaded by the v2 entry, so the classic
+   shell is untouched. */
+html {
+  --app-scale: 1;
+  zoom: var(--app-scale);
+}
+/* index.css gives body height: 100vh — divide the zoom back out here too, or
+   the page gains (scale − 1) × viewport of hidden scrollable dead space. */
+body {
+  height: calc(100vh / var(--app-scale, 1));
+}
+
 .v2-app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  /* vh resolves against the UNzoomed viewport and is then scaled — divide the
+     zoom back out so the frame always fits the real window (sdc-sheets §45). */
+  height: calc(100vh / var(--app-scale, 1));
   overflow: hidden;
   background: var(--color-bg);
 }
@@ -128,6 +147,48 @@
 .v2-build__btn {
   flex-shrink: 0;
 }
+
+/* App-wide UI scale control (− / 100% / +) — never shrinks (right side). */
+.v2-scale {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 5px;
+  padding: 1px;
+}
+.v2-scale__btn {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.12);
+  border: none;
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.v2-scale__btn:hover:not(:disabled) { background: var(--color-primary-h); }
+.v2-scale__btn:disabled { opacity: 0.4; cursor: default; }
+.v2-scale__readout {
+  min-width: 38px;
+  padding: 1px 3px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.85);
+  font-family: Consolas, Menlo, Monaco, monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.v2-scale__readout:hover { background: rgba(255, 255, 255, 0.12); }
 
 /* Jarvis button (learning-being surface) */
 .v2-jarvis__btn {

@@ -1,1 +1,32 @@
-[]
+[
+  {
+    "id": "b_mt1iq1d3_0epw23",
+    "at": "2026-08-20T12:50:11.943Z",
+    "project": "Test_Project",
+    "sm": "stub",
+    "jarvisVersion": null,
+    "costUSD": 0,
+    "durationS": 35,
+    "attempts": 0,
+    "validationOk": true,
+    "score": null,
+    "scoredBy": null,
+    "scoreComment": null,
+    "filePath": null
+  },
+  {
+    "id": "b_mt1jh5tk_nk9wco",
+    "at": "2026-08-20T13:11:17.432Z",
+    "project": "Test_Project",
+    "sm": "SDCServoPNP",
+    "jarvisVersion": "1.0.2",
+    "costUSD": 3.1022,
+    "durationS": 1126,
+    "attempts": 3,
+    "validationOk": true,
+    "score": null,
+    "scoredBy": null,
+    "scoreComment": null,
+    "filePath": "C:\\SDC-StateLogic\\generated\\Test_Project\\SDCServoPNP__jarvis_v1.0.2__2026-08-20_1311.L5X"
+  }
+]

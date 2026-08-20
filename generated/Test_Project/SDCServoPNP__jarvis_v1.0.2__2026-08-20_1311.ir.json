@@ -1,0 +1,773 @@
+{
+  "irVersion": 1,
+  "smId": "id_mt1h9ftw",
+  "smName": "SDCServoPNP",
+  "displayName": "SDC Servo PNP",
+  "stationNumber": 1,
+  "description": "Two-axis servo pick and place with pneumatic gripper (timer only) - picks a part and places it with rounded-corner, fast/slow transition motion.",
+  "devices": [
+    {
+      "id": "id_d202b8e8-376a-4ef5-9d55-e390b9ea71d9",
+      "type": "ServoAxis",
+      "name": "HorizontalAxis",
+      "displayName": "Horizontal_Axis",
+      "extras": {
+        "sensorArrangement": "",
+        "homePosition": "ServoMove",
+        "axisNumber": 1,
+        "motionType": "linear",
+        "positions": [
+          {
+            "name": "Home",
+            "defaultValue": 25,
+            "moveType": "Pos",
+            "isHome": true,
+            "isRecipe": false,
+            "type": "position"
+          },
+          {
+            "name": "InBetween",
+            "defaultValue": 200,
+            "moveType": "Pos",
+            "isHome": false,
+            "isRecipe": false,
+            "type": "position"
+          },
+          {
+            "name": "Pick",
+            "defaultValue": 350,
+            "moveType": "Pos",
+            "isHome": false,
+            "isRecipe": false,
+            "type": "position"
+          },
+          {
+            "name": "Place",
+            "defaultValue": 50,
+            "moveType": "Pos",
+            "isHome": false,
+            "isRecipe": false,
+            "type": "position"
+          }
+        ],
+        "speedProfiles": [
+          {
+            "name": "Slow",
+            "speed": 100,
+            "accel": 1000,
+            "decel": 1000
+          },
+          {
+            "name": "Fast",
+            "speed": 2500,
+            "accel": 25000,
+            "decel": 25000
+          }
+        ],
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "vacOnTimerMs": 300,
+        "hasEject": false,
+        "timerMs": 1000
+      }
+    },
+    {
+      "id": "id_5aca30d1-45ae-4e0b-8059-a06d001b72e4",
+      "type": "ServoAxis",
+      "name": "VerticalAxis",
+      "displayName": "Vertical_Axis",
+      "extras": {
+        "sensorArrangement": "",
+        "homePosition": "ServoMove",
+        "axisNumber": 2,
+        "motionType": "linear",
+        "positions": [
+          {
+            "name": "Retract",
+            "defaultValue": 0,
+            "moveType": "Pos",
+            "isHome": true,
+            "isRecipe": false,
+            "type": "position"
+          },
+          {
+            "name": "PickTransition",
+            "defaultValue": 50,
+            "moveType": "Pos",
+            "isHome": false,
+            "isRecipe": false,
+            "type": "position"
+          },
+          {
+            "name": "Pick",
+            "defaultValue": 75,
+            "moveType": "Pos",
+            "isHome": false,
+            "isRecipe": false,
+            "type": "position"
+          },
+          {
+            "name": "PlaceTransition",
+            "defaultValue": 45,
+            "moveType": "Pos",
+            "isHome": false,
+            "isRecipe": false,
+            "type": "position"
+          },
+          {
+            "name": "Place",
+            "defaultValue": 70,
+            "moveType": "Pos",
+            "isHome": false,
+            "isRecipe": false,
+            "type": "position"
+          }
+        ],
+        "speedProfiles": [
+          {
+            "name": "Slow",
+            "speed": 100,
+            "accel": 1000,
+            "decel": 1000
+          },
+          {
+            "name": "Fast",
+            "speed": 2500,
+            "accel": 25000,
+            "decel": 25000
+          }
+        ],
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "vacOnTimerMs": 300,
+        "hasEject": false,
+        "timerMs": 1000
+      }
+    },
+    {
+      "id": "id_eda48358-0a51-49a5-8fba-2bf038d9a2c4",
+      "type": "PneumaticGripper",
+      "name": "PartGripper",
+      "displayName": "Part_Gripper",
+      "extras": {
+        "sensorArrangement": "No sensors",
+        "homePosition": "Disengage",
+        "axisNumber": 1,
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "vacOnTimerMs": 300,
+        "hasEject": false,
+        "timerMs": 1000
+      }
+    }
+  ],
+  "states": [
+    {
+      "nodeId": "id_5a592205-24cc-4d99-86d6-fdbe97c2031e",
+      "type": "stateNode",
+      "label": "Wait at Home for Start",
+      "stateNumber": 4,
+      "isInitial": true,
+      "isComplete": false,
+      "actions": [],
+      "entryFrom": []
+    },
+    {
+      "nodeId": "id_4477ae3e-f7fa-4f4e-92f8-24b4e9184e6f",
+      "type": "stateNode",
+      "label": "Clear Z and Traverse Through In-Between Position",
+      "stateNumber": 7,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_5aca30d1-45ae-4e0b-8059-a06d001b72e4",
+          "deviceName": "VerticalAxis",
+          "device": "Vertical_Axis",
+          "params": {
+            "positionName": "Retract",
+            "advanceCondition": {
+              "type": "none"
+            }
+          },
+          "detail": "positionName=\"Retract\" advanceCondition={\"type\":\"none\"}"
+        },
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_d202b8e8-376a-4ef5-9d55-e390b9ea71d9",
+          "deviceName": "HorizontalAxis",
+          "device": "Horizontal_Axis",
+          "params": {
+            "positionName": "InBetween",
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "positionName=\"InBetween\" advanceCondition={\"type\":\"onComplete\"}"
+        }
+      ],
+      "entryFrom": [
+        4
+      ]
+    },
+    {
+      "nodeId": "id_1a4d9265-02bd-45ab-916a-d08128ffa7fa",
+      "type": "stateNode",
+      "label": "Horizontal Fast to Pick / Z Fast to Pick Transition",
+      "stateNumber": 10,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_d202b8e8-376a-4ef5-9d55-e390b9ea71d9",
+          "deviceName": "HorizontalAxis",
+          "device": "Horizontal_Axis",
+          "params": {
+            "positionName": "Pick",
+            "advanceCondition": {
+              "type": "none"
+            }
+          },
+          "detail": "positionName=\"Pick\" advanceCondition={\"type\":\"none\"}"
+        },
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_5aca30d1-45ae-4e0b-8059-a06d001b72e4",
+          "deviceName": "VerticalAxis",
+          "device": "Vertical_Axis",
+          "params": {
+            "positionName": "PickTransition",
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "positionName=\"PickTransition\" advanceCondition={\"type\":\"onComplete\"}"
+        }
+      ],
+      "entryFrom": [
+        7
+      ]
+    },
+    {
+      "nodeId": "id_54e9351e-c2a4-45a6-b4c1-05bfa38d6c23",
+      "type": "stateNode",
+      "label": "Z Slow Down into Pick Position",
+      "stateNumber": 13,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_5aca30d1-45ae-4e0b-8059-a06d001b72e4",
+          "deviceName": "VerticalAxis",
+          "device": "Vertical_Axis",
+          "params": {
+            "positionName": "Pick",
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "positionName=\"Pick\" advanceCondition={\"type\":\"onComplete\"}"
+        }
+      ],
+      "entryFrom": [
+        10
+      ]
+    },
+    {
+      "nodeId": "id_1ac92a0a-bb64-40a5-8026-88a29154c339",
+      "type": "stateNode",
+      "label": "Close Gripper on Part (Timer Only)",
+      "stateNumber": 16,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Engage",
+          "deviceId": "id_eda48358-0a51-49a5-8fba-2bf038d9a2c4",
+          "deviceName": "PartGripper",
+          "device": "Part_Gripper",
+          "params": {
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "advanceCondition={\"type\":\"onComplete\"}"
+        }
+      ],
+      "entryFrom": [
+        13
+      ]
+    },
+    {
+      "nodeId": "id_ddc4b69a-3e7c-454a-b2e1-5dccba804361",
+      "type": "stateNode",
+      "label": "Z Slow Up to Transition, Fast to Retract, Round Corner into Move to Place",
+      "stateNumber": 19,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_5aca30d1-45ae-4e0b-8059-a06d001b72e4",
+          "deviceName": "VerticalAxis",
+          "device": "Vertical_Axis",
+          "params": {
+            "positionName": "PickTransition",
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "positionName=\"PickTransition\" advanceCondition={\"type\":\"onComplete\"}"
+        },
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_5aca30d1-45ae-4e0b-8059-a06d001b72e4",
+          "deviceName": "VerticalAxis",
+          "device": "Vertical_Axis",
+          "params": {
+            "positionName": "Retract",
+            "advanceCondition": {
+              "type": "timer",
+              "timerMs": 150
+            }
+          },
+          "detail": "positionName=\"Retract\" advanceCondition={\"type\":\"timer\",\"timerMs\":150}"
+        },
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_d202b8e8-376a-4ef5-9d55-e390b9ea71d9",
+          "deviceName": "HorizontalAxis",
+          "device": "Horizontal_Axis",
+          "params": {
+            "positionName": "Place",
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "positionName=\"Place\" advanceCondition={\"type\":\"onComplete\"}"
+        }
+      ],
+      "entryFrom": [
+        16
+      ]
+    },
+    {
+      "nodeId": "id_a9f31ae9-ed80-4ceb-a3d7-6558e876c461",
+      "type": "stateNode",
+      "label": "Z Fast to Place Transition, Slow into Place",
+      "stateNumber": 22,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_5aca30d1-45ae-4e0b-8059-a06d001b72e4",
+          "deviceName": "VerticalAxis",
+          "device": "Vertical_Axis",
+          "params": {
+            "positionName": "PlaceTransition",
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "positionName=\"PlaceTransition\" advanceCondition={\"type\":\"onComplete\"}"
+        },
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_5aca30d1-45ae-4e0b-8059-a06d001b72e4",
+          "deviceName": "VerticalAxis",
+          "device": "Vertical_Axis",
+          "params": {
+            "positionName": "Place",
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "positionName=\"Place\" advanceCondition={\"type\":\"onComplete\"}"
+        }
+      ],
+      "entryFrom": [
+        19
+      ]
+    },
+    {
+      "nodeId": "id_c92d615d-c02f-4bc4-a905-9f9d5abdc64d",
+      "type": "stateNode",
+      "label": "Open Gripper to Release Part",
+      "stateNumber": 25,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Disengage",
+          "deviceId": "id_eda48358-0a51-49a5-8fba-2bf038d9a2c4",
+          "deviceName": "PartGripper",
+          "device": "Part_Gripper",
+          "params": {
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "advanceCondition={\"type\":\"onComplete\"}"
+        }
+      ],
+      "entryFrom": [
+        22
+      ]
+    },
+    {
+      "nodeId": "id_e2a263a4-4aa3-442d-a1af-a32062da9c29",
+      "type": "stateNode",
+      "label": "Z Slow Up to Transition, Fast to Retract, Round Corner into Return Home",
+      "stateNumber": 28,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_5aca30d1-45ae-4e0b-8059-a06d001b72e4",
+          "deviceName": "VerticalAxis",
+          "device": "Vertical_Axis",
+          "params": {
+            "positionName": "PlaceTransition",
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "positionName=\"PlaceTransition\" advanceCondition={\"type\":\"onComplete\"}"
+        },
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_5aca30d1-45ae-4e0b-8059-a06d001b72e4",
+          "deviceName": "VerticalAxis",
+          "device": "Vertical_Axis",
+          "params": {
+            "positionName": "Retract",
+            "advanceCondition": {
+              "type": "timer",
+              "timerMs": 150
+            }
+          },
+          "detail": "positionName=\"Retract\" advanceCondition={\"type\":\"timer\",\"timerMs\":150}"
+        },
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_d202b8e8-376a-4ef5-9d55-e390b9ea71d9",
+          "deviceName": "HorizontalAxis",
+          "device": "Horizontal_Axis",
+          "params": {
+            "positionName": "Home",
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "positionName=\"Home\" advanceCondition={\"type\":\"onComplete\"}"
+        }
+      ],
+      "entryFrom": [
+        25
+      ]
+    },
+    {
+      "nodeId": "id_d6413112-c7a4-41f9-aaef-81fd685d66bb",
+      "type": "stateNode",
+      "label": "Cycle Complete",
+      "stateNumber": 31,
+      "isInitial": false,
+      "isComplete": true,
+      "actions": [],
+      "entryFrom": [
+        28
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "fromLabel": "Wait at Home for Start",
+      "toLabel": "Clear Z and Traverse Through In-Between Position",
+      "fromState": 4,
+      "toState": 7,
+      "from": 4,
+      "to": 7,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Clear Z and Traverse Through In-Between Position",
+      "toLabel": "Horizontal Fast to Pick / Z Fast to Pick Transition",
+      "fromState": 7,
+      "toState": 10,
+      "from": 7,
+      "to": 10,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Horizontal Fast to Pick / Z Fast to Pick Transition",
+      "toLabel": "Z Slow Down into Pick Position",
+      "fromState": 10,
+      "toState": 13,
+      "from": 10,
+      "to": 13,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Z Slow Down into Pick Position",
+      "toLabel": "Close Gripper on Part (Timer Only)",
+      "fromState": 13,
+      "toState": 16,
+      "from": 13,
+      "to": 16,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Close Gripper on Part (Timer Only)",
+      "toLabel": "Z Slow Up to Transition, Fast to Retract, Round Corner into Move to Place",
+      "fromState": 16,
+      "toState": 19,
+      "from": 16,
+      "to": 19,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Z Slow Up to Transition, Fast to Retract, Round Corner into Move to Place",
+      "toLabel": "Z Fast to Place Transition, Slow into Place",
+      "fromState": 19,
+      "toState": 22,
+      "from": 19,
+      "to": 22,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Z Fast to Place Transition, Slow into Place",
+      "toLabel": "Open Gripper to Release Part",
+      "fromState": 22,
+      "toState": 25,
+      "from": 22,
+      "to": 25,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Open Gripper to Release Part",
+      "toLabel": "Z Slow Up to Transition, Fast to Retract, Round Corner into Return Home",
+      "fromState": 25,
+      "toState": 28,
+      "from": 25,
+      "to": 28,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Z Slow Up to Transition, Fast to Retract, Round Corner into Return Home",
+      "toLabel": "Cycle Complete",
+      "fromState": 28,
+      "toState": 31,
+      "from": 28,
+      "to": 31,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "sequence"
+    }
+  ],
+  "waits": [
+    {
+      "stateNumber": 4,
+      "signal": "Ready",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    },
+    {
+      "stateNumber": 7,
+      "signal": "Ready",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    },
+    {
+      "stateNumber": 10,
+      "signal": "Ready",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    },
+    {
+      "stateNumber": 13,
+      "signal": "Ready",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    },
+    {
+      "stateNumber": 16,
+      "signal": "Ready",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    },
+    {
+      "stateNumber": 19,
+      "signal": "Ready",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    },
+    {
+      "stateNumber": 22,
+      "signal": "Ready",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    },
+    {
+      "stateNumber": 25,
+      "signal": "Ready",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    },
+    {
+      "stateNumber": 28,
+      "signal": "Ready",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    }
+  ],
+  "stateRanges": {
+    "reserved": {
+      "powerup": 0,
+      "sdc": [
+        1,
+        2,
+        3
+      ]
+    },
+    "sequence": {
+      "from": 4,
+      "to": 31
+    },
+    "lockout": 99,
+    "init": {
+      "from": 100,
+      "to": 127,
+      "cycleReady": 127
+    }
+  },
+  "machineSpec": {
+    "purpose": "Servo pick-and-place station that picks a part with a pneumatic gripper and places it at a second position using coordinated horizontal and vertical servo axes.",
+    "devicePurposes": [
+      {
+        "deviceName": "Horizontal_Axis",
+        "purpose": "Traverses the EOAT horizontally between the pick position and the place position, moving through an in-between position and blending (rounding) the corner with the Z move for smooth motion."
+      },
+      {
+        "deviceName": "Vertical_Axis",
+        "purpose": "Raises and lowers the EOAT at pick and place — fast down to the transition point, slow into pick/place, slow back up to the transition point, then fast to retract."
+      },
+      {
+        "deviceName": "Part_Gripper",
+        "purpose": "Grips the part at pick and releases it at place; no sensors, so it runs on the standard adjustable close/open delay timers."
+      }
+    ],
+    "sequence": [],
+    "outcomeRules": [
+      {
+        "trigger": "E-stop, fault, or any recovery of the station",
+        "response": "Run the same recovery every time: check Z first, then decide based on whether a part is held.",
+        "retryCount": null,
+        "escalation": ""
+      },
+      {
+        "trigger": "Z is not at a safe position during recovery",
+        "response": "Move Z up to the retract/home position before any horizontal motion.",
+        "retryCount": null,
+        "escalation": ""
+      },
+      {
+        "trigger": "A part is held at recovery",
+        "response": "Move to the place position and wait for the place sequence.",
+        "retryCount": null,
+        "escalation": ""
+      },
+      {
+        "trigger": "No part is held at recovery",
+        "response": "Move to the pick position and go get a part.",
+        "retryCount": null,
+        "escalation": ""
+      },
+      {
+        "trigger": "Pick comes up empty",
+        "response": "Not detectable — the gripper is timer-based with no sensors, so the station assumes the part is gripped and continues the cycle without faulting.",
+        "retryCount": null,
+        "escalation": ""
+      }
+    ],
+    "relationships": [],
+    "partnerDeclarations": []
+  },
+  "warnings": [],
+  "text": "# Intermediate Representation — SDCServoPNP (SDC Servo PNP)\nStation number: 1\nDescription: Two-axis servo pick and place with pneumatic gripper (timer only) - picks a part and places it with rounded-corner, fast/slow transition motion.\n\n## Devices\n- [ServoAxis] HorizontalAxis \"Horizontal_Axis\" sensorArrangement=\"\" homePosition=\"ServoMove\" axisNumber=1 motionType=\"linear\" positions=[{\"name\":\"Home\",\"defaultValue\":25,\"moveType\":\"Pos\",\"isHome\":true,\"isRecipe\":false,\"type\":\"position\"},{\"name\":\"InBetween\",\"defaultValue\":200,\"moveType\":\"Pos\",\"isHome\":false,\"isRecipe\":false,\"type\":\"position\"},{\"name\":\"Pick\",\"defaultValue\":350,\"moveType\":\"Pos\",\"isHome\":false,\"isRecipe\":false,\"type\":\"position\"},{\"name\":\"Place\",\"defaultValue\":50,\"moveType\":\"Pos\",\"isHome\":false,\"isRecipe\":false,\"type\":\"position\"}] speedProfiles=[{\"name\":\"Slow\",\"speed\":100,\"accel\":1000,\"decel\":1000},{\"name\":\"Fast\",\"speed\":2500,\"accel\":25000,\"decel\":25000}] extTimerMs=500 retTimerMs=500 engageTimerMs=250 disengageTimerMs=250 vacOnTimerMs=300 hasEject=false timerMs=1000\n- [ServoAxis] VerticalAxis \"Vertical_Axis\" sensorArrangement=\"\" homePosition=\"ServoMove\" axisNumber=2 motionType=\"linear\" positions=[{\"name\":\"Retract\",\"defaultValue\":0,\"moveType\":\"Pos\",\"isHome\":true,\"isRecipe\":false,\"type\":\"position\"},{\"name\":\"PickTransition\",\"defaultValue\":50,\"moveType\":\"Pos\",\"isHome\":false,\"isRecipe\":false,\"type\":\"position\"},{\"name\":\"Pick\",\"defaultValue\":75,\"moveType\":\"Pos\",\"isHome\":false,\"isRecipe\":false,\"type\":\"position\"},{\"name\":\"PlaceTransition\",\"defaultValue\":45,\"moveType\":\"Pos\",\"isHome\":false,\"isRecipe\":false,\"type\":\"position\"},{\"name\":\"Place\",\"defaultValue\":70,\"moveType\":\"Pos\",\"isHome\":false,\"isRecipe\":false,\"type\":\"position\"}] speedProfiles=[{\"name\":\"Slow\",\"speed\":100,\"accel\":1000,\"decel\":1000},{\"name\":\"Fast\",\"speed\":2500,\"accel\":25000,\"decel\":25000}] extTimerMs=500 retTimerMs=500 engageTimerMs=250 disengageTimerMs=250 vacOnTimerMs=300 hasEject=false timerMs=1000\n- [PneumaticGripper] PartGripper \"Part_Gripper\" sensorArrangement=\"No sensors\" homePosition=\"Disengage\" axisNumber=1 extTimerMs=500 retTimerMs=500 engageTimerMs=250 disengageTimerMs=250 vacOnTimerMs=300 hasEject=false timerMs=1000\n\n## States (assigned state numbers — these are FINAL, use them as-is)\n- State 4: \"Wait at Home for Start\" {INITIAL}\n- State 7: \"Clear Z and Traverse Through In-Between Position\"\n    action: ServoMove -> VerticalAxis (positionName=\"Retract\" advanceCondition={\"type\":\"none\"})\n    action: ServoMove -> HorizontalAxis (positionName=\"InBetween\" advanceCondition={\"type\":\"onComplete\"})\n- State 10: \"Horizontal Fast to Pick / Z Fast to Pick Transition\"\n    action: ServoMove -> HorizontalAxis (positionName=\"Pick\" advanceCondition={\"type\":\"none\"})\n    action: ServoMove -> VerticalAxis (positionName=\"PickTransition\" advanceCondition={\"type\":\"onComplete\"})\n- State 13: \"Z Slow Down into Pick Position\"\n    action: ServoMove -> VerticalAxis (positionName=\"Pick\" advanceCondition={\"type\":\"onComplete\"})\n- State 16: \"Close Gripper on Part (Timer Only)\"\n    action: Engage -> PartGripper (advanceCondition={\"type\":\"onComplete\"})\n- State 19: \"Z Slow Up to Transition, Fast to Retract, Round Corner into Move to Place\"\n    action: ServoMove -> VerticalAxis (positionName=\"PickTransition\" advanceCondition={\"type\":\"onComplete\"})\n    action: ServoMove -> VerticalAxis (positionName=\"Retract\" advanceCondition={\"type\":\"timer\",\"timerMs\":150})\n    action: ServoMove -> HorizontalAxis (positionName=\"Place\" advanceCondition={\"type\":\"onComplete\"})\n- State 22: \"Z Fast to Place Transition, Slow into Place\"\n    action: ServoMove -> VerticalAxis (positionName=\"PlaceTransition\" advanceCondition={\"type\":\"onComplete\"})\n    action: ServoMove -> VerticalAxis (positionName=\"Place\" advanceCondition={\"type\":\"onComplete\"})\n- State 25: \"Open Gripper to Release Part\"\n    action: Disengage -> PartGripper (advanceCondition={\"type\":\"onComplete\"})\n- State 28: \"Z Slow Up to Transition, Fast to Retract, Round Corner into Return Home\"\n    action: ServoMove -> VerticalAxis (positionName=\"PlaceTransition\" advanceCondition={\"type\":\"onComplete\"})\n    action: ServoMove -> VerticalAxis (positionName=\"Retract\" advanceCondition={\"type\":\"timer\",\"timerMs\":150})\n    action: ServoMove -> HorizontalAxis (positionName=\"Home\" advanceCondition={\"type\":\"onComplete\"})\n- State 31: \"Cycle Complete\" {CYCLE-COMPLETE}\n\n## Transitions\n- [4] \"Wait at Home for Start\" -> [7] \"Clear Z and Traverse Through In-Between Position\" (type=ready label=\"Ready\")\n- [7] \"Clear Z and Traverse Through In-Between Position\" -> [10] \"Horizontal Fast to Pick / Z Fast to Pick Transition\" (type=ready label=\"Ready\")\n- [10] \"Horizontal Fast to Pick / Z Fast to Pick Transition\" -> [13] \"Z Slow Down into Pick Position\" (type=ready label=\"Ready\")\n- [13] \"Z Slow Down into Pick Position\" -> [16] \"Close Gripper on Part (Timer Only)\" (type=ready label=\"Ready\")\n- [16] \"Close Gripper on Part (Timer Only)\" -> [19] \"Z Slow Up to Transition, Fast to Retract, Round Corner into Move to Place\" (type=ready label=\"Ready\")\n- [19] \"Z Slow Up to Transition, Fast to Retract, Round Corner into Move to Place\" -> [22] \"Z Fast to Place Transition, Slow into Place\" (type=ready label=\"Ready\")\n- [22] \"Z Fast to Place Transition, Slow into Place\" -> [25] \"Open Gripper to Release Part\" (type=ready label=\"Ready\")\n- [25] \"Open Gripper to Release Part\" -> [28] \"Z Slow Up to Transition, Fast to Retract, Round Corner into Return Home\" (type=ready label=\"Ready\")\n- [28] \"Z Slow Up to Transition, Fast to Retract, Round Corner into Return Home\" -> [31] \"Cycle Complete\" (type=ready label=\"Ready\")\n\n## MACHINE SPEC (mechanical intent — compile the coordination)\nThis section is AUTHORITATIVE intent authored by the mechanical engineer.\nSynthesize the signals, waits, exits, and cross-station handshakes that\nrealize it. EVERY wait you create must have an exit for every partner\nfailure mode listed here PLUS a timeout — no exitless waits.\n\nStation purpose: Servo pick-and-place station that picks a part with a pneumatic gripper and places it at a second position using coordinated horizontal and vertical servo axes.\n\n### Device purposes\n- Horizontal_Axis: Traverses the EOAT horizontally between the pick position and the place position, moving through an in-between position and blending (rounding) the corner with the Z move for smooth motion.\n- Vertical_Axis: Raises and lowers the EOAT at pick and place — fast down to the transition point, slow into pick/place, slow back up to the transition point, then fast to retract.\n- Part_Gripper: Grips the part at pick and releases it at place; no sensors, so it runs on the standard adjustable close/open delay timers.\n\n### Outcome rules (verbatim — each one needs a reachable path in the program)\n- WHEN: E-stop, fault, or any recovery of the station -> DO: Run the same recovery every time: check Z first, then decide based on whether a part is held..\n- WHEN: Z is not at a safe position during recovery -> DO: Move Z up to the retract/home position before any horizontal motion..\n- WHEN: A part is held at recovery -> DO: Move to the place position and wait for the place sequence..\n- WHEN: No part is held at recovery -> DO: Move to the pick position and go get a part..\n- WHEN: Pick comes up empty -> DO: Not detectable — the gripper is timer-based with no sensors, so the station assumes the part is gripped and continues the cycle without faulting..",
+  "generatedAt": "2026-08-20T13:11:17.432Z",
+  "jarvisVersion": "1.0.2",
+  "l5xFile": "SDCServoPNP__jarvis_v1.0.2__2026-08-20_1311.L5X",
+  "validationOk": true
+}

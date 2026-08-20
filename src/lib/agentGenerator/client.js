@@ -128,14 +128,21 @@ function costOfUsage(usage, model) {
   return (input + cacheRead + cacheWrite + output) / 1e6;
 }
 
-/** One model call. Streaming; thinking left at the model default (adaptive).
+/** One model call. Streaming; adaptive thinking with SUMMARIZED display —
+ *  on Fable/Opus-5-class models display defaults to "omitted", which streams
+ *  thinking_delta events with EMPTY text: the ring froze for minutes during
+ *  the reasoning phase with nothing to advance on. display:'summarized'
+ *  streams readable summary text (billing unchanged) so the UI can show
+ *  Jarvis literally thinking.
  *  Server-side refusal fallback enabled for fable/opus models.
- *  onText(totalChars) fires as output text streams in (for progress UI);
- *  signal (AbortSignal) aborts the SDK stream mid-flight. */
-async function callModel(client, system, messages, { onText, signal } = {}) {
+ *  onText(textChars) fires as REAL output text streams in;
+ *  onThinking(deltaText, totalThinkingChars) fires on each thinking summary
+ *  delta; signal (AbortSignal) aborts the SDK stream mid-flight. */
+async function callModel(client, system, messages, { onText, onThinking, signal } = {}) {
   const req = {
     model: MODEL,
     max_tokens: MAX_TOKENS,
+    thinking: { type: 'adaptive', display: 'summarized' },
     system,
     messages,
   };
@@ -144,19 +151,21 @@ async function callModel(client, system, messages, { onText, signal } = {}) {
     req.fallbacks = 'default';
   }
   const stream = client.beta.messages.stream(req, signal ? { signal } : undefined);
-  if (onText) {
+  if (onText || onThinking) {
     let chars = 0;
     let thinkingChars = 0;
     stream.on('text', (delta) => {
       chars += delta.length;
-      try { onText(chars + thinkingChars * 0.5) } catch (_) {}
+      if (onText) { try { onText(chars) } catch (_) {} }
     });
-    // Adaptive thinking can run for minutes before any text streams — count
-    // thinking deltas at half weight so the progress bar doesn't sit frozen.
+    // Thinking summaries stream as thinking_delta events (readable text with
+    // display:'summarized'); surface them so the progress UI stays alive
+    // through the minutes-long reasoning phase.
     stream.on('streamEvent', (event) => {
       if (event.type === 'content_block_delta' && event.delta?.type === 'thinking_delta') {
-        thinkingChars += (event.delta.thinking || '').length;
-        try { onText(chars + thinkingChars * 0.5) } catch (_) {}
+        const t = event.delta.thinking || '';
+        thinkingChars += t.length;
+        if (onThinking) { try { onThinking(t, thinkingChars) } catch (_) {} }
       }
     });
   }
@@ -187,9 +196,14 @@ async function generateL5X(projectJson, smId, options = {}) {
   // aborts the in-flight SDK stream when the caller cancels.
   const onProgress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
   const abortSignal = options.signal || null;
-  // Expected output size for the streaming progress ramp (15% -> 70%).
+  // Expected output size for the writing progress ramp (45% -> 70%).
   // An edit plan is typically 5-15K tokens; ~20K keeps the bar honest.
   const EXPECTED_OUTPUT_TOKENS = 20000;
+  // Expected thinking depth for the reasoning ramp (15% -> 45%). Build
+  // history doesn't record thinking tokens yet, so this is a static budget;
+  // if reasoning runs past it the ring HOLDS at the band top — it never
+  // fakes progress and never steps backward.
+  const EXPECTED_THINKING_TOKENS = 15000;
 
   const { system, stableText, jobText, ir, meta } = buildGenerationPrompt(projectJson, smId, options);
   onProgress(8, 'ir', 'Intermediate representation built');
@@ -227,12 +241,40 @@ async function generateL5X(projectJson, smId, options = {}) {
       ? 'Model authoring edit plan'
       : `Repair round ${attempt - 1}: model revising plan`;
     onProgress(streamBase, stageName, stageDetail);
+    // Split the attempt's band: reasoning owns the first ~55% (attempt 1:
+    // 15 -> 45), writing owns the rest (45 -> 70). Repair rounds split their
+    // tiny band the same way.
+    const thinkSpan = attempt === 1 ? 30 : streamSpan / 2;
+    const writeBase = streamBase + thinkSpan;
+    const writeSpan = streamSpan - thinkSpan;
+    // Thinking-summary throttle state: at most one log line per ~2s, pct
+    // updates at most 1/s, each line truncated to ~90 chars.
+    let thinkBuf = '';
+    let lastLineAt = 0;
+    let lastPctAt = 0;
     const first = await callModel(client, system, messages, {
       signal: abortSignal,
+      onThinking: (delta, thinkingChars) => {
+        thinkBuf += delta;
+        const thinkTokens = thinkingChars / 4; // rough chars->tokens
+        const pct = streamBase + thinkSpan * Math.min(thinkTokens / EXPECTED_THINKING_TOKENS, 1);
+        const now = Date.now();
+        if (now - lastLineAt >= 2000 && thinkBuf.trim()) {
+          const line = thinkBuf.replace(/\s+/g, ' ').trim();
+          onProgress(pct, stageName,
+            '· ' + (line.length > 90 ? line.slice(0, 90).trimEnd() + '…' : line));
+          thinkBuf = '';
+          lastLineAt = now;
+          lastPctAt = now;
+        } else if (now - lastPctAt >= 1000) {
+          onProgress(pct, stageName); // pct-only tick — no log line
+          lastPctAt = now;
+        }
+      },
       onText: (chars) => {
         const tokens = chars / 4; // rough chars->tokens
         const frac = Math.min(tokens / EXPECTED_OUTPUT_TOKENS, 1);
-        onProgress(streamBase + streamSpan * frac, stageName,
+        onProgress(writeBase + writeSpan * frac, stageName,
           `${stageDetail} (~${Math.round(tokens).toLocaleString()} tokens streamed)`);
       },
     });

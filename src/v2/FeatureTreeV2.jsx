@@ -10,7 +10,8 @@
  *
  * State Logic's levels (adapting Machine→Section→Station→band→line):
  *   Root: the MACHINE (project name + job #)      → right-value: station count
- *   ├─ Machine   (quoting tally lives here)       → right-value: ~IO count
+ *   ├─ Machine   (quoting tally lives here)       → right-value: IO count
+ *                (estimate nature lives in the hover tooltip, not a ~ prefix)
  *   ├─ Stations  (+ New action on the row)        → right-value: station count
  *   │   ├─ S## station (square colored by state:  → right-value: node count
  *   │   │   amber = no spec · red = last Jarvis build failed validation ·
@@ -314,11 +315,11 @@ export function FeatureTreeV2() {
     ['Servo motors', totals.servos],
     ['Standard motors', totals.standardMotors],
     ['Pneumatic actuators', totals.pneumaticActuators],
-    ['Valves', `~${totals.valves}`],
+    ['Valves', totals.valves],
     ['Sensors', totals.sensors],
     ['Vision systems', totals.vision],
     ['Robots', totals.robots],
-    ['IO points', `~${totals.ioTotal}`],
+    ['IO points', totals.ioTotal],
   ];
 
   return (
@@ -352,7 +353,7 @@ export function FeatureTreeV2() {
           onClick={() => toggle('machine')}
           onKeyDown={(e) => { if (e.key === 'Enter') toggle('machine'); }}
           title={
-            'Machine totals (quoting estimate) — live counts across all stations.\n' +
+            'Machine totals (estimated from device types) — live counts across all stations.\n' +
             '• Valves ≈ 1 per pneumatic actuator (double-solenoid standard) + vacuum generators\n' +
             `• IO ≈ ${totals.ioIn} in + ${totals.ioOut} out\n` +
             '• Stations with an explicit spec IO list use those counts instead'
@@ -362,7 +363,7 @@ export function FeatureTreeV2() {
           <Square color={TEAL} />
           <span className="v2-tree__name v2-tree__name--bold">Machine</span>
           <Leader />
-          <Value>~{totals.ioTotal} IO</Value>
+          <Value>{totals.ioTotal} IO</Value>
         </div>
         {isOpen('machine') && (
           <div className="v2-tree__children" data-testid="machine-totals">
