@@ -14,6 +14,12 @@
  *   POST   /api/projects/:filename    save / overwrite a project
  *   DELETE /api/projects/:filename    delete a project
  *
+ *   GET    /api/projects/:filename/docs           list attached documents
+ *   POST   /api/projects/:filename/docs           upload { name, base64 } (max 25MB)
+ *   GET    /api/projects/:filename/docs/:docname  download a document
+ *   DELETE /api/projects/:filename/docs/:docname  delete a document
+ *                                     Files live in projects/_docs/<projectBasename>/.
+ *
  *   POST   /api/generate              AI L5X generation: { filename | projectJson, smId }
  *                                     -> { ok, l5x, validation, reviewNotes, meta }
  *                                     503 when ANTHROPIC_API_KEY is not configured
@@ -194,7 +200,16 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     if (!safe) return sendJson(res, 400, { error: 'Invalid filename' });
     const fp = path.join(DATA_DIR_, safe);
     if (!fs.existsSync(fp)) return sendJson(res, 404, { error: 'Not found' });
-    try { fs.unlinkSync(fp); sendJson(res, 200, { ok: true }); }
+    try {
+      fs.unlinkSync(fp);
+      // Also drop the project's attached documents (projects/_docs/<base>/)
+      // so deleted projects don't orphan their document dumps.
+      try {
+        const docsDir = path.join(DATA_DIR_, '_docs', safe.replace(/\.json$/i, ''));
+        if (fs.existsSync(docsDir)) fs.rmSync(docsDir, { recursive: true, force: true });
+      } catch (e) { console.warn('[projects] docs cleanup failed:', e.message); }
+      sendJson(res, 200, { ok: true });
+    }
     catch (e) { sendJson(res, 500, { error: e.message }); }
   }
 
@@ -266,6 +281,8 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     let clientGone = false;
     req.on('close', () => { clientGone = true; abort.abort(); });
 
+    const startedAt = Date.now(); // wall-clock duration for the build record
+
     // Monotonic progress guard — repair rounds report inside 88-92 which
     // could otherwise step backward past the validate marker.
     let lastPct = 0;
@@ -304,7 +321,23 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       }
 
       send('progress', { pct: 100, stage: 'done', detail: result.ok ? 'Generation complete' : 'Finished with validation errors' });
-      send('done', { ...result, savedPath });
+      // Record the build for ME scoring (jarvis-knowledge/buildScores.json) —
+      // buildId rides in the done payload so the client can POST a score.
+      let buildId = null;
+      try {
+        buildId = require('./src/lib/agentGenerator/buildScores.js').recordBuild(
+          path.join(__dirname, 'jarvis-knowledge', 'buildScores.json'), {
+            project: projectJson.name || safe.replace('.json', ''),
+            sm: result.meta?.smName || query.smId || '',
+            jarvisVersion: result.meta?.jarvisVersion ?? null,
+            costUSD: result.meta?.costEstimate?.totalUSD ?? null,
+            durationS: Math.round((Date.now() - startedAt) / 1000),
+            attempts: result.meta?.attempts?.length ?? null,
+            validationOk: result.ok === true,
+            filePath: savedPath,
+          }).id;
+      } catch (e) { console.warn('[generate] build record failed:', e.message); }
+      send('done', { ...result, savedPath, buildId });
     } catch (e) {
       if (clientGone || (e && (e.name === 'AbortError' || e.name === 'APIUserAbortError'))) {
         // Client cancelled — nothing to report.
@@ -848,6 +881,93 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     } catch (e) { sendJson(res, 500, { error: e.message }); }
   }
 
+  // ── Per-project document dump ──────────────────────────────────────────────
+  //
+  // Files attached to a project for context (drawings, notes, quotes…).
+  // Stored on disk at <DATA_DIR>/_docs/<projectBasename>/<docname>.
+  // Jarvis consumption is a later milestone — today this is store + list only.
+  //
+  //   GET    /api/projects/:filename/docs            list  -> [{name,size,mtime}]
+  //   POST   /api/projects/:filename/docs            upload { name, base64 }
+  //   GET    /api/projects/:filename/docs/:docname   download (attachment)
+  //   DELETE /api/projects/:filename/docs/:docname   delete
+
+  const DOCS_ROOT_ = path.join(DATA_DIR_, '_docs');
+  const MAX_DOC_BYTES_ = 25 * 1024 * 1024; // 25 MB per file
+
+  /** Sanitize a document name: no paths, no hidden files, sane charset. */
+  function safeDocName(name) {
+    const n = String(name || '').trim();
+    if (!n || n.length > 200) return null;
+    if (n.startsWith('.') || n.includes('..') || /[\\/:*?"<>|\x00-\x1f]/.test(n)) return null;
+    return n;
+  }
+
+  function docsDirFor(projectFilename) {
+    return path.join(DOCS_ROOT_, projectFilename.replace(/\.json$/i, ''));
+  }
+
+  function handleDocsList(res, projectFilename) {
+    const dir = docsDirFor(projectFilename);
+    try {
+      if (!fs.existsSync(dir)) return sendJson(res, 200, []);
+      const list = fs.readdirSync(dir, { withFileTypes: true })
+        .filter(d => d.isFile())
+        .map(d => {
+          const st = fs.statSync(path.join(dir, d.name));
+          return { name: d.name, size: st.size, mtime: st.mtimeMs };
+        })
+        .sort((a, b) => b.mtime - a.mtime);
+      sendJson(res, 200, list);
+    } catch (e) { sendJson(res, 500, { error: e.message }); }
+  }
+
+  async function handleDocUpload(req, res, projectFilename) {
+    try {
+      const body = JSON.parse(await readBody(req) || '{}');
+      const name = safeDocName(body.name);
+      if (!name) return sendJson(res, 400, { error: 'Invalid or missing document name' });
+      if (!body.base64 || typeof body.base64 !== 'string') {
+        return sendJson(res, 400, { error: 'base64 content is required' });
+      }
+      const buf = Buffer.from(body.base64, 'base64');
+      if (buf.length === 0) return sendJson(res, 400, { error: 'Empty file' });
+      if (buf.length > MAX_DOC_BYTES_) {
+        return sendJson(res, 413, { error: `File too large (max ${MAX_DOC_BYTES_ / 1024 / 1024} MB)` });
+      }
+      const dir = docsDirFor(projectFilename);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, name), buf);
+      sendJson(res, 200, { ok: true, name, size: buf.length });
+    } catch (e) { sendJson(res, 500, { error: e.message }); }
+  }
+
+  function handleDocDownload(res, projectFilename, docname) {
+    const name = safeDocName(docname);
+    if (!name) return sendJson(res, 400, { error: 'Invalid document name' });
+    const fp = path.join(docsDirFor(projectFilename), name);
+    if (!fs.existsSync(fp)) return sendJson(res, 404, { error: 'Not found' });
+    try {
+      const content = fs.readFileSync(fp);
+      res.writeHead(200, {
+        'Content-Type': MIME[path.extname(name).toLowerCase()] || 'application/octet-stream',
+        'Content-Length': content.length,
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(name)}"`,
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.end(content);
+    } catch (e) { sendJson(res, 500, { error: e.message }); }
+  }
+
+  function handleDocDelete(res, projectFilename, docname) {
+    const name = safeDocName(docname);
+    if (!name) return sendJson(res, 400, { error: 'Invalid document name' });
+    const fp = path.join(docsDirFor(projectFilename), name);
+    if (!fs.existsSync(fp)) return sendJson(res, 404, { error: 'Not found' });
+    try { fs.unlinkSync(fp); sendJson(res, 200, { ok: true }); }
+    catch (e) { sendJson(res, 500, { error: e.message }); }
+  }
+
   function serveStatic(res, reqPath) {
     let fp = path.join(DIST_DIR_, reqPath === '/' ? 'index.html' : reqPath);
     if (!path.extname(fp) || !fs.existsSync(fp)) fp = path.join(DIST_DIR_, 'index.html');
@@ -864,7 +984,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     if (method === 'OPTIONS') {
       res.writeHead(204, {
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
+        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type',
       });
       return res.end();
@@ -872,6 +992,20 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
 
     if (pathname.startsWith('/api/projects')) {
       const rest     = pathname.slice('/api/projects'.length);
+
+      // Per-project docs: /api/projects/:filename/docs[/:docname]
+      const docsM = rest.match(/^\/([^/]+)\/docs(?:\/(.+))?$/);
+      if (docsM) {
+        const projFn = safeFilename(decodeURIComponent(docsM[1]));
+        if (!projFn) return sendJson(res, 400, { error: 'Invalid project filename' });
+        const docname = docsM[2] ? decodeURIComponent(docsM[2]) : null;
+        if (!docname && method === 'GET')    return handleDocsList(res, projFn);
+        if (!docname && method === 'POST')   return handleDocUpload(req, res, projFn);
+        if (docname  && method === 'GET')    return handleDocDownload(res, projFn, docname);
+        if (docname  && method === 'DELETE') return handleDocDelete(res, projFn, docname);
+        return sendJson(res, 405, { error: 'Method not allowed' });
+      }
+
       const filename = rest.startsWith('/') ? decodeURIComponent(rest.slice(1)) : null;
       if (!filename && method === 'GET')    return handleList(res);
       if (filename  && method === 'GET')    return handleLoad(res, filename);
@@ -908,6 +1042,21 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     if (pathname === '/api/jarvis/summarize/stream') {
       if (method === 'POST') return handleJarvisSummarizeStream(req, res);
       return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    // Learned-knowledge line edit/remove — module owns the logic
+    if (pathname === '/api/jarvis/knowledge/learned' && method === 'PUT') {
+      return require('./src/lib/agentGenerator/buildScores.js').handleLearnedLineRoute(req, res, {
+        sendJson, readBody, mdPath: ME_KNOWLEDGE_PATH_,
+      });
+    }
+
+    // Build scoring — module owns the routes; see src/lib/agentGenerator/buildScores.js
+    if (pathname.startsWith('/api/jarvis/builds')) {
+      return require('./src/lib/agentGenerator/buildScores.js').handleBuildsRoute(req, res, {
+        pathname, method, sendJson, readBody,
+        file: path.join(__dirname, 'jarvis-knowledge', 'buildScores.json'),
+      });
     }
 
     if (pathname.startsWith('/api/jarvis/questions')) {

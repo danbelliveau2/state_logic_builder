@@ -40,6 +40,7 @@ import { useDiagramStore } from '../../store/useDiagramStore.js';
 import { buildProgramName } from '../../lib/tagNaming.js';
 import { COVERAGE_ITEMS, assessCoverage } from '../../lib/coverageChecklist.js';
 import { DescribeSurface, useDictation, MicButton, ListeningIndicator } from './DescribeSurface.jsx';
+import { DeviceIcon } from '../DeviceIcons.jsx';
 import { ProgressRing } from './ProgressRing.jsx';
 import { NewStateMachineModal } from '../modals/NewStateMachineModal.jsx';
 import { SpecEditorModal } from '../modals/SpecEditorModal.jsx';
@@ -146,6 +147,15 @@ function summaryHasContent(s) {
       || s.failureHandling.length > 0 || s.interactions.length > 0);
 }
 
+/** Optional station-IO capture (summary.io) — present only when the ME
+ *  mentioned sensors / valves / IO counts. Never gates anything. */
+function ioHasContent(io) {
+  return !!io && typeof io === 'object'
+    && ((Array.isArray(io.sensors) && io.sensors.length > 0)
+      || (Array.isArray(io.valveFunctions) && io.valveFunctions.length > 0)
+      || !!String(io.ioNotes || '').trim());
+}
+
 /** One display/edit line per item of a section. */
 function sectionToLines(key, items) {
   switch (key) {
@@ -206,12 +216,41 @@ function summaryToText(s) {
     `${title}\n${lines.length
       ? lines.map((l, i) => (numbered ? `${i + 1}. ${l}` : `- ${l}`)).join('\n')
       : '(not described yet)'}`;
-  return [
+  const blocks = [
     block('DEVICES', sectionToLines('devices', s.devices)),
     block('SEQUENCE', sectionToLines('sequence', s.sequence), true),
     block('FAILURE HANDLING', sectionToLines('failureHandling', s.failureHandling)),
     block('STATION INTERACTIONS', sectionToLines('interactions', s.interactions)),
-  ].join('\n\n');
+  ];
+  if (ioHasContent(s.io)) {
+    const lines = [
+      ...(s.io.sensors ?? []).map(x => `sensor: ${x.name}${x.type ? ` (${x.type})` : ''}${x.purpose ? ` — ${x.purpose}` : ''}`),
+      ...(s.io.valveFunctions ?? []).map(v => `valve: ${v}`),
+      ...(String(s.io.ioNotes || '').trim() ? [String(s.io.ioNotes).trim()] : []),
+    ];
+    blocks.push(block('IO & PNEUMATICS (optional capture)', lines));
+  }
+  return blocks.join('\n\n');
+}
+
+/** Device-type guess for the "Devices I heard" icons — same visual language
+ *  as the classic sidebar (DeviceIcons.jsx). Prefers the model-returned
+ *  `type` (exact deviceTypes.js string); falls back to keywords so older
+ *  stored summaries still get icons. */
+function guessDeviceType(d) {
+  if (d?.type && typeof d.type === 'string') return d.type;
+  const t = `${d?.name ?? ''} ${d?.purpose ?? ''}`.toLowerCase();
+  if (/gripper|jaw|chuck|finger/.test(t)) return 'PneumaticGripper';
+  if (/vision|camera|inspect/.test(t)) return 'VisionSystem';
+  if (/robot/.test(t)) return 'Robot';
+  if (/servo|axis|indexer|\bdial\b/.test(t)) return 'ServoAxis';
+  if (/vacuum|suction|venturi|\bcup\b/.test(t)) return 'PneumaticVacGenerator';
+  if (/rotary|rotate|swivel/.test(t)) return 'PneumaticRotaryActuator';
+  if (/conveyor|belt/.test(t)) return 'Conveyor';
+  if (/analog|pressure|force|temperature|measure/.test(t)) return 'AnalogSensor';
+  if (/sensor|switch|photo ?eye|prox|presence|detect/.test(t)) return 'DigitalSensor';
+  if (/cylinder|slide|shuttle|lift|stamp|press|clamp|stopper|escapement|pusher|actuator/.test(t)) return 'PneumaticLinearActuator';
+  return 'Custom';
 }
 
 // Section cards: how each summary section renders + edits.
@@ -221,6 +260,26 @@ const SUMMARY_SECTIONS = [
   { key: 'failureHandling', covKey: 'failures', title: 'What can go wrong', editHint: 'one per line:  when it happens → what to do' },
   { key: 'interactions', covKey: 'interactions', title: 'Interactions with other stations', editHint: 'one per line:  Station: the interaction' },
 ];
+
+/** Corrections text for "Resubmit to Jarvis" after in-place edits: every
+ *  section that differs from the last-summarized baseline is restated in
+ *  full, marked as the engineer's exact wording. */
+function buildEditCorrections(baseline, current) {
+  const parts = [];
+  for (const section of SUMMARY_SECTIONS) {
+    const before = sectionToLines(section.key, baseline?.[section.key] ?? []);
+    const after = sectionToLines(section.key, current?.[section.key] ?? []);
+    if (JSON.stringify(before) === JSON.stringify(after)) continue;
+    parts.push(
+      `${section.title.toUpperCase()} — I edited this section; it now reads exactly:\n`
+      + (after.length ? after.map(l => `- ${l}`).join('\n') : '(nothing — I removed everything here)')
+    );
+  }
+  if (!parts.length) return '';
+  return 'I edited the summary IN PLACE. The sections below now read exactly as I wrote them — '
+    + 'keep my wording and content, re-verify coverage, and update anything that depends on them:\n\n'
+    + parts.join('\n\n');
+}
 
 // ── SSE-over-fetch (POST /api/jarvis/summarize/stream) ──────────────────────
 
@@ -380,28 +439,114 @@ function ChecklistPanel({ scores, messages, hasOtherSms, sourceLabel }) {
 //
 // One compact, scannable card per summary section. The header carries the
 // section's checklist verdict (✓ / what's missing) so understanding and
-// coverage read together. "edit" toggles a plain-lines textarea (one item
-// per line) — the cleaner alternative to per-row inline editing.
+// coverage read together. Every line is DIRECTLY editable — click any line
+// and it becomes an input (no edit button, no edit mode; Dan: "you shouldn't
+// have to hit edit — it should be editable automatically"). Enter/blur
+// commits, Escape cancels, an emptied line is removed, "+ add a line"
+// appends. Any change bubbles up and the page shows the sticky
+// "Resubmit to Jarvis" bar.
+
+/** Bare line input: Enter/blur commits (onDone(value)), Escape cancels
+ *  (onDone(null)). The cancelled ref keeps Escape's blur from committing. */
+function LineInput({ initial, placeholder, onDone, testId }) {
+  const [val, setVal] = useState(initial);
+  const cancelled = useRef(false);
+  return (
+    <input
+      className="form-input"
+      data-testid={testId}
+      style={{ fontSize: 12, padding: '3px 8px', margin: '1px 0', width: '100%', boxSizing: 'border-box' }}
+      value={val}
+      placeholder={placeholder}
+      autoFocus
+      onChange={e => setVal(e.target.value)}
+      onBlur={() => onDone(cancelled.current ? null : val)}
+      onKeyDown={e => {
+        if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
+        else if (e.key === 'Escape') { cancelled.current = true; e.currentTarget.blur(); }
+      }}
+    />
+  );
+}
+
+/** Click-to-type wrapper: renders the formatted line; a click swaps it for a
+ *  LineInput pre-filled with the line's text form. No edit button, ever. */
+function EditableLine({ line, onCommit, children, testId }) {
+  const [editing, setEditing] = useState(false);
+  if (editing) {
+    return (
+      <LineInput
+        initial={line}
+        testId={testId ? `${testId}-input` : undefined}
+        onDone={v => { setEditing(false); if (v !== null) onCommit(v); }}
+      />
+    );
+  }
+  return (
+    <div
+      data-testid={testId}
+      title="Click to edit"
+      onClick={() => setEditing(true)}
+      style={{ cursor: 'text', borderRadius: 4, margin: '0 -6px', padding: '0 6px' }}
+      onMouseEnter={e => { e.currentTarget.style.background = '#f2f6fb'; }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+    >
+      {children}
+    </div>
+  );
+}
 
 function SummarySection({ section, items, cov, optional, onChange }) {
-  const [editing, setEditing] = useState(false);
-  const [text, setText] = useState('');
+  const [adding, setAdding] = useState(false);
   const lines = sectionToLines(section.key, items);
   const score = cov?.score ?? 0;
 
-  const startEdit = () => { setText(lines.join('\n')); setEditing(true); };
-  const commit = () => { onChange(linesToSection(section.key, text)); setEditing(false); };
+  /** Commit an edited line i: unchanged → no-op (preserves rich fields like
+   *  device type / retries), emptied → line removed, else re-parsed. */
+  const commitLine = (i, text) => {
+    const t = String(text).trim();
+    if (t === lines[i]) return;
+    const next = items.slice();
+    if (!t) {
+      next.splice(i, 1);
+    } else {
+      const parsed = linesToSection(section.key, t)[0];
+      if (section.key === 'devices' && items[i]?.type && parsed && parsed.name === items[i].name) {
+        parsed.type = items[i].type;
+      }
+      next[i] = parsed;
+    }
+    onChange(next);
+  };
+  const commitAdd = (text) => {
+    const t = String(text).trim();
+    if (!t) return;
+    onChange([...items, ...linesToSection(section.key, t)]);
+  };
 
-  const badge = score === 2 ? (
-    <span style={{ fontSize: 10, fontWeight: 700, color: C.success }}>✓ covered</span>
-  ) : optional && items.length === 0 ? (
-    <span style={{ fontSize: 10, color: C.light }}>optional — fine to leave empty</span>
+  // Header carries ONLY a short status chip; the full verdict text renders
+  // as a muted line UNDER the header (never crammed into the header row).
+  const optionalEmpty = optional && items.length === 0;
+  const chip = score === 2 ? (
+    <span data-testid={`summary-chip-${section.key}`} style={{
+      fontSize: 10, fontWeight: 700, color: C.success, whiteSpace: 'nowrap',
+      background: '#e9f5ec', border: '1px solid #bfe0c8', borderRadius: 10, padding: '1px 8px',
+    }}>✓ covered</span>
+  ) : optionalEmpty ? (
+    <span data-testid={`summary-chip-${section.key}`} style={{
+      fontSize: 10, color: C.light, whiteSpace: 'nowrap',
+      border: `1px solid ${C.border}`, borderRadius: 10, padding: '1px 8px',
+    }}>optional</span>
   ) : (
-    <span style={{ fontSize: 10, color: '#6b5513', fontWeight: 600 }}>
-      {score === 1 ? 'mentioned briefly' : 'not covered'}
-      {cov?.missing ? ` — ${cov.missing}` : ''}
-    </span>
+    <span data-testid={`summary-chip-${section.key}`} style={{
+      fontSize: 10, fontWeight: 700, color: '#6b5513', whiteSpace: 'nowrap',
+      background: '#fdf6e3', border: '1px solid #e6d9a8', borderRadius: 10, padding: '1px 8px',
+    }}>△ thin</span>
   );
+  const verdictText = score === 2 || optionalEmpty
+    ? ''
+    : [score === 1 ? 'mentioned briefly' : 'not covered', cov?.missing || '']
+      .filter(Boolean).join(' — ');
 
   return (
     <div
@@ -411,7 +556,7 @@ function SummarySection({ section, items, cov, optional, onChange }) {
         padding: '10px 14px', marginBottom: 10,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: verdictText ? 2 : 6 }}>
         <span style={{
           fontSize: 11, fontWeight: 700, color: C.text,
           letterSpacing: '0.04em', textTransform: 'uppercase',
@@ -419,91 +564,189 @@ function SummarySection({ section, items, cov, optional, onChange }) {
           {section.title}
           {optional && <span style={{ fontWeight: 400, textTransform: 'none', color: C.light }}> (optional — no other stations yet)</span>}
         </span>
-        <span style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>{badge}</span>
-        {editing ? (
-          <span style={{ display: 'inline-flex', gap: 8 }}>
-            <button
-              type="button"
-              onClick={commit}
-              style={{
-                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                fontSize: 11, fontWeight: 700, color: C.primary, textDecoration: 'underline',
-              }}
-            >done</button>
-            <button
-              type="button"
-              onClick={() => setEditing(false)}
-              style={{
-                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                fontSize: 11, color: C.muted, textDecoration: 'underline',
-              }}
-            >cancel</button>
-          </span>
-        ) : (
-          <button
-            type="button"
-            data-testid={`summary-section-${section.key}-edit`}
-            onClick={startEdit}
-            style={{
-              background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-              fontSize: 11, color: C.muted, textDecoration: 'underline',
-            }}
-          >edit</button>
-        )}
+        {chip}
+        <span style={{ flex: 1 }} />
+        <span style={{ fontSize: 10, color: C.light }}>click any line to edit</span>
       </div>
 
-      {editing ? (
-        <>
-          <textarea
-            className="form-input form-textarea"
-            rows={Math.max(3, lines.length + 1)}
-            style={{ lineHeight: 1.5, fontFamily: 'inherit', resize: 'vertical', fontSize: 12 }}
-            value={text}
-            onChange={e => setText(e.target.value)}
-            autoFocus
-          />
-          <div style={{ fontSize: 10, color: C.light, marginTop: 3 }}>{section.editHint}</div>
-        </>
-      ) : items.length === 0 ? (
-        <div style={{ fontSize: 12, color: C.light, fontStyle: 'italic' }}>(not described yet)</div>
-      ) : section.key === 'devices' ? (
-        items.map((d, i) => (
-          <div key={i} style={{ fontSize: 12, color: C.text, lineHeight: 1.55, padding: '1px 0' }}>
-            <span style={{ fontWeight: 700 }}>{d.name}</span>
-            {d.purpose && <span style={{ color: C.muted }}> — {d.purpose}</span>}
-          </div>
-        ))
-      ) : section.key === 'sequence' ? (
-        items.map((s, i) => (
-          <div key={i} style={{ display: 'flex', gap: 8, fontSize: 12, color: C.text, lineHeight: 1.55, padding: '1px 0' }}>
-            <span style={{ color: C.muted, fontWeight: 700, width: 18, textAlign: 'right', flexShrink: 0 }}>{i + 1}.</span>
-            <span>{s}</span>
-          </div>
-        ))
-      ) : section.key === 'failureHandling' ? (
-        items.map((f, i) => (
-          <div key={i} style={{ fontSize: 12, color: C.text, lineHeight: 1.55, padding: '1px 0' }}>
-            <span style={{ fontWeight: 600 }}>{f.when}</span>
-            {(f.then || f.retries || f.whenExhausted) && <span style={{ color: C.muted }}> → </span>}
-            <span>{f.then}</span>
-            {(f.retries || f.whenExhausted) && (
-              <span style={{ color: C.muted }}>
-                {' ('}
-                {[f.retries ? `retries: ${f.retries}` : null,
-                  f.whenExhausted ? `when exhausted: ${f.whenExhausted}` : null]
-                  .filter(Boolean).join('; ')}
-                {')'}
+      {verdictText && (
+        <div
+          data-testid={`summary-verdict-${section.key}`}
+          style={{ fontSize: 10.5, color: C.muted, lineHeight: 1.45, marginBottom: 6 }}
+        >
+          {verdictText}
+        </div>
+      )}
+
+      {items.map((item, i) => (
+        <EditableLine
+          key={i}
+          line={lines[i]}
+          onCommit={t => commitLine(i, t)}
+          testId={`summary-line-${section.key}-${i}`}
+        >
+          {section.key === 'devices' ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: C.text, lineHeight: 1.55, padding: '2px 0' }}>
+              <span style={{ flexShrink: 0, display: 'inline-flex' }} data-testid="device-row-icon">
+                <DeviceIcon type={guessDeviceType(item)} size={16} />
               </span>
+              <span style={{ minWidth: 0 }}>
+                <span style={{ fontWeight: 700 }}>{item.name}</span>
+                {item.purpose && <span style={{ color: C.muted }}> — {item.purpose}</span>}
+              </span>
+            </div>
+          ) : section.key === 'sequence' ? (
+            <div style={{ display: 'flex', gap: 8, fontSize: 12, color: C.text, lineHeight: 1.55, padding: '1px 0' }}>
+              <span style={{ color: C.muted, fontWeight: 700, width: 18, textAlign: 'right', flexShrink: 0 }}>{i + 1}.</span>
+              <span>{item}</span>
+            </div>
+          ) : section.key === 'failureHandling' ? (
+            <div style={{ fontSize: 12, color: C.text, lineHeight: 1.55, padding: '1px 0' }}>
+              <span style={{ fontWeight: 600 }}>{item.when}</span>
+              {(item.then || item.retries || item.whenExhausted) && <span style={{ color: C.muted }}> → </span>}
+              <span>{item.then}</span>
+              {(item.retries || item.whenExhausted) && (
+                <span style={{ color: C.muted }}>
+                  {' ('}
+                  {[item.retries ? `retries: ${item.retries}` : null,
+                    item.whenExhausted ? `when exhausted: ${item.whenExhausted}` : null]
+                    .filter(Boolean).join('; ')}
+                  {')'}
+                </span>
+              )}
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: C.text, lineHeight: 1.55, padding: '1px 0' }}>
+              {item.station && <span style={{ fontWeight: 700 }}>{item.station}: </span>}
+              <span>{item.how}</span>
+            </div>
+          )}
+        </EditableLine>
+      ))}
+
+      {adding ? (
+        <LineInput
+          initial=""
+          placeholder={section.editHint}
+          testId={`summary-add-${section.key}-input`}
+          onDone={v => { setAdding(false); if (v !== null) commitAdd(v); }}
+        />
+      ) : (
+        <div
+          data-testid={`summary-add-${section.key}`}
+          onClick={() => setAdding(true)}
+          title={section.editHint}
+          style={{
+            fontSize: 11, color: C.light, cursor: 'text', paddingTop: 3,
+            fontStyle: items.length === 0 ? 'italic' : 'normal',
+          }}
+        >
+          {items.length === 0 ? '(not described yet — click to add)' : '+ add a line'}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── "Not SDC standard" callout (nonStandardFlags) ───────────────────────────
+//
+// Amber card listing every place the engineer's description contradicts an
+// SDC standard. Jarvis flags and PROCEEDS — never a gate, never a refusal.
+// Flags persist into machineSpec.nonStandardFlags on Build.
+
+function NonStandardCard({ flags }) {
+  if (!Array.isArray(flags) || flags.length === 0) return null;
+  return (
+    <div
+      data-testid="nonstandard-callout"
+      style={{
+        border: '1px solid #e6d9a8', background: '#fdf6e3',
+        borderRadius: 8, padding: '10px 14px', marginBottom: 10,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+        <span style={{
+          fontSize: 11, fontWeight: 700, color: '#6b5513',
+          letterSpacing: '0.04em', textTransform: 'uppercase',
+        }}>
+          △ Not SDC standard
+        </span>
+      </div>
+      {flags.map((f, i) => (
+        <div key={i} data-testid="nonstandard-flag" style={{ fontSize: 12, color: C.text, lineHeight: 1.55, padding: '3px 0' }}>
+          <div>
+            <span style={{ fontWeight: 700 }}>{f.what}</span>
+            {f.severity === 'warning' && (
+              <span style={{
+                marginLeft: 8, fontSize: 10, fontWeight: 700, color: '#8a3b3b',
+                background: '#f5eeee', border: '1px solid #d4a0a0',
+                borderRadius: 10, padding: '1px 8px', whiteSpace: 'nowrap',
+              }}>warning</span>
             )}
           </div>
-        ))
-      ) : (
-        items.map((x, i) => (
-          <div key={i} style={{ fontSize: 12, color: C.text, lineHeight: 1.55, padding: '1px 0' }}>
-            {x.station && <span style={{ fontWeight: 700 }}>{x.station}: </span>}
-            <span>{x.how}</span>
-          </div>
-        ))
+          <div style={{ color: '#6b5513' }}>SDC standard: {f.standard}</div>
+        </div>
+      ))}
+      <div style={{ fontSize: 11, color: '#6b5513', fontStyle: 'italic', marginTop: 4 }}>
+        Jarvis built it your way — flagged for controls review.
+      </div>
+    </div>
+  );
+}
+
+// ── IO & Pneumatics card (optional capture — no coverage, never gates) ──────
+//
+// Rendered ONLY when the summary carries an `io` object (the ME mentioned
+// sensors / valves / IO counts). Feeds the machine's valve-bank and IO-bank
+// layout; persisted into machineSpec.io on Build.
+
+function IoCard({ io }) {
+  if (!ioHasContent(io)) return null;
+  const sensors = Array.isArray(io.sensors) ? io.sensors : [];
+  const valves = Array.isArray(io.valveFunctions) ? io.valveFunctions : [];
+  const notes = String(io.ioNotes || '').trim();
+  return (
+    <div
+      data-testid="summary-section-io"
+      style={{
+        border: `1px solid ${C.border}`, borderRadius: 8, background: '#fff',
+        padding: '10px 14px', marginBottom: 10,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+        <span style={{
+          fontSize: 11, fontWeight: 700, color: C.text,
+          letterSpacing: '0.04em', textTransform: 'uppercase',
+        }}>
+          IO &amp; Pneumatics
+        </span>
+        <span style={{
+          fontSize: 10, color: C.light, whiteSpace: 'nowrap',
+          border: `1px solid ${C.border}`, borderRadius: 10, padding: '1px 8px',
+        }}>captured — feeds valve/IO layout</span>
+      </div>
+      {sensors.map((x, i) => (
+        <div key={`s${i}`} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: C.text, lineHeight: 1.55, padding: '2px 0' }}>
+          <span style={{ flexShrink: 0, display: 'inline-flex' }}>
+            <DeviceIcon type={/analog|pressure|force/i.test(`${x.type ?? ''} ${x.name ?? ''}`) ? 'AnalogSensor' : 'DigitalSensor'} size={15} />
+          </span>
+          <span style={{ minWidth: 0 }}>
+            <span style={{ fontWeight: 600 }}>{x.name}</span>
+            {x.type && <span style={{ color: C.light }}> ({x.type})</span>}
+            {x.purpose && <span style={{ color: C.muted }}> — {x.purpose}</span>}
+          </span>
+        </div>
+      ))}
+      {valves.map((v, i) => (
+        <div key={`v${i}`} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: C.text, lineHeight: 1.55, padding: '2px 0' }}>
+          <span style={{ flexShrink: 0, display: 'inline-flex' }}>
+            <DeviceIcon type="PneumaticLinearActuator" size={15} />
+          </span>
+          <span style={{ minWidth: 0 }}>{v}</span>
+        </div>
+      ))}
+      {notes && (
+        <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5, marginTop: 4 }}>{notes}</div>
       )}
     </div>
   );
@@ -551,6 +794,13 @@ export function CreateStationPage() {
   const [summary, setSummary] = useState(draftSummary);
   const [jarvisCoverage, setJarvisCoverage] = useState(draft?.jarvisCoverage ?? null);
   const [questions, setQuestions] = useState(draft?.questions ?? []);
+  // Non-standard requests Jarvis flagged (description contradicts an SDC
+  // standard) — rendered as the amber callout, persisted into machineSpec.
+  const [nonStandardFlags, setNonStandardFlags] = useState(draft?.nonStandardFlags ?? []);
+  // In-place edit tracking: baseline = the summary as Jarvis last returned
+  // it; ANY inline edit sets dirty and raises the sticky Resubmit bar.
+  const [dirty, setDirty] = useState(false);
+  const baselineRef = useRef(draftSummary);
   const [changes, setChanges] = useState('');
   const [applying, setApplying] = useState(false);
   // Standing rules JARVIS just learned from the engineer's answers —
@@ -609,7 +859,7 @@ export function CreateStationPage() {
         const { json, droppedImages } = serializeDraft({
           name, station, description, images,
           phase: phase === 'summary' || phase === 'summarizing' ? 'summary' : 'input',
-          summary, jarvisCoverage, questions, summarizeCost,
+          summary, jarvisCoverage, questions, nonStandardFlags, summarizeCost,
         });
         localStorage.setItem(draftKey, json);
         setDraftImagesDropped(droppedImages);
@@ -619,7 +869,7 @@ export function CreateStationPage() {
           const { json } = serializeDraft({
             name, station, description, images: [],
             phase: phase === 'summary' ? 'summary' : 'input',
-            summary, jarvisCoverage, questions, summarizeCost,
+            summary, jarvisCoverage, questions, nonStandardFlags, summarizeCost,
           });
           localStorage.setItem(draftKey, json);
           setDraftImagesDropped(images.length);
@@ -627,7 +877,7 @@ export function CreateStationPage() {
       }
     }, 1000);
     return () => clearTimeout(t);
-  }, [name, station, description, images, phase, summary, jarvisCoverage, questions, summarizeCost, draftKey]);
+  }, [name, station, description, images, phase, summary, jarvisCoverage, questions, nonStandardFlags, summarizeCost, draftKey]);
 
   function clearDraft() {
     try { localStorage.removeItem(draftKey); } catch { /* noop */ }
@@ -639,6 +889,7 @@ export function CreateStationPage() {
     buildSucceededRef.current = false;
     setName(''); setDescription(''); setImages([]);
     setSummary(null); setJarvisCoverage(null); setQuestions([]); setChanges('');
+    setNonStandardFlags([]); setDirty(false); baselineRef.current = null;
     setQaRounds(0); setQaHistory([]); setLearnedNotes([]);
     setSummarizeCost(0); setError(null); setDraftNote(false); setDraftImagesDropped(0);
     setPhase('input');
@@ -660,13 +911,12 @@ export function CreateStationPage() {
   const allCovered = covered === applicable.length;
 
   const preview = name ? buildProgramName(station || 1, name.replace(/[^a-zA-Z0-9_]/g, '')) : '—';
-  // Only the four coverage items gate the primary Build — open questions NEVER
-  // gate: Jarvis decides them per SDC standards and notes them for review.
+  // Coverage NEVER blocks the Build (v2.0.3): with real input, Build is always
+  // clickable. Thin coverage just adds one confirm — Jarvis fills the gaps with
+  // SDC-standard assumptions and flags them for review. Open questions never
+  // gate either: Jarvis decides them per SDC standards and notes them.
   const hasBuildInput = !!name.trim()
     && !!(usingJarvisVerdicts ? summaryHasContent(summary) : description.trim());
-  const canBuild = hasBuildInput && allCovered;
-  // Escape hatch: build even with thin coverage (confirmed by the user).
-  const canBuildAsIs = hasBuildInput && usingJarvisVerdicts;
 
   // Cost gate: the limit is money, never the user's explanation length.
   const overSummarizeBudget = summarizeCost >= summarizeCostCap;
@@ -695,8 +945,11 @@ export function CreateStationPage() {
       throw new Error('Server returned an unstructured summary — restart the API server (server.js / specAuthor.js changed)');
     }
     setSummary(data.summary);
+    baselineRef.current = data.summary;
+    setDirty(false);
     setJarvisCoverage(data.coverage);
     setQuestions(data.questions ?? []);
+    setNonStandardFlags(Array.isArray(data.nonStandardFlags) ? data.nonStandardFlags : []);
     const recorded = (Array.isArray(data.learnedFacts) ? data.learnedFacts : [])
       .filter(f => f && f.recorded === true && f.fact)
       .map(f => String(f.fact));
@@ -744,6 +997,30 @@ export function CreateStationPage() {
     }
   }
 
+  /** Sticky-bar Resubmit: re-run summarize with the in-place edits sent as
+   *  corrections (same pipeline as Apply changes). */
+  async function handleResubmitEdits() {
+    if (applying) return;
+    if (overSummarizeBudget) { setError(budgetMessage); return; }
+    const corrections = buildEditCorrections(baselineRef.current, summary);
+    if (!corrections) { baselineRef.current = summary; setDirty(false); return; }
+    setError(null);
+    setApplying(true);
+    try {
+      await callSummarize({ priorSummary: summaryToText(summary), corrections });
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  /** Sticky-bar dismiss: the edits stand as-is, no re-extraction. */
+  function handleKeepEdits() {
+    baselineRef.current = summary;
+    setDirty(false);
+  }
+
   // Corrections input dictation (reuses the DescribeSurface implementation)
   const changesRef = useRef(null);
   const changesDictation = useDictation({
@@ -774,8 +1051,20 @@ export function CreateStationPage() {
     };
   }
 
+  /** The ONLY Build entry point. Never blocked by coverage — thin coverage
+   *  gets one confirm, then builds. (The old `if (!canBuild) return;` guard
+   *  silently ate clicks whenever coverage was < 4/4 — the "blocked at 3 of 4"
+   *  bug.) */
+  function handleBuildClick() {
+    if (!hasBuildInput || busy) return;
+    if (!allCovered && !window.confirm(
+      'Some areas are thin — Jarvis will fill gaps with SDC-standard assumptions and flag them for review. Build?'
+    )) return;
+    handleBuild();
+  }
+
   async function handleBuild() {
-    if (!canBuild) return;
+    if (!hasBuildInput) return;
     const returnPhase = usingJarvisVerdicts ? 'summary' : 'input';
     setPhase('building');
     setError(null);
@@ -826,7 +1115,9 @@ export function CreateStationPage() {
         // build — they ride along as pendingQuestions for CE review.
         machineSpec: {
           version: 1, sourceDescription: desc,
+          ...(ioHasContent(summary?.io) ? { io: summary.io } : {}),
           ...(questions.length ? { pendingQuestions: questions.slice() } : {}),
+          ...(nonStandardFlags.length ? { nonStandardFlags: nonStandardFlags.map(f => ({ ...f })) } : {}),
         },
       });
       // Hand open questions to Jarvis's question queue (best effort — the
@@ -892,7 +1183,9 @@ export function CreateStationPage() {
       store.updateStateMachine(smId, {
         machineSpec: {
           ...sData.spec, sourceDescription: desc,
+          ...(ioHasContent(summary?.io) ? { io: summary.io } : {}),
           ...(questions.length ? { pendingQuestions: questions.slice() } : {}),
+          ...(nonStandardFlags.length ? { nonStandardFlags: nonStandardFlags.map(f => ({ ...f })) } : {}),
         },
       });
 
@@ -1111,11 +1404,13 @@ export function CreateStationPage() {
                   )}
                   <button
                     className="btn btn--secondary"
-                    onClick={handleBuild}
-                    disabled={!canBuild || busy}
-                    title={allCovered
-                      ? 'Build straight from the raw explanation (skips the summary review)'
-                      : 'Complete the checklist to build'}
+                    onClick={handleBuildClick}
+                    disabled={!hasBuildInput || busy}
+                    title={hasBuildInput
+                      ? (allCovered
+                        ? 'Build straight from the raw explanation (skips the summary review)'
+                        : 'Build straight from the raw explanation — thin areas are filled with SDC standards and flagged')
+                      : 'Enter a station name and an explanation first'}
                   >
                     Build without summary
                   </button>
@@ -1167,9 +1462,14 @@ export function CreateStationPage() {
                     items={summary[section.key]}
                     cov={jarvisCoverage ? jarvisCoverage[section.covKey] : null}
                     optional={section.key === 'interactions' && !hasOtherSms}
-                    onChange={items => setSummary(s => ({ ...s, [section.key]: items }))}
+                    onChange={items => {
+                      setSummary(s => ({ ...s, [section.key]: items }));
+                      setDirty(true);
+                    }}
                   />
                 ))}
+                {summary && <IoCard io={summary.io} />}
+                <NonStandardCard flags={nonStandardFlags} />
 
                 {questions.length > 0 && (
                   <div style={{
@@ -1336,8 +1636,8 @@ export function CreateStationPage() {
                     Discard draft
                   </button>
                   {!allCovered && (
-                    <span style={{ fontSize: 11, color: C.muted }}>
-                      {covered} of {applicable.length} covered — answer what's missing, then Apply changes
+                    <span data-testid="coverage-note" style={{ fontSize: 11, color: C.muted }}>
+                      {covered} of {applicable.length} covered — Jarvis will fill the gap{applicable.length - covered > 1 ? 's' : ''} and flag {applicable.length - covered > 1 ? 'them' : 'it'}
                     </span>
                   )}
                   {allCovered && questions.length > 0 && (
@@ -1346,36 +1646,64 @@ export function CreateStationPage() {
                       decide these per SDC standards and note them for review.
                     </span>
                   )}
-                  {!allCovered && canBuildAsIs && (
-                    <button
-                      type="button"
-                      className="btn btn--secondary"
-                      data-testid="build-as-is-btn"
-                      onClick={() => {
-                        if (window.confirm('Some areas are thin — Jarvis will fill gaps with SDC-standard assumptions and flag them. Build?')) {
-                          handleBuild();
-                        }
-                      }}
-                      style={{ fontSize: 12 }}
-                    >
-                      Build as-is
-                    </button>
-                  )}
                   <button
                     className="btn btn--primary"
                     data-testid="build-station-btn"
-                    onClick={handleBuild}
-                    disabled={!canBuild}
-                    title={allCovered ? undefined : "JARVIS's checklist verdicts gate the build — or use Build as-is"}
+                    onClick={handleBuildClick}
+                    disabled={!hasBuildInput || applying}
+                    title={hasBuildInput
+                      ? (allCovered ? undefined : 'Thin areas are filled with SDC-standard assumptions and flagged for review')
+                      : 'Enter a station name first'}
                     style={{
                       fontSize: 14, padding: '9px 22px',
                       transition: 'background 0.35s ease, box-shadow 0.35s ease, opacity 0.35s ease',
-                      boxShadow: canBuild ? `0 0 0 3px ${C.primaryBg}` : 'none',
+                      boxShadow: hasBuildInput && !applying ? `0 0 0 3px ${C.primaryBg}` : 'none',
                     }}
                   >
                     Build Station
                   </button>
                 </div>
+
+                {/* Sticky edits bar — any inline edit raises it; Resubmit
+                    re-runs summarize with the edits as corrections, the
+                    dismiss keeps the edits without re-extraction. */}
+                {dirty && !applying && (
+                  <div
+                    data-testid="resubmit-bar"
+                    style={{
+                      position: 'sticky', bottom: 10, zIndex: 5,
+                      display: 'flex', alignItems: 'center', gap: 14,
+                      background: '#fff', border: `1px solid ${C.primaryBorder}`,
+                      boxShadow: '0 3px 14px rgba(0,0,0,0.13)',
+                      borderRadius: 8, padding: '8px 14px', marginTop: 12,
+                    }}
+                  >
+                    <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: C.text }}>
+                      You've made edits — Resubmit to Jarvis
+                    </span>
+                    <button
+                      type="button"
+                      data-testid="keep-edits-btn"
+                      onClick={handleKeepEdits}
+                      style={{
+                        background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                        fontSize: 11, color: C.muted, textDecoration: 'underline', whiteSpace: 'nowrap',
+                      }}
+                    >
+                      keep my edits as-is
+                    </button>
+                    <button
+                      className="btn btn--primary"
+                      data-testid="resubmit-btn"
+                      onClick={handleResubmitEdits}
+                      disabled={applying || overSummarizeBudget}
+                      title={overSummarizeBudget ? budgetMessage : 'Re-runs the summary with your edits as corrections'}
+                      style={{ fontSize: 12, padding: '6px 16px' }}
+                    >
+                      Resubmit
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -1383,7 +1711,7 @@ export function CreateStationPage() {
                   scores={effScores}
                   messages={effMessages}
                   hasOtherSms={hasOtherSms}
-                  sourceLabel="JARVIS's verdict from your explanation — this gates the Build."
+                  sourceLabel="JARVIS's verdict from your explanation — thin areas never block the Build; they're filled with SDC standards and flagged."
                 />
                 <div style={{
                   fontSize: 11, color: overSummarizeBudget ? '#6b5513' : C.muted,

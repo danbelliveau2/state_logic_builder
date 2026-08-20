@@ -24,6 +24,8 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { DictatedTextarea } from './DictatedTextarea.jsx';
+import { BuildScoreRow } from './BuildScoreRow.jsx';
 
 const C = {
   primary: 'var(--color-primary)',
@@ -164,11 +166,12 @@ function AnswerBox({ q, onAnswered, onDismissed }) {
 
   return (
     <div style={{ marginTop: 10 }}>
-      <textarea
+      <DictatedTextarea
         data-testid={`answer-input-${q.id}`}
+        micTestId={`answer-mic-${q.id}`}
         value={answer}
-        onChange={e => setAnswer(e.target.value)}
-        placeholder="Type the answer Jarvis should learn…"
+        onChange={setAnswer}
+        placeholder="Type the answer Jarvis should learn — or hit the mic and talk…"
         rows={2}
         style={{
           width: '100%', boxSizing: 'border-box', resize: 'vertical',
@@ -326,28 +329,217 @@ function QuestionsTab({ questions, onUpdate }) {
 
 // ── Knowledge tab ────────────────────────────────────────────────────────────
 
-function KnowledgeTab({ knowledge }) {
+const LEARNED_HEADING_MD = '## Learned from the MEs';
+
+// Keyword-based topic grouping for learned lines (v1 — Dan: "group things
+// together — this is what I learned for the servo pick and place… for servo
+// motors… for pneumatic valves"). First matching group wins.
+const TOPIC_GROUPS = [
+  { id: 'servo-pnp',  label: 'Servo pick-and-place',        test: l => /pick.{0,3}(and.{0,3})?place|\bpnp\b/.test(l) },
+  { id: 'grippers',   label: 'Grippers',                    test: l => /gripper|\bgrip(ped|s)?\b|vacuum/.test(l) },
+  { id: 'pneumatics', label: 'Pneumatic actuators & valves', test: l => /pneumatic|valve|solenoid|cylinder|actuator|shuttle|slide/.test(l) },
+  { id: 'servo',      label: 'Servo motors',                test: l => /servo|\baxis\b|\baxes\b|motion|\bhome\b|speed|position/.test(l) },
+  { id: 'recovery',   label: 'Recovery & motion standards', test: l => /recover|fault|e.?stop|lockout|alarm|\bsafe\b/.test(l) },
+  { id: 'taxonomy',   label: 'Device taxonomy',             test: l => /\bdevices?\b|sensor|taxonomy|timer|debounce/.test(l) },
+  { id: 'questions',  label: 'Question policy',             test: l => /question|\bask(ing|ed)?\b/.test(l) },
+  { id: 'project',    label: 'Project-specific',            test: l => /project|station\s+\d/.test(l) },
+];
+
+function classifyLearned(rawLine) {
+  const l = rawLine.toLowerCase();
+  return TOPIC_GROUPS.find(g => g.test(l)) ?? { id: 'general', label: 'General' };
+}
+
+/** One learned fact: view with Edit / Remove, or inline edit (talk-or-type). */
+function LearnedLine({ raw, onReload }) {
+  const [mode, setMode] = useState('view'); // 'view' | 'edit'
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const display = raw.replace(/^\s*-\s*/, '');
+
+  async function put(newLine) {
+    setBusy(true); setError(null);
+    try {
+      const r = await fetch('/api/jarvis/knowledge/learned', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldLine: raw, newLine }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      onReload?.();
+    } catch (e) {
+      setError(e.message);
+      setBusy(false);
+    }
+  }
+
+  if (mode === 'edit') {
+    return (
+      <div style={{ margin: '4px 0 8px' }}>
+        <DictatedTextarea
+          data-testid={`learned-edit-input`}
+          micTestId="learned-edit-mic"
+          rows={2}
+          value={text}
+          onChange={setText}
+          style={{
+            width: '100%', boxSizing: 'border-box', resize: 'vertical', fontSize: 12.5,
+            border: `1px solid ${C.border}`, borderRadius: 6, padding: '6px 9px',
+            fontFamily: 'inherit', color: C.text, background: C.surface, lineHeight: 1.5,
+          }}
+        />
+        <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center' }}>
+          <button
+            data-testid="learned-edit-save"
+            disabled={busy || !text.trim()}
+            onClick={() => put('- ' + text.trim())}
+            style={{ background: C.primary, color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+          >{busy ? 'Saving…' : 'Save'}</button>
+          <button
+            disabled={busy}
+            onClick={() => { setMode('view'); setError(null); }}
+            style={{ background: 'none', border: `1px solid ${C.border}`, color: C.muted, borderRadius: 6, padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}
+          >Cancel</button>
+          {error && <span style={{ color: C.danger, fontSize: 11 }}>{error}</span>}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-testid="learned-line"
+      style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '3px 0', fontSize: 12.5, lineHeight: 1.55, color: C.text }}
+    >
+      <span style={{ color: C.light, flexShrink: 0 }}>•</span>
+      <span style={{ flex: 1, minWidth: 0 }}><MdInline text={display} /></span>
+      <span style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+        <button
+          data-testid="learned-edit-btn"
+          title="Adjust this learned fact"
+          onClick={() => { setText(display); setMode('edit'); }}
+          style={{ background: 'none', border: 'none', color: C.primary, fontSize: 11, fontWeight: 600, cursor: 'pointer', padding: '0 2px' }}
+        >Edit</button>
+        <button
+          data-testid="learned-remove-btn"
+          title="Remove this learned fact permanently"
+          disabled={busy}
+          onClick={() => { if (confirm('Remove this learned fact from Jarvis permanently?\n\n' + display)) put(''); }}
+          style={{ background: 'none', border: 'none', color: C.light, fontSize: 11, cursor: 'pointer', padding: '0 2px' }}
+        >Remove</button>
+      </span>
+      {error && <span style={{ color: C.danger, fontSize: 11 }}>{error}</span>}
+    </div>
+  );
+}
+
+function KnowledgeTab({ knowledge, onReload }) {
+  const [collapsed, setCollapsed] = useState({});
+  const [showStanding, setShowStanding] = useState(false);
   if (!knowledge) return <div style={{ color: C.light, fontSize: 13 }}>Loading…</div>;
   const { meKnowledge, rulesHeadings } = knowledge;
+
+  // Split standing sections from the editable learned lines.
+  let standingMd = meKnowledge ?? '';
+  let learnedRaw = [];
+  if (meKnowledge) {
+    const i = meKnowledge.indexOf(LEARNED_HEADING_MD);
+    if (i !== -1) {
+      standingMd = meKnowledge.slice(0, i);
+      learnedRaw = meKnowledge.slice(i).split('\n').filter(l => l.trimStart().startsWith('- '));
+    }
+  }
+
+  // Group learned lines by topic, in TOPIC_GROUPS order (General last).
+  const groups = [];
+  {
+    const byId = new Map();
+    for (const raw of learnedRaw) {
+      const g = classifyLearned(raw);
+      if (!byId.has(g.id)) byId.set(g.id, { id: g.id, label: g.label, items: [] });
+      byId.get(g.id).items.push(raw);
+    }
+    for (const id of [...TOPIC_GROUPS.map(g => g.id), 'general']) {
+      if (byId.has(id)) groups.push(byId.get(id));
+    }
+  }
+
   return (
     <div>
       <div style={{
         background: '#fdf6e3', border: `1px solid ${C.warning}`, color: '#7a6220',
         borderRadius: 6, padding: '8px 12px', fontSize: 12, marginBottom: 16, lineHeight: 1.5,
       }}>
-        Read-only. Corrections reach Jarvis by <b>answering his questions</b> (previous tab)
-        or by the controls leads editing <code>meKnowledge.md</code> / <code>generationRules.md</code> directly.
+        Facts Jarvis <b>learned from the MEs</b> can be adjusted or removed below.
+        Standing sections are maintained with the controls leads (<code>meKnowledge.md</code> /
+        <code>generationRules.md</code>); new facts arrive by <b>answering his questions</b> (previous tab).
       </div>
 
+      {/* Learned from the MEs — grouped by topic, editable */}
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: '14px 18px', marginBottom: 16 }}>
-        {meKnowledge
-          ? <MdLight md={meKnowledge} />
-          : (
-            <div style={{ color: C.light, fontSize: 13, padding: '10px 0' }}>
-              Jarvis's ME-facing knowledge file (<code>meKnowledge.md</code>) doesn't exist yet.
-              It's created the first time a question is answered or a lead seeds it.
+        <h3 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 4px', color: C.primary }}>Learned from the MEs</h3>
+        <div style={{ fontSize: 11.5, color: C.light, marginBottom: 10 }}>
+          Grouped by topic. Every line here rides into Jarvis's very next prompt — edits apply immediately.
+        </div>
+        {groups.length === 0 && (
+          <div style={{ color: C.light, fontSize: 13 }}>
+            Nothing learned yet — answers to Jarvis's questions land here.
+          </div>
+        )}
+        {groups.map(g => {
+          const isCollapsed = collapsed[g.id] === true;
+          return (
+            <div key={g.id} data-testid={`kgroup-${g.id}`} style={{ marginBottom: 6 }}>
+              <button
+                data-testid={`kgroup-toggle-${g.id}`}
+                onClick={() => setCollapsed(c => ({ ...c, [g.id]: !isCollapsed }))}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 7, width: '100%', textAlign: 'left',
+                  background: C.sidebar, border: `1px solid ${C.border}`, borderRadius: 6,
+                  padding: '6px 10px', fontSize: 12.5, fontWeight: 700, color: C.text, cursor: 'pointer',
+                }}
+              >
+                <span style={{ color: C.muted, fontSize: 10 }}>{isCollapsed ? '▸' : '▾'}</span>
+                {g.label}
+                <span style={{
+                  background: C.primary, color: '#fff', borderRadius: 999, fontSize: 10,
+                  fontWeight: 700, padding: '1px 7px', marginLeft: 'auto',
+                }}>{g.items.length}</span>
+              </button>
+              {!isCollapsed && (
+                <div style={{ padding: '4px 10px 2px 14px' }}>
+                  {g.items.map(raw => <LearnedLine key={raw} raw={raw} onReload={onReload} />)}
+                </div>
+              )}
             </div>
-          )}
+          );
+        })}
+      </div>
+
+      {/* Standing knowledge — read-only */}
+      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: '14px 18px', marginBottom: 16 }}>
+        <button
+          data-testid="standing-toggle"
+          onClick={() => setShowStanding(s => !s)}
+          style={{ background: 'none', border: 'none', padding: 0, color: C.primary, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
+        >
+          {showStanding ? '▾' : '▸'} Standing knowledge (read-only)
+        </button>
+        <div style={{ fontSize: 11.5, color: C.light, margin: '2px 0 0' }}>
+          Device taxonomy, standing SDC facts, question policy — maintained with the controls leads.
+        </div>
+        {showStanding && (
+          standingMd.trim()
+            ? <div style={{ marginTop: 8 }}><MdLight md={standingMd} /></div>
+            : (
+              <div style={{ color: C.light, fontSize: 13, padding: '10px 0' }}>
+                Jarvis's ME-facing knowledge file (<code>meKnowledge.md</code>) doesn't exist yet.
+                It's created the first time a question is answered or a lead seeds it.
+              </div>
+            )
+        )}
       </div>
 
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: '14px 18px' }}>
@@ -378,9 +570,40 @@ function fmtDuration(ms) {
 const th = { textAlign: 'left', fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: C.muted, padding: '6px 10px', borderBottom: `2px solid ${C.border}`, whiteSpace: 'nowrap' };
 const td = { fontSize: 12.5, color: C.text, padding: '7px 10px', borderBottom: `1px solid ${C.border}`, verticalAlign: 'top' };
 
-function TrackRecordTab({ track }) {
+function TrackRecordTab({ track, builds, onBuildScored }) {
+  const [scoringId, setScoringId] = useState(null); // build id with the inline scorer open
   if (!track) return <div style={{ color: C.light, fontSize: 13 }}>Loading…</div>;
   const { version, history = [], benchmarks = [], generatedCount = 0 } = track;
+  const buildList = builds ?? [];
+
+  // Avg score per Jarvis version — only versions that actually have scores.
+  const avgByVersion = [];
+  {
+    const acc = new Map();
+    for (const b of buildList) {
+      if (b.score == null) continue;
+      const v = b.jarvisVersion || '?';
+      const e = acc.get(v) || { sum: 0, n: 0 };
+      e.sum += b.score; e.n += 1;
+      acc.set(v, e);
+    }
+    for (const [v, e] of [...acc.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0])))) {
+      avgByVersion.push({ version: v, avg: e.sum / e.n, n: e.n });
+    }
+  }
+
+  // Merge benchmark reports + scored builds into one chronological table.
+  const rows = [
+    ...benchmarks.map(b => ({ kind: 'bench', key: `bench-${b.file}`, ...b })),
+    ...buildList.map(b => ({
+      kind: 'build', key: `build-${b.id}`, id: b.id,
+      version: b.jarvisVersion, project: b.project, smName: b.sm,
+      ok: b.validationOk, attemptsUsed: b.attempts,
+      durationMs: b.durationS != null ? b.durationS * 1000 : null,
+      costUSD: b.costUSD, ranAt: b.at,
+      score: b.score, scoredBy: b.scoredBy, scoreComment: b.scoreComment,
+    })),
+  ].sort((a, b) => String(a.ranAt || '').localeCompare(String(b.ranAt || '')));
 
   return (
     <div>
@@ -390,8 +613,13 @@ function TrackRecordTab({ track }) {
           { label: 'Benchmark runs', value: benchmarks.length },
           { label: 'Passing', value: benchmarks.filter(b => b.ok).length },
           { label: 'Generated L5X files', value: generatedCount },
+          ...avgByVersion.map(a => ({
+            label: `Avg score v${a.version} (${a.n})`,
+            value: a.avg.toFixed(1),
+            testId: `avg-score-${a.version}`,
+          })),
         ].map(s => (
-          <div key={s.label} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 16px', minWidth: 120 }}>
+          <div key={s.label} data-testid={s.testId} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 16px', minWidth: 120 }}>
             <div style={{ fontSize: 20, fontWeight: 700, color: C.primary }}>{s.value}</div>
             <div style={{ fontSize: 11, color: C.muted }}>{s.label}</div>
           </div>
@@ -416,34 +644,79 @@ function TrackRecordTab({ track }) {
       </div>
 
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: '14px 18px', overflowX: 'auto' }}>
-        <h3 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 2px', color: C.primary }}>Benchmarks</h3>
+        <h3 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 2px', color: C.primary }}>Benchmarks & builds</h3>
         <div style={{ fontSize: 11.5, color: C.light, marginBottom: 10 }}>
-          Every run in <code>benchmarks/</code> — fails included. "oldgen" rows are the pre-Jarvis rule-based exporter.
+          Every run in <code>benchmarks/</code> plus every ME build — fails included. "oldgen" rows are the
+          pre-Jarvis rule-based exporter. ME builds carry a 1-10 score from whoever ran them.
         </div>
         <table data-testid="benchmark-table" style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead>
             <tr>
               <th style={th}>Version</th><th style={th}>Project / Station</th><th style={th}>Result</th>
               <th style={th}>Attempts</th><th style={th}>Duration</th><th style={th}>Cost</th>
-              <th style={th}>Errors / Warnings</th><th style={th}>Ran</th>
+              <th style={th}>Errors / Warnings</th><th style={th}>Ran</th><th style={th}>Score</th>
             </tr>
           </thead>
           <tbody>
-            {benchmarks.map(b => (
-              <tr key={b.file}>
-                <td style={{ ...td, fontWeight: 700, whiteSpace: 'nowrap' }}>{b.version ? `v${b.version}` : 'oldgen'}</td>
-                <td style={td}>{b.project}{b.smName ? ` / ${b.smName}` : ''}</td>
-                <td style={{ ...td, fontWeight: 700, color: b.ok ? C.success : C.danger, whiteSpace: 'nowrap' }}>
-                  {b.parseError ? 'unreadable' : (b.ok ? '✓ Pass' : '✗ Fail')}
-                </td>
-                <td style={td}>{b.attemptsUsed ?? '—'}</td>
-                <td style={{ ...td, whiteSpace: 'nowrap' }}>{fmtDuration(b.durationMs)}</td>
-                <td style={{ ...td, whiteSpace: 'nowrap' }}>{b.costUSD != null ? `$${b.costUSD.toFixed(2)}` : '—'}</td>
-                <td style={td}>{b.errors ?? '—'} / {b.warnings ?? '—'}</td>
-                <td style={{ ...td, whiteSpace: 'nowrap', color: C.muted }}>{String(b.ranAt || '').slice(0, 16).replace('T', ' ')}</td>
-              </tr>
-            ))}
-            {benchmarks.length === 0 && <tr><td style={td} colSpan={8}>No benchmark reports found.</td></tr>}
+            {rows.map(b => {
+              const isBuild = b.kind === 'build';
+              return [
+                <tr key={b.key} data-testid={isBuild ? `build-row-${b.id}` : undefined}>
+                  <td style={{ ...td, fontWeight: 700, whiteSpace: 'nowrap' }}>{b.version ? `v${b.version}` : 'oldgen'}</td>
+                  <td style={td}>
+                    {b.project}{b.smName ? ` / ${b.smName}` : ''}
+                    {isBuild && (
+                      <span style={{
+                        marginLeft: 6, fontSize: 9, fontWeight: 700, letterSpacing: '0.05em',
+                        textTransform: 'uppercase', color: C.primary, background: C.primaryBg,
+                        borderRadius: 999, padding: '1px 6px',
+                      }}>build</span>
+                    )}
+                  </td>
+                  <td style={{ ...td, fontWeight: 700, color: b.ok ? C.success : C.danger, whiteSpace: 'nowrap' }}>
+                    {b.parseError ? 'unreadable' : (b.ok ? '✓ Pass' : '✗ Fail')}
+                  </td>
+                  <td style={td}>{b.attemptsUsed ?? '—'}</td>
+                  <td style={{ ...td, whiteSpace: 'nowrap' }}>{fmtDuration(b.durationMs)}</td>
+                  <td style={{ ...td, whiteSpace: 'nowrap' }}>{b.costUSD != null ? `$${b.costUSD.toFixed(2)}` : '—'}</td>
+                  <td style={td}>{b.errors ?? '—'} / {b.warnings ?? '—'}</td>
+                  <td style={{ ...td, whiteSpace: 'nowrap', color: C.muted }}>{String(b.ranAt || '').slice(0, 16).replace('T', ' ')}</td>
+                  <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                    {!isBuild ? '—'
+                      : b.score != null ? (
+                        <span
+                          data-testid={`build-score-${b.id}`}
+                          title={`${b.scoredBy}${b.scoreComment ? `: ${b.scoreComment}` : ''}`}
+                          style={{ fontWeight: 700, color: b.score >= 7 ? C.success : b.score >= 4 ? C.warning : C.danger, cursor: b.scoreComment ? 'help' : 'default' }}
+                        >
+                          {b.score}/10
+                          <span style={{ display: 'block', fontSize: 9, fontWeight: 400, color: C.light }}>{b.scoredBy}</span>
+                        </span>
+                      ) : (
+                        <button
+                          data-testid={`score-it-${b.id}`}
+                          onClick={() => setScoringId(s => (s === b.id ? null : b.id))}
+                          style={{
+                            background: C.primaryBg, border: `1px dashed ${C.primary}`, color: C.primary,
+                            borderRadius: 6, padding: '3px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                          }}
+                        >Score it</button>
+                      )}
+                  </td>
+                </tr>,
+                isBuild && b.score == null && scoringId === b.id && (
+                  <tr key={`${b.key}-scorer`}>
+                    <td style={{ ...td, background: C.sidebar }} colSpan={9}>
+                      <BuildScoreRow
+                        buildId={b.id}
+                        onScored={(updated) => { setScoringId(null); onBuildScored?.(updated); }}
+                      />
+                    </td>
+                  </tr>
+                ),
+              ];
+            })}
+            {rows.length === 0 && <tr><td style={td} colSpan={9}>No benchmark reports or builds found.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -464,6 +737,7 @@ export function JarvisPage({ onClose }) {
   const [questions, setQuestions] = useState(null);
   const [knowledge, setKnowledge] = useState(null);
   const [track, setTrack] = useState(null);
+  const [builds, setBuilds] = useState(null);
   const [loadError, setLoadError] = useState(null);
 
   useEffect(() => {
@@ -474,6 +748,8 @@ export function JarvisPage({ onClose }) {
   useEffect(() => {
     if (tab === 'knowledge') getJson('/api/jarvis/knowledge').then(setKnowledge).catch(e => setLoadError(e.message));
     if (tab === 'track' && !track) getJson('/api/jarvis/trackrecord').then(setTrack).catch(e => setLoadError(e.message));
+    // Builds refresh every time the tab is entered so a just-scored build shows.
+    if (tab === 'track') getJson('/api/jarvis/builds').then(setBuilds).catch(() => setBuilds([]));
   }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -568,8 +844,19 @@ export function JarvisPage({ onClose }) {
               ? <div style={{ color: C.light, fontSize: 13 }}>Loading…</div>
               : <QuestionsTab questions={questions} onUpdate={updateQuestion} />
           )}
-          {tab === 'knowledge' && <KnowledgeTab knowledge={knowledge} />}
-          {tab === 'track' && <TrackRecordTab track={track} />}
+          {tab === 'knowledge' && (
+            <KnowledgeTab
+              knowledge={knowledge}
+              onReload={() => getJson('/api/jarvis/knowledge').then(setKnowledge).catch(e => setLoadError(e.message))}
+            />
+          )}
+          {tab === 'track' && (
+            <TrackRecordTab
+              track={track}
+              builds={builds}
+              onBuildScored={(updated) => setBuilds(bs => (bs || []).map(b => (b.id === updated.id ? updated : b)))}
+            />
+          )}
         </div>
       </div>
     </div>

@@ -307,7 +307,8 @@ const SUMMARIZE_OUTPUT = `
 Respond with ONLY one JSON object (no markdown fences, no prose):
 {
   "devices": [
-    { "name": "<device name, the engineer's term>", "purpose": "<one short line: what it is for>" }
+    { "name": "<device name, the engineer's term>", "purpose": "<one short line: what it is for>",
+      "type": "<EXACT device type string from the Device types list — omit if genuinely unsure>" }
   ],
   "sequence": ["<one short line per cycle step, in order>", ...],
   "failureHandling": [
@@ -324,10 +325,21 @@ Respond with ONLY one JSON object (no markdown fences, no prose):
     "failures":     { "score": 0|1|2, "missing": "..." },
     "interactions": { "score": 0|1|2, "missing": "..." }
   },
+  "io": {
+    "sensors": [ { "name": "<sensor name/purpose, the engineer's term>", "type": "<short kind, e.g. 'prox', 'photo eye', 'analog' — omit if not stated>",
+                   "purpose": "<one short line — omit if the name already says it>" } ],
+    "valveFunctions": ["<one short line per valve function, e.g. 'gripper open/close — 1 double-solenoid'>", ...],
+    "ioNotes": "<one short line of other IO detail the engineer stated — '' if none>"
+  },
   "questions": ["<0-3 short questions, mechanical intent only — obey the Question policy>"],
   "learnedFacts": [
     { "fact": "<a standing rule or fact the engineer stated/corrected, one tight sentence>",
       "scope": "sdc-standard" | "this-project" }
+  ],
+  "nonStandardFlags": [
+    { "what": "<what the engineer asked for, their words>",
+      "standard": "<the SDC standard it contradicts, one tight sentence>",
+      "severity": "note" | "warning" }
   ]
 }
 
@@ -340,6 +352,12 @@ Summary rules:
 - devices: obey the Device taxonomy above. Valves, EOAT assemblies, timers, and HMI
   elements are NOT devices — decompose to the actual actuated mechanism (an "EOAT with a
   gripper" is ONE device: the gripper). Keep the engineer's terms for real devices.
+  "type" must be one of the EXACT Device types strings; omit it rather than guess wildly.
+- io: OPTIONAL capture, never a requirement. Include it ONLY when the engineer explicitly
+  mentioned sensors, valves, solenoids, or IO counts — otherwise OMIT the "io" key entirely.
+  It records station IO for the machine's valve-bank and IO-bank layout. It has NO coverage
+  item and NEVER generates questions unless something stated is truly ambiguous. Empty
+  arrays / empty string for anything not mentioned.
 - sequence: one physical step per line, no numbering prefix (the UI numbers them).
 - interactions: "station" should match one of the project's other station names when possible.
 - questions: obey the Question policy above — never ask about Standing SDC facts, learned
@@ -357,6 +375,19 @@ Coverage monotonicity:
   future station ("servo speeds always live in the HMI"); scope "this-project" = true
   only here ("this gripper has no sensors"). Only facts the engineer actually stated —
   usually an empty array. Never repeat a fact already in the standing knowledge above.
+
+Non-standard detection (nonStandardFlags):
+- Compare the engineer's description against the Standing SDC facts and Learned
+  knowledge above. When the description asks for something that CONTRADICTS one of
+  those standards — not merely something new or unmentioned — add one flag per
+  contradiction: "what" = the request in the engineer's words, "standard" = the SDC
+  standard it contradicts, "severity" = "warning" when it removes a safety/diagnostic
+  behavior (fault timers, lockout, retries before faulting), "note" otherwise.
+- Do NOT silently comply, and do NOT refuse or "correct" the summary: the summary
+  still restates EXACTLY what the engineer asked for. The flag is a heads-up for
+  controls-engineer review, nothing more. Never turn a flag into a question.
+- Something the standards don't cover is NOT a flag. Most descriptions produce an
+  empty array — omit the key or return [] when nothing contradicts a standard.
 
 Coverage rules (2 = fully covered, 1 = mentioned briefly, 0 = not covered):
 - devices: are the physical devices named with what each is for?
@@ -410,7 +441,7 @@ async function summarizeDescription({
     'about it. You NEVER invent behavior — everything in the summary must come from what they ' +
     'said.\n' +
     (meKnowledge ? '\n' + meKnowledge + '\n' : '') +
-    SUMMARIZE_OUTPUT;
+    DEVICE_VOCAB + SUMMARIZE_OUTPUT;
 
   const content = [];
   for (const img of images.slice(0, 8)) {
@@ -528,7 +559,13 @@ async function summarizeDescription({
   const arr = (v) => (Array.isArray(v) ? v : []);
   const summary = {
     devices: arr(parsed.devices)
-      .map(d => ({ name: str(d && d.name), purpose: str(d && d.purpose) }))
+      .map(d => ({
+        name: str(d && d.name),
+        purpose: str(d && d.purpose),
+        // Exact deviceTypes.js string when the model gave a valid one —
+        // drives the device icon in the summary UI. Dropped when invalid.
+        ...(d && VALID_TYPES.has(d.type) ? { type: d.type } : {}),
+      }))
       .filter(d => d.name || d.purpose),
     sequence: arr(parsed.sequence).map(str).filter(Boolean),
     failureHandling: arr(parsed.failureHandling)
@@ -545,6 +582,26 @@ async function summarizeDescription({
       .map(x => ({ station: str(x && x.station), how: str(x && x.how) }))
       .filter(x => x.station || x.how),
   };
+  // Optional station-IO capture: only present when the engineer mentioned
+  // sensors / valves / IO counts (feeds the machine's valve/IO-bank layout).
+  // Never gates anything; omitted entirely when empty.
+  if (parsed.io && typeof parsed.io === 'object') {
+    const io = {
+      sensors: arr(parsed.io.sensors)
+        .map(x => {
+          const s = { name: str(x && x.name) };
+          const ty = str(x && x.type);
+          const pu = str(x && x.purpose);
+          if (ty) s.type = ty;
+          if (pu) s.purpose = pu;
+          return s;
+        })
+        .filter(x => x.name || x.purpose),
+      valveFunctions: arr(parsed.io.valveFunctions).map(str).filter(Boolean),
+      ioNotes: str(parsed.io.ioNotes),
+    };
+    if (io.sensors.length || io.valveFunctions.length || io.ioNotes) summary.io = io;
+  }
   if (!summary.devices.length && !summary.sequence.length
     && !summary.failureHandling.length && !summary.interactions.length) {
     throw new Error('Model returned an empty summary');
@@ -574,6 +631,16 @@ async function summarizeDescription({
     }))
     .filter(f => f.fact)
     .slice(0, 8);
+  // Non-standard requests the model flagged (description contradicts a
+  // Standing SDC fact / learned rule). Flag + proceed — never a gate.
+  const nonStandardFlags = (Array.isArray(parsed.nonStandardFlags) ? parsed.nonStandardFlags : [])
+    .map(f => ({
+      what: String((f && f.what) || '').trim(),
+      standard: String((f && f.standard) || '').trim(),
+      severity: (f && f.severity) === 'warning' ? 'warning' : 'note',
+    }))
+    .filter(f => f.what && f.standard)
+    .slice(0, 8);
   if (progress) { try { progress(100, 'done'); } catch (_) {} }
 
   return {
@@ -581,6 +648,7 @@ async function summarizeDescription({
     coverage,
     questions,
     learnedFacts,
+    nonStandardFlags,
     meta: {
       model: response.model || MODEL,
       usage: response.usage || null,

@@ -44,7 +44,8 @@
 .v2-topbar__title b { font-weight: 700; }
 .v2-topbar__spacer { flex: 1; }
 
-/* Slim project tab strip */
+/* Slim project tab strip — may shrink on narrow widths; the right-side
+   controls (auto-save, Jarvis, Build) must never be squeezed or overlapped. */
 .v2-tabs {
   display: flex;
   align-items: flex-end;
@@ -52,6 +53,8 @@
   margin-left: 12px;
   align-self: flex-end;
   max-width: 45vw;
+  min-width: 0;
+  flex-shrink: 1;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -116,11 +119,21 @@
   display: inline-block;
 }
 
+/* Right-side top-bar controls never shrink (Dan #4: Jarvis badge and Build
+   menu were colliding at narrow widths — the tab strip is the shrink zone). */
+.v2-autosave,
+.v2-jarvis__btn,
+.v2-build,
+.v2-build__btn {
+  flex-shrink: 0;
+}
+
 /* Jarvis button (learning-being surface) */
 .v2-jarvis__btn {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  white-space: nowrap;
   background: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.3);
   color: #fff;
@@ -326,10 +339,126 @@
 }
 .v2-station__spec { color: var(--color-success); font-weight: 700; }
 
+/* Station expansion: devices list */
+.v2-station-wrap { display: flex; flex-direction: column; }
+.v2-station__chev {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--color-text-light);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+  margin-left: auto;
+  border-radius: 4px;
+  transform: rotate(-90deg);
+  transition: transform 0.15s;
+  line-height: 1;
+}
+.v2-station__chev--open { transform: rotate(0deg); }
+.v2-station__chev:hover { color: var(--color-primary); }
+.v2-station__devices {
+  margin: 2px 0 4px 24px;
+  padding-left: 8px;
+  border-left: 2px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.v2-station__devices-empty {
+  font-size: 11px;
+  color: var(--color-text-light);
+  font-style: italic;
+  padding: 4px 6px;
+}
+/* Device rows — same anatomy as the classic subject library
+   (.device-item in index.css): icon + name over muted type subtext. */
+.v2-device {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  padding: 4px 8px;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+  width: 100%;
+}
+.v2-device:hover { background: #e8f0fa; }
+.v2-device__icon { font-size: 16px; flex-shrink: 0; display: inline-flex; }
+.v2-device__info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.v2-device__name {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+}
+.v2-device__type {
+  display: block;
+  font-size: 10px;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+/* Machine totals — quiet quoting tally above the footer */
+.v2-totals {
+  border-top: 1px solid var(--color-border);
+  padding: 8px 12px;
+  cursor: help;
+}
+.v2-totals__title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin-bottom: 5px;
+}
+.v2-totals__title span { font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--color-text-light); }
+.v2-totals__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 14px;
+  font-size: 10.5px;
+  color: var(--color-text-muted);
+}
+.v2-totals__item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  white-space: nowrap;
+}
+.v2-totals__label { overflow: hidden; text-overflow: ellipsis; }
+.v2-totals__item b { color: var(--color-text); font-weight: 700; font-variant-numeric: tabular-nums; }
+
 .v2-stations__project {
   border-top: 1px solid var(--color-border);
   padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
+.v2-stations__docs-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 7px 8px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+.v2-stations__docs-btn:hover { background: #e8f0fa; border-color: var(--color-border); }
+.v2-stations__docs-icon { color: var(--color-primary); font-size: 14px; }
 .v2-stations__project-btn {
   display: flex;
   align-items: center;
@@ -370,20 +499,16 @@
   min-width: 0;
   min-height: 0;
 }
-.v2-view-switcher {
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 20;
-  background: var(--color-surface);
-  border-radius: 999px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-  padding: 3px;
+/* View switcher — docked INSIDE the canvas SM-title pill (headerExtra slot),
+   sharing the pill's flex row with the S00 badge, name and Normal/Recovery
+   toggle. No absolute positioning → no overlap possible. */
+.v2-view-switcher--inline {
+  margin-left: 6px;
+  flex-shrink: 0;
 }
 .v2-controls-banner {
   position: absolute;
-  top: 52px;
+  top: 58px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 20;
@@ -512,3 +637,205 @@
   flex: 1;
   min-height: 0;
 }
+
+/* ── Start screen (clean slate — no project open) ──────────────────────── */
+.v2-start {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 24px;
+  background: var(--color-bg);
+}
+.v2-start__card {
+  width: 100%;
+  max-width: 520px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  padding: 32px 36px;
+}
+.v2-start__brand {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  margin-bottom: 14px;
+}
+.v2-start__brand b { color: var(--color-primary); }
+.v2-start__title {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--color-text);
+  margin: 0 0 6px;
+}
+.v2-start__sub {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  margin: 0 0 20px;
+}
+.v2-start__warn {
+  background: #fdf6e3;
+  border: 1px solid var(--color-warning);
+  color: #7a6220;
+  font-size: 12px;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+}
+.v2-start__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+.v2-start__btn {
+  padding: 11px 18px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.v2-start__btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+.v2-start__btn--primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+.v2-start__btn--primary:hover { background: var(--color-primary-h); border-color: var(--color-primary-h); color: #fff; }
+.v2-start__btn:disabled { opacity: 0.5; cursor: default; }
+.v2-start__form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--color-sidebar);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+.v2-start__input {
+  padding: 9px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 13px;
+}
+.v2-start__input:focus { outline: none; border-color: var(--color-primary); }
+.v2-start__form-btns { display: flex; gap: 8px; }
+.v2-start__form-btns .v2-start__btn { flex: 1; padding: 9px 14px; font-size: 13px; }
+.v2-start__recent-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin-bottom: 8px;
+}
+.v2-start__recent { border-top: 1px solid var(--color-border); padding-top: 16px; }
+.v2-start__recent-empty { font-size: 12px; color: var(--color-text-light); font-style: italic; }
+.v2-start__recent-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 10px;
+  cursor: pointer;
+  text-align: left;
+}
+.v2-start__recent-item:hover { background: #e8f0fa; }
+.v2-start__recent-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.v2-start__recent-meta {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--color-text-light);
+}
+
+/* ── Documents drawer ──────────────────────────────────────────────────── */
+.v2-docs { width: 560px; max-width: 92vw; }
+.v2-docs__body { padding: 16px 20px; }
+.v2-docs__purpose {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  background: #e8f0fa;
+  border: 1px solid rgba(21, 116, 196, 0.25);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+.v2-docs__drop {
+  border: 2px dashed var(--color-border);
+  border-radius: 8px;
+  padding: 22px 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  margin-bottom: 12px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.v2-docs__drop:hover,
+.v2-docs__drop--over {
+  border-color: var(--color-primary);
+  background: #e8f0fa;
+  color: var(--color-primary);
+}
+.v2-docs__error { font-size: 12px; color: #b83c3c; margin-bottom: 8px; }
+.v2-docs__empty { font-size: 12px; color: var(--color-text-light); font-style: italic; padding: 10px 4px; }
+.v2-docs__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.v2-docs__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  background: var(--color-sidebar);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+.v2-docs__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.v2-docs__name:hover { text-decoration: underline; }
+.v2-docs__meta { flex-shrink: 0; font-size: 11px; color: var(--color-text-light); }
+.v2-docs__delete {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-text-light);
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.v2-docs__delete:hover { color: #b83c3c; background: rgba(184, 60, 60, 0.08); }

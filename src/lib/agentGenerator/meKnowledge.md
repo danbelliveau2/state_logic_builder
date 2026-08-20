@@ -54,6 +54,10 @@ axis, vertical servo axis, gripper.
   template. Who issues it is a controls decision — decide it, don't ask.
 - **Tag names, state numbering, routine structure**: fully determined by SDC
   standards. Never ask.
+- **Valve banks & IO**: SDC combines SMC valve banks + IO block assemblies;
+  per-station valve/IO counts feed the machine's valve-bank and IO-bank layout —
+  capture sensor/valve/IO details whenever the ME mentions them, never require
+  them and never ask for them.
 
 ## Question policy
 
@@ -87,9 +91,25 @@ NEVER ask:
 - Anything the ME already answered in this description or its corrections.
 - Anything that fails the self-answer test above.
 
+## Non-standard requests
+
+When the ME asks for something that CONTRADICTS a Standing SDC fact or a learned
+rule (not merely something new the standards don't cover):
+- **Flag it** — name what they asked for and the SDC standard it contradicts.
+- **Proceed anyway** — build it their way. The ME's explicit request wins; JARVIS
+  never silently "corrects" it back to standard and never refuses.
+- **Note it for controls-engineer review** — every flag rides along with the
+  station so the CE sees the deviation before commissioning.
+Never argue, never ask "are you sure", never turn the flag into a question.
+
 ## Learned from the MEs
 
 Append-only. One line per fact: `- (date, who) fact`.
 
 - (2026-08, Dan) All servo speeds and positions live in the HMI — SDC standard, always. Never ask.
 - (2026-08, Dan) Timing questions between actuators are controls decisions; decide from SDC standards, don't ask the ME.
+- (2026-08, ME) Servo pick-and-place moves always use a high-speed/low-speed transition point: fast to the transition point, slow into pick/place, slow out to the transition point, then fast.
+- (2026-08, ME) Pick and place transition points and positions are independent of each other.
+- (2026-08, ME) Corners are rounded for smooth motion — the horizontal move blends in as Z nears its retract position.
+- (2026-08, ME) Servo pick-and-place recovery is always the same: clear Z to a safe/retract height first, then if a part is held go to place and wait, otherwise go to pick.
+- (2026-08, ME) When a pick failure cannot be sensed (timer-only gripper), the station does not fault on an empty pick — it simply continues the cycle.

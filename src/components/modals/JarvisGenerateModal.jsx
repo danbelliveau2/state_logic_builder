@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useDiagramStore } from '../../store/useDiagramStore.js';
 import { buildProgramName } from '../../lib/tagNaming.js';
 import { ProgressRing } from '../jarvis/ProgressRing.jsx';
+import { BuildScoreRow } from '../jarvis/BuildScoreRow.jsx';
 
 const STAGE_LABELS = {
   start: 'Loading project',
@@ -41,6 +42,7 @@ export function JarvisGenerateModal({ onClose }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [elapsed, setElapsed] = useState(0);
+  const [scoredBuild, setScoredBuild] = useState(null); // set once the user saves a score
 
   const esRef = useRef(null);
   const startRef = useRef(Date.now());
@@ -235,6 +237,27 @@ export function JarvisGenerateModal({ onClose }) {
                   <div style={{ fontFamily: 'Consolas, monospace', color: '#0f172a', wordBreak: 'break-all', userSelect: 'all' }}>
                     {result.savedPath}
                   </div>
+                </div>
+              )}
+
+              {/* Score this build — every build gets scored by whoever ran it */}
+              {result.buildId && (
+                <div style={{
+                  marginTop: 10, background: '#f8fafc', border: '1px solid #e2e8f0',
+                  borderRadius: 6, padding: '8px 12px',
+                }}>
+                  {scoredBuild ? (
+                    <div data-testid="score-saved-note" style={{ fontSize: 12, fontWeight: 700, color: '#166534' }}>
+                      ✓ Scored {scoredBuild.score}/10 — saved to Jarvis's track record
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#475569', marginBottom: 6 }}>
+                        Score this build (1 = unusable, 10 = ship it untouched)
+                      </div>
+                      <BuildScoreRow buildId={result.buildId} onScored={setScoredBuild} />
+                    </>
+                  )}
                 </div>
               )}
 

@@ -34,6 +34,8 @@ import { exportProjectJSON } from '../lib/l5xExporter.js';
 import { TopBarV2 } from './TopBarV2.jsx';
 import { StationsPanel } from './StationsPanel.jsx';
 import { ContextPanelV2 } from './ContextPanelV2.jsx';
+import { StartScreen } from './StartScreen.jsx';
+import { useV2Shell } from './useV2Shell.js';
 
 // ── Error Boundary (same behavior as classic App) ───────────────────────────
 class ErrorBoundary extends Component {
@@ -72,21 +74,22 @@ class ErrorBoundary extends Component {
 }
 
 // ── View switcher (house style: canvas-mode-toggle pill) ────────────────────
+// Rendered INSIDE the canvas's SM title pill via Canvas's `headerExtra` slot,
+// so the switcher and the "S01 … Normal|Recovery" header are ONE row — the
+// floating version overlapped the pill (Dan round-2 feedback #1).
 function ViewSwitcher({ view, onChange }) {
   return (
-    <div className="v2-view-switcher">
-      <div className="canvas-mode-toggle">
-        <button
-          className={`canvas-mode-btn${view === 'mechanical' ? ' canvas-mode-btn--active' : ''}`}
-          onClick={() => onChange('mechanical')}
-          title="Mechanical view — the flowchart as drawn"
-        >Mechanical</button>
-        <button
-          className={`canvas-mode-btn${view === 'controls' ? ' canvas-mode-btn--active' : ''}`}
-          onClick={() => onChange('controls')}
-          title="Full Controls view — compiled logic (coming with Jarvis tier-2)"
-        >Full Controls</button>
-      </div>
+    <div className="canvas-mode-toggle v2-view-switcher--inline" data-testid="v2-view-switcher">
+      <button
+        className={`canvas-mode-btn${view === 'mechanical' ? ' canvas-mode-btn--active' : ''}`}
+        onClick={() => onChange('mechanical')}
+        title="Mechanical view — the flowchart as drawn"
+      >Mechanical</button>
+      <button
+        className={`canvas-mode-btn${view === 'controls' ? ' canvas-mode-btn--active' : ''}`}
+        onClick={() => onChange('controls')}
+        title="Full Controls view — compiled logic (coming with Jarvis tier-2)"
+      >Full Controls</button>
     </div>
   );
 }
@@ -104,6 +107,16 @@ export function AppV2() {
 
   const [view, setView] = useState('mechanical');
   const [contextCollapsed, setContextCollapsed] = useState(false);
+
+  // Clean-slate start screen (all project tabs closed).
+  const home = useV2Shell(s => s.home);
+  const leaveHome = useV2Shell(s => s.leaveHome);
+  const currentFilename = useDiagramStore(s => s.currentFilename);
+  // Auto-leave home the moment any project opens (picker, recent list,
+  // file import, create) — currentFilename is the single source of truth.
+  useEffect(() => {
+    if (home && currentFilename) leaveHome();
+  }, [home, currentFilename, leaveHome]);
 
   // Bootstrap — identical to classic App so both entries share behavior.
   useEffect(() => {
@@ -138,25 +151,30 @@ export function AppV2() {
       <ReactFlowProvider>
         <div className="v2-app">
           <TopBarV2 />
-          <div className={`v2-body${contextCollapsed ? ' v2-body--context-collapsed' : ''}`}>
-            <StationsPanel />
-            <main className="v2-center">
-              <ViewSwitcher view={view} onChange={setView} />
-              {view === 'controls' && (
-                <div className="v2-controls-banner">
-                  Compiled view — coming with Jarvis tier-2 integration
-                </div>
-              )}
-              {/* Same canvas in both views for now. When the compiled-IR
-                  rendering lands (Jarvis tier-2), 'controls' swaps in the
-                  compiled representation instead of the banner. */}
-              <Canvas />
-            </main>
-            <ContextPanelV2
-              collapsed={contextCollapsed}
-              onToggle={() => setContextCollapsed(c => !c)}
-            />
-          </div>
+          {home ? (
+            <StartScreen />
+          ) : (
+            <div className={`v2-body${contextCollapsed ? ' v2-body--context-collapsed' : ''}`}>
+              <StationsPanel />
+              <main className="v2-center">
+                {view === 'controls' && (
+                  <div className="v2-controls-banner">
+                    Compiled view — coming with Jarvis tier-2 integration
+                  </div>
+                )}
+                {/* Same canvas in both views for now. When the compiled-IR
+                    rendering lands (Jarvis tier-2), 'controls' swaps in the
+                    compiled representation instead of the banner. The view
+                    switcher rides inside the canvas SM-title pill (headerExtra)
+                    so header elements never overlap. */}
+                <Canvas headerExtra={<ViewSwitcher view={view} onChange={setView} />} />
+              </main>
+              <ContextPanelV2
+                collapsed={contextCollapsed}
+                onToggle={() => setContextCollapsed(c => !c)}
+              />
+            </div>
+          )}
         </div>
 
         {/* Store-flag modals — same set the classic App mounts, so canvas
@@ -166,7 +184,7 @@ export function AppV2() {
             shell on showNewSmModal, no outside-click dismissal, draft
             autosave, JARVIS summary loop. "start blank instead" inside it
             still reaches the classic NewStateMachineModal. */}
-        {showNewSmModal && <CreateStationPage />}
+        {showNewSmModal && !home && <CreateStationPage />}
         {(showAddDeviceModal || showEditDeviceModal) && <AddDeviceModal />}
         {showActionModal && <ActionModal />}
         {showProjectManager && <ProjectManagerModal />}

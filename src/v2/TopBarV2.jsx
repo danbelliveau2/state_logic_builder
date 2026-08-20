@@ -24,6 +24,7 @@ import { JarvisGenerateModal } from '../components/modals/JarvisGenerateModal.js
 import { JarvisPage } from '../components/jarvis/JarvisPage.jsx';
 import { ProjectPickerModal } from '../components/modals/ProjectPickerModal.jsx';
 import { useAutoSaveStatus } from './useAutoSaveStatus.js';
+import { useV2Shell, closeAllProjectsToHome } from './useV2Shell.js';
 
 function SdcLogo() {
   // Same brand mark as the classic Toolbar.
@@ -45,15 +46,34 @@ function V2TabStrip() {
   const currentFilename = useDiagramStore(s => s.currentFilename);
   const switchTab = useDiagramStore(s => s.switchTab);
   const closeTab = useDiagramStore(s => s.closeTab);
+  const home = useV2Shell(s => s.home);
   const [pickerOpen, setPickerOpen] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Same synthesized-tab fallback as ProjectTabBar
+  // Same synthesized-tab fallback as ProjectTabBar — but NOT on the clean-
+  // slate start screen (home): there is genuinely no open project there.
   let tabs = openTabs;
   let effectiveActiveId = activeTabId;
-  if (tabs.length === 0) {
+  if (tabs.length === 0 && !home && currentFilename) {
     tabs = [{ id: '_current', filename: currentFilename, name: projectName || currentFilename || 'Current Project' }];
     effectiveActiveId = '_current';
+  } else if (home) {
+    tabs = [];
+  }
+
+  /** Close a tab. Closing the LAST one (or the synthesized current-project
+   *  tab) → clean slate: save, drop everything, show the start screen. */
+  async function handleClose(tab) {
+    const isSynthetic = tab.id === '_current';
+    const isLast = isSynthetic || openTabs.length <= 1;
+    if (isLast) {
+      // Skip store.closeTab here: closeAllProjectsToHome saves the current
+      // project FIRST (closeTab would clear currentFilename before the save),
+      // then drops all tabs and flips to the start screen.
+      await closeAllProjectsToHome(useDiagramStore);
+    } else {
+      closeTab(tab.id);
+    }
   }
 
   function handleFileOpen(e) {
@@ -88,13 +108,12 @@ function V2TabStrip() {
             title={tab.filename || displayName}
           >
             <span className="v2-tab__name">{displayName}</span>
-            {tabs.length > 1 && (
-              <button
-                className="v2-tab__close"
-                onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
-                title="Close tab"
-              >✕</button>
-            )}
+            <button
+              className="v2-tab__close"
+              data-testid={`tab-close-${displayName}`}
+              onClick={(e) => { e.stopPropagation(); handleClose(tab); }}
+              title={tabs.length > 1 ? 'Close tab' : 'Close project (clean slate)'}
+            >✕</button>
           </div>
         );
       })}

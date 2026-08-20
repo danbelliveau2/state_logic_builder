@@ -164,7 +164,11 @@ function getSourceHandlePos(fromNode, handleId) {
 // (manual-draw helpers removed — every edge auto-routes)
 // Local call sites resolve handle positions via getSourceHandlePos() first.
 
-export function Canvas() {
+export function Canvas({ headerExtra = null }) {
+  // headerExtra: optional node rendered inside the SM title pill (after the
+  // Normal/Recovery toggle). Used by the v2 shell to dock its Mechanical /
+  // Full-Controls view switcher into the pill so the two never overlap.
+  // Classic shell passes nothing — behavior unchanged.
   const store = useDiagramStore();
   const sm = store.getActiveSm();
   const project = store.project;
@@ -1208,6 +1212,7 @@ export function Canvas() {
               onClick={() => setRecoveryMode(true)}
             >Recovery</button>
           </div>
+          {headerExtra}
           {/* Recovery variant selector */}
           {recoveryMode && (sm.recoverySeqs ?? []).length > 1 && (
             <select
