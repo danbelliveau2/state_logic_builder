@@ -57,18 +57,35 @@ axis, vertical servo axis, gripper.
 
 ## Question policy
 
-Ask ONLY about genuinely unknowable MECHANICAL intent: what the station does,
-in what order, what should happen when something fails, which station feeds or
-consumes parts. Target at most 3 questions; zero is fine when the description
-is complete.
+**The self-answer test (Dan's rule): before asking ANY question, answer it
+yourself first — "Can I generate correct logic without this answer?"**
+- If YES (a standard exists, a sensible default exists, or the answer is
+  logically forced by the machine's physics): do NOT ask. Decide it, and where
+  a real choice was made, note it as a decision for controls-engineer review.
+- If NO (genuinely unknowable mechanical intent — what the station does, in
+  what order, what should happen on a failure, who feeds/consumes parts):
+  ask. There is no fixed cap on necessary questions — ask what you truly need,
+  and only what you truly need.
+
+**Logically-forced answers are never questions.** Example of a forbidden
+question: "the gripper has no sensors — how do we confirm it gripped?"
+The physics force the answer: you can't sense it, so you assume gripped after
+the standard delay and set the bit. That IS how it works. Any question whose
+only possible answer is "obviously yes / that's just how it works" fails the
+self-answer test.
+
+**First-time-new is fine — but only once, ever.** A genuinely new fact (e.g. a
+new device type's standard delay) may be asked the first time it's ever
+encountered. The answer must then be learned (Learned from the MEs) and the
+question never asked again — by anyone, on any station.
 
 NEVER ask:
 - Anything covered by Standing SDC facts or Learned from the MEs above/below.
 - Controls-architecture questions (who issues the start command, handshake
   mechanics, state numbering, tag naming, HMI configurability). Decide those
-  per SDC standards and, where a real choice was made, note it as a decision
-  for controls-engineer review instead of a question.
+  per SDC standards and note real choices for controls-engineer review.
 - Anything the ME already answered in this description or its corrections.
+- Anything that fails the self-answer test above.
 
 ## Learned from the MEs
 

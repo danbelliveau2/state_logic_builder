@@ -448,9 +448,12 @@ async function summarizeDescription({
   }
   const roundN = Number(round) || 0;
   if (roundN >= 2) {
-    text += '\n\nQUESTION BUDGET EXHAUSTED: you have asked enough this session. Return ZERO new '
-      + 'questions ("questions": []). Decide every remaining unknown per SDC standards and fold the '
-      + 'decision into the summary — decisions, not questions.';
+    text += '\n\nLATE-ROUND QUESTION DISCIPLINE: the engineer has already answered '
+      + (qa.length ? `${qa.length} round(s) of questions` : 'questions')
+      + '. Apply the self-answer test with maximum strictness now: a new question is allowed ONLY '
+      + 'if correct logic is impossible without it AND it has never been asked or answered in any '
+      + 'form this session. Everything else: decide per SDC standards and fold the decision into '
+      + 'the summary — decisions, not questions. Repeating or rephrasing an earlier question is forbidden.';
   }
   if (images.length) text += `\n\n(${images.length} image(s) of the station/CAD are attached above.)`;
   content.push({ type: 'text', text });
@@ -546,9 +549,22 @@ async function summarizeDescription({
     && !summary.failureHandling.length && !summary.interactions.length) {
     throw new Error('Model returned an empty summary');
   }
-  // Question budget is hard-enforced: <=3 per round, ZERO after round 2.
-  const questions = roundN >= 2 ? [] : (Array.isArray(parsed.questions) ? parsed.questions : [])
-    .map(q => String(q).trim()).filter(Boolean).slice(0, 3);
+  // Question policy (Dan): no hard cap — the self-answer test in meKnowledge.md
+  // governs. Backstops only: dedupe against every question already asked this
+  // session (no repeats/rephrases sneaking through), soft-cap at 5 per round.
+  const priorQs = (Array.isArray(qaHistory) ? qaHistory : [])
+    .flatMap(r => r.questions || []).map(q => String(q).toLowerCase());
+  const isRepeat = (q) => {
+    const words = q.toLowerCase().split(/\W+/).filter(w => w.length > 3);
+    return priorQs.some(pq => {
+      const shared = words.filter(w => pq.includes(w)).length;
+      return words.length > 0 && shared / words.length > 0.6;
+    });
+  };
+  const questions = (Array.isArray(parsed.questions) ? parsed.questions : [])
+    .map(q => String(q).trim()).filter(Boolean)
+    .filter(q => !isRepeat(q))
+    .slice(0, 5);
   // Learned standing rules the engineer stated — only what the model
   // explicitly returned; the server decides what persists.
   const learnedFacts = (Array.isArray(parsed.learnedFacts) ? parsed.learnedFacts : [])
