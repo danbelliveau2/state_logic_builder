@@ -230,5 +230,13 @@
     "source": "generation",
     "askedAt": "2026-08-20T17:08:29.751Z",
     "status": "open"
+  },
+  {
+    "id": "q_mt1sytxy_udvxma",
+    "question": "While studying Dan's corrected version of Test_Project / SDCServoPNP, I drew this tentative lesson — is it right, or was that edit specific to this station? \"For pneumatic actuations confirmed only by a timer rather than a sensor, bias the preset conservatively toward the station's proven default instead of the theoretical minimum stroke time; an extra 100-150 ms of grip settle is cheap compared to releasing a part that was not fully clamped, and the value can be tuned down at buyoff with real hardware.\"",
+    "context": "Test_Project / SDCServoPNP (synthetic test correction)",
+    "source": "generation",
+    "askedAt": "2026-08-20T17:36:58.390Z",
+    "status": "open"
   }
 ]

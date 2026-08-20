@@ -10,12 +10,26 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.1.1';
+export const UI_BUILD = 'v2.1.2';
 
 export const BUILT_AT = '2026-08-20';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.1.2',
+    date: '2026-08-20',
+    items: [
+      'The Generations grid: download any build, review it (good/bad, talk or text, score), upload the corrected file — Jarvis diffs it and learns',
+      'Jarvis page now opens on Generations — every build in one grid: station, project, version, date, duration, cost, validation, mode, score',
+      'Open a row: ⬇ Download L5X, "What was good?" / "What was bad?" (mic on both), score 1-10, reviewer name, Save',
+      '⬆ Upload corrected version — Jarvis compares it rung-by-rung against his own output, extracts the lessons, and files the confident ones into his concept knowledge (attributed, dated)',
+      'Lessons he\'s not sure about go to the Questions queue for the leads to confirm — nothing sketchy lands in his knowledge silently',
+      'The row then shows "✓ Corrected version uploaded — Jarvis learned N things (view)" with the lessons and a plain-English summary',
+      'Analysis failures are shown honestly ("analysis failed — file kept") and a re-upload retries',
+      'Old pre-scoring L5X files on disk appear in the grid too (download-only)',
+    ],
+  },
   {
     version: 'v2.1.1',
     date: '2026-08-20',

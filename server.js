@@ -96,6 +96,19 @@
  *   GET    /api/jarvis/trackrecord    { version, history, benchmarks, generatedCount }
  *                                     — jarvisVersion.js HISTORY + benchmarks/*.report.json
  *
+ *   GET    /api/jarvis/generations    review-grid rows: { builds, orphans } —
+ *                                     every buildScores.json record + orphan
+ *                                     generated/*.L5X files with no record
+ *   GET    /api/jarvis/builds/:id/file[?which=corrected]  download a saved L5X
+ *   POST   /api/jarvis/builds/:id/corrected  { base64, uploadedBy, replace? } —
+ *                                     store the engineer's corrected L5X next to
+ *                                     the original and learn from the diff in the
+ *                                     background (correctionLearner.js: mechanical
+ *                                     diff → one model call → lessons; high-
+ *                                     confidence lessons append to
+ *                                     jarvis-knowledge/concepts/*.md, low-
+ *                                     confidence ones queue as questions)
+ *
  *   GET    /api/standards             get the entire shared standards library (array)
  *   POST   /api/standards             replace the entire library with the POST body
  *   POST   /api/standards/:id         upsert a single standard by id
@@ -1319,6 +1332,247 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     sendJson(res, 200, { version, history, benchmarks, generatedCount });
   }
 
+  // ── JARVIS v2.1.2: review grid + correction-learning loop ──────────────────
+  //
+  // Dan's spec: "anything you generate should be aligned in a grid… they tell
+  // you what was good, what was bad — talk or text — the score… and a place to
+  // upload the real correct version, and you use that to learn."
+  //
+  //   GET  /api/jarvis/generations           grid rows: every buildScores.json
+  //                                          record + orphan .L5X files found in
+  //                                          generated/ (rows with no record are
+  //                                          download-only, marked orphan:true)
+  //   GET  /api/jarvis/builds/:id/file       download the saved L5X
+  //                                          (?which=corrected for the upload);
+  //                                          orphan ids ("f_<base64url relpath>")
+  //                                          resolve inside generated/ only
+  //   POST /api/jarvis/builds/:id/corrected  { base64, uploadedBy, replace? } —
+  //                                          stores <base>__corrected_by_<name>.L5X
+  //                                          next to the original, then kicks an
+  //                                          in-process background analysis
+  //                                          (counted in activeGenerations):
+  //                                          correctionLearner diffs the files
+  //                                          mechanically, ONE model call turns
+  //                                          the differences into lessons; high-
+  //                                          confidence lessons land in
+  //                                          jarvis-knowledge/concepts/*.md under
+  //                                          "## Learned from corrections", low-
+  //                                          confidence ones go to the question
+  //                                          queue (source 'generation').
+  //                                          Duplicate upload → 409 {needsConfirm}
+  //                                          unless replace:true.
+
+  const BUILD_SCORES_FILE_ = path.join(__dirname, 'jarvis-knowledge', 'buildScores.json');
+  const GENERATED_DIR_ = path.join(__dirname, 'generated');
+
+  function cleanName_(s) { return String(s || 'unnamed').replace(/[^a-zA-Z0-9_\-]/g, '_'); }
+
+  /** GET /api/jarvis/generations — one row per generated build. buildScores
+   *  records first (they carry score/notes/correction state), then orphan
+   *  .L5X files on disk that no record references (pre-scoring era builds,
+   *  manual saves). Corrected uploads never appear as their own rows. */
+  function handleJarvisGenerations(res) {
+    const scores = require('./src/lib/agentGenerator/buildScores.js');
+    const builds = scores.readBuilds(BUILD_SCORES_FILE_);
+    const referenced = new Set();
+    for (const b of builds) {
+      if (b.filePath) { try { referenced.add(path.resolve(b.filePath).toLowerCase()); } catch (_) {} }
+      if (b.correction?.filePath) { try { referenced.add(path.resolve(b.correction.filePath).toLowerCase()); } catch (_) {} }
+    }
+    const orphans = [];
+    try {
+      const walk = (dir) => {
+        for (const d of fs.readdirSync(dir, { withFileTypes: true })) {
+          const fp = path.join(dir, d.name);
+          if (d.isDirectory()) { walk(fp); continue; }
+          if (!/\.L5X$/i.test(d.name)) continue;
+          if (/__corrected_by_/i.test(d.name)) continue;
+          if (referenced.has(path.resolve(fp).toLowerCase())) continue;
+          const rel = path.relative(GENERATED_DIR_, fp).split(path.sep).join('/');
+          const m = d.name.match(/^(.*?)__jarvis_v([^_]+)__/);
+          let mtime = null;
+          try { mtime = fs.statSync(fp).mtime.toISOString(); } catch (_) {}
+          orphans.push({
+            id: 'f_' + Buffer.from(rel, 'utf8').toString('base64url'),
+            orphan: true,
+            at: mtime,
+            project: rel.includes('/') ? rel.split('/')[0] : '',
+            sm: m ? m[1] : d.name.replace(/\.L5X$/i, ''),
+            jarvisVersion: m ? m[2] : null,
+            costUSD: null, durationS: null, attempts: null,
+            validationOk: null, mode: null, score: null,
+            filePath: fp,
+          });
+        }
+      };
+      walk(GENERATED_DIR_);
+    } catch (_) { /* no generated dir yet — records-only grid is honest */ }
+    sendJson(res, 200, { builds, orphans });
+  }
+
+  /** GET /api/jarvis/builds/:id/file[?which=corrected] — serve a saved L5X. */
+  function handleJarvisBuildFile(res, id, query) {
+    try {
+      let filePath = null;
+      if (id.startsWith('f_')) {
+        // Orphan row: id encodes a relative path — resolve INSIDE generated/ only.
+        let rel;
+        try { rel = Buffer.from(id.slice(2), 'base64url').toString('utf8'); }
+        catch (_) { return sendJson(res, 400, { error: 'Bad file id' }); }
+        const resolved = path.resolve(GENERATED_DIR_, rel);
+        if (!resolved.toLowerCase().startsWith(path.resolve(GENERATED_DIR_).toLowerCase() + path.sep)) {
+          return sendJson(res, 400, { error: 'Bad file id' });
+        }
+        filePath = resolved;
+      } else {
+        const scores = require('./src/lib/agentGenerator/buildScores.js');
+        const build = scores.getBuild(BUILD_SCORES_FILE_, id);
+        if (!build) return sendJson(res, 404, { error: 'Build not found' });
+        filePath = (query && query.which === 'corrected') ? build.correction?.filePath : build.filePath;
+        if (!filePath) return sendJson(res, 404, { error: query?.which === 'corrected' ? 'No corrected file uploaded for this build' : 'This build has no saved file on disk' });
+      }
+      if (!fs.existsSync(filePath)) return sendJson(res, 404, { error: 'File no longer on disk: ' + path.basename(filePath) });
+      const buf = fs.readFileSync(filePath);
+      res.writeHead(200, {
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': buf.length,
+        'Content-Disposition': `attachment; filename="${path.basename(filePath).replace(/"/g, '')}"`,
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.end(buf);
+    } catch (e) { sendJson(res, 500, { error: e.message }); }
+  }
+
+  /** Background correction analysis — in-process async, same pattern as
+   *  pretranslation: counted in activeGenerations so nobody restarts the
+   *  server mid-model-call; result (or honest failure) lands on the build
+   *  record for the grid to render. */
+  async function runCorrectionAnalysis_(buildId, uploadedBy) {
+    const scores = require('./src/lib/agentGenerator/buildScores.js');
+    let learner;
+    try { learner = require('./src/lib/agentGenerator/correctionLearner.js'); }
+    catch (e) {
+      console.warn('[correction] correctionLearner unavailable:', e.message);
+      try { scores.updateBuild(BUILD_SCORES_FILE_, buildId, { correction: { ...scores.getBuild(BUILD_SCORES_FILE_, buildId)?.correction, status: 'failed', error: 'analysis module unavailable: ' + e.message } }); } catch (_) {}
+      return;
+    }
+    activeGenerations++;
+    const startedAt = Date.now();
+    const build = scores.getBuild(BUILD_SCORES_FILE_, buildId);
+    console.log(`[correction] analysis started: ${build?.project} / ${build?.sm} (build ${buildId}, corrected by ${uploadedBy})`);
+    try {
+      const originalXml = fs.readFileSync(build.filePath, 'utf8');
+      const correctedXml = fs.readFileSync(build.correction.filePath, 'utf8');
+      const result = await learner.analyzeCorrection({ originalXml, correctedXml, build, uploadedBy });
+      // Route the lessons: high-confidence → concept docs; low-confidence →
+      // question queue for the leads to confirm (source 'generation').
+      const { applied, queued } = learner.applyLessons({
+        lessons: result.lessons,
+        reviewer: uploadedBy,
+        buildId,
+        buildLabel: `${build.project} / ${build.sm}`,
+        addQuestion: ({ question, context, source }) => {
+          try {
+            const arr = readQuestions();
+            arr.push({
+              id: 'q_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8),
+              question, context, source: source || 'generation',
+              askedAt: new Date().toISOString(), status: 'open',
+            });
+            writeQuestions(arr);
+          } catch (e) { console.warn('[correction] question queue push failed:', e.message); }
+        },
+      });
+      scores.updateBuild(BUILD_SCORES_FILE_, buildId, {
+        correction: {
+          ...scores.getBuild(BUILD_SCORES_FILE_, buildId).correction,
+          status: 'done',
+          analyzedAt: new Date().toISOString(),
+          durationS: Math.round((Date.now() - startedAt) / 1000),
+          costUSD: result.costUSD,
+          diffStats: result.diffStats,
+          summary: result.summary,
+          lessons: result.lessons.map(l => ({
+            ...l,
+            applied: applied.some(a => a.lesson === l.lesson),
+            conceptFile: applied.find(a => a.lesson === l.lesson)?.file || null,
+          })),
+          learnedCount: applied.length,
+          queuedCount: queued.length,
+        },
+      });
+      console.log(`[correction] analysis done: build ${buildId} — ${result.lessons.length} lesson(s), ${applied.length} applied to concept docs, ${queued.length} queued for the leads ($${result.costUSD})`);
+    } catch (e) {
+      console.warn(`[correction] analysis FAILED for build ${buildId}:`, e.message);
+      try {
+        scores.updateBuild(BUILD_SCORES_FILE_, buildId, {
+          correction: {
+            ...scores.getBuild(BUILD_SCORES_FILE_, buildId).correction,
+            status: 'failed',
+            error: e.message,
+            analyzedAt: new Date().toISOString(),
+          },
+        });
+      } catch (e2) { console.warn('[correction] failure record failed too:', e2.message); }
+    } finally {
+      activeGenerations = Math.max(0, activeGenerations - 1);
+    }
+  }
+
+  /** POST /api/jarvis/builds/:id/corrected — { base64, uploadedBy, replace? }. */
+  async function handleJarvisBuildCorrected(req, res, id) {
+    try {
+      const scores = require('./src/lib/agentGenerator/buildScores.js');
+      const body = JSON.parse(await readBody(req) || '{}');
+      const uploadedBy = String(body.uploadedBy || '').trim() || 'Unknown';
+      const build = scores.getBuild(BUILD_SCORES_FILE_, id);
+      if (!build) return sendJson(res, 404, { error: 'Build not found (rows without a build record can\'t take corrections)' });
+      if (!build.filePath || !fs.existsSync(build.filePath)) {
+        return sendJson(res, 409, { error: 'The original generated file is no longer on disk — nothing to diff against' });
+      }
+      if (!body.base64) return sendJson(res, 400, { error: 'base64 file content is required' });
+
+      let buf;
+      try { buf = Buffer.from(String(body.base64), 'base64'); }
+      catch (_) { return sendJson(res, 400, { error: 'base64 did not decode' }); }
+      if (!buf.length) return sendJson(res, 400, { error: 'Uploaded file is empty' });
+      if (buf.length > 10 * 1024 * 1024) return sendJson(res, 413, { error: 'File too large (max 10MB)' });
+      const head = buf.slice(0, 512).toString('utf8');
+      if (!/^﻿?\s*<\?xml|<RSLogix5000Content/i.test(head)) {
+        return sendJson(res, 400, { error: 'That doesn\'t look like an L5X file (no XML declaration or RSLogix5000Content root)' });
+      }
+
+      // Duplicate upload replaces only after explicit confirm.
+      if (build.correction?.filePath && fs.existsSync(build.correction.filePath) && body.replace !== true) {
+        return sendJson(res, 409, {
+          error: `A corrected version by ${build.correction.uploadedBy || '?'} already exists for this build`,
+          needsConfirm: true,
+          existing: { uploadedBy: build.correction.uploadedBy, at: build.correction.at },
+        });
+      }
+      // Replacing: drop the previous corrected file if it was named differently.
+      const base = path.basename(build.filePath).replace(/\.L5X$/i, '');
+      const correctedPath = path.join(path.dirname(build.filePath), `${base}__corrected_by_${cleanName_(uploadedBy)}.L5X`);
+      if (build.correction?.filePath && path.resolve(build.correction.filePath) !== path.resolve(correctedPath)) {
+        try { fs.unlinkSync(build.correction.filePath); } catch (_) {}
+      }
+      fs.writeFileSync(correctedPath, buf);
+
+      const updated = scores.updateBuild(BUILD_SCORES_FILE_, id, {
+        correction: {
+          filePath: correctedPath,
+          uploadedBy,
+          at: new Date().toISOString(),
+          status: 'analyzing',
+        },
+      });
+      // Kick the background analysis (in-process, counted in activeGenerations).
+      setImmediate(() => runCorrectionAnalysis_(id, uploadedBy)
+        .catch(e => console.warn('[correction] unhandled analysis failure:', e.message)));
+      sendJson(res, 200, { ok: true, build: updated });
+    } catch (e) { sendJson(res, e.status || 500, { error: e.message }); }
+  }
+
   // ── Standards Library (shared across all clients) ─────────────────────────
 
   /** Read the full standards array from disk. Returns [] if the file is
@@ -1606,6 +1860,26 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     }
 
     // Build scoring — module owns the routes; see src/lib/agentGenerator/buildScores.js
+    if (pathname === '/api/jarvis/generations') {
+      if (method === 'GET') return handleJarvisGenerations(res);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    {
+      // Grid file download + corrected-version upload (before the generic
+      // buildScores dispatch, which owns list/record/score).
+      const mFile = pathname.match(/^\/api\/jarvis\/builds\/([^/]+)\/file$/);
+      if (mFile) {
+        if (method === 'GET') return handleJarvisBuildFile(res, decodeURIComponent(mFile[1]), query);
+        return sendJson(res, 405, { error: 'Method not allowed' });
+      }
+      const mCorr = pathname.match(/^\/api\/jarvis\/builds\/([^/]+)\/corrected$/);
+      if (mCorr) {
+        if (method === 'POST') return handleJarvisBuildCorrected(req, res, decodeURIComponent(mCorr[1]));
+        return sendJson(res, 405, { error: 'Method not allowed' });
+      }
+    }
+
     if (pathname.startsWith('/api/jarvis/builds')) {
       return require('./src/lib/agentGenerator/buildScores.js').handleBuildsRoute(req, res, {
         pathname, method, sendJson, readBody,

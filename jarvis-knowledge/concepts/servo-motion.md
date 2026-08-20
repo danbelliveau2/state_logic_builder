@@ -159,3 +159,6 @@ at some higher clearance. Treat them as potentially distinct named values:
 When the ME hasn't given a blend-start value, ask for it (it's genuinely unknowable
 mechanical intent — geometry) or flag the wideband clearance as *Verify for CE.
 Never assume peak-transition = safe-clear.
+
+## Learned from corrections
+- (2026-08-20, from Dan's correction of build b_mt1p0xfg_gu145g — synthetic test correction) The [PC + InPos , IP + InPosWide] blended-branch pattern is a clearance permissive, not a universal transition template. Use it only for an axis that merely has to be out of the way (e.g., a vertical retract clearing an interference zone) so the next motion can overlap; the axis that actually establishes the working position for the next state must show a real .PC with the tight .InPos window before you transition.

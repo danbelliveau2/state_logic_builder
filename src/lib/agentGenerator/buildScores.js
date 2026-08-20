@@ -13,8 +13,10 @@
  *   POST /api/jarvis/builds            → record a build (called automatically
  *                                        by the /api/generate/stream done path,
  *                                        or manually) → { ok, build }
- *   POST /api/jarvis/builds/:id/score  → { score, comment?, scoredBy? }
- *                                        → { ok, build }
+ *   POST /api/jarvis/builds/:id/score  → { score, comment?, goodNotes?,
+ *                                        badNotes?, scoredBy? } → { ok, build }
+ *                                        (goodNotes/badNotes: Dan's review-grid
+ *                                        "what was good / what was bad" fields)
  *
  * recordBuild() is also called directly (in-process) by the generate-stream
  * done handler so recording needs zero client changes.
@@ -91,7 +93,7 @@ function recordBuild(file, b = {}) {
 
 /** Attach a score to an existing build. Returns the updated build,
  *  or throws { status, message } for client errors. */
-function scoreBuild(file, id, { score, comment, scoredBy } = {}) {
+function scoreBuild(file, id, { score, comment, scoredBy, goodNotes, badNotes } = {}) {
   const s = Number(score);
   if (!Number.isInteger(s) || s < 1 || s > 10) {
     const err = new Error('score must be an integer 1-10');
@@ -108,7 +110,31 @@ function scoreBuild(file, id, { score, comment, scoredBy } = {}) {
   build.score = s;
   build.scoredBy = String(scoredBy || '').trim() || 'Unknown';
   build.scoreComment = String(comment || '').trim();
+  // Review-grid fields (v2.1.2): what was good / what was bad — talk or text.
+  build.goodNotes = String(goodNotes || '').trim();
+  build.badNotes = String(badNotes || '').trim();
   build.scoredAt = new Date().toISOString();
+  writeBuilds(file, arr);
+  return build;
+}
+
+/** Find one build record by id (or null). */
+function getBuild(file, id) {
+  return readBuilds(file).find(x => x && x.id === id) || null;
+}
+
+/** Shallow-merge a patch into one build record (read-modify-write, atomic).
+ *  Used by the correction-learning loop to attach upload/analysis state.
+ *  Returns the updated build or throws { status: 404 }. */
+function updateBuild(file, id, patch) {
+  const arr = readBuilds(file);
+  const build = arr.find(x => x && x.id === id);
+  if (!build) {
+    const err = new Error('Build not found');
+    err.status = 404;
+    throw err;
+  }
+  Object.assign(build, patch);
   writeBuilds(file, arr);
   return build;
 }
@@ -209,6 +235,6 @@ async function handleLearnedLineRoute(req, res, { sendJson, readBody, mdPath }) 
 }
 
 module.exports = {
-  readBuilds, recordBuild, scoreBuild, handleBuildsRoute,
+  readBuilds, recordBuild, scoreBuild, getBuild, updateBuild, handleBuildsRoute,
   updateLearnedLine, handleLearnedLineRoute,
 };

@@ -27,7 +27,9 @@
     "score": null,
     "scoredBy": null,
     "scoreComment": null,
-    "filePath": "C:\\SDC-StateLogic\\generated\\Test_Project\\SDCServoPNP__jarvis_v1.0.2__2026-08-20_1311.L5X"
+    "filePath": "C:\\SDC-StateLogic\\generated\\Test_Project\\SDCServoPNP__jarvis_v1.0.2__2026-08-20_1311.L5X",
+    "goodNotes": "",
+    "badNotes": ""
   },
   {
     "id": "b_mt1knkes_9poqt7",
@@ -76,6 +78,57 @@
     "score": null,
     "scoredBy": null,
     "scoreComment": null,
-    "filePath": "C:\\SDC-StateLogic\\generated\\Test_Project\\SDCServoPNP__jarvis_v1.1.1__2026-08-20_1546.L5X"
+    "filePath": "C:\\SDC-StateLogic\\generated\\Test_Project\\SDCServoPNP__jarvis_v1.1.1__2026-08-20_1546.L5X",
+    "correction": {
+      "filePath": "C:\\SDC-StateLogic\\generated\\Test_Project\\SDCServoPNP__jarvis_v1.1.1__2026-08-20_1546__corrected_by_Dan.L5X",
+      "uploadedBy": "Dan",
+      "at": "2026-08-20T17:36:36.829Z",
+      "status": "done",
+      "analyzedAt": "2026-08-20T17:36:58.391Z",
+      "durationS": 22,
+      "costUSD": 0.0436,
+      "diffStats": {
+        "changedRungs": 2,
+        "addedRungs": 0,
+        "removedRungs": 0,
+        "tagChanges": 1
+      },
+      "summary": "Dan tightened the State 10 transition by removing the 'in-motion + wide window' early-release branch from the horizontal axis, requiring a true motion-complete plus in-position confirmation before the pick move is allowed, while leaving that blended branch on the vertical retract axis. He also rewrote the X-axis absolute-position alarm text to state the fault and the required operator action, and increased the pneumatic gripper engage delay preset from 250 ms to 400 ms. The theme is that shortcuts (early position handoff, terse alarm text, optimistic actuator delays) are only acceptable where they cannot cost accuracy, recovery time, or part control.",
+      "lessons": [
+        {
+          "lesson": "The [PC + InPos , IP + InPosWide] blended-branch pattern is a clearance permissive, not a universal transition template. Use it only for an axis that merely has to be out of the way (e.g., a vertical retract clearing an interference zone) so the next motion can overlap; the axis that actually establishes the working position for the next state must show a real .PC with the tight .InPos window before you transition.",
+          "conceptArea": "servo-motion",
+          "confidence": 0.85,
+          "applied": true,
+          "conceptFile": "servo-motion.md"
+        },
+        {
+          "lesson": "Before copying a permissive branch onto a second axis in the same rung, ask what physically goes wrong if that axis is still moving. If the answer is a mispick, a crash, or a part dropped off-target, there is no wide-window shortcut — the shortcut only buys cycle time and it costs position integrity.",
+          "conceptArea": "coordination",
+          "confidence": 0.8,
+          "applied": true,
+          "conceptFile": "coordination.md"
+        },
+        {
+          "lesson": "Alarm messages are operator instructions, not fault labels. Write them as condition plus required recovery action ('Absolute Position Reference Lost - Rehome Required') so the person at the HMI knows what to do without consulting the print or a controls engineer.",
+          "conceptArea": "alarms",
+          "confidence": 0.8,
+          "applied": true,
+          "conceptFile": "alarms.md"
+        },
+        {
+          "lesson": "For pneumatic actuations confirmed only by a timer rather than a sensor, bias the preset conservatively toward the station's proven default instead of the theoretical minimum stroke time; an extra 100-150 ms of grip settle is cheap compared to releasing a part that was not fully clamped, and the value can be tuned down at buyoff with real hardware.",
+          "conceptArea": "pneumatics",
+          "confidence": 0.65,
+          "applied": false,
+          "conceptFile": null
+        }
+      ],
+      "learnedCount": 3,
+      "queuedCount": 1,
+      "note": "synthetic test correction — variant authored during v2.1.2 loop verification, not a real engineer review"
+    },
+    "goodNotes": "",
+    "badNotes": ""
   }
 ]

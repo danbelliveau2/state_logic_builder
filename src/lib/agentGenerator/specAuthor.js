@@ -109,6 +109,18 @@ Rules of engagement:
   or REPHRASING an earlier question is forbidden. "You decide" / "skip that" / "don't
   need to answer" is a COMPLETE answer: make the decision per SDC standards, record it,
   and never ask that question (or a reworded version of it) again.
+- ASK GEOMETRY / MECHANICAL-INTENT QUESTIONS NOW — this phase is the ONLY place
+  they get asked (the compile step is forbidden from asking them and will
+  otherwise guess with *Verify placeholders). When the station's devices IMPLY
+  a geometry value the description never stated, that question passes the
+  self-answer test by definition — ask it here, upfront:
+  · servo axes present → the real named positions and their intent (home, pick,
+    place), transition heights (fast-to-here-slow-the-rest points), and
+    blend-start clearance when moves may overlap;
+  · pneumatics with strokes that matter → end positions / part-present posture;
+  · pick/place stations → home-vs-pick relationship if ambiguous.
+  Never ask for exact numeric coordinates the ME would tune later — ask for the
+  positions/heights/clearances as named intent (what exists and when it's safe).
 `;
 
 function extractJson(text) {
@@ -442,6 +454,18 @@ Summary rules:
   earlier question in this session. Asked-and-answered is answered forever. "You decide" /
   "skip that" / "don't need to answer" is a COMPLETE answer: make the decision per SDC
   standards, record it, and never ask that question (or a reworded version of it) again.
+- ASK GEOMETRY / MECHANICAL-INTENT QUESTIONS NOW, in the describe phase — the
+  ME is right here and this is the ONLY phase allowed to ask them (the compile
+  step never asks geometry; it guesses with *Verify placeholders instead).
+  When the devices described IMPLY a geometry value the engineer never stated,
+  ask it upfront:
+  · servo axes → the real named positions (home, pick, place), transition
+    heights (where fast travel hands off to slow approach), and blend-start
+    clearance when moves may overlap;
+  · pneumatics whose stroke matters → end positions / posture with a part;
+  · pick/place → home-vs-pick relationship if ambiguous.
+  Ask for named intent (which positions exist and when each is safe), not exact
+  numeric coordinates the ME would tune later.
 
 Coverage monotonicity:
 - When the message includes your PREVIOUS coverage verdicts, coverage may only IMPROVE.

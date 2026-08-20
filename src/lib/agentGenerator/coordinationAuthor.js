@@ -117,7 +117,7 @@ Respond with ONLY one JSON object (no markdown fences, no prose before/after):
       "purpose": "<one line>", "setAtState": <int|null>, "clearAtState": <int|null> }
   ],
   "reviewFlags": [ "<*Replace/*Verify item or design decision the CE must review>" ],
-  "questions": [ "<clarifying question that PASSES the self-answer test — usually empty>" ],
+  "questions": [ "<CONTROLS-ARCHITECTURE question that PASSES the self-answer test — usually empty>" ],
   "summary": "<3-5 sentence plain-English narrative of the compiled sequence>"
 }
 
@@ -140,6 +140,14 @@ Rules:
 - Questions: apply the self-answer test with maximum strictness. If SDC
   standards, the machine spec, or physics force the answer — decide it and put
   the decision in reviewFlags, not questions.
+- Questions are CONTROLS-ARCHITECTURE ONLY: handshake mechanics with partner
+  stations/supervisor, supervisor integration choices, fault-philosophy
+  decisions the spec leaves genuinely open. Geometry and mechanical intent
+  (positions, heights, home-vs-pick posture, transition/blend-start values,
+  strokes, clearances) are NEVER compile questions — the describe phase owns
+  those. When a geometry/mechanical value is unknown here, pick the SDC-standard
+  placeholder, use it, and add a "*Verify …" reviewFlag naming the value the ME
+  must confirm. A compile question about geometry is always wrong.
 - Motion intent is data, not prose: every ServoMove action carries
   positionName, speedProfile (when the device has more than one), and advance
   ('complete' | 'wideband'). A stroke the spec calls fast-then-slow is TWO
