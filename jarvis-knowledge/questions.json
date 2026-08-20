@@ -78,5 +78,101 @@
     "source": "manual",
     "askedAt": "2026-08-19T20:58:09.424Z",
     "status": "open"
+  },
+  {
+    "id": "q_mt1o9ey4_qiwzoc",
+    "question": "What Z height (mm from Retract = 0) clears the pick nest, the place nest, and any surrounding fixtures, so the horizontal axis may start moving while Z is still rising? That value becomes the AOI_RangeCheck wide deadband on ZAxisRetract (the rounded-corner threshold and the X-axis permissive) — the template default of 5 mm is almost certainly too tight.",
+    "context": "Station SDC Servo PNP — compile of Test_Project",
+    "source": "generation",
+    "askedAt": "2026-08-20T15:25:14.092Z",
+    "status": "open"
+  },
+  {
+    "id": "q_mt1onxya_hqs9a0",
+    "question": "Trigger and acquisition mechanics, per camera family we actually buy (Cognex/Keyence/other): how does the PLC trigger — hardwired output, EtherNet/IP assembly bit, or explicit message? And is 'result ready' one handshake or two (acquisition complete vs. evaluation complete)? I want to model the handshake correctly per family instead of assuming the legacy four-wire q_Trigger/i_TrigRdy/i_ResultReady/i_InspPass shape everywhere.",
+    "context": "Vision system concepts",
+    "source": "training",
+    "askedAt": "2026-08-20T15:36:31.906Z",
+    "status": "open"
+  },
+  {
+    "id": "q_mt1onxyh_5uknr3",
+    "question": "When does a vision application send coordinates versus just pass/fail? What's the judgment — is it purely 'a downstream motion needs correction', or are there cases where we take coordinates anyway (drift monitoring, SPC)? And when coordinates ARE sent, who consumes them — servo target offset, robot frame shift, or operator display only?",
+    "context": "Vision system concepts",
+    "source": "training",
+    "askedAt": "2026-08-20T15:36:31.913Z",
+    "status": "open"
+  },
+  {
+    "id": "q_mt1onxyj_1pbxpz",
+    "question": "Where does vision result data live, by convention? Part tracking gets the boolean (and numerics like X_Offset in Molex), but what about the raw job outputs — do we keep a per-camera or per-job UDT, copy from the input assembly into named tags, or read on demand? What's the naming/structure you'd want a new hire to follow?",
+    "context": "Vision system concepts",
+    "source": "training",
+    "askedAt": "2026-08-20T15:36:31.915Z",
+    "status": "open"
+  },
+  {
+    "id": "q_mt1onxym_lkjzgk",
+    "question": "Motion overlap during exposure: what's the rule for what may move while the camera is exposing? Dial locked (shot pin / IndexComplete) before imaging a dial-mounted part is obvious — but do we ever image during motion (flying trigger), and how do you choose the settle time before the trigger versus the legacy fixed 50 ms dwell?",
+    "context": "Vision system concepts",
+    "source": "training",
+    "askedAt": "2026-08-20T15:36:31.918Z",
+    "status": "open"
+  },
+  {
+    "id": "q_mt1onxyo_0yo7zw",
+    "question": "State structure per vision mode: the legacy convention compiled every inspection into 4 sub-states (verify trigger ready → settle dwell → trigger → check results). Does that skeleton hold for job-select and coordinate-feedback applications, or do those genuinely need different/extra states (job load + acknowledge, offset transfer + accept)? What's the state anatomy you'd draw for each mode?",
+    "context": "Vision system concepts",
+    "source": "training",
+    "askedAt": "2026-08-20T15:36:31.920Z",
+    "status": "open"
+  },
+  {
+    "id": "q_mt1onxyr_a96ft2",
+    "question": "Retry vs. route vs. fault on a failed inspection: when is a fail just 'record FAILURE to part tracking and let the reject station sort it' versus 'retry the trigger (bounded by search timeout)' versus 'fault the station'? Is the driver the process (can a retry change the answer?), the part cost, or line policy — and who sets the retry count?",
+    "context": "Vision system concepts",
+    "source": "training",
+    "askedAt": "2026-08-20T15:36:31.923Z",
+    "status": "open"
+  },
+  {
+    "id": "q_mt1onxyu_4hlco3",
+    "question": "Mode selection judgment: given a new motion requirement, how do you decide between electronic gearing, point-to-point (MAM), and blended point-to-point? Is gearing strictly for continuously-synchronized axes (follower tied to a master), or do we also use it where a chassis/cam would have been used mechanically? A decision tree in your words is what I'm after.",
+    "context": "Servo motion concepts",
+    "source": "training",
+    "askedAt": "2026-08-20T15:36:31.926Z",
+    "status": "open"
+  },
+  {
+    "id": "q_mt1onxyx_hq5pg2",
+    "question": "Electronic gearing mechanics at SDC: how are gear ratios established and tuned in software — fixed ratio computed from mechanics, or tuned empirically per machine? And what instruction set do we actually standardize on — MAG for direct ratios, MAPC for position cam profiles, something else? What does the surrounding rung structure look like (engage/disengage sequencing, ratio staging, fault handling)?",
+    "context": "Servo motion concepts",
+    "source": "training",
+    "askedAt": "2026-08-20T15:36:31.929Z",
+    "status": "open"
+  },
+  {
+    "id": "q_mt1onxyz_dyjcz4",
+    "question": "Do we use camming (MAPC/MATC) or registration inputs (MAR) anywhere in current standards — and if so, for what class of application? If a job needs a nonlinear master/slave profile, is that an SDC-supported pattern or do we push the mechanics/vendor to solve it another way?",
+    "context": "Servo motion concepts",
+    "source": "training",
+    "askedAt": "2026-08-20T15:36:31.931Z",
+    "status": "open"
+  },
+  {
+    "id": "q_mt1onxz2_uepwc4",
+    "question": "The standard axis module (the ~22-rung per-axis block): which rungs are pure boilerplate that never change, and which are the per-application ones? I read the staging rung, the wideband transition thresholds, and the permissive derivation as the application-dependent set — what else varies, and what should NEVER be touched per application?",
+    "context": "Servo motion concepts",
+    "source": "training",
+    "askedAt": "2026-08-20T15:36:31.934Z",
+    "status": "open"
+  },
+  {
+    "id": "q_mt1onxz5_72bcui",
+    "question": "Blending threshold judgment: when you pick the wideband (InPosWide) distance that lets the next axis start early, what are you actually computing — worst-case clearance geometry plus margin, or a tuned-on-the-machine value? And is there a class of corners you refuse to blend on principle even when the geometry technically clears?",
+    "context": "Servo motion concepts",
+    "source": "training",
+    "askedAt": "2026-08-20T15:36:31.937Z",
+    "status": "open"
   }
 ]

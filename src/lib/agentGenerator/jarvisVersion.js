@@ -15,7 +15,7 @@
  * CommonJS, plain Node — required by client.js and scripts/jarvisBenchmark.cjs.
  */
 
-const JARVIS_VERSION = '1.1.0';
+const JARVIS_VERSION = '1.1.1';
 
 const HISTORY = [
   {
@@ -56,6 +56,21 @@ const HISTORY = [
       'comments against the IR state labels (mismatch = error) and no longer counts rung comments as device ' +
       'evidence. smId params accept id, name, or displayName on all generate/compile endpoints; compile ' +
       'questions are pushed to the Jarvis question queue.',
+    templates: 'V4.2',
+  },
+  {
+    version: '1.1.1',
+    date: '2026-08-20',
+    changes: 'Jason\'s servo-PNP review (speed changes missing, blending coded wrong, EQU/LES instead of ' +
+      'EQ/LT): concept-learning layer added — jarvis-knowledge/concepts/ (engineer\'s-understanding docs, ' +
+      'starting with servo-motion.md distilled from all four V4.2 templates) is loaded into BOTH the compile ' +
+      'and translation prompts. Compiled IR now carries motion intent as structured data (positionName / ' +
+      'speedProfile / advance per ServoMove) and renders device positions+speedProfiles into the translation ' +
+      'prompt (previously dropped). S05 template notes teach per-state AutoSpeed[i] staging and the wideband ' +
+      '[MAM.PC+InPos , MAM.IP+InPosWide] blending idiom. Rules 13 (compare-mnemonic family must match the ' +
+      'template verbatim — EQ/NE/LT/GT/GE/LE) and 14 (motion intent coverage). Validator: long-family compare ' +
+      'mnemonics = ERROR; multi-speed intent with <2 staged AutoSpeed indices = ERROR; wideband intent with ' +
+      'no InPosWide in R02 = ERROR (prose-only blend mention = warning).',
     templates: 'V4.2',
   },
 ];

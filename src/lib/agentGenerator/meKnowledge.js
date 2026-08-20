@@ -15,12 +15,38 @@ const path = require('path');
 
 const KNOWLEDGE_PATH = path.join(__dirname, 'meKnowledge.md');
 const LEARNED_HEADING = '## Learned from the MEs';
+// jarvis-knowledge/concepts/ — engineer's-understanding docs (Dan's directive,
+// Aug 2026: concepts, not rules). Loaded fresh into every compile/translation
+// prompt so deepening a concept doc applies on the next call, no restart.
+const CONCEPTS_DIR = path.join(__dirname, '..', '..', '..', 'jarvis-knowledge', 'concepts');
 
 function loadMeKnowledge() {
   try {
     return fs.readFileSync(KNOWLEDGE_PATH, 'utf8').trim();
   } catch (e) {
     return ''; // knowledge file missing — prompts degrade gracefully
+  }
+}
+
+/**
+ * Concatenate every concept doc in jarvis-knowledge/concepts/ (README
+ * excluded — it's for humans). These are ENGINEERING CONCEPTS: mechanism,
+ * intent, and judgment written for generalization — the layer that covers
+ * stations no template covers. Returns '' when the directory is absent.
+ */
+function loadConcepts() {
+  try {
+    const files = fs.readdirSync(CONCEPTS_DIR)
+      .filter(f => f.toLowerCase().endsWith('.md') && !/^readme\.md$/i.test(f))
+      .sort();
+    const parts = [];
+    for (const f of files) {
+      const body = fs.readFileSync(path.join(CONCEPTS_DIR, f), 'utf8').trim();
+      if (body) parts.push(body);
+    }
+    return parts.join('\n\n---\n\n');
+  } catch (e) {
+    return ''; // no concepts yet — prompts degrade gracefully
   }
 }
 
@@ -96,4 +122,4 @@ function appendLearnedFacts(facts, { who = 'ME' } = {}) {
   return out;
 }
 
-module.exports = { loadMeKnowledge, appendLearnedFacts, isFuzzyDuplicate, KNOWLEDGE_PATH };
+module.exports = { loadMeKnowledge, loadConcepts, appendLearnedFacts, isFuzzyDuplicate, KNOWLEDGE_PATH, CONCEPTS_DIR };

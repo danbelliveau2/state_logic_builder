@@ -1,0 +1,27 @@
+{
+  "pretranslated": true,
+  "ready": true,
+  "ok": false,
+  "stale": false,
+  "project": "Test_Project",
+  "smId": "id_mt1h9ftw",
+  "smName": "SDCServoPNP",
+  "compiledAt": "2026-08-20T15:25:14.089Z",
+  "mode": "translation",
+  "jarvisVersion": "1.1.1",
+  "savedPath": "C:\\SDC-StateLogic\\generated\\Test_Project\\SDCServoPNP__jarvis_v1.1.1__2026-08-20_1546.L5X",
+  "savedIrPath": "C:\\SDC-StateLogic\\generated\\Test_Project\\SDCServoPNP__jarvis_v1.1.1__2026-08-20_1546.ir.json",
+  "buildId": "b_mt1p0xfg_gu145g",
+  "validation": {
+    "ok": false,
+    "errors": [
+      "Speed changes specified but not implemented: the approved compiled sequence describes multiple speeds for \"VerticalAxis\" (fast/slow), but the generated logic stages no AutoSpeed index for it — each speed segment needs its own AutoSpeed[i]/Accel[i]/Decel[i] staging branch (Rule 14)"
+    ],
+    "warnings": []
+  },
+  "costUSD": 3.4863,
+  "durationS": 840,
+  "attempts": 5,
+  "createdAt": "2026-08-20T15:46:37.757Z",
+  "error": null
+}

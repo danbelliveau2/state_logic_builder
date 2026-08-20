@@ -63,6 +63,32 @@ const MOTION_ENUM_WORDS = new Set([
   'Rotary', 'Linear', 'DEC',
 ]);
 
+// ── Compare-mnemonic family (Rule 13) ────────────────────────────────────────
+// SDC V4.2 standards (Studio 5000 v37 exports) write compare instructions as
+// EQ/NE/LT/GT/GE/LE in rung neutral text. The long spellings are recognized by
+// the import but land as DIFFERENT instructions next to the standard's —
+// Jason's review, Aug 2026: "EQ came in as EQU, LT came in as LES". Family
+// consistency with the template is a hard gate.
+const COMPARE_LONG_TO_SHORT = {
+  EQU: 'EQ', NEQ: 'NE', LES: 'LT', GRT: 'GT', GEQ: 'GE', LEQ: 'LE',
+};
+const COMPARE_SHORT_TO_LONG = {
+  EQ: 'EQU', NE: 'NEQ', LT: 'LES', GT: 'GRT', GE: 'GEQ', LE: 'LEQ',
+};
+
+/** 'short' | 'long' | null — which compare family a document's rungs use.
+ *  Used to derive the template's vocabulary; mixed usage returns the
+ *  majority family. */
+function detectCompareFamily(xml) {
+  let short = 0, long = 0;
+  for (const m of xml.matchAll(/\b(EQU|NEQ|LES|GRT|GEQ|LEQ|EQ|NE|LT|GT|GE|LE)\(/g)) {
+    if (COMPARE_LONG_TO_SHORT[m[1]]) long++;
+    else short++;
+  }
+  if (short === 0 && long === 0) return null;
+  return short >= long ? 'short' : 'long';
+}
+
 const LEGAL_EXTRA_STATES = new Set([0, 1, 2, 3, 99]);
 /** 'ok' = on the SDC grid; 'offgrid' = in sequence range but not on the
  *  4/7/10... grid (the standard's own indexer templates do this — warning);
@@ -379,9 +405,15 @@ function checkExitlessWaits(rungs, warnings) {
 
 /**
  * Validate an L5X document string.
+ * @param {string} xml
+ * @param {object} [opts]
+ * @param {'short'|'long'|null} [opts.compareFamily] compare-mnemonic family the
+ *   template uses ('short' = EQ/NE/LT/GT/GE/LE — the SDC V4.2 standard and the
+ *   default; pass detectCompareFamily(templateXml) to derive; null disables).
  * @returns {{ ok: boolean, errors: string[], warnings: string[] }}
  */
-function validateL5X(xml) {
+function validateL5X(xml, opts = {}) {
+  const compareFamily = 'compareFamily' in opts ? opts.compareFamily : 'short';
   const errors = [];
   const warnings = [];
 
@@ -418,6 +450,16 @@ function validateL5X(xml) {
       if (!MNEMONICS.has(call.name) && !isAoi) {
         errors.push(`Unknown instruction "${call.name}" in ${rung.routine} — not a Logix mnemonic or declared AOI`);
         continue;
+      }
+
+      // Rule 13: compare-mnemonic family must match the template's usage.
+      if (!isAoi && compareFamily === 'short' && COMPARE_LONG_TO_SHORT[call.name]) {
+        errors.push(`Compare mnemonic "${call.name}" in ${rung.routine} — the SDC standard template uses the ` +
+          `short family; write ${COMPARE_LONG_TO_SHORT[call.name]}(...) instead of ${call.name}(...) ` +
+          '(mixed families import as different instructions — Rule 13)');
+      } else if (!isAoi && compareFamily === 'long' && COMPARE_SHORT_TO_LONG[call.name]) {
+        errors.push(`Compare mnemonic "${call.name}" in ${rung.routine} — this template uses the long family; ` +
+          `write ${COMPARE_SHORT_TO_LONG[call.name]}(...) instead of ${call.name}(...) (Rule 13)`);
       }
 
       const skip = SKIP_ARGS[call.name];
@@ -660,6 +702,112 @@ function checkStateComments(gridStates, progXml, rungs, errors, warnings, contra
   }
 }
 
+// ── Motion intent coverage (Rule 14 — Jason's review, Aug 2026) ─────────────
+//
+// "I do not see any logic for speed changes" / "the blending does not appear
+// to be coded correctly": when the intent (IR states/spec) describes multiple
+// speeds for an axis, the generated logic must stage more than one AutoSpeed
+// index for it; when the intent describes blending, R02 must use the wideband
+// InPosWide pattern.
+
+/** Does this action look like a servo motion? */
+const MOTION_OPS = /servomove|servoincr|servoindex|move/i;
+
+function checkMotionIntent(devices, states, machineSpec, rungs, errors, warnings, contract) {
+  const variants = deviceVariants(devices);
+  const deviceForIdent = ident => {
+    const n = normIdent(ident);
+    let best = null, bestLen = 0;
+    for (const [id, set] of variants) {
+      for (const v of set) {
+        if (n.includes(v) && v.length > bestLen) { best = id; bestLen = v.length; }
+      }
+    }
+    return best;
+  };
+
+  // Generated evidence: distinct AutoSpeed indices staged per device. The
+  // HMI_{Name} tag may keep the template's axis name (HMI_ZAxis) while the
+  // rest of the rung uses the device's name (VerticalAxisMotionParameters) —
+  // so attribute indices by ANY device mention in the rung, HMI ident first.
+  const stagedSpeeds = new Map(); // deviceId -> Set(index)
+  const attribute = (devId, idx) => {
+    if (!devId) return;
+    if (!stagedSpeeds.has(devId)) stagedSpeeds.set(devId, new Set());
+    stagedSpeeds.get(devId).add(idx);
+  };
+  for (const r of rungs) {
+    const matches = [...r.text.matchAll(/HMI_([A-Za-z0-9_]+)\.Parameters\.AutoSpeed\[(\d+)\]/g)];
+    if (!matches.length) continue;
+    const rungBlob = normIdent(r.text);
+    const rungDevices = [...variants.entries()]
+      .filter(([, set]) => rungMentionsDevice(rungBlob, set))
+      .map(([id]) => id);
+    for (const m of matches) {
+      const idx = parseInt(m[2], 10);
+      const byIdent = deviceForIdent(m[1]);
+      if (byIdent) attribute(byIdent, idx);
+      else for (const id of rungDevices) attribute(id, idx);
+    }
+  }
+
+  let anyWideband = false;
+  for (const d of devices) {
+    if (!/servo/i.test(d.type || '')) continue;
+    // Intent: distinct speed profiles referenced by this device's motion
+    // actions (structured params first, label prose as fallback).
+    const profiles = new Set();
+    let fastWord = false, slowWord = false;
+    for (const s of states) {
+      const movers = new Set((s.actions || [])
+        .filter(a => a.deviceId && MOTION_OPS.test(a.operation || ''))
+        .map(a => a.deviceId));
+      for (const a of s.actions || []) {
+        if (a.deviceId !== d.id || !MOTION_OPS.test(a.operation || '')) continue;
+        const sp = a.params?.speedProfile;
+        if (sp) profiles.add(String(sp).toLowerCase());
+        if (a.params?.advance === 'wideband') anyWideband = true;
+        // Label prose is a fallback for diagrams without structured speed
+        // params — only trustworthy when this device is the state's ONLY
+        // mover (a multi-axis state's "fast/slow" words can't be attributed).
+        if (movers.size === 1) {
+          const hay = `${s.label || ''} ${a.detail || ''}`.toLowerCase();
+          if (/\bfast\b/.test(hay)) fastWord = true;
+          if (/\bslow\b/.test(hay)) slowWord = true;
+        }
+      }
+    }
+    const wantsMulti = profiles.size >= 2 || (fastWord && slowWord);
+    if (!wantsMulti) continue;
+    const staged = stagedSpeeds.get(d.id) || new Set();
+    if (staged.size < 2) {
+      errors.push(`Speed changes specified but not implemented: the ${contract} describes multiple speeds for ` +
+        `"${d.name}" (${profiles.size >= 2 ? [...profiles].join('/') : 'fast/slow segments'}), but the generated ` +
+        `logic stages ${staged.size ? `only AutoSpeed[${[...staged].join(',')}]` : 'no AutoSpeed index'} for it — ` +
+        'each speed segment needs its own AutoSpeed[i]/Accel[i]/Decel[i] staging branch (Rule 14)');
+    }
+  }
+
+  // Blending: structured wideband intent must appear as InPosWide in R02.
+  const r02Blob = rungs.filter(r => /R02/i.test(r.routine)).map(r => r.text).join('\n');
+  const purposes = machineSpec
+    ? (Array.isArray(machineSpec.devicePurposes)
+      ? machineSpec.devicePurposes.map(p => p?.purpose || '')
+      : Object.values(machineSpec.devicePurposes || {}))
+    : [];
+  const specText = machineSpec
+    ? `${machineSpec.sourceDescription || ''} ${purposes.join(' ')} ${machineSpec.purpose || ''}`
+    : '';
+  const proseBlend = /blend|round(?:ed|ing)?\s+(?:the\s+)?corner|corner.{0,20}round/i.test(specText);
+  if (anyWideband && !/InPosWide/.test(r02Blob)) {
+    errors.push(`Blending specified but not implemented: the ${contract} marks motion advance as 'wideband', ` +
+      'but no R02 transition uses the [Axis_MAM.PC + InPos , Axis_MAM.IP + InPosWide] pattern (Rule 14)');
+  } else if (!anyWideband && proseBlend && !/InPosWide/.test(r02Blob)) {
+    warnings.push('The machine spec describes blended/rounded-corner motion but no R02 transition references ' +
+      'InPosWide — verify the corners the ME described are actually blended (Rule 14)');
+  }
+}
+
 /**
  * Cross-check generated L5X against the source flowchart.
  * @returns {{ ok: boolean, errors: string[], warnings: string[] }}
@@ -763,6 +911,9 @@ function validateAgainstDiagram(projectJson, smId, l5x) {
 
   // (c) state-label comment consistency (tag .STATE[] + R02 rung comments)
   checkStateComments(flowStates, progXml, rungs, errors, warnings, 'diagram');
+
+  // (d) motion intent coverage: speed staging + blending (Rule 14)
+  checkMotionIntent(ir.devices, flowStates, ir.machineSpec, rungs, errors, warnings, 'diagram');
 
   return { ok: errors.length === 0, errors, warnings };
 }
@@ -886,6 +1037,10 @@ function validateAgainstCompiledIR(compiledIr, l5x) {
   // (c) state-label comment consistency against the approved compiled IR
   checkStateComments(gridStates, progXml, rungs, errors, warnings, 'approved compiled sequence');
 
+  // (d) motion intent coverage: speed staging + blending (Rule 14)
+  checkMotionIntent(compiledIr.devices || [], gridStates, compiledIr.machineSpec, rungs, errors, warnings,
+    'approved compiled sequence');
+
   return { ok: errors.length === 0, errors, warnings };
 }
 
@@ -897,4 +1052,7 @@ function formatReport(report) {
   return lines.join('\n');
 }
 
-module.exports = { validateL5X, validateAgainstDiagram, validateAgainstCompiledIR, formatReport, isLegalState };
+module.exports = {
+  validateL5X, validateAgainstDiagram, validateAgainstCompiledIR, formatReport,
+  isLegalState, detectCompareFamily,
+};

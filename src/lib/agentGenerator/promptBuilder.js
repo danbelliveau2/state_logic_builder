@@ -25,6 +25,7 @@ const path = require('path');
 
 const { PLAN_SCHEMA_DOC } = require('./editPlanSchema');
 const { buildIR } = require('./ir');
+const { loadConcepts } = require('./meKnowledge');
 
 const ROOT = path.join(__dirname, '..', '..', '..'); // -> repo root
 const RULES_PATH = path.join(__dirname, 'generationRules.md');
@@ -209,8 +210,14 @@ const COMMON_NOTES = `
 - Unknown external conditions (index complete, part present from upstream):
   emit [XIC(g_MachineBasic.AlwaysOff) ,XIC(DryRun) ] plus a rung comment
   beginning with *Replace (never guess a real signal).
-- Do NOT set servo speed/accel/position values (HMI_*.Parameters.*) — the
-  controls engineer tunes them post-export; template zeros are intentional.`;
+- Do NOT set servo speed/accel/position VALUES (HMI_*.Parameters.* numbers) —
+  the controls engineer tunes them post-export; template zeros are intentional.
+  The staging STRUCTURE (which Positions[i]/AutoSpeed[i] slot each state
+  loads) is program logic and MUST implement the spec: a move the spec calls
+  fast-then-slow stages two segments with two AutoSpeed indices.
+- Instruction mnemonics: use EXACTLY the mnemonic family the template extracts
+  use (V4.2/v37 exports use EQ/NE/LT/GT/GE/LE) — never substitute the
+  EQU/NEQ/LES/GRT/GEQ/LEQ spellings or vice versa; they import differently.`;
 
 const TEMPLATE_NOTES = {
   'S05_ServoPNP.L5X': `
@@ -223,6 +230,22 @@ Two servo axes (X horizontal, Z vertical) + a 2-solenoid gripper.
   (MOVE(...Positions[i], ...MotionParameters.Position) selected by state) and
   the MAM trigger rung (list of XIC(Status.State[n])) are the two rungs that
   bind states to axis moves — retarget their state lists with updateRung.
+- SPEED STAGING: AutoSpeed/Accel/Decel are arrays. The template ships every
+  move on AutoSpeed[0], but when the compiled sequence has fast/slow segments
+  the staging rung selects the profile per state exactly like it selects the
+  position — parallel branches, e.g.:
+  [ [XIC(Status.State[13]) ,XIC(Status.State[19]) ] [MOVE(HMI_ZAxis.Parameters.AutoSpeed[1],ZAxisMotionParameters.Speed) ,MOVE(HMI_ZAxis.Parameters.Accel[1],ZAxisMotionParameters.Accel) ,MOVE(HMI_ZAxis.Parameters.Decel[1],ZAxisMotionParameters.Decel) ] ,[MOVE(HMI_ZAxis.Parameters.AutoSpeed[0],ZAxisMotionParameters.Speed) ,MOVE(HMI_ZAxis.Parameters.Accel[0],ZAxisMotionParameters.Accel) ,MOVE(HMI_ZAxis.Parameters.Decel[0],ZAxisMotionParameters.Decel) ] ]
+  (slow states listed on the [1] branch, everything else falls to [0]).
+  A fast-then-slow stroke is TWO states: fast to the transition-point
+  Positions[i], slow to the final Positions[j].
+- BLENDING (rounded corners): the R02 transition out of a travel move uses the
+  wideband OR so the next state (the other axis) starts before the move
+  finishes:
+  [XIC(ZAxis_MAM.PC) XIC(ZAxisRetract.InPos) ,XIC(ZAxis_MAM.IP) XIC(ZAxisRetract.InPosWide) ]
+  InPosWide comes from AOI_RangeCheck's wide deadband (last argument — the
+  clearance threshold, e.g. 5-15mm). Use the wideband OR ONLY on
+  travel-to-travel corners the spec blends; grips/releases/process actions
+  require strict XIC(Axis_MAM.PC) XIC({Pos}.InPos).
 - Gripper command rungs in R03 use the latch/seal idiom keyed to the close
   and open state numbers.
 - q_ActuatorsSafe must be true only in dial-safe posture (axes homed, Z at
@@ -346,7 +369,17 @@ function buildGenerationPrompt(projectJson, smId, options = {}) {
        'your plan to the template; you never write XML. The template is the law — ' +
        'change only what the flowchart requires, keep every idiom and all boilerplate.');
 
+  const concepts = loadConcepts();
+
   const stableText = [
+    ...(concepts ? [
+      '# ENGINEERING CONCEPTS (how SDC thinks — apply the concepts to this station\'s specifics)',
+      'These are understanding, not templates: mechanism, intent, and judgment.',
+      'Where the station differs from any template, reason from these concepts.',
+      '',
+      concepts,
+      '',
+    ] : []),
     '# GENERATION RULES (the law)',
     'These rules describe the CONTENT the finished program must have. You produce',
     'that content by editing the template with the operations defined below —',

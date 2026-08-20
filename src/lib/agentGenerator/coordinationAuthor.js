@@ -43,7 +43,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '..', '..', '.env'),
 
 const { buildIR, STATE_BASE, STATE_STEP, IR_VERSION } = require('./ir');
 const { selectTemplate, TEMPLATE_NOTES, COMMON_NOTES } = require('./promptBuilder');
-const { loadMeKnowledge } = require('./meKnowledge');
+const { loadMeKnowledge, loadConcepts } = require('./meKnowledge');
 const { costOfUsage, AiNotConfiguredError } = require('./client');
 
 const MODEL = process.env.JARVIS_MODEL || 'claude-opus-5';
@@ -51,7 +51,7 @@ const MAX_TOKENS = parseInt(process.env.JARVIS_COMPILE_MAX_TOKENS, 10) || 32000;
 
 // Version identity of the COMPILER step (independent of the generation
 // pipeline's JARVIS_VERSION so a dev compiler never restamps generated files).
-const COMPILER_VERSION = '1.1.0-dev';
+const COMPILER_VERSION = '1.1.1';
 
 let _client = null;
 function getClient() {
@@ -89,7 +89,10 @@ Respond with ONLY one JSON object (no markdown fences, no prose before/after):
       "actions": [
         { "operation": "<Extend|Retract|Engage|Disengage|ServoMove|SetSignal|ClearSignal|Wait|...>",
           "deviceName": "<device name from the Devices list, or null for a p_ signal action>",
-          "detail": "<concrete SDC detail, e.g. 'OTL(p_RequestNextStack)' or 'q_ExtendHoldDown'>" }
+          "detail": "<concrete SDC detail, e.g. 'OTL(p_RequestNextStack)' or 'q_ExtendHoldDown'>",
+          "positionName": "<ServoMove only: target position name from the device's positions list>",
+          "speedProfile": "<ServoMove only: speed profile name from the device's speedProfiles list, e.g. 'Fast' or 'Slow' — REQUIRED on every ServoMove when the device declares more than one profile>",
+          "advance": "<ServoMove only: 'complete' (strict MAM.PC + InPos) or 'wideband' (blend: next state may start on MAM.IP + InPosWide) — REQUIRED on every ServoMove>" }
       ] }
   ],
   "transitions": [
@@ -137,6 +140,14 @@ Rules:
 - Questions: apply the self-answer test with maximum strictness. If SDC
   standards, the machine spec, or physics force the answer — decide it and put
   the decision in reviewFlags, not questions.
+- Motion intent is data, not prose: every ServoMove action carries
+  positionName, speedProfile (when the device has more than one), and advance
+  ('complete' | 'wideband'). A stroke the spec calls fast-then-slow is TWO
+  states (fast to the transition-point position, slow to the final position).
+  A blended/rounded corner is advance:'wideband' on the travel move whose
+  clearance permits the next axis to start early; grips/releases/process
+  actions are always advance:'complete'. Wideband transitions' conditionText
+  uses the template idiom [Axis_MAM.PC + {Pos}.InPos , Axis_MAM.IP + {Pos}.InPosWide].
 `;
 
 // ── Mechanical validation of the compiled IR ────────────────────────────────
@@ -229,13 +240,24 @@ function normalizeCompiledIR(parsed, baseIr) {
     actions: (s.actions || []).map(a => {
       const dev = (baseIr.devices || []).find(d =>
         d.name === a.deviceName || d.displayName === a.deviceName);
+      // Motion intent travels as structured data (speed/transition/blend can
+      // never silently drop between compile and translation — Jason, Aug 2026).
+      const params = {};
+      if (a.positionName) params.positionName = String(a.positionName);
+      if (a.speedProfile) params.speedProfile = String(a.speedProfile);
+      if (a.advance) params.advance = String(a.advance);
+      const motionBits = [
+        params.positionName ? `position=${params.positionName}` : null,
+        params.speedProfile ? `speed=${params.speedProfile}` : null,
+        params.advance ? `advance=${params.advance}` : null,
+      ].filter(Boolean).join(' ');
       return {
         operation: String(a.operation || ''),
         deviceId: dev ? dev.id : null,
         deviceName: a.deviceName || null,
         device: dev ? (dev.displayName || dev.name) : (a.deviceName || null),
-        params: {},
-        detail: String(a.detail || ''),
+        params,
+        detail: [String(a.detail || ''), motionBits].filter(Boolean).join(' | '),
       };
     }),
     entryFrom: [],
@@ -318,6 +340,15 @@ function renderCompiledText(ir) {
   lines.push('', '## Devices');
   for (const d of ir.devices || []) {
     lines.push(`- [${d.type}] ${d.name}` + (d.displayName !== d.name ? ` "${d.displayName}"` : ''));
+    // Motion data must survive into the translation prompt (dropping it here
+    // is how the fast/slow spec became single-speed code — Jason, Aug 2026).
+    const ex = d.extras || {};
+    if (Array.isArray(ex.positions) && ex.positions.length) {
+      lines.push(`    positions: ${ex.positions.map(p => `${p.name}${p.isHome ? ' (home)' : ''}`).join(', ')}`);
+    }
+    if (Array.isArray(ex.speedProfiles) && ex.speedProfiles.length) {
+      lines.push(`    speedProfiles: ${ex.speedProfiles.map((p, i) => `[${i}] ${p.name}`).join(', ')}`);
+    }
   }
 
   lines.push('', '## States (numbers are FINAL — approved by the engineer)');
@@ -391,6 +422,7 @@ async function compileSequence({ projectJson, smId, onProgress = () => {}, signa
   const choice = selectTemplate(sm);
   const notes = TEMPLATE_NOTES[choice.template] || COMMON_NOTES;
   const meKnowledge = loadMeKnowledge();
+  const concepts = loadConcepts();
 
   const system =
     'You are JARVIS, the SDC Automation coordination compiler. This is the ONE ' +
@@ -402,6 +434,12 @@ async function compileSequence({ projectJson, smId, onProgress = () => {}, signa
     'Reason from the knowledge you already have below — never relearn the ' +
     'template, never invent alternatives to SDC standards.\n\n' +
     (meKnowledge ? meKnowledge + '\n\n' : '') +
+    (concepts
+      ? '# ENGINEERING CONCEPTS (how SDC thinks — apply the concepts to this station\'s specifics)\n' +
+        'These are understanding, not templates: mechanism, intent, and judgment.\n' +
+        'Where the station differs from any template, reason from these concepts.\n\n' +
+        concepts + '\n\n'
+      : '') +
     `# SDC state grid law\n` +
     `- Flowchart states: ${STATE_BASE}, ${STATE_BASE + STATE_STEP}, ${STATE_BASE + 2 * STATE_STEP}, ... up to 97 (step ${STATE_STEP}).\n` +
     '- Reserved: 0 (powerup), 1-3 (SDC reserved), 99 (lockout), 100-127 (template init block), 127 (cycle-ready).\n' +

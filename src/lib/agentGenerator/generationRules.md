@@ -186,3 +186,22 @@ died with "Failed to set the 'Description' property — Text may be too long").
   consecutive or trailing underscores.
 - Rung comments have generous limits but keep them focused — one `State N:`
   line plus any `*Replace` notes.
+
+## Rule 13 — Instruction mnemonic family matches the template verbatim
+
+Compare instructions MUST use exactly the mnemonic family the template's rung
+text uses. The SDC V4.2 standards (Studio 5000 v37 exports) use
+`EQ/NE/LT/GT/GE/LE` — never substitute `EQU/NEQ/LES/GRT/GEQ/LEQ` where the
+template uses the short family, or vice versa. Real CE failure (Jason, Aug
+2026): generated `EQU`/`LES` imported as the wrong instructions next to the
+standard's `EQ`/`LT`. The validator rejects any compare mnemonic outside the
+template's family.
+
+## Rule 14 — Motion intent coverage (speeds and blending)
+
+If the spec/IR describes multiple speeds or transition points for an axis, the
+generated logic must stage more than one `AutoSpeed[i]` profile for that axis;
+if it describes blended/rounded corners, the relevant R02 transitions must use
+the wideband `[MAM.PC + InPos , MAM.IP + InPosWide]` pattern. The HOW lives in
+the engineering concepts (`jarvis-knowledge/concepts/servo-motion.md`) —
+described-but-unimplemented speed changes are a validation error.

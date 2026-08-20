@@ -60,5 +60,22 @@
     "scoredBy": null,
     "scoreComment": null,
     "filePath": "C:\\SDC-StateLogic\\generated\\996-Magnet_Dial_AI\\Magnet_Feed__jarvis_v1.1.0__2026-08-20_1403.L5X"
+  },
+  {
+    "id": "b_mt1p0xfg_gu145g",
+    "at": "2026-08-20T15:46:37.756Z",
+    "project": "Test_Project",
+    "sm": "SDCServoPNP",
+    "jarvisVersion": "1.1.1",
+    "costUSD": 3.4863,
+    "durationS": 840,
+    "attempts": 5,
+    "validationOk": false,
+    "mode": "translation",
+    "pretranslated": true,
+    "score": null,
+    "scoredBy": null,
+    "scoreComment": null,
+    "filePath": "C:\\SDC-StateLogic\\generated\\Test_Project\\SDCServoPNP__jarvis_v1.1.1__2026-08-20_1546.L5X"
   }
 ]
