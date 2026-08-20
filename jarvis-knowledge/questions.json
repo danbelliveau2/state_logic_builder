@@ -214,5 +214,21 @@
     "source": "create-station",
     "askedAt": "2026-08-20T16:41:46.527Z",
     "status": "open"
+  },
+  {
+    "id": "q_mt1ry7jr_x78xw5",
+    "question": "Blend-start clearance (states 22 and 37): at what vertical height above the nests is the gripper/part clear for horizontal travel? Vertical Retract is 0 mm and the pick/place transition points are 60 mm — I need the separate safe-clear elevation that anchors the VerticalAxisRetract wideband, since the blend-start point is not the speed-transition point.",
+    "context": "Station ServoPNP — compile of Test_Project_v2",
+    "source": "generation",
+    "askedAt": "2026-08-20T17:08:29.751Z",
+    "status": "open"
+  },
+  {
+    "id": "q_mt1ry7jr_w8sji7",
+    "question": "Blended corner into place (46→25): how close to the Place position (mm) may the horizontal axis be before the vertical axis may begin descending to PlaceTransition — or should that descent wait for the horizontal move to fully complete?",
+    "context": "Station ServoPNP — compile of Test_Project_v2",
+    "source": "generation",
+    "askedAt": "2026-08-20T17:08:29.751Z",
+    "status": "open"
   }
 ]
