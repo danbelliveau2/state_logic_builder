@@ -98,6 +98,12 @@ Rules of engagement:
   kinds: feeds = sends parts to, consumes = receives parts from, requests-index = asks for a
   dial/index move, signals = tells something to, custom = anything else.
 - Do not invent behavior the text does not state; ask about it in questions instead.
+- questions: obey the Question policy above — never ask about Standing SDC facts, learned
+  facts, or controls-architecture decisions. Zero questions is a good answer.
+  NEVER ask a question whose answer is derivable from the description, the engineer's
+  prior answers (Q&A history in the message), the standing knowledge above, or an
+  earlier question in this session. Asked-and-answered is answered forever — repeating
+  or REPHRASING an earlier question is forbidden.
 `;
 
 function extractJson(text) {
@@ -204,10 +210,16 @@ function normalizeResult(parsed, sm, otherSms) {
  * @param {object} opts.sm            { id, name, displayName, devices:[{id,name,displayName,type,sensorArrangement}], drawnSteps:[string] }
  * @param {Array}  [opts.otherSms]    [{ id, name, displayName }] — the other stations in the project
  * @param {object} [opts.existingSpec] previously saved machineSpec (context for re-extraction)
+ * @param {string} [opts.corrections]  the engineer's answers/corrections this round (Apply answers)
+ * @param {number} [opts.round]        how many Q&A rounds have already run
+ * @param {Array}  [opts.qaHistory]    [{ questions:[string], answer:string }] — asked-and-answered, never re-asked
  * @param {AbortSignal} [opts.signal]
  * @returns {Promise<{ spec, proposedDevices, unmentionedDeviceIds, questions, fixups, meta }>}
  */
-async function authorSpec({ description, images = [], sm = {}, otherSms = [], existingSpec = null, signal = null } = {}) {
+async function authorSpec({
+  description, images = [], sm = {}, otherSms = [], existingSpec = null,
+  corrections = '', round = 0, qaHistory = [], signal = null,
+} = {}) {
   if (!description || !String(description).trim()) {
     throw new Error('description is required');
   }
@@ -240,17 +252,39 @@ async function authorSpec({ description, images = [], sm = {}, otherSms = [], ex
       source: { type: 'base64', media_type: img.mediaType || 'image/jpeg', data: img.base64 },
     });
   }
-  content.push({
-    type: 'text',
-    text:
-      `STATION being specified: "${sm.displayName || sm.name || 'Unknown'}"\n\n` +
-      `EXISTING configured devices on this station:\n${deviceLines}\n\n` +
-      `STATIONS (other state machines in this project — relationships resolve against these ids):\n${stationLines}\n` +
-      drawnLines +
-      (existingSpec ? `\nPreviously saved spec (being revised — context only):\n${JSON.stringify(existingSpec)}\n` : '') +
-      `\nEngineer's explanation:\n\n${String(description).trim()}` +
-      (images.length ? `\n\n(${images.length} image(s) of the station/CAD are attached above.)` : ''),
-  });
+  let userText =
+    `STATION being specified: "${sm.displayName || sm.name || 'Unknown'}"\n\n` +
+    `EXISTING configured devices on this station:\n${deviceLines}\n\n` +
+    `STATIONS (other state machines in this project — relationships resolve against these ids):\n${stationLines}\n` +
+    drawnLines +
+    (existingSpec ? `\nPreviously saved spec (being revised — context only):\n${JSON.stringify(existingSpec)}\n` : '') +
+    `\nEngineer's explanation:\n\n${String(description).trim()}`;
+  // Q&A history + corrections — same discipline as the summarize path: an
+  // asked-and-answered question is answered forever, in every rewording.
+  const qa = (Array.isArray(qaHistory) ? qaHistory : []).filter(r => r && (r.questions?.length || r.answer));
+  if (qa.length) {
+    userText += '\n\nQ&A HISTORY this session (questions you already asked and the engineer\'s answers — '
+      + 'NEVER re-ask these or anything derivable from them, in any wording):\n'
+      + qa.map((r, i) =>
+        `Round ${i + 1}:\n`
+        + (r.questions || []).map(q => `  Q: ${q}`).join('\n')
+        + (r.answer ? `\n  A: ${String(r.answer).trim()}` : '')
+      ).join('\n');
+  }
+  if (corrections && String(corrections).trim()) {
+    userText += `\n\nEngineer's ANSWERS / CORRECTIONS to apply (these override anything they conflict with above — fold them into the spec):\n\n${String(corrections).trim()}`;
+  }
+  const roundN = Number(round) || 0;
+  if (roundN >= 2) {
+    userText += '\n\nLATE-ROUND QUESTION DISCIPLINE: the engineer has already answered '
+      + (qa.length ? `${qa.length} round(s) of questions` : 'questions')
+      + '. Apply the self-answer test with maximum strictness now: a new question is allowed ONLY '
+      + 'if a correct spec is impossible without it AND it has never been asked or answered in any '
+      + 'form this session. Everything else: decide per SDC standards and fold the decision into '
+      + 'the spec — decisions, not questions. Repeating or rephrasing an earlier question is forbidden.';
+  }
+  if (images.length) userText += `\n\n(${images.length} image(s) of the station/CAD are attached above.)`;
+  content.push({ type: 'text', text: userText });
 
   const req = { model: MODEL, max_tokens: MAX_TOKENS, system, messages: [{ role: 'user', content }] };
   if (/^claude-(fable|opus)-/.test(MODEL)) {
@@ -268,6 +302,20 @@ async function authorSpec({ description, images = [], sm = {}, otherSms = [], ex
   const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('');
   const parsed = extractJson(text);
   const { result, fixups } = normalizeResult(parsed, sm, otherSms);
+
+  // Backstop (mirrors summarizeDescription): drop any question that is a
+  // repeat/rephrase of one already asked this session — the prompt forbids
+  // it, this guarantees it.
+  const priorQs = qa.flatMap(r => r.questions || []).map(q => String(q).toLowerCase());
+  if (priorQs.length) {
+    result.questions = result.questions.filter(q => {
+      const words = String(q).toLowerCase().split(/\W+/).filter(w => w.length > 3);
+      return !priorQs.some(pq => {
+        const shared = words.filter(w => pq.includes(w)).length;
+        return words.length > 0 && shared / words.length > 0.6;
+      });
+    });
+  }
 
   const costUSD = response.usage ? costOfUsage(response.usage, MODEL) : 0;
   return {
@@ -636,7 +684,9 @@ async function summarizeDescription({
   const nonStandardFlags = (Array.isArray(parsed.nonStandardFlags) ? parsed.nonStandardFlags : [])
     .map(f => ({
       what: String((f && f.what) || '').trim(),
-      standard: String((f && f.standard) || '').trim(),
+      // The UI labels this "SDC standard:" — strip the model's own prefix.
+      standard: String((f && f.standard) || '').trim()
+        .replace(/^(?:the\s+)?SDC\s+standard(?:\s+is)?[:\s]\s*/i, ''),
       severity: (f && f.severity) === 'warning' ? 'warning' : 'note',
     }))
     .filter(f => f.what && f.standard)

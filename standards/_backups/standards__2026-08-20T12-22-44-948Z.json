@@ -4,7 +4,7 @@
     "name": "SDC_Servo_PNP",
     "description": "",
     "category": "",
-    "savedAt": "2026-08-19T17:47:17.080Z",
+    "savedAt": "2026-08-19T17:53:11.498Z",
     "nodes": [
       {
         "id": "id_mo9y29fv",
@@ -601,7 +601,7 @@
             "isHome": true,
             "isRecipe": false,
             "type": "position",
-            "id": "c35f3b98-05ce-4e12-a7ad-8396ed90b9f8"
+            "id": "5c15fd42-73a5-4cac-8b4f-9c295bdf3540"
           },
           {
             "name": "Place",
@@ -610,7 +610,7 @@
             "isHome": false,
             "isRecipe": false,
             "type": "position",
-            "id": "f441e292-30ba-484e-bb5a-710ba9b0b51c"
+            "id": "b970e585-9cf0-403a-bf9b-43a6728b49d5"
           },
           {
             "name": "Reject",
@@ -619,7 +619,7 @@
             "isHome": false,
             "isRecipe": false,
             "type": "position",
-            "id": "a0eda08a-f78e-40fa-b7bb-dc113e6ba1f7"
+            "id": "ce41dc19-1f26-40c5-9e99-151c05857a8c"
           }
         ],
         "speedProfiles": [
@@ -661,7 +661,7 @@
             "isHome": true,
             "isRecipe": false,
             "type": "position",
-            "id": "dc3ee39c-33cf-4103-b7d5-657d99fcba11"
+            "id": "f6ec53fa-9fd8-40cc-852c-363c49920597"
           },
           {
             "name": "Pick",
@@ -670,7 +670,7 @@
             "isHome": false,
             "isRecipe": false,
             "type": "position",
-            "id": "d0c075cf-9890-47d3-ae6a-9b727fda5803"
+            "id": "12f49f85-1efd-4989-a57f-09d8e35e689d"
           },
           {
             "name": "Place",
@@ -679,7 +679,7 @@
             "isHome": false,
             "isRecipe": false,
             "type": "position",
-            "id": "16c02ddd-ae8c-4deb-8a89-c071fa92079c"
+            "id": "245803cc-6ba7-4852-989c-7ffe7733c154"
           }
         ],
         "speedProfiles": [

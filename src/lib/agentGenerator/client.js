@@ -415,7 +415,10 @@ async function generateL5X(projectJson, smId, options = {}) {
     validation,
     editPlan,
     reviewNotes: l5x ? extractReviewNotes(l5x) : [],
-    ir: { text: ir.text },
+    // Full structured IR (irVersion 1) — persisted as .ir.json by the server /
+    // benchmark harness so the UI can render the compiled "Full Controls" view.
+    // `.text` remains the human-readable rendering (backward compatible).
+    ir,
     meta: {
       ...meta,
       model: MODEL,

@@ -27,6 +27,7 @@ import { useDiagramStore } from '../../store/useDiagramStore.js';
 import { computeStateNumbers } from '../../lib/computeStateNumbers.js';
 import { DEVICE_TYPES } from '../../lib/deviceTypes.js';
 import { DescribeSurface } from '../jarvis/DescribeSurface.jsx';
+import { DictatedTextarea } from '../jarvis/DictatedTextarea.jsx';
 
 const REL_KINDS = [
   { value: 'feeds',          label: 'Feeds parts to' },
@@ -288,6 +289,12 @@ export function SpecEditorModal({ onClose, initial = null }) {
   const [flags, setFlags] = useState(new Set());      // conflict-flagged paths
   const editedPathsRef = useRef(new Set());           // manual edits since extraction
 
+  // Answer-the-questions loop (mirrors CreateStationPage's Apply-changes loop)
+  const [answerText, setAnswerText] = useState('');
+  const [applying, setApplying] = useState(false);
+  const [qaRounds, setQaRounds] = useState(0);
+  const [qaHistory, setQaHistory] = useState([]);     // [{ questions:[...], answer }]
+
   // Drawn sequence context — same DFS the canvas uses.
   const drawnSteps = useMemo(() => {
     if (!sm || (sm.nodes ?? []).length === 0) return [];
@@ -314,56 +321,97 @@ export function SpecEditorModal({ onClose, initial = null }) {
     setDraft(d => updater(d));
   }
 
+  /** Shared POST /api/jarvis/spec — `extra` threads corrections/round/qaHistory. */
+  async function runExtraction(extra = {}) {
+    const res = await fetch('/api/jarvis/spec', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        description: description.trim(),
+        images: images.map(i => ({ name: i.name, base64: i.base64, mediaType: i.mediaType })),
+        sm: {
+          id: sm.id,
+          name: sm.name,
+          displayName: sm.displayName ?? sm.name,
+          devices: devices.map(d => ({
+            id: d.id, name: d.name, displayName: d.displayName, type: d.type,
+            sensorArrangement: d.sensorArrangement,
+          })),
+          drawnSteps,
+        },
+        otherSms: otherSms.map(s => ({ id: s.id, name: s.name, displayName: s.displayName ?? s.name })),
+        existingSpec: sm.machineSpec ?? null,
+        round: qaRounds,
+        qaHistory,
+        ...extra,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error(data.error || `Request failed (${res.status})`);
+    return data;
+  }
+
+  /** Fold a fresh extraction result into the review state. */
+  function applyExtractionResult(data, isReExtract) {
+    if (isReExtract) {
+      const { draft: merged, flags: newFlags } = mergeExtraction(draft, editedPathsRef.current, data.spec);
+      setDraft(merged);
+      setFlags(newFlags);
+    } else {
+      setDraft(resultToDraft(data.spec, sm.machineSpec?.sequence ?? []));
+      setFlags(new Set());
+    }
+    editedPathsRef.current = new Set();
+    // Re-extraction refreshes proposals too; previously accepted names stay accepted.
+    setProposals(prev => (data.proposedDevices ?? []).map(p => ({
+      ...p,
+      accepted: prev.find(x => x.name === p.name)?.accepted ?? true,
+    })));
+    setUnmentioned(data.unmentionedDeviceIds ?? []);
+    setQuestions(data.questions ?? []);
+    setMeta(data.meta ?? null);
+  }
+
   async function handleExtract() {
     if (!description.trim()) return;
     setPhase('running');
     setError(null);
     const isReExtract = draft !== null;
     try {
-      const res = await fetch('/api/jarvis/spec', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          description: description.trim(),
-          images: images.map(i => ({ name: i.name, base64: i.base64, mediaType: i.mediaType })),
-          sm: {
-            id: sm.id,
-            name: sm.name,
-            displayName: sm.displayName ?? sm.name,
-            devices: devices.map(d => ({
-              id: d.id, name: d.name, displayName: d.displayName, type: d.type,
-              sensorArrangement: d.sensorArrangement,
-            })),
-            drawnSteps,
-          },
-          otherSms: otherSms.map(s => ({ id: s.id, name: s.name, displayName: s.displayName ?? s.name })),
-          existingSpec: sm.machineSpec ?? null,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) throw new Error(data.error || `Request failed (${res.status})`);
-
-      if (isReExtract) {
-        const { draft: merged, flags: newFlags } = mergeExtraction(draft, editedPathsRef.current, data.spec);
-        setDraft(merged);
-        setFlags(newFlags);
-      } else {
-        setDraft(resultToDraft(data.spec, sm.machineSpec?.sequence ?? []));
-        setFlags(new Set());
-      }
-      editedPathsRef.current = new Set();
-      // Re-extraction refreshes proposals too; previously accepted names stay accepted.
-      setProposals(prev => (data.proposedDevices ?? []).map(p => ({
-        ...p,
-        accepted: prev.find(x => x.name === p.name)?.accepted ?? true,
-      })));
-      setUnmentioned(data.unmentionedDeviceIds ?? []);
-      setQuestions(data.questions ?? []);
-      setMeta(data.meta ?? null);
+      const data = await runExtraction();
+      applyExtractionResult(data, isReExtract);
       setPhase('review');
     } catch (e) {
       setError(e.message);
       setPhase('describe');
+    }
+  }
+
+  /** Answer JARVIS's clarifying questions right in the banner — re-runs the
+   *  extraction with the answers as corrections, exactly like CreateStation-
+   *  Page's Apply-changes loop. Answered questions drop off; the Q&A history
+   *  guarantees nothing is re-asked in reworded form. */
+  async function handleApplyAnswers() {
+    if (!answerText.trim() || applying) return;
+    setError(null);
+    setApplying(true);
+    // Record this round's Q&A BEFORE the call so the payload below carries it
+    // (state updates land next render; the payload uses local values).
+    const answered = { questions: questions.slice(), answer: answerText.trim() };
+    try {
+      const data = await runExtraction({
+        corrections: answered.answer,
+        qaHistory: [...qaHistory, answered],
+        round: qaRounds + 1,
+      });
+      applyExtractionResult(data, true);
+      setQaHistory(h => [...h, answered]);
+      setQaRounds(n => n + 1);
+      setAnswerText('');
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setApplying(false);
     }
   }
 
@@ -387,8 +435,26 @@ export function SpecEditorModal({ onClose, initial = null }) {
       if (newId && p.purpose) spec.devicePurposes[newId] = p.purpose;
     }
     store.updateStateMachine(sm.id, {
-      machineSpec: { ...spec, sourceDescription: description.trim() },
+      machineSpec: {
+        ...spec,
+        sourceDescription: description.trim(),
+        ...(questions.length ? { pendingQuestions: questions.slice() } : {}),
+      },
     });
+    // Hand open questions to Jarvis's question queue for the controls team
+    // (best effort — the pendingQuestions copy above guarantees nothing is
+    // lost either way). Mirrors CreateStationPage's Save behavior.
+    for (const q of questions) {
+      fetch('/api/jarvis/questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: q,
+          context: `Station Spec "${sm.displayName ?? sm.name}" — saved with this question open.`,
+          source: 'create-station',
+        }),
+      }).catch(() => { /* queue endpoint unavailable — pendingQuestions has it */ });
+    }
     onClose();
   }
 
@@ -460,11 +526,48 @@ export function SpecEditorModal({ onClose, initial = null }) {
                   padding: '10px 14px', marginBottom: 14,
                 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#8a6d1a', marginBottom: 4 }}>
-                    JARVIS wants to clarify — edit the fields below, or Re-describe with more detail:
+                    JARVIS wants to clarify — answer below, edit the fields, or Re-describe:
                   </div>
                   <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: '#6b5513', lineHeight: 1.6 }}>
                     {questions.map((q, i) => <li key={i}>{q}</li>)}
                   </ul>
+
+                  {/* Answer box — type or talk, then Apply answers re-runs the extraction */}
+                  <div style={{ marginTop: 8 }}>
+                    <DictatedTextarea
+                      value={answerText}
+                      onChange={setAnswerText}
+                      micTestId="spec-answers-dictate-btn"
+                      data-testid="spec-answers-input"
+                      className="form-input form-textarea"
+                      rows={3}
+                      placeholder="Answer the questions here — type or use the mic. One answer per line is fine."
+                      disabled={applying}
+                      style={{ fontSize: 12, width: '100%', resize: 'vertical' }}
+                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
+                      <button
+                        className="btn btn--primary btn--xs"
+                        data-testid="spec-apply-answers-btn"
+                        onClick={handleApplyAnswers}
+                        disabled={!answerText.trim() || applying}
+                      >
+                        {applying ? 'Applying…' : 'Apply answers'}
+                      </button>
+                      {applying && (
+                        <span style={{ fontSize: 11, color: '#8a6d1a' }}>
+                          JARVIS is folding your answers into the spec…
+                        </span>
+                      )}
+                      {error && !applying && (
+                        <span style={{ fontSize: 11, color: C.danger }}>{error}</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: 10, color: '#8a6d1a', marginTop: 6, fontStyle: 'italic' }}>
+                    Unanswered questions go to Jarvis's queue for the controls team when you Save.
+                  </div>
                 </div>
               )}
 

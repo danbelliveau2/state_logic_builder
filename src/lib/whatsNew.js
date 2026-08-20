@@ -10,12 +10,39 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.0.3';
+export const UI_BUILD = 'v2.0.5';
 
 export const BUILT_AT = '2026-08-20';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.0.5',
+    date: '2026-08-20',
+    items: [
+      'Feature tree left panel — the same tree as the estimate builder: caret + colored square + name + dotted leader + right-aligned count on every row',
+      'Tree levels: Machine root (name + job #) → Machine totals (the quoting tally) → Stations (each expands to its Spec line + devices; drafts listed too) → Documents',
+      'Station squares tell you the state at a glance: amber = no spec yet, green ✓ = spec + logic drawn, red = last Jarvis build failed validation',
+      'Quiet "incomplete: N no spec" badge on the machine root — never a popup',
+      'The tree drives the canvas: click a station to show it; selecting a station anywhere auto-expands its tree node',
+      'FIXED: scroll-wheel zoom dying after a project switch (the canvas briefly unmounts and lost its wheel listener) — zoom now survives project switches in both apps',
+      'Station Spec: answer Jarvis\'s clarifying questions right in the banner — type or talk, then "Apply answers" folds them into the spec',
+      'Answered questions disappear; Jarvis never re-asks a question you already answered, even reworded',
+      'Saving a spec with open questions sends them to Jarvis\'s queue for the controls team (noted in the banner)',
+    ],
+  },
+  {
+    version: 'v2.0.4',
+    date: '2026-08-20',
+    items: [
+      'After Build, you land on the canvas — no second review layer; open questions go to Jarvis\'s queue',
+      'Summary is editable in place — click any line to change it, no edit buttons; "+ add a line" per section',
+      'Edited the summary? A sticky bar offers "Resubmit to Jarvis" (re-checks with your edits) or "keep my edits as-is"',
+      'Non-standard detection — when a request contradicts an SDC standard, an amber "Not SDC standard" card shows what you asked vs the standard; Jarvis builds it your way and flags it for controls review (saved with the station)',
+      '+ New Station always starts blank — no more silent draft restore',
+      'Unfinished drafts are listed per project: a banner on the fresh page and a "Drafts (N)" row in the Stations panel (resume with one click, discard with ✕)',
+    ],
+  },
   {
     version: 'v2.0.3',
     date: '2026-08-20',
@@ -69,10 +96,6 @@ export const SHIPPED = [
 
 // Being built right now — NOT in the current installed build yet.
 export const IN_PROGRESS = [
-  'Inline editing everywhere in the summary (no edit buttons; Resubmit bar on change) — lands in v2.0.4',
-  'Non-standard detection — Jarvis flags "that isn’t SDC standard" instead of silently complying — lands in v2.0.4',
-  'Per-project draft handling — New Station starts blank; unfinished drafts listed inside the project — lands in v2.0.4',
-  'Feature tree left panel (matching the estimate builder) — design phase',
   'Full Controls view — compiled coordination rendered on the canvas',
   'Jarvis brain moves to the shared SDC AppStack database — one Jarvis for the whole team',
 ];

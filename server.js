@@ -30,6 +30,11 @@
  *                                     Closing the connection cancels the model stream.
  *                                     On success the L5X is also saved to
  *                                     generated/<project>/<sm>__jarvis_v<ver>__<date>.L5X
+ *                                     plus the structured IR as <same base>.ir.json
+ *   GET    /api/jarvis/ir             Latest compiled IR for one station:
+ *                                     ?filename=<project.json>&smId=<id|name> ->
+ *                                     { file, mtimeMs, smName, ir } (404 when
+ *                                     no build has produced an IR yet)
  *   POST   /api/jarvis/diagram        Describe-your-station -> project draft:
  *                                     { description, images:[{name,base64,mediaType}] }
  *                                     -> { ok, filename, summary, openQuestions, fixups, meta }
@@ -306,6 +311,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
 
       // Auto-save the generated program so the user always knows where it is.
       let savedPath = null;
+      let savedIrPath = null;
       if (result.l5x) {
         try {
           const clean = (s) => String(s || 'unnamed').replace(/[^a-zA-Z0-9_\-]/g, '_');
@@ -317,6 +323,23 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
           fs.writeFileSync(savedPath, result.l5x, 'utf8');
         } catch (e) {
           console.warn('[generate] auto-save failed:', e.message);
+        }
+        // Persist the structured IR next to the L5X so the UI can render the
+        // compiled "Full Controls" view later (GET /api/jarvis/ir).
+        if (savedPath && result.ir && result.ir.irVersion) {
+          try {
+            savedIrPath = savedPath.replace(/\.L5X$/i, '.ir.json');
+            fs.writeFileSync(savedIrPath, JSON.stringify({
+              ...result.ir,
+              generatedAt: new Date().toISOString(),
+              jarvisVersion: result.meta?.jarvisVersion ?? null,
+              l5xFile: path.basename(savedPath),
+              validationOk: result.ok === true,
+            }, null, 2), 'utf8');
+          } catch (e) {
+            savedIrPath = null;
+            console.warn('[generate] IR auto-save failed:', e.message);
+          }
         }
       }
 
@@ -337,7 +360,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
             filePath: savedPath,
           }).id;
       } catch (e) { console.warn('[generate] build record failed:', e.message); }
-      send('done', { ...result, savedPath, buildId });
+      send('done', { ...result, savedPath, savedIrPath, buildId });
     } catch (e) {
       if (clientGone || (e && (e.name === 'AbortError' || e.name === 'APIUserAbortError'))) {
         // Client cancelled — nothing to report.
@@ -348,6 +371,60 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       }
     }
     res.end();
+  }
+
+  /** GET /api/jarvis/ir?filename=&smId= — latest compiled IR for one station.
+   *  Scans generated/<project>/ for <smName>__*.ir.json (written by the
+   *  /api/generate/stream done handler), returns the newest by mtime. smId is
+   *  the SM's id (or name, tolerated); omit to use the project's first SM.
+   *  404 when the project/SM exists but no build has produced an IR yet. */
+  function handleJarvisIr(res, query) {
+    try {
+      const safe = safeFilename(query.filename || '');
+      if (!safe) return sendJson(res, 400, { error: 'Invalid or missing filename' });
+      const fp = path.join(DATA_DIR_, safe);
+      if (!fs.existsSync(fp)) return sendJson(res, 404, { error: 'Project not found: ' + safe });
+      const projectJson = JSON.parse(fs.readFileSync(fp, 'utf8'));
+      const sms = projectJson.stateMachines || [];
+      const want = query.smId ? String(query.smId) : null;
+      const sm = want
+        ? (sms.find(s => s.id === want) ||
+           sms.find(s => (s.name || '').toLowerCase() === want.toLowerCase()))
+        : sms[0];
+      if (!sm) return sendJson(res, 404, { error: 'State machine not found: ' + (want || '(first)') });
+
+      // Same sanitizers the auto-save uses, so prefixes line up exactly.
+      const clean = (s) => String(s || 'unnamed').replace(/[^a-zA-Z0-9_\-]/g, '_');
+      const dir = path.join(__dirname, 'generated', clean(projectJson.name || safe.replace('.json', '')));
+      const prefix = clean(sm.name) + '__';
+      let candidates = [];
+      if (fs.existsSync(dir)) {
+        candidates = fs.readdirSync(dir)
+          .filter(f => f.startsWith(prefix) && f.toLowerCase().endsWith('.ir.json'))
+          .map(f => {
+            const full = path.join(dir, f);
+            return { file: f, full, mtimeMs: fs.statSync(full).mtimeMs };
+          })
+          .sort((a, b) => b.mtimeMs - a.mtimeMs);
+      }
+      if (!candidates.length) {
+        return sendJson(res, 404, {
+          error: 'No compiled build yet — generate this station with Jarvis first',
+          project: projectJson.name || safe.replace('.json', ''),
+          smName: sm.name,
+        });
+      }
+      const latest = candidates[0];
+      const ir = JSON.parse(fs.readFileSync(latest.full, 'utf8'));
+      sendJson(res, 200, {
+        file: latest.file,
+        mtimeMs: latest.mtimeMs,
+        smName: sm.name,
+        ir,
+      });
+    } catch (e) {
+      sendJson(res, 500, { error: e.message });
+    }
   }
 
   // ── JARVIS describe-your-station -> diagram draft ──────────────────────────
@@ -435,6 +512,9 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         sm: body.sm && typeof body.sm === 'object' ? body.sm : {},
         otherSms: Array.isArray(body.otherSms) ? body.otherSms : [],
         existingSpec: body.existingSpec || null,
+        corrections: typeof body.corrections === 'string' ? body.corrections : '',
+        round: Number(body.round) || 0,
+        qaHistory: Array.isArray(body.qaHistory) ? body.qaHistory : [],
       });
       sendJson(res, 200, { ok: true, ...result });
     } catch (e) {
@@ -1021,6 +1101,11 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
 
     if (pathname === '/api/generate/stream') {
       if (method === 'GET') return handleGenerateStream(req, res, query);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    if (pathname === '/api/jarvis/ir') {
+      if (method === 'GET') return handleJarvisIr(res, query);
       return sendJson(res, 405, { error: 'Method not allowed' });
     }
 

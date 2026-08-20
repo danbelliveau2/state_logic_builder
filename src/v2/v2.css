@@ -16,10 +16,11 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr) 300px;
+  /* --v2-tree-width is set by AppV2 from FeatureTreeV2's TREE_WIDTH constant */
+  grid-template-columns: var(--v2-tree-width, 340px) minmax(0, 1fr) 300px;
 }
 .v2-body--context-collapsed {
-  grid-template-columns: 260px minmax(0, 1fr) 28px;
+  grid-template-columns: var(--v2-tree-width, 340px) minmax(0, 1fr) 28px;
 }
 
 /* ── Top bar (48px) ────────────────────────────────────────────────────── */
@@ -490,6 +491,219 @@
   text-overflow: ellipsis;
 }
 .v2-stations__project-chev { color: var(--color-text-light); font-size: 12px; }
+
+/* ── Feature tree (SolidWorks-style — replicates the estimate builder) ──── */
+/* Row anatomy: caret + colored square + name + dotted leader + mono value.
+   Big parents (14px) / small children (10px); quiet badges, never modal. */
+.v2-stations__header--tree {
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px 8px;
+}
+.v2-stations__title-hint { font-size: 10px; color: var(--color-text-light); }
+.v2-stations__list--tree { padding: 6px 8px 10px; gap: 0; }
+
+.v2-tree { display: flex; flex-direction: column; font-size: 14px; }
+
+/* Root row (the machine) */
+.v2-tree__root {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 4px 5px;
+  min-width: 0;
+}
+.v2-tree__root-name {
+  font-size: 15px;
+  font-weight: 800;
+  color: #061d39;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+  min-width: 0;
+}
+.v2-tree__job { font-weight: 600; color: var(--color-text-muted); font-size: 12px; }
+
+/* Children of the root indent one step; station children indent again */
+.v2-tree__indent { padding-left: 8px; display: flex; flex-direction: column; }
+.v2-tree__children {
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 2px;
+}
+.v2-tree__children--stations { padding-left: 12px; }
+
+/* Generic row */
+.v2-tree__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 4px;
+  border-radius: 5px;
+  cursor: pointer;
+  min-width: 0;
+}
+.v2-tree__row:hover { background: #e8f0fa; }
+.v2-tree__row--open { background: #eef4fb; }
+.v2-tree__row--active { background: #e8f0fa; box-shadow: inset 0 0 0 1.5px var(--color-primary); }
+.v2-tree__row--small { padding: 2px 4px; gap: 5px; }
+.v2-tree__row--static { cursor: default; }
+.v2-tree__row--static:hover { background: transparent; }
+
+/* Caret */
+.v2-tree__caret-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  width: 12px;
+  height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+.v2-tree__caret { transition: transform 0.12s; display: block; }
+.v2-tree__caret--open { transform: rotate(90deg); }
+.v2-tree__caret-spacer { width: 12px; flex-shrink: 0; }
+
+/* Type/status-colored square */
+.v2-tree__square {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-weight: 900;
+  color: #fff;
+  line-height: 1;
+}
+
+/* Names — hierarchy by size: big parents, small children */
+.v2-tree__snum {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.v2-tree__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 68%;
+}
+.v2-tree__name--bold { font-weight: 700; }
+.v2-tree__name--problem { color: #c81e1e; }
+.v2-tree__name-small {
+  font-size: 10px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+  min-width: 0;
+}
+.v2-tree__name-small--strong { font-weight: 600; color: var(--color-text); font-size: 11px; }
+.v2-tree__dot { color: #cbd5e1; font-size: 10px; width: 10px; text-align: center; flex-shrink: 0; }
+
+/* Dotted leader + right-aligned mono value */
+.v2-tree__leader {
+  flex: 1;
+  margin: 0 6px;
+  border-bottom: 1px dotted #cbd5e1;
+  height: 1px;
+  align-self: center;
+  min-width: 12px;
+}
+.v2-tree__value {
+  flex-shrink: 0;
+  font-family: Consolas, 'SF Mono', monospace;
+  font-size: 12px;
+  color: #334155;
+  font-variant-numeric: tabular-nums;
+}
+.v2-tree__value--small { font-size: 9px; color: #94a3b8; }
+
+/* Quiet amber badge (incomplete hints — never modal) */
+.v2-tree__badge-amber {
+  flex-shrink: 0;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  background: #fdf4e3;
+  color: #b45309;
+  border: 1px solid #e8b64c;
+  white-space: nowrap;
+}
+
+/* Inline actions on rows */
+.v2-tree__add {
+  flex-shrink: 0;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  cursor: pointer;
+  margin-left: 2px;
+}
+.v2-tree__add:hover { background: var(--color-primary-h); }
+.v2-tree__discard {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  line-height: 1;
+  padding: 0 2px;
+}
+.v2-tree__discard:hover { color: #b83c3c; }
+
+.v2-tree__empty-leaf {
+  font-size: 10px;
+  color: var(--color-text-light);
+  font-style: italic;
+  padding: 3px 4px 3px 16px;
+}
+
+/* Device leaves — icon + name over muted type subtext (kept from old rows) */
+.v2-tree__device { align-items: center; }
+.v2-tree__device-icon { flex-shrink: 0; display: inline-flex; width: 16px; justify-content: center; }
+.v2-tree__device-info { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.v2-tree__device-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.v2-tree__device-type {
+  font-size: 9px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* ── Center: canvas + view switcher ────────────────────────────────────── */
 .v2-center {

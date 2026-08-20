@@ -7,11 +7,13 @@
  *      overlay-click dismissal. Explicit "← Back" in the header, with a
  *      confirm when there's content (nothing is ever lost — see 2).
  *   2. Never lose work: the whole draft (name, number, description, images,
- *      phase, summary) autosaves ~1s-debounced to
- *      localStorage['jarvis.createStationDraft.{projectKey}'] and is
- *      silently restored next time the page opens. Cleared only after a
- *      successful Build or explicit "Discard draft". Stored images are
- *      capped at ~4MB total base64 (oldest dropped, with a notice).
+ *      phase, summary) autosaves ~1s-debounced to the per-project MULTI-draft
+ *      store (createStationDrafts.js). The page ALWAYS opens blank — no
+ *      silent restore (Dan). Unfinished drafts are listed in a banner here
+ *      and in StationsPanel's "Drafts (N)" row; resume is an explicit click.
+ *      A draft clears only after a successful Build or explicit "Discard
+ *      draft". Stored images are capped at ~4MB total base64 per draft
+ *      (oldest dropped, with a notice).
  *   3. Clipboard paste: DescribeSurface mounts a window-level paste
  *      listener, so Ctrl+V of a Snipping Tool capture lands as a thumbnail
  *      no matter where focus is (and never dumps junk into the textarea).
@@ -43,7 +45,10 @@ import { DescribeSurface, useDictation, MicButton, ListeningIndicator } from './
 import { DeviceIcon } from '../DeviceIcons.jsx';
 import { ProgressRing } from './ProgressRing.jsx';
 import { NewStateMachineModal } from '../modals/NewStateMachineModal.jsx';
-import { SpecEditorModal } from '../modals/SpecEditorModal.jsx';
+import {
+  draftsKeyFor, loadDrafts, saveDraft, deleteDraft, newDraftId,
+  consumeResumeRequest, draftLabel, timeAgo,
+} from './createStationDrafts.js';
 
 // SDC palette shorthands (src/index.css tokens)
 const C = {
@@ -61,27 +66,39 @@ const C = {
 
 const uid = () => `id_${crypto.randomUUID()}`;
 
-// ── Draft persistence (never lose work) ─────────────────────────────────────
+/** Transient house-style toast, appended straight to document.body so it
+ *  survives this page unmounting (Build closes the page immediately — Dan:
+ *  "we just verified it all", so post-build there is NO second review layer,
+ *  just the canvas plus this notice). */
+function showTransientToast(message) {
+  const el = document.createElement('div');
+  el.setAttribute('data-testid', 'station-built-toast');
+  el.textContent = message;
+  Object.assign(el.style, {
+    position: 'fixed', bottom: '26px', left: '50%', transform: 'translateX(-50%)',
+    zIndex: 2000, maxWidth: '540px',
+    background: '#fff', color: 'var(--color-text)',
+    border: '1px solid #a8c8e8', borderLeft: '4px solid var(--color-primary)',
+    borderRadius: '8px', boxShadow: '0 4px 18px rgba(0,0,0,0.16)',
+    padding: '10px 16px', fontSize: '12.5px', fontWeight: '600', lineHeight: '1.5',
+    opacity: '1', transition: 'opacity 0.6s ease',
+    pointerEvents: 'none',
+  });
+  document.body.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; }, 5400);
+  setTimeout(() => { el.remove(); }, 6100);
+}
+
+// ── Draft persistence (never lose work; multi-draft, no silent restore) ─────
+//
+// Storage + resume handoff live in createStationDrafts.js. This page ALWAYS
+// opens blank; unfinished drafts show as a banner and are resumed explicitly
+// (Dan: "I hit new station, I should get a new station").
 
 const DRAFT_IMAGE_BASE64_CAP = 4 * 1024 * 1024; // ~4MB of base64 chars
 
-function draftKeyFor(store) {
-  const projectKey = store.currentFilename || store.project?.name || 'default';
-  return `jarvis.createStationDraft.${projectKey}`;
-}
-
-function loadDraft(key) {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    const d = JSON.parse(raw);
-    if (!d || d.v !== 1) return null;
-    return d;
-  } catch { return null; }
-}
-
-/** Serialize the draft, capping stored images at ~4MB base64 total
- *  (oldest dropped first). Returns { json, droppedImages }. */
+/** Build the persisted draft payload, capping stored images at ~4MB base64
+ *  total (oldest dropped first). Returns { payload, droppedImages }. */
 function serializeDraft(draft) {
   const imgs = [];
   let total = 0;
@@ -94,8 +111,8 @@ function serializeDraft(draft) {
     imgs.unshift({ name: img.name, base64: img.base64, mediaType: img.mediaType });
   }
   const droppedImages = draft.images.length - imgs.length;
-  const json = JSON.stringify({ ...draft, v: 1, savedAt: Date.now(), images: imgs });
-  return { json, droppedImages };
+  const payload = { ...draft, v: 1, savedAt: Date.now(), images: imgs };
+  return { payload, droppedImages };
 }
 
 // ── Insert helpers (unchanged from the modal) ───────────────────────────────
@@ -447,10 +464,17 @@ function ChecklistPanel({ scores, messages, hasOtherSms, sourceLabel }) {
 // "Resubmit to Jarvis" bar.
 
 /** Bare line input: Enter/blur commits (onDone(value)), Escape cancels
- *  (onDone(null)). The cancelled ref keeps Escape's blur from committing. */
+ *  (onDone(null)). Enter/Escape resolve directly (not via blur() — focusout
+ *  is unreliable when the window lacks OS focus); the ref guards the
+ *  follow-up unmount blur from double-firing. */
 function LineInput({ initial, placeholder, onDone, testId }) {
   const [val, setVal] = useState(initial);
-  const cancelled = useRef(false);
+  const doneRef = useRef(false);
+  const finish = (v) => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    onDone(v);
+  };
   return (
     <input
       className="form-input"
@@ -460,10 +484,10 @@ function LineInput({ initial, placeholder, onDone, testId }) {
       placeholder={placeholder}
       autoFocus
       onChange={e => setVal(e.target.value)}
-      onBlur={() => onDone(cancelled.current ? null : val)}
+      onBlur={() => finish(val)}
       onKeyDown={e => {
-        if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
-        else if (e.key === 'Escape') { cancelled.current = true; e.currentTarget.blur(); }
+        if (e.key === 'Enter') { e.preventDefault(); finish(val); }
+        else if (e.key === 'Escape') { finish(null); }
       }}
     />
   );
@@ -759,12 +783,21 @@ export function CreateStationPage() {
   const sms = store.project?.stateMachines ?? [];
   const otherSms = sms; // the new SM doesn't exist yet — every SM is "other"
   const hasOtherSms = sms.length > 0;
-  const draftKey = draftKeyFor(store);
+  const draftKey = draftsKeyFor(store);
 
-  // Restore the draft ONCE, synchronously, before first paint of the fields.
-  const draftRef = useRef(undefined);
-  if (draftRef.current === undefined) draftRef.current = loadDraft(draftKey);
-  const draft = draftRef.current;
+  // ALWAYS open blank — no silent restore. The only exception: an explicit
+  // resume request (StationsPanel "Drafts" row) consumed once, synchronously,
+  // before first paint of the fields.
+  const initRef = useRef(undefined);
+  if (initRef.current === undefined) {
+    const resumeId = consumeResumeRequest();
+    const resumed = resumeId
+      ? loadDrafts(draftKey).find(d => d.draftId === resumeId) ?? null
+      : null;
+    initRef.current = { draft: resumed, draftId: resumed?.draftId ?? newDraftId() };
+  }
+  const draft = initRef.current.draft;
+  const draftIdRef = useRef(initRef.current.draftId);
 
   // Structured summaries only — a pre-rework draft with a string summary
   // falls back to the input phase (the raw explanation is preserved).
@@ -772,7 +805,7 @@ export function CreateStationPage() {
 
   // mode: 'describe' | 'blank' (old form-first flow)
   const [mode, setMode] = useState('describe');
-  // phase: 'input' | 'summarizing' | 'summary' | 'building' | 'review' | 'specFailed'
+  // phase: 'input' | 'summarizing' | 'summary' | 'building' | 'specFailed'
   const [phase, setPhase] = useState(() =>
     (draft && draft.phase === 'summary' && draftSummary) ? 'summary' : 'input');
   const [name, setName] = useState(draft?.name ?? '');
@@ -787,7 +820,10 @@ export function CreateStationPage() {
       ...img,
       previewUrl: `data:${img.mediaType};base64,${img.base64}`,
     })));
-  const [draftNote, setDraftNote] = useState(!!draft);
+  // Unfinished drafts in THIS project (excluding the one being edited) —
+  // listed in a banner on the fresh page, resumed only by explicit click.
+  const [otherDrafts, setOtherDrafts] = useState(() =>
+    loadDrafts(draftKey).filter(d => d.draftId !== draftIdRef.current));
   const [draftImagesDropped, setDraftImagesDropped] = useState(0);
 
   // Summary loop state (summary is the STRUCTURED object, or null)
@@ -824,7 +860,6 @@ export function CreateStationPage() {
   const [error, setError] = useState(null);
   const [pct, setPct] = useState(0);
   const [stageLabel, setStageLabel] = useState('');
-  const [reviewInitial, setReviewInitial] = useState(null);
   const [specFailMsg, setSpecFailMsg] = useState('');
 
   // ── Live checklist — LOCAL heuristics, debounced ~1.5s (input phase) ─────
@@ -847,52 +882,77 @@ export function CreateStationPage() {
   // ── Draft autosave (debounced ~1s) ───────────────────────────────────────
   const buildSucceededRef = useRef(false);
   useEffect(() => {
-    if (phase === 'building' || phase === 'review' || phase === 'specFailed') return;
+    if (phase === 'building' || phase === 'specFailed') return;
     const t = setTimeout(() => {
       if (buildSucceededRef.current) return;
       const hasContent = description.trim() || images.length || summaryHasContent(summary) || name.trim();
-      try {
-        if (!hasContent) {
-          localStorage.removeItem(draftKey);
-          return;
-        }
-        const { json, droppedImages } = serializeDraft({
-          name, station, description, images,
-          phase: phase === 'summary' || phase === 'summarizing' ? 'summary' : 'input',
+      if (!hasContent) {
+        deleteDraft(draftKey, draftIdRef.current);
+        return;
+      }
+      const { payload, droppedImages } = serializeDraft({
+        draftId: draftIdRef.current,
+        name, station, description, images,
+        phase: phase === 'summary' || phase === 'summarizing' ? 'summary' : 'input',
+        summary, jarvisCoverage, questions, nonStandardFlags, summarizeCost,
+      });
+      if (saveDraft(draftKey, payload)) {
+        setDraftImagesDropped(droppedImages);
+      } else {
+        // Quota exceeded — retry the draft without images so the TEXT survives.
+        const { payload: textOnly } = serializeDraft({
+          draftId: draftIdRef.current,
+          name, station, description, images: [],
+          phase: phase === 'summary' ? 'summary' : 'input',
           summary, jarvisCoverage, questions, nonStandardFlags, summarizeCost,
         });
-        localStorage.setItem(draftKey, json);
-        setDraftImagesDropped(droppedImages);
-      } catch {
-        // Quota exceeded — retry the draft without images so the TEXT survives.
-        try {
-          const { json } = serializeDraft({
-            name, station, description, images: [],
-            phase: phase === 'summary' ? 'summary' : 'input',
-            summary, jarvisCoverage, questions, nonStandardFlags, summarizeCost,
-          });
-          localStorage.setItem(draftKey, json);
-          setDraftImagesDropped(images.length);
-        } catch { /* storage entirely unavailable — nothing more we can do */ }
+        if (saveDraft(draftKey, textOnly)) setDraftImagesDropped(images.length);
+        /* else: storage entirely unavailable — nothing more we can do */
       }
     }, 1000);
     return () => clearTimeout(t);
   }, [name, station, description, images, phase, summary, jarvisCoverage, questions, nonStandardFlags, summarizeCost, draftKey]);
 
   function clearDraft() {
-    try { localStorage.removeItem(draftKey); } catch { /* noop */ }
+    deleteDraft(draftKey, draftIdRef.current);
   }
 
   function handleDiscardDraft() {
     if (!window.confirm('Discard this draft? The explanation, summary and pictures will be deleted.')) return;
     clearDraft();
     buildSucceededRef.current = false;
+    draftIdRef.current = newDraftId();
     setName(''); setDescription(''); setImages([]);
     setSummary(null); setJarvisCoverage(null); setQuestions([]); setChanges('');
     setNonStandardFlags([]); setDirty(false); baselineRef.current = null;
     setQaRounds(0); setQaHistory([]); setLearnedNotes([]);
-    setSummarizeCost(0); setError(null); setDraftNote(false); setDraftImagesDropped(0);
+    setSummarizeCost(0); setError(null); setDraftImagesDropped(0);
+    setOtherDrafts(loadDrafts(draftKey).filter(d => d.draftId !== draftIdRef.current));
     setPhase('input');
+  }
+
+  /** Explicit resume of an unfinished draft (banner chip / StationsPanel). */
+  function resumeDraft(d) {
+    draftIdRef.current = d.draftId;
+    const s = isStructuredSummary(d.summary) ? d.summary : null;
+    setName(d.name ?? '');
+    if (d.station) setStation(String(d.station));
+    setDescription(d.description ?? '');
+    setImages((d.images ?? []).map(img => ({
+      ...img,
+      previewUrl: `data:${img.mediaType};base64,${img.base64}`,
+    })));
+    setSummary(s);
+    baselineRef.current = s;
+    setDirty(false);
+    setJarvisCoverage(d.jarvisCoverage ?? null);
+    setQuestions(d.questions ?? []);
+    setNonStandardFlags(d.nonStandardFlags ?? []);
+    setSummarizeCost(Number(d.summarizeCost) || 0);
+    setQaRounds(0); setQaHistory([]); setChanges(''); setError(null);
+    setLearnedNotes([]); setDraftImagesDropped(0);
+    setOtherDrafts(loadDrafts(draftKey).filter(x => x.draftId !== d.draftId));
+    setPhase(d.phase === 'summary' && s ? 'summary' : 'input');
   }
 
   // ── Gating ───────────────────────────────────────────────────────────────
@@ -1122,7 +1182,11 @@ export function CreateStationPage() {
       });
       // Hand open questions to Jarvis's question queue (best effort — the
       // pendingQuestions copy above guarantees nothing is lost either way).
-      for (const q of questions) {
+      // The diagram extraction's own open questions go to the queue too —
+      // there is no post-build review layer to show them in (Dan: "we just
+      // verified it all").
+      const queuedQuestions = [...questions, ...(dData.openQuestions ?? [])];
+      for (const q of queuedQuestions) {
         fetch('/api/jarvis/questions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1191,19 +1255,32 @@ export function CreateStationPage() {
 
       prog.stop();
       setPct(100);
-      const totalCost =
-        (Number(dData.meta?.costUSD) || 0) + (Number(sData.meta?.costUSD) || 0);
-      setReviewInitial({
-        spec: sData.spec,
-        proposedDevices: sData.proposedDevices ?? [],
-        unmentionedDeviceIds: sData.unmentionedDeviceIds ?? [],
-        questions: [
-          ...(dData.openQuestions ?? []),
-          ...(sData.questions ?? []),
-        ],
-        meta: { ...(sData.meta ?? {}), costUSD: totalCost },
-      });
-      setPhase('review');
+
+      // ── 5. Done — land on the canvas, NO second review layer. ───────────
+      // The summary loop (or the engineer's raw explanation on the direct
+      // path) WAS the review. Spec-extraction questions join the queue with
+      // the rest; the spec itself is saved above and reachable any time via
+      // Jarvis ▾ → Station Spec.
+      const specQuestions = sData.questions ?? [];
+      for (const q of specQuestions) {
+        fetch('/api/jarvis/questions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            question: q,
+            context: `Create Station "${name.trim()}" — spec extraction question; Jarvis decided per SDC standards.`,
+            source: 'create-station',
+          }),
+        }).catch(() => { /* queue endpoint unavailable */ });
+      }
+      const nQuestions = queuedQuestions.length + specQuestions.length;
+      showTransientToast(
+        nQuestions > 0
+          ? `Station built — spec saved. ${nQuestions} open question${nQuestions === 1 ? '' : 's'} went to Jarvis's queue.`
+          : 'Station built — spec saved.'
+      );
+      store.closeNewSmModal();
+      return;
     } catch (e) {
       prog.stop();
       setError(e.message);
@@ -1222,10 +1299,9 @@ export function CreateStationPage() {
   // ── Old blank flow, kept for edge cases ─────────────────────────────────
   if (mode === 'blank') return <NewStateMachineModal />;
 
-  // ── Review: reuse SpecEditorModal's review phase on the new (active) SM ──
-  if (phase === 'review' && reviewInitial) {
-    return <SpecEditorModal initial={reviewInitial} onClose={() => store.closeNewSmModal()} />;
-  }
+  // (No post-build review layer — a successful Build closes this page and
+  //  lands on the canvas with a toast. Jarvis ▾ → Station Spec opens the
+  //  saved spec later.)
 
   const busy = phase === 'building' || phase === 'summarizing';
   const inSummary = phase === 'summary';
@@ -1280,30 +1356,45 @@ export function CreateStationPage() {
       <div style={{ flex: 1, overflow: 'auto' }}>
         <div style={{ maxWidth: 1060, margin: '0 auto', padding: '16px 24px 40px' }}>
 
-          {draftNote && (
+          {phase === 'input' && otherDrafts.length > 0 && (
             <div
-              data-testid="draft-restored-note"
+              data-testid="unfinished-drafts-banner"
               style={{
-                display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12,
-                background: C.primaryBg, border: `1px solid ${C.primaryBorder}`,
+                display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8,
+                marginBottom: 12, background: C.primaryBg,
+                border: `1px solid ${C.primaryBorder}`,
                 borderRadius: 6, padding: '7px 12px', fontSize: 12, color: C.text,
               }}
             >
-              <span style={{ flex: 1 }}>Draft restored from your last session.</span>
+              <span>
+                {otherDrafts.length} unfinished draft{otherDrafts.length > 1 ? 's' : ''} in
+                this project:
+              </span>
+              {otherDrafts.map(d => (
+                <button
+                  key={d.draftId}
+                  type="button"
+                  data-testid={`resume-draft-${d.draftId}`}
+                  onClick={() => resumeDraft(d)}
+                  title="Resume this draft"
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    background: '#fff', border: `1px solid ${C.primaryBorder}`,
+                    borderRadius: 12, padding: '2px 10px', cursor: 'pointer',
+                    fontSize: 11, fontWeight: 600, color: C.primary,
+                  }}
+                >
+                  {draftLabel(d)}
+                  <span style={{ fontWeight: 400, color: C.muted }}>· {timeAgo(d.savedAt)}</span>
+                </button>
+              ))}
+              <span style={{ color: C.muted }}>— resume one or keep starting fresh.</span>
               <button
                 type="button"
-                onClick={handleDiscardDraft}
+                onClick={() => setOtherDrafts([])}
+                title="Dismiss (drafts stay in the Stations panel)"
                 style={{
-                  background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                  fontSize: 11, color: C.danger, textDecoration: 'underline',
-                }}
-              >Discard draft</button>
-              <button
-                type="button"
-                onClick={() => setDraftNote(false)}
-                title="Dismiss"
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer',
+                  background: 'none', border: 'none', cursor: 'pointer', marginLeft: 'auto',
                   fontSize: 13, color: C.muted, lineHeight: 1, padding: '0 2px',
                 }}
               >✕</button>

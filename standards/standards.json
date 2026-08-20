@@ -4,7 +4,7 @@
     "name": "SDC_Servo_PNP",
     "description": "",
     "category": "",
-    "savedAt": "2026-08-19T17:53:11.498Z",
+    "savedAt": "2026-08-20T12:22:44.942Z",
     "nodes": [
       {
         "id": "id_mo9y29fv",
@@ -23,7 +23,7 @@
         },
         "measured": {
           "width": 240,
-          "height": 146
+          "height": 130
         },
         "selected": false,
         "dragging": false
@@ -50,7 +50,7 @@
         },
         "measured": {
           "width": 240,
-          "height": 71
+          "height": 67
         },
         "selected": false,
         "dragging": false
@@ -76,7 +76,7 @@
         },
         "measured": {
           "width": 240,
-          "height": 89
+          "height": 81
         },
         "selected": false
       },
@@ -102,7 +102,7 @@
         },
         "measured": {
           "width": 240,
-          "height": 71
+          "height": 67
         },
         "selected": false
       },
@@ -128,7 +128,7 @@
         },
         "measured": {
           "width": 240,
-          "height": 71
+          "height": 67
         },
         "selected": false
       },
@@ -154,7 +154,7 @@
         },
         "measured": {
           "width": 240,
-          "height": 71
+          "height": 67
         },
         "selected": false
       },
@@ -179,7 +179,7 @@
         },
         "measured": {
           "width": 240,
-          "height": 89
+          "height": 81
         },
         "selected": false,
         "dragging": false
@@ -206,7 +206,7 @@
         },
         "measured": {
           "width": 240,
-          "height": 71
+          "height": 67
         },
         "selected": false,
         "dragging": false
@@ -233,7 +233,7 @@
         },
         "measured": {
           "width": 240,
-          "height": 71
+          "height": 67
         },
         "selected": false,
         "dragging": false
@@ -255,7 +255,7 @@
         },
         "measured": {
           "width": 240,
-          "height": 65
+          "height": 59
         },
         "selected": false,
         "dragging": false
@@ -600,8 +600,7 @@
             "moveType": "Pos",
             "isHome": true,
             "isRecipe": false,
-            "type": "position",
-            "id": "5c15fd42-73a5-4cac-8b4f-9c295bdf3540"
+            "type": "position"
           },
           {
             "name": "Place",
@@ -609,8 +608,7 @@
             "moveType": "Pos",
             "isHome": false,
             "isRecipe": false,
-            "type": "position",
-            "id": "b970e585-9cf0-403a-bf9b-43a6728b49d5"
+            "type": "position"
           },
           {
             "name": "Reject",
@@ -618,8 +616,7 @@
             "moveType": "Pos",
             "isHome": false,
             "isRecipe": false,
-            "type": "position",
-            "id": "ce41dc19-1f26-40c5-9e99-151c05857a8c"
+            "type": "position"
           }
         ],
         "speedProfiles": [
@@ -660,8 +657,7 @@
             "moveType": "Pos",
             "isHome": true,
             "isRecipe": false,
-            "type": "position",
-            "id": "f6ec53fa-9fd8-40cc-852c-363c49920597"
+            "type": "position"
           },
           {
             "name": "Pick",
@@ -669,8 +665,7 @@
             "moveType": "Pos",
             "isHome": false,
             "isRecipe": false,
-            "type": "position",
-            "id": "12f49f85-1efd-4989-a57f-09d8e35e689d"
+            "type": "position"
           },
           {
             "name": "Place",
@@ -678,8 +673,7 @@
             "moveType": "Pos",
             "isHome": false,
             "isRecipe": false,
-            "type": "position",
-            "id": "245803cc-6ba7-4852-989c-7ffe7733c154"
+            "type": "position"
           }
         ],
         "speedProfiles": [

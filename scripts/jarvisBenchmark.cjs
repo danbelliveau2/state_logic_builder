@@ -121,6 +121,17 @@ async function main() {
   // Save the Intermediate Representation next to the output for engineer review.
   const irPath = path.join(outDir, base + '.ir.txt');
   if (result.ir?.text) fs.writeFileSync(irPath, result.ir.text, 'utf8');
+  // Structured IR (irVersion 1) — same shape the server persists to
+  // generated/<project>/*.ir.json for the compiled "Full Controls" view.
+  if (result.ir?.irVersion) {
+    fs.writeFileSync(path.join(outDir, base + '.ir.json'), JSON.stringify({
+      ...result.ir,
+      generatedAt: new Date().toISOString(),
+      jarvisVersion: JARVIS_VERSION,
+      l5xFile: result.l5x ? path.basename(l5xPath) : null,
+      validationOk: result.ok === true,
+    }, null, 2), 'utf8');
+  }
 
   // Token usage: the SDK exposes per-call usage; client.js records it per attempt.
   const attempts = result.meta?.attempts || [];

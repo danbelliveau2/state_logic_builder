@@ -33,6 +33,7 @@ import { initStandardsLibrary } from '../lib/standardsLibrary.js';
 import { exportProjectJSON } from '../lib/l5xExporter.js';
 import { TopBarV2 } from './TopBarV2.jsx';
 import { StationsPanel } from './StationsPanel.jsx';
+import { TREE_WIDTH } from './FeatureTreeV2.jsx';
 import { ContextPanelV2 } from './ContextPanelV2.jsx';
 import { StartScreen } from './StartScreen.jsx';
 import { useV2Shell } from './useV2Shell.js';
@@ -154,7 +155,10 @@ export function AppV2() {
           {home ? (
             <StartScreen />
           ) : (
-            <div className={`v2-body${contextCollapsed ? ' v2-body--context-collapsed' : ''}`}>
+            <div
+              className={`v2-body${contextCollapsed ? ' v2-body--context-collapsed' : ''}`}
+              style={{ '--v2-tree-width': `${TREE_WIDTH}px` }}
+            >
               <StationsPanel />
               <main className="v2-center">
                 {view === 'controls' && (

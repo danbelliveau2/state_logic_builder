@@ -1,14 +1,22 @@
 /**
  * ir.js — Intermediate Representation of one state machine for JARVIS.
  *
- * buildIR(projectJson, smId) returns:
+ * buildIR(projectJson, smId) returns (irVersion 1 — machine-readable, persisted
+ * as .ir.json next to every generated L5X so the UI can render the compiled
+ * "Full Controls" view):
  *   {
+ *     irVersion: 1,
  *     smId, smName, displayName, stationNumber, description,
  *     devices:     [{ id, type, name, displayName, extras }],
  *     states:      [{ nodeId, type, label, stateNumber, isInitial, isComplete,
- *                     actions: [{ operation, deviceId, deviceName, detail }] }],
- *     transitions: [{ fromLabel, toLabel, fromState, toState, conditionType,
- *                     label, outcomeLabel, branch }],
+ *                     entryFrom: [stateNumber...],
+ *                     actions: [{ operation, deviceId, deviceName, device,
+ *                                 params: {...}, detail }] }],
+ *     transitions: [{ fromLabel, toLabel, fromState, toState, from, to,
+ *                     conditionType, label, outcomeLabel, branch,
+ *                     conditionText, kind: 'sequence'|'wait'|'branch'|'recovery' }],
+ *     waits:       [{ stateNumber, signal, source, partner, direction, mode }],
+ *     stateRanges: { reserved, sequence: {from,to}, lockout, init: {from,to,cycleReady} },
  *     machineSpec: null | { purpose, devicePurposes, sequence, outcomeRules,
  *                     relationships, partnerDeclarations } — the Station Spec
  *                     questionnaire (mechanical intent) plus reciprocal
@@ -104,6 +112,86 @@ function actionDetail(a) {
     .join(' ');
 }
 
+/** Structured params object for one action (everything except identity keys). */
+function actionParams(a) {
+  return Object.fromEntries(Object.entries(a)
+    .filter(([k, v]) => !['id', 'deviceId', 'operation'].includes(k) && v != null && v !== ''));
+}
+
+// ── Compiled-view enrichment (irVersion 1) ───────────────────────────────────
+//
+// The UI's "Full Controls" compiled view renders directly from these fields:
+// real state numbers, transitions with readable conditions + kinds, the
+// wait/handshake list, and the reserved/init state ranges. Everything here is
+// derived deterministically from the diagram — no model involvement.
+
+const IR_VERSION = 1;
+
+/** Readable text for a stored edge conditionType. */
+const CONDITION_TYPE_TEXT = {
+  trigger: 'previous actions complete',
+  timer: 'delay timer done',
+  sensorOn: 'sensor on',
+  sensorOff: 'sensor off',
+  sensorTimer: 'sensor on + delay timer done',
+  servoAtTarget: 'servo at target position',
+  servoComplete: 'servo move complete',
+  checkResult: 'check result',
+  visionResult: 'vision result',
+  ready: 'partner ready',
+  always: 'always',
+  custom: 'custom condition',
+  indexComplete: 'index complete',
+  escapementComplete: 'escapement complete',
+  partPresent: 'part present',
+  analogInRange: 'analog value in range',
+};
+
+/** Human-readable transition condition ("wait: Magnet_Presented",
+ *  "StamperVision.Link_Orient = Fail", "delay timer done"). */
+function transitionConditionText(edge, sourceNode) {
+  const d = edge.data || {};
+  const sd = sourceNode?.data || {};
+  if (sourceNode?.type === 'decisionNode') {
+    const sig = [sd.signalSource, sd.signalName].filter(Boolean).join('.') || 'signal';
+    if ((sd.exitCount ?? 1) === 2) {
+      const outcome = d.outcomeLabel || d.label ||
+        (d.exitColor ? d.exitColor.charAt(0).toUpperCase() + d.exitColor.slice(1) : 'Pass');
+      return `${sig} = ${outcome}`;
+    }
+    return `wait: ${sig}`;
+  }
+  // Embedded-decision exits on a StateNode: the outcome IS the condition.
+  if (d.isDecisionExit) {
+    return d.outcomeLabel || d.label ||
+      (d.exitColor ? d.exitColor.charAt(0).toUpperCase() + d.exitColor.slice(1) : 'Pass');
+  }
+  // The edge label is the engineer-readable condition when present
+  // (e.g. "ZAxis_MAM.PC + ZAxisPick.InPos"); fall back to the type text.
+  if (d.label) return d.label;
+  if (d.conditionType) return CONDITION_TYPE_TEXT[d.conditionType] || d.conditionType;
+  if (d.outcomeLabel) return d.outcomeLabel;
+  return 'step complete';
+}
+
+/** Classify a transition for the compiled view.
+ *  'branch'   — decision node with two exits (pass/fail fork)
+ *  'wait'     — decision node single exit (hold until signal true)
+ *  'recovery' — non-decision edge jumping BACKWARD to an earlier state (retry loop)
+ *  'sequence' — normal forward step
+ *  ('init' is reserved for the 100..127 template block, which lives in
+ *   stateRanges — flowchart edges never carry it.) */
+function transitionKind(edge, sourceNode, fromState, toState) {
+  if (sourceNode?.type === 'decisionNode') {
+    return (sourceNode.data?.exitCount ?? 1) === 2 ? 'branch' : 'wait';
+  }
+  if (edge.data?.isDecisionExit) {
+    return edge.sourceHandle === 'exit-single' ? 'wait' : 'branch';
+  }
+  if (fromState != null && toState != null && toState < fromState) return 'recovery';
+  return 'sequence';
+}
+
 /** Build the IR for one state machine of a project. Throws when SM missing. */
 function buildIR(projectJson, smId) {
   const sms = projectJson?.stateMachines || [];
@@ -145,26 +233,85 @@ function buildIR(projectJson, smId) {
         operation: a.operation,
         deviceId: a.deviceId,
         deviceName: devicesById.get(a.deviceId)?.name || null,
+        device: devicesById.get(a.deviceId)
+          ? (devicesById.get(a.deviceId).displayName || devicesById.get(a.deviceId).name)
+          : null,
+        params: actionParams(a),
         detail: actionDetail(a),
       })),
+      entryFrom: [], // filled below from transitions
     };
   }).sort((a, b) => (a.stateNumber ?? 1e9) - (b.stateNumber ?? 1e9));
 
   const transitions = (sm.edges || []).map(e => {
     const d = e.data || {};
+    const src = nodeById.get(e.source);
+    const fromState = numbers.get(e.source) ?? null;
+    const toState = numbers.get(e.target) ?? null;
     return {
-      fromLabel: nodeLabel(nodeById.get(e.source)),
+      fromLabel: nodeLabel(src),
       toLabel: nodeLabel(nodeById.get(e.target)),
-      fromState: numbers.get(e.source) ?? null,
-      toState: numbers.get(e.target) ?? null,
+      fromState,
+      toState,
+      from: fromState,
+      to: toState,
       conditionType: d.conditionType || null,
       label: d.label || null,
       outcomeLabel: d.outcomeLabel || null,
       branch: d.exitColor || null,
+      conditionText: transitionConditionText(e, src),
+      kind: transitionKind(e, src, fromState, toState),
     };
   });
 
+  // entryFrom: which states transition INTO each state (real state numbers).
+  const stateByNumber = new Map(states.filter(s => s.stateNumber != null).map(s => [s.stateNumber, s]));
+  for (const t of transitions) {
+    if (t.toState == null || t.fromState == null) continue;
+    const target = stateByNumber.get(t.toState);
+    if (target && !target.entryFrom.includes(t.fromState)) target.entryFrom.push(t.fromState);
+  }
+  for (const s of states) s.entryFrom.sort((a, b) => a - b);
+
+  // Waits / handshake signals — the compiled view's "what does this station
+  // wait on" list. One entry per decision node, plus one per 'ready'-type
+  // transition (partner-handshake conditions embedded on state exits).
+  const waits = states
+    .filter(s => s.type === 'decisionNode')
+    .map(s => ({
+      stateNumber: s.stateNumber,
+      signal: s.signalName || null,
+      source: s.signalSource || null,
+      partner: nodeById.get(s.nodeId)?.data?.signalSmName || null,
+      direction: 'incoming', // this SM waits on the signal; outgoing p_ latches live in actions
+      mode: (s.exitCount ?? 1) === 2 ? 'branch' : 'wait',
+    }));
+  for (const t of transitions) {
+    // Branch/decision exits also carry conditionType 'ready' — they're already
+    // covered by the decision entries above / the transition's own kind.
+    if (t.kind === 'sequence' && t.conditionType === 'ready' && t.fromState != null) {
+      waits.push({
+        stateNumber: t.fromState,
+        signal: t.label || 'Ready',
+        source: null,
+        partner: null,
+        direction: 'incoming',
+        mode: 'handshake',
+      });
+    }
+  }
+  waits.sort((a, b) => (a.stateNumber ?? 1e9) - (b.stateNumber ?? 1e9));
+
+  const assigned = [...numbers.values()];
+  const stateRanges = {
+    reserved: { powerup: 0, sdc: [1, 2, 3] },
+    sequence: { from: STATE_BASE, to: assigned.length ? Math.max(...assigned) : null },
+    lockout: 99,
+    init: { from: 100, to: 127, cycleReady: 127 },
+  };
+
   const ir = {
+    irVersion: IR_VERSION,
     smId: sm.id,
     smName: sm.name,
     displayName: sm.displayName || sm.name,
@@ -173,6 +320,8 @@ function buildIR(projectJson, smId) {
     devices,
     states,
     transitions,
+    waits,
+    stateRanges,
     machineSpec: buildMachineSpecIR(sm, sms),
     warnings,
   };
@@ -354,4 +503,4 @@ function renderIRText(ir) {
   return lines.join('\n');
 }
 
-module.exports = { buildIR, assignStateNumbers, STATE_BASE, STATE_STEP };
+module.exports = { buildIR, assignStateNumbers, STATE_BASE, STATE_STEP, IR_VERSION };

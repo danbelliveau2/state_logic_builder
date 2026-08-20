@@ -547,6 +547,10 @@ export function Canvas({ headerExtra = null }) {
   // We disable React Flow's built-in zoomOnScroll and drive the viewport
   // ourselves. Keeps zoom step small, direction predictable, anchors at the
   // mouse pointer. Ignore .nowheel subtrees (picker menus, node popups).
+  // NOTE: sm?.id in the deps is load-bearing — when sm goes null (project
+  // switch / all-SMs-deleted) Canvas renders the empty state and the wrapper
+  // UNMOUNTS; the listener would otherwise stay bound to the dead element and
+  // scroll-zoom silently dies when the wrapper remounts (Dan, 2026-08-20).
   useEffect(() => {
     const el = reactFlowWrapper.current;
     if (!el) return;
@@ -574,7 +578,7 @@ export function Canvas({ headerExtra = null }) {
     }
     el.addEventListener('wheel', handleWheel, { passive: false });
     return () => el.removeEventListener('wheel', handleWheel);
-  }, [getViewport, setViewport]);
+  }, [getViewport, setViewport, sm?.id]);
 
   // ── Shared helper: add a node and auto-connect from previously selected ───
   const addNodeWithAutoConnect = useCallback((opts = {}) => {
