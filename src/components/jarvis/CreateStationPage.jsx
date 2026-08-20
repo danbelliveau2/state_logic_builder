@@ -665,7 +665,7 @@ function SummarySection({ section, items, cov, optional, onChange }) {
             fontStyle: items.length === 0 ? 'italic' : 'normal',
           }}
         >
-          {items.length === 0 ? '(not described yet — click to add)' : '+ add a line'}
+          {items.length === 0 ? '(not described yet — optional, click to add)' : '+ add a line (optional)'}
         </div>
       )}
     </div>
@@ -862,6 +862,16 @@ export function CreateStationPage() {
   const [stageLabel, setStageLabel] = useState('');
   const [specFailMsg, setSpecFailMsg] = useState('');
 
+  // ── "Nothing is ever silently disabled" (Dan, live-blocked 2026-08) ──────
+  // Dan sat with 4/4 coverage and a disabled Build and "didn't know how to
+  // move forward" — the empty NAME field was gating hasBuildInput invisibly.
+  // Rule now: every not-ready control says WHY, adjacent, and a click is
+  // never a dead end — it focuses the offending field and shows the reason.
+  const nameRef = useRef(null);
+  const [buildHint, setBuildHint] = useState(null);      // reason shown next to Build / Done explaining
+  const [nameAttention, setNameAttention] = useState(false); // red-ish outline + hint on the name field
+  const [applyHint, setApplyHint] = useState(null);      // reason shown next to Apply changes
+
   // ── Live checklist — LOCAL heuristics, debounced ~1.5s (input phase) ─────
   const [coverage, setCoverage] = useState(() => assessCoverage(draft?.description ?? ''));
   const otherSmNames = useMemo(() => sms.map(s => s.displayName ?? s.name), [sms]);
@@ -978,6 +988,41 @@ export function CreateStationPage() {
   const hasBuildInput = !!name.trim()
     && !!(usingJarvisVerdicts ? summaryHasContent(summary) : description.trim());
 
+  // The moment a missing requirement is satisfied, its callout goes away —
+  // calm, no lingering red.
+  useEffect(() => {
+    if (name.trim()) setNameAttention(false);
+    if (hasBuildInput) setBuildHint(null);
+  }, [name, hasBuildInput]);
+  useEffect(() => {
+    if (changes.trim()) setApplyHint(null);
+  }, [changes]);
+
+  /** Focus the raw-explanation textarea (DescribeSurface owns it — reach it
+   *  by its stable class inside this page). */
+  function focusDescription() {
+    document.querySelector('[data-testid="create-station-page"] textarea.form-textarea')?.focus();
+  }
+
+  /** What still blocks a Build, in Dan-plain words — null when buildable. */
+  function buildBlocker() {
+    if (!name.trim()) return { field: 'name', message: 'Name your station to build' };
+    if (!(usingJarvisVerdicts ? summaryHasContent(summary) : description.trim())) {
+      return { field: 'description', message: 'Describe the station first' };
+    }
+    return null;
+  }
+
+  /** Hovering a not-ready Build shows the reason right away (and points at
+   *  the name field when that's the blocker). */
+  function handleBuildHover() {
+    if (busy || applying) return;
+    const blocker = buildBlocker();
+    if (!blocker) return;
+    setBuildHint(blocker.message);
+    if (blocker.field === 'name') setNameAttention(true);
+  }
+
   // Cost gate: the limit is money, never the user's explanation length.
   const overSummarizeBudget = summarizeCost >= summarizeCostCap;
   const budgetMessage = `This station's summary work has reached the $${summarizeCostCap.toFixed(2)} ceiling — raise JARVIS_SUMMARIZE_MAX_COST_USD in .env to continue`;
@@ -1034,7 +1079,13 @@ export function CreateStationPage() {
   }
 
   async function handleApplyChanges() {
-    if (!changes.trim()) return;
+    if (applying) return;
+    if (!changes.trim()) {
+      // Never a silent no-op — say what's needed and put the cursor there.
+      setApplyHint('Type or dictate an answer or correction first');
+      changesRef.current?.focus();
+      return;
+    }
     if (overSummarizeBudget) { setError(budgetMessage); return; }
     setError(null);
     setApplying(true);
@@ -1114,13 +1165,40 @@ export function CreateStationPage() {
   /** The ONLY Build entry point. Never blocked by coverage — thin coverage
    *  gets one confirm, then builds. (The old `if (!canBuild) return;` guard
    *  silently ate clicks whenever coverage was < 4/4 — the "blocked at 3 of 4"
-   *  bug.) */
+   *  bug.) And never a dead end: Build is ALWAYS clickable — a click with a
+   *  missing requirement focuses the offending field and says what's needed
+   *  (Dan got blocked live by the silently-gating empty name field). */
   function handleBuildClick() {
-    if (!hasBuildInput || busy) return;
+    if (busy || applying) return;
+    const blocker = buildBlocker();
+    if (blocker) {
+      setBuildHint(blocker.message);
+      if (blocker.field === 'name') {
+        setNameAttention(true);
+        nameRef.current?.focus();
+      } else {
+        focusDescription();
+      }
+      return;
+    }
+    setBuildHint(null);
     if (!allCovered && !window.confirm(
       'Some areas are thin — Jarvis will fill gaps with SDC-standard assumptions and flag them for review. Build?'
     )) return;
     handleBuild();
+  }
+
+  /** Done explaining, same rule: clicking with nothing typed focuses the
+   *  explanation box and says so — never a silent no-op. */
+  function handleDoneExplainingClick() {
+    if (busy) return;
+    if (!description.trim()) {
+      setBuildHint('Describe the station first');
+      focusDescription();
+      return;
+    }
+    setBuildHint(null);
+    handleDoneExplaining();
   }
 
   async function handleBuild() {
@@ -1325,6 +1403,7 @@ export function CreateStationPage() {
           data-testid="create-station-back"
           onClick={handleBack}
           disabled={busy}
+          title={busy ? 'Wait for the current step to finish — nothing is lost, your draft is saved' : undefined}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
             background: 'none', border: `1px solid ${C.border}`, borderRadius: 6,
@@ -1413,19 +1492,47 @@ export function CreateStationPage() {
 
           {/* Tiny top row: name + number */}
           {(phase === 'input' || phase === 'summarizing' || inSummary) && (
-            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', marginBottom: 12 }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 12 }}>
               <div style={{ flex: 1, maxWidth: 340 }}>
-                <label className="form-label" style={{ marginTop: 0 }}>Station Name *</label>
+                <label className="form-label" style={{ marginTop: 0 }}>
+                  Station Name <span title="required" style={{ color: C.danger }}>*</span>
+                  {!name.trim() && (
+                    <span
+                      data-testid="name-needed-tag"
+                      style={{
+                        marginLeft: 8, fontSize: 10, fontWeight: 600, textTransform: 'none',
+                        letterSpacing: 0, borderRadius: 10, padding: '1px 8px', whiteSpace: 'nowrap',
+                        color: nameAttention ? C.danger : C.muted,
+                        background: nameAttention ? '#f5eeee' : 'var(--color-sidebar)',
+                        border: `1px solid ${nameAttention ? '#d4a0a0' : C.border}`,
+                      }}
+                    >
+                      needed to build
+                    </span>
+                  )}
+                </label>
                 <input
+                  ref={nameRef}
                   className="form-input"
+                  data-testid="station-name-input"
                   value={name}
                   onChange={e => setName(e.target.value)}
                   placeholder="e.g. MagnetFeed"
                   disabled={busy}
+                  style={nameAttention && !name.trim()
+                    ? { borderColor: C.danger, boxShadow: '0 0 0 2px rgba(200,80,80,0.18)' }
+                    : undefined}
                 />
+                {nameAttention && !name.trim() && (
+                  <div data-testid="name-required-hint" style={{ fontSize: 10.5, color: C.danger, marginTop: 3 }}>
+                    required — name your station to build
+                  </div>
+                )}
               </div>
               <div style={{ width: 110 }}>
-                <label className="form-label" style={{ marginTop: 0 }}>Number *</label>
+                <label className="form-label" style={{ marginTop: 0 }}>
+                  Number <span title="required" style={{ color: C.danger }}>*</span>
+                </label>
                 <input
                   className="form-input"
                   type="number" min="1" max="99"
@@ -1493,23 +1600,32 @@ export function CreateStationPage() {
                       Discard draft
                     </button>
                   )}
+                  {buildHint && (
+                    <span data-testid="build-hint" style={{ fontSize: 11.5, fontWeight: 600, color: C.danger, whiteSpace: 'nowrap' }}>
+                      {buildHint}
+                    </span>
+                  )}
                   <button
                     className="btn btn--secondary"
+                    data-testid="build-without-summary-btn"
                     onClick={handleBuildClick}
-                    disabled={!hasBuildInput || busy}
+                    onMouseEnter={handleBuildHover}
+                    disabled={busy}
                     title={hasBuildInput
                       ? (allCovered
                         ? 'Build straight from the raw explanation (skips the summary review)'
                         : 'Build straight from the raw explanation — thin areas are filled with SDC standards and flagged')
-                      : 'Enter a station name and an explanation first'}
+                      : (buildBlocker()?.message ?? '')}
                   >
                     Build without summary
                   </button>
                   <button
                     className="btn btn--primary"
                     data-testid="done-explaining-btn"
-                    onClick={handleDoneExplaining}
-                    disabled={!description.trim() || busy}
+                    onClick={handleDoneExplainingClick}
+                    onMouseEnter={() => { if (!description.trim() && !busy) setBuildHint('Describe the station first'); }}
+                    title={description.trim() ? undefined : 'Describe the station first'}
+                    disabled={busy}
                     style={{
                       fontSize: 14, padding: '9px 22px',
                       transition: 'box-shadow 0.35s ease, opacity 0.35s ease',
@@ -1642,12 +1758,20 @@ export function CreateStationPage() {
                       <ProgressRing pct={sumPct} size={44} subLabel="" />
                     </div>
                   )}
+                  {applyHint && !applying && (
+                    <span data-testid="apply-hint" style={{ fontSize: 11.5, fontWeight: 600, color: C.danger, whiteSpace: 'nowrap' }}>
+                      {applyHint}
+                    </span>
+                  )}
                   <button
                     className="btn btn--secondary"
                     data-testid="apply-changes-btn"
                     onClick={handleApplyChanges}
-                    disabled={!changes.trim() || applying || overSummarizeBudget}
-                    title={overSummarizeBudget ? budgetMessage : undefined}
+                    onMouseEnter={() => { if (!changes.trim() && !applying) setApplyHint('Type or dictate an answer or correction first'); }}
+                    disabled={applying || overSummarizeBudget}
+                    title={overSummarizeBudget
+                      ? budgetMessage
+                      : (changes.trim() ? undefined : 'Type or dictate an answer or correction first')}
                   >
                     Apply changes
                   </button>
@@ -1737,14 +1861,20 @@ export function CreateStationPage() {
                       decide these per SDC standards and note them for review.
                     </span>
                   )}
+                  {buildHint && (
+                    <span data-testid="build-hint" style={{ fontSize: 11.5, fontWeight: 600, color: C.danger, whiteSpace: 'nowrap' }}>
+                      {buildHint}
+                    </span>
+                  )}
                   <button
                     className="btn btn--primary"
                     data-testid="build-station-btn"
                     onClick={handleBuildClick}
-                    disabled={!hasBuildInput || applying}
+                    onMouseEnter={handleBuildHover}
+                    disabled={applying}
                     title={hasBuildInput
                       ? (allCovered ? undefined : 'Thin areas are filled with SDC-standard assumptions and flagged for review')
-                      : 'Enter a station name first'}
+                      : (buildBlocker()?.message ?? '')}
                     style={{
                       fontSize: 14, padding: '9px 22px',
                       transition: 'background 0.35s ease, box-shadow 0.35s ease, opacity 0.35s ease',
@@ -1771,6 +1901,11 @@ export function CreateStationPage() {
                   >
                     <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: C.text }}>
                       You've made edits — Resubmit to Jarvis
+                      {overSummarizeBudget && (
+                        <span style={{ display: 'block', fontSize: 10.5, fontWeight: 400, color: '#6b5513', marginTop: 2 }}>
+                          Resubmit is paused at the ${summarizeCostCap.toFixed(2)} summary ceiling — "keep my edits as-is" still works.
+                        </span>
+                      )}
                     </span>
                     <button
                       type="button"

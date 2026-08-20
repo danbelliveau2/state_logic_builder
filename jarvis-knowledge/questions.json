@@ -174,5 +174,45 @@
     "source": "training",
     "askedAt": "2026-08-20T15:36:31.937Z",
     "status": "open"
+  },
+  {
+    "id": "q_mt1qzuhi_jw90fu",
+    "question": "The cycle currently ends at Cycle Complete after the next-cycle signal and restarts at the pick move — do you want an explicit internal loop-back edge instead, or is a supervisor-driven restart fine once this gets integrated?",
+    "context": "Create Station \"ServoPNP\" — built with this question open; Jarvis decided per SDC standards.",
+    "source": "create-station",
+    "askedAt": "2026-08-20T16:41:46.518Z",
+    "status": "open"
+  },
+  {
+    "id": "q_mt1qzuhk_644uld",
+    "question": "Default position values are placeholders (Horizontal Home 0 / Pick 350 / Place 50; Vertical Retract 0 / transitions 60 / Pick and Place 100 mm) — can you give real travel and transition-point values, or should the CE set them at commissioning?",
+    "context": "Create Station \"ServoPNP\" — built with this question open; Jarvis decided per SDC standards.",
+    "source": "create-station",
+    "askedAt": "2026-08-20T16:41:46.520Z",
+    "status": "open"
+  },
+  {
+    "id": "q_mt1qzuhm_24g2h4",
+    "question": "Is the pick transition point the same height as the place transition point, or do they differ (they are configured independently right now)?",
+    "context": "Create Station \"ServoPNP\" — built with this question open; Jarvis decided per SDC standards.",
+    "source": "create-station",
+    "askedAt": "2026-08-20T16:41:46.522Z",
+    "status": "open"
+  },
+  {
+    "id": "q_mt1qzuhp_bktcyo",
+    "question": "What Z clearance threshold should the horizontal blend start at on the retract moves (e.g. Z past 80 mm of a 100 mm stroke) so the wideband InPosWide band can be set correctly?",
+    "context": "Create Station \"ServoPNP\" — built with this question open; Jarvis decided per SDC standards.",
+    "source": "create-station",
+    "askedAt": "2026-08-20T16:41:46.525Z",
+    "status": "open"
+  },
+  {
+    "id": "q_mt1qzuhr_1h4wql",
+    "question": "Is the horizontal Home position distinct from the Pick position, or should Home coincide with Pick to save cycle time?",
+    "context": "Create Station \"ServoPNP\" — built with this question open; Jarvis decided per SDC standards.",
+    "source": "create-station",
+    "askedAt": "2026-08-20T16:41:46.527Z",
+    "status": "open"
   }
 ]

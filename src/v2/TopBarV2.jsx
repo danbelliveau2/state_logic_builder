@@ -164,7 +164,10 @@ function BuildMenu() {
   const [legacyOpen, setLegacyOpen] = useState(false);
   const [outputOpen, setOutputOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [generateOpen, setGenerateOpen] = useState(false);
+  // Generate modal trigger lives in the v2 shell so the canvas flow-guidance
+  // bar can open it too (not just this menu).
+  const generateOpen = useV2Shell(s => s.generateOpen);
+  const setGenerateOpen = (v) => (v ? useV2Shell.getState().openGenerate() : useV2Shell.getState().closeGenerate());
   const menuRef = useRef(null);
   const fileInputRef = useRef(null);
 

@@ -10,12 +10,26 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.1.0';
+export const UI_BUILD = 'v2.1.1';
 
 export const BUILT_AT = '2026-08-20';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.1.1',
+    date: '2026-08-20',
+    items: [
+      "Build always tells you what it's waiting for (and clicking it takes you there)",
+      'Required vs optional is now visually explicit',
+      "Questions: no more caps — Jarvis asks what he genuinely needs; 'you decide' is an answer he remembers",
+      'Servo move chips now show the speed profile — "→ PickTransition 60.0 · Fast 2500" — so you can see fast-to-here-slow-the-rest right on the canvas; blended corners get a small "≈ blends" hint',
+      'Machine tally lines expand — click Valves, Sensors, Inputs, Outputs (IO is now split in/out) or any other line to see exactly which device on which station contributes what',
+      'Full Controls now surfaces the open controls questions at the top with talk-or-type answer boxes — "Apply answers" re-compiles with your answers applied and clears the matching queue items',
+      'A "then what?" bar at the bottom of the canvas walks the journey: Compile → Review & Approve → Generate, with one button for whatever comes next',
+      'Standard vertical spacing is now compact (50px gap) — new stations draw tighter, and the Re-space button applies the same standard to existing ones',
+    ],
+  },
   {
     version: 'v2.1.0',
     date: '2026-08-20',

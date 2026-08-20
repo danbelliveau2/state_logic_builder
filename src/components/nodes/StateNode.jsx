@@ -1838,6 +1838,22 @@ function ActionRow({ action, devices, allSMs, onClickName, onClickOp, onClickAdv
   const LIGHT_BG_COLORS = new Set(['#aacee8', '#befa4f', '#d9d9d9']);
   const isLightBg = LIGHT_BG_COLORS.has(opColor);
   let opLabel;
+  // Speed profile + blend intent on servo moves — Dan: "so I know it's going
+  // high speed to this point then slow the rest of the way." Rendered as a
+  // muted suffix inside the chip ("→ Pick 60.0 · Fast") + a tiny "≈ blends"
+  // hint when the move's advance intent is wideband (rounded corner).
+  let speedSuffix = null; // e.g. "Fast 2500" — profile name + its speed value
+  let isBlend = false;
+  if (action.operation === 'ServoMove') {
+    const speedName = action.speedProfile ?? action.params?.speedProfile ?? null;
+    if (speedName) {
+      const prof = device.speedProfiles?.find(p => p.name === speedName);
+      const spdVal = prof && Number(prof.speed) > 0 ? ` ${Number(prof.speed)}` : '';
+      speedSuffix = `${speedName}${spdVal}`;
+    }
+    const adv = action.advance ?? action.params?.advance ?? null;
+    isBlend = adv === 'wideband';
+  }
   if (action.operation === 'ServoMove') {
     const posName = action.positionName ?? '?';
     const pos = device.positions?.find(p => p.name === action.positionName);
@@ -1889,7 +1905,7 @@ function ActionRow({ action, devices, allSMs, onClickName, onClickOp, onClickAdv
 
   // Auto-scale device name font size based on name + badge length
   const nameLen = (device.displayName ?? '').length;
-  const badgeLen = (opLabel ?? '').length;
+  const badgeLen = (opLabel ?? '').length + (speedSuffix ? speedSuffix.length + 3 : 0);
   const totalLen = nameLen + badgeLen;
   const nameFontSize = totalLen <= 14 ? 13 : totalLen <= 18 ? 12 : totalLen <= 22 ? 11 : totalLen <= 28 ? 10 : 9;
 
@@ -1902,13 +1918,29 @@ function ActionRow({ action, devices, allSMs, onClickName, onClickOp, onClickAdv
           background: opColor,
           color: isLightBg ? '#1e3a5f' : '#fff',
           borderColor: opColor,
-        }} onClick={onClickOp}>{opLabel}</span>
+        }} onClick={onClickOp}>
+          {opLabel}
+          {speedSuffix && (
+            <span
+              data-testid="action-speed-suffix"
+              style={{ opacity: 0.72, fontWeight: 400, marginLeft: 3 }}
+              title={`Speed profile: ${speedSuffix}`}
+            >· {speedSuffix}</span>
+          )}
+        </span>
         <span className="action-icon"><DeviceIcon type={device.type} size={18} /></span>
         <span
           className={`action-device${onClickName ? ' action-device--clickable nodrag' : ''}`}
           style={{ fontSize: nameFontSize }}
           onClick={onClickName}
         >{device.displayName}</span>
+        {isBlend && (
+          <span
+            data-testid="action-blend-hint"
+            style={{ fontSize: 8, color: '#94a3b8', whiteSpace: 'nowrap', marginLeft: 2 }}
+            title="Wideband advance — the next motion may start inside the clearance band (blended / rounded corner)"
+          >≈ blends</span>
+        )}
       </div>
       {/* Continuous mode banner */}
       {isVisionInspect && action.continuous && (

@@ -272,7 +272,7 @@ export function Canvas({ headerExtra = null }) {
       : sm.nodes ?? [];
     if (storeNodes.length < 2) return;
 
-    const gap = Number(useDiagramStore.getState().project?.designTheme?.verticalNodeSpacing) || 80;
+    const gap = Number(useDiagramStore.getState().project?.designTheme?.verticalNodeSpacing) || 50;
 
     // Attach measured height + selection flag.
     const rfById = new Map(rfNodes.map(n => [n.id, n]));
@@ -609,7 +609,7 @@ export function Canvas({ headerExtra = null }) {
         const rfSource = getNodes().find(n => n.id === connectFromId);
         const srcW = rfSource?.measured?.width ?? sourceNode.measured?.width ?? sourceNode.width ?? 240;
         const srcH = rfSource?.measured?.height ?? sourceNode.measured?.height ?? sourceNode.height ?? 120;
-        const gap = Number(useDiagramStore.getState().project?.designTheme?.verticalNodeSpacing) || 80;
+        const gap = Number(useDiagramStore.getState().project?.designTheme?.verticalNodeSpacing) || 50;
         const newW = 240;
         const newY = sourceNode.position.y + srcH + gap;
         // Top-left aligned with parent (NOT measured-center aligned).

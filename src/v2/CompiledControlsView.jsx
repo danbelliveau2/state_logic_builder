@@ -34,6 +34,160 @@ import {
   mirrorApproved,
 } from './compiledSequence.js';
 
+/** Open queue items whose context names THIS station (best-effort match on
+ *  the station's display name / name — that's what askers put in context). */
+function useStationQueueQuestions(sm, bump) {
+  const [items, setItems] = useState([]);
+  const smKey = sm?.id ?? null;
+  useEffect(() => {
+    let alive = true;
+    if (!sm) { setItems([]); return; }
+    (async () => {
+      try {
+        const r = await fetch('/api/jarvis/questions');
+        if (!r.ok) return;
+        const arr = await r.json();
+        if (!alive || !Array.isArray(arr)) return;
+        const names = [sm.displayName, sm.name].filter(Boolean);
+        setItems(arr.filter(q => q && q.status === 'open' &&
+          names.some(n => String(q.context || '').includes(n))));
+      } catch { /* queue endpoint unavailable — quiet */ }
+    })();
+    return () => { alive = false; };
+  }, [smKey, bump]); // eslint-disable-line react-hooks/exhaustive-deps
+  return [items, setItems];
+}
+
+// ── Open questions, answered INLINE (Dan: "when you're in full controls
+// view, maybe that's where you get the controls-specific questions answered")
+// Sources: the compile's own open questions + any queue items whose context
+// names this station. Each gets a talk-or-type answer box; "Apply answers"
+// re-compiles with the answers attached as corrections (the same
+// feature-detected path the edit-by-explaining loop uses). Answering also
+// resolves the matching queue item. If this compiler version doesn't take
+// corrections, the answers fold into the station spec's source description
+// instead and the user is prompted to re-compile.
+function OpenQuestionsSection({ sm, smId, compiledQuestions, queueItems, onQueueResolved }) {
+  const openCompile = useV2Shell((s) => s.openCompile);
+  const [answers, setAnswers] = useState({});
+  const [answeredKeys, setAnsweredKeys] = useState(() => new Set());
+  const [busy, setBusy] = useState(false);
+  const [specFallbackNote, setSpecFallbackNote] = useState(false);
+
+  // Normalize to rows { key, text, queueId? } — a compile question that also
+  // sits in the queue shows ONCE (and answering it resolves the queue item).
+  const rows = useMemo(() => {
+    const out = [];
+    const norm = (t) => String(t ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const queueByText = new Map(queueItems.map(q => [norm(q.question), q]));
+    const seen = new Set();
+    for (const q of compiledQuestions) {
+      const text = typeof q === 'string' ? q : q.question ?? q.text ?? JSON.stringify(q);
+      const n = norm(text);
+      if (!n || seen.has(n)) continue;
+      seen.add(n);
+      out.push({ key: `c:${n}`, text, queueId: queueByText.get(n)?.id ?? null });
+    }
+    for (const q of queueItems) {
+      const n = norm(q.question);
+      if (!n || seen.has(n)) continue;
+      seen.add(n);
+      out.push({ key: `q:${q.id}`, text: q.question, queueId: q.id });
+    }
+    return out.filter(r => !answeredKeys.has(r.key));
+  }, [compiledQuestions, queueItems, answeredKeys]);
+
+  if (rows.length === 0 && !specFallbackNote) return null;
+
+  const answeredRows = rows.filter(r => (answers[r.key] ?? '').trim());
+
+  async function apply() {
+    if (answeredRows.length === 0) return;
+    setBusy(true);
+    try {
+      // Resolve matching queue items (best-effort — the queue may be offline).
+      const resolvedIds = [];
+      await Promise.all(answeredRows.filter(r => r.queueId).map(r =>
+        fetch(`/api/jarvis/questions/${encodeURIComponent(r.queueId)}/answer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ answer: answers[r.key].trim(), answeredBy: 'ME (Full Controls)' }),
+        }).then(res => { if (res.ok) resolvedIds.push(r.queueId); }).catch(() => {})
+      ));
+      if (resolvedIds.length) onQueueResolved(resolvedIds);
+
+      const block = 'Answers to the open controls questions:\n' +
+        answeredRows.map(r => `Q: ${r.text}\nA: ${answers[r.key].trim()}`).join('\n');
+
+      if (getCorrectionsSupport() !== 'no') {
+        // Corrections path (same feature detection as edit-by-explaining):
+        // re-compile with the answers attached.
+        openCompile(smId, block);
+      } else {
+        // Fallback: fold the answers into the station spec's source
+        // description so the next compile reads them, and say so honestly.
+        const store = useDiagramStore.getState();
+        const spec = sm?.machineSpec ?? { version: 1 };
+        store.updateStateMachine(smId, {
+          machineSpec: {
+            ...spec,
+            sourceDescription: `${spec.sourceDescription ?? ''}\n\n${block}`.trim(),
+          },
+        });
+        setSpecFallbackNote(true);
+      }
+      setAnsweredKeys(prev => new Set([...prev, ...answeredRows.map(r => r.key)]));
+      setAnswers({});
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="v2-cc__banner v2-cc__banner--amber" data-testid="cc-questions">
+      {rows.length > 0 && (
+        <>
+          <b>{rows.length} open question{rows.length === 1 ? '' : 's'} for the controls team — answer them right here:</b>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+            {rows.map((r, i) => (
+              <div key={r.key} data-testid={`cc-question-${i}`}>
+                <div style={{ marginBottom: 4 }}>{r.text}</div>
+                <DictatedTextarea
+                  value={answers[r.key] ?? ''}
+                  onChange={(v) => setAnswers(a => ({ ...a, [r.key]: v }))}
+                  rows={2}
+                  placeholder="Type or talk your answer — leave blank to skip for now"
+                  micTestId={`cc-question-mic-${i}`}
+                  data-testid={`cc-answer-${i}`}
+                  className="v2-cc__notes"
+                />
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <button
+              className="v2-cc__compile-btn"
+              data-testid="cc-apply-answers-btn"
+              disabled={busy || answeredRows.length === 0}
+              title={answeredRows.length === 0 ? 'Answer at least one question first' : 'Re-compile the sequence with these answers applied'}
+              onClick={apply}
+            >
+              {busy ? 'Applying…' : `Apply answer${answeredRows.length === 1 ? '' : 's'} (re-compile)`}
+            </button>
+          </div>
+        </>
+      )}
+      {specFallbackNote && (
+        <div data-testid="cc-answers-spec-note" style={{ marginTop: 8 }}>
+          This compiler version doesn't take corrections yet — your answers were
+          folded into the station spec instead. Hit ↻ Re-compile to build with
+          them applied.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function fmtWhen(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -162,6 +316,7 @@ export function CompiledControlsView({ headerExtra }) {
   const [notes, setNotes] = useState('');
 
   const smId = sm?.id ?? null;
+  const [queueItems, setQueueItems] = useStationQueueQuestions(sm, compiledBump);
 
   useEffect(() => {
     let alive = true;
@@ -240,6 +395,10 @@ export function CompiledControlsView({ headerExtra }) {
               state, transition, wait and handshake — so you review and approve
               the logic before any code is generated.
             </p>
+            <p className="v2-cc__empty-sub" data-testid="cc-empty-why">
+              ~4 min, ~$0.60 — you review and approve the logic before any code
+              exists.
+            </p>
             <button
               className="v2-cc__compile-btn"
               data-testid="cc-compile-btn"
@@ -285,17 +444,15 @@ export function CompiledControlsView({ headerExtra }) {
 
             {ir.summary && <p className="v2-cc__summary">{ir.summary}</p>}
 
-            {/* Open questions from the compile */}
-            {(state.data.questions ?? []).length > 0 && (
-              <div className="v2-cc__banner v2-cc__banner--amber" data-testid="cc-questions">
-                <b>{state.data.questions.length} open question{state.data.questions.length === 1 ? '' : 's'} for the controls team:</b>
-                <ul>
-                  {state.data.questions.map((q, i) => (
-                    <li key={i}>{typeof q === 'string' ? q : q.question ?? q.text ?? JSON.stringify(q)}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            {/* Open questions from the compile + this station's queue items —
+                answered inline with talk-or-type boxes. */}
+            <OpenQuestionsSection
+              sm={sm}
+              smId={smId}
+              compiledQuestions={state.data.questions ?? []}
+              queueItems={queueItems}
+              onQueueResolved={(ids) => setQueueItems(items => items.filter(q => !ids.includes(q.id)))}
+            />
 
             {/* Review flags — amber, above the fold: read these before approving */}
             {(ir.reviewFlags ?? []).length > 0 && (

@@ -71,6 +71,13 @@ yourself first — "Can I generate correct logic without this answer?"**
   ask. There is no fixed cap on necessary questions — ask what you truly need,
   and only what you truly need.
 
+**No quota, no cap (Dan, 2026-08).** Ask every question that genuinely passes
+the self-answer test — there is no quota and no cap; ten real questions are
+fine, zero is fine. Never pad, never suppress. "You decide" / "skip that" /
+"don't need to answer" is a COMPLETE answer: record the decision you then make
+(in reviewFlags/decisions), never re-ask it, and never ask a reworded version
+of it.
+
 **Logically-forced answers are never questions.** Example of a forbidden
 question: "the gripper has no sensors — how do we confirm it gripped?"
 The physics force the answer: you can't sense it, so you assume gripped after
@@ -121,3 +128,4 @@ Append-only. One line per fact: `- (date, who) fact`.
 - (2026-08, from Jason's review) When the ME describes fast/slow speeds and transition points, that motion intent MUST reach the code: each speed segment stages its own AutoSpeed/Accel/Decel index per state — a described speed change that ends up single-speed AutoSpeed[0] everywhere is a defect, not a tuning detail.
 - (2026-08, from Jason's review) Motion blending / rounded corners are implemented with the SDC wideband pattern — the state transition fires on [MAM.PC + InPos , MAM.IP + InPosWide] so the next axis starts inside the clearance band — never with corner-delay timers or same-state sub-step counters.
 - (2026-08, from Jason's review) SDC V4.2 (Studio 5000 v37) rung text writes compare instructions as EQ/NE/LT/GT/GE/LE; the EQU/NEQ/LES/GRT/GEQ/LEQ spellings import as different instructions next to the standard's and are never used.
+- (2026-08, ME) Fault recovery decides pick-vs-place branch purely from gripper open/closed command state.

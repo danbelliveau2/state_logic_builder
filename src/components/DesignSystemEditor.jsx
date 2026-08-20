@@ -551,7 +551,7 @@ export function DesignSystemEditor() {
             </div>
             <div className="ds__canvas-spacing-controls">
               <SpacingNumberInput
-                value={Number(tv('verticalNodeSpacing', 80))}
+                value={Number(tv('verticalNodeSpacing', 50))}
                 onCommit={n => setThemeVal('verticalNodeSpacing', n)}
                 min={20}
                 max={300}
@@ -559,7 +559,7 @@ export function DesignSystemEditor() {
               />
               <span style={{ fontSize: 12, color: '#5a6a7e' }}>px</span>
               <button
-                onClick={() => setThemeVal('verticalNodeSpacing', 80)}
+                onClick={() => setThemeVal('verticalNodeSpacing', 50)}
                 style={{
                   fontSize: 11, padding: '4px 10px', border: '1px solid #cbd5e1',
                   background: '#f8fafc', borderRadius: 4, cursor: 'pointer',
@@ -572,7 +572,7 @@ export function DesignSystemEditor() {
           <div className="ds__canvas-spacing-preview">
             {/* Visual preview: three stacked boxes with the chosen gap (scaled) */}
             {(() => {
-              const px = Number(tv('verticalNodeSpacing', 80));
+              const px = Number(tv('verticalNodeSpacing', 50));
               const scale = 0.5;
               const gap = Math.max(4, Math.round(px * scale));
               return (
@@ -598,7 +598,7 @@ export function DesignSystemEditor() {
               );
             })()}
             <div style={{ fontSize: 11, color: '#8896a8', marginTop: 8 }}>
-              Gap stays constant regardless of node height. Live: {Number(tv('verticalNodeSpacing', 80))}px
+              Gap stays constant regardless of node height. Live: {Number(tv('verticalNodeSpacing', 50))}px
             </div>
           </div>
 

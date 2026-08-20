@@ -32,6 +32,12 @@ export const useV2Shell = create((set) => ({
   // refetches without prop-drilling from the modal.
   compiledBump: 0,
   bumpCompiled: () => set((s) => ({ compiledBump: s.compiledBump + 1 })),
+
+  // ── Generate modal (JarvisGenerateModal) — shared trigger so the canvas
+  // flow-guidance bar can open it, not just the Build menu in the top bar.
+  generateOpen: false,
+  openGenerate: () => set({ generateOpen: true }),
+  closeGenerate: () => set({ generateOpen: false }),
 }));
 
 /**

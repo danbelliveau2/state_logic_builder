@@ -2260,7 +2260,7 @@ export const useDiagramStore = create(
         // Gap semantic — add (estimated node height + gap) per step for the fallback.
         // Canvas.jsx supplies a precise position based on measured heights; this is
         // only used when a node is added outside that path.
-        const vGap = Number(get().project?.designTheme?.verticalNodeSpacing) || 80;
+        const vGap = Number(get().project?.designTheme?.verticalNodeSpacing) || 50;
         const APPROX_NODE_H = 120;
         // Standards are generic sequence templates — no station-level "home" concept,
         // no dial-index wait. Never auto-promote the first node to isInitial / Home.
@@ -3327,7 +3327,7 @@ export const useDiagramStore = create(
         if (!seq) return null;
         const stepNum = seq.nodes.length;
         const id = options.id ?? uid();
-        const vGap = Number(get().project?.designTheme?.verticalNodeSpacing) || 80;
+        const vGap = Number(get().project?.designTheme?.verticalNodeSpacing) || 50;
         const APPROX_NODE_H = 120;
         // Recovery sequences are NOT a root entry point — they're triggered from
         // the main sequence when a fault condition is met. First node is just a

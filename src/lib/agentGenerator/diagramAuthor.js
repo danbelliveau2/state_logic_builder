@@ -88,6 +88,14 @@ StateNode:
 Action (a row inside a state):
 { "id": "id_x", "deviceId": "<device id>", "operation": "<op value for that device type>" }
 - ServoMove additionally: "positionName": "<one of that device's positions>"
+- ServoMove additionally: "speedProfile": "<one of that device's speedProfiles names, e.g. 'Fast' or 'Slow'>"
+  — REQUIRED on every ServoMove when the device declares more than one speed profile (the ME must see
+  which segment runs fast and which runs slow right on the canvas). A stroke the spec calls
+  fast-then-slow is TWO ServoMove rows: a 'Fast' move to the transition position, then a 'Slow'
+  move to the final position.
+- ServoMove additionally (optional): "advance": "wideband" when this travel move blends into the next
+  motion (rounded corner — the next axis may start inside the clearance band). Omit for strict
+  complete-then-go moves.
 - Pack RELATED simultaneous/sequential motions into ONE dense multi-action node rather than a chain of
   one-action nodes. Rows run in order; to gate a later row on the earlier one add on the earlier row:
   "advanceCondition": { "type": "onComplete" }   (default — after complete)
@@ -117,7 +125,8 @@ const LAYOUT_RULES = `
 # LAYOUT RULES (critical — the diagram must LOOK right)
 
 - Node width is 240px. Lay the main flow in ONE vertical column at x=300.
-- Constant GAP: exactly 100px of empty space between one node's bottom edge and the next node's top.
+- Constant GAP: exactly 50px of empty space between one node's bottom edge and the next node's top
+  (SDC standard vertical density — compact; applies to every project, machine and station).
   Estimate node height as 70 + 55 * (number of action rows) px (min 90). Compute y positions cumulatively.
 - Branch lanes: a fail/reject branch column sits a FULL LANE out: main column x + 420.
   A retry branch goes LEFT: main column x - 420.

@@ -310,16 +310,21 @@ export function FeatureTreeV2() {
   }
 
   // Machine tally lines (the old footer block, now this node's detail).
+  // Third element = breakdown key — a tally row with contributors expands to
+  // list them (Dan: "it's hard to understand what those items specifically are").
+  const bd = totals.breakdown ?? {};
   const tallyItems = [
-    ['Stations', totals.stations],
-    ['Servo motors', totals.servos],
-    ['Standard motors', totals.standardMotors],
-    ['Pneumatic actuators', totals.pneumaticActuators],
-    ['Valves', totals.valves],
-    ['Sensors', totals.sensors],
-    ['Vision systems', totals.vision],
-    ['Robots', totals.robots],
-    ['IO points', totals.ioTotal],
+    ['Stations', totals.stations, 'stations'],
+    ['Servo motors', totals.servos, 'servos'],
+    ['Standard motors', totals.standardMotors, 'standardMotors'],
+    ['Pneumatic actuators', totals.pneumaticActuators, 'pneumaticActuators'],
+    ['Valves', totals.valves, 'valves'],
+    ['Sensors', totals.sensors, 'sensors'],
+    ['Vision systems', totals.vision, 'vision'],
+    ['Robots', totals.robots, 'robots'],
+    // IO split in/out — Dan expected inputs vs outputs separated.
+    ['Inputs', totals.ioIn, 'inputs'],
+    ['Outputs', totals.ioOut, 'outputs'],
   ];
 
   return (
@@ -367,14 +372,55 @@ export function FeatureTreeV2() {
         </div>
         {isOpen('machine') && (
           <div className="v2-tree__children" data-testid="machine-totals">
-            {tallyItems.map(([label, value]) => (
-              <div key={label} className="v2-tree__row v2-tree__row--small v2-tree__row--static">
-                <span className="v2-tree__dot">·</span>
-                <span className="v2-tree__name-small">{label}</span>
-                <Leader />
-                <Value small>{value}</Value>
-              </div>
-            ))}
+            {tallyItems.map(([label, value, bdKey]) => {
+              const contributors = bd[bdKey] ?? [];
+              const expandable = contributors.length > 0;
+              const key = `tally:${bdKey}`;
+              const open = expandable && isOpen(key);
+              return (
+                <div key={label}>
+                  <div
+                    className={`v2-tree__row v2-tree__row--small${expandable ? '' : ' v2-tree__row--static'}`}
+                    data-testid={`tally-${bdKey}`}
+                    role={expandable ? 'button' : undefined}
+                    tabIndex={expandable ? 0 : undefined}
+                    onClick={expandable ? () => toggle(key) : undefined}
+                    onKeyDown={expandable ? (e) => { if (e.key === 'Enter') toggle(key); } : undefined}
+                    title={expandable ? `Click to see what the ${value} ${label.toLowerCase()} specifically are` : undefined}
+                    style={expandable ? { cursor: 'pointer' } : undefined}
+                  >
+                    {expandable ? (
+                      <button className="v2-tree__caret-btn" tabIndex={-1}><Caret open={open} /></button>
+                    ) : (
+                      <span className="v2-tree__dot">·</span>
+                    )}
+                    <span className="v2-tree__name-small">{label}</span>
+                    <Leader />
+                    <Value small>{value}</Value>
+                  </div>
+                  {open && (
+                    <div className="v2-tree__children" data-testid={`tally-children-${bdKey}`}>
+                      {contributors.map((c, i) => (
+                        <div
+                          key={i}
+                          className="v2-tree__row v2-tree__row--small v2-tree__row--static"
+                          title={`${c.name} (${c.station}) — ${c.detail}`}
+                          style={{ paddingLeft: 14 }}
+                        >
+                          <span className="v2-tree__dot">·</span>
+                          <span className="v2-tree__device-info" style={{ minWidth: 0 }}>
+                            <span className="v2-tree__device-name">
+                              {c.name} <span style={{ color: '#8896a8', fontWeight: 400 }}>({c.station})</span>
+                            </span>
+                            <span className="v2-tree__device-type">{c.detail}</span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 

@@ -8,7 +8,8 @@
  *   - proposedDevices: devices mentioned in the text but not yet configured
  *     on the SM (typed with the deviceTypes.js vocabulary)
  *   - unmentionedDeviceIds: configured devices the text never mentioned
- *   and 2-5 clarifying questions.
+ *   and clarifying questions (no quota, no cap — the Question policy in
+ *   meKnowledge.md governs; the only post-filter is repeat/reword dedupe).
  *
  * The caller (SpecEditorModal via POST /api/jarvis/spec) renders the result
  * as a review screen; nothing is persisted here.
@@ -80,7 +81,7 @@ Respond with ONLY one JSON object (no markdown fences, no prose):
       "purpose": "<what it is for, from the text>" }
   ],
   "unmentionedDeviceIds": ["<existing device id the text never mentioned>", ...],
-  "questions": ["<0-3 questions, mechanical intent only — obey the Question policy above>"]
+  "questions": ["<every question that genuinely passes the self-answer test, mechanical intent only — no quota, no cap; zero is fine, ten real ones are fine>"]
 }
 
 Rules of engagement:
@@ -99,11 +100,15 @@ Rules of engagement:
   dial/index move, signals = tells something to, custom = anything else.
 - Do not invent behavior the text does not state; ask about it in questions instead.
 - questions: obey the Question policy above — never ask about Standing SDC facts, learned
-  facts, or controls-architecture decisions. Zero questions is a good answer.
+  facts, or controls-architecture decisions. Ask EVERY question that genuinely passes the
+  self-answer test — there is no quota and no cap; ten real questions are fine, zero is
+  fine. Never pad, never suppress.
   NEVER ask a question whose answer is derivable from the description, the engineer's
   prior answers (Q&A history in the message), the standing knowledge above, or an
   earlier question in this session. Asked-and-answered is answered forever — repeating
-  or REPHRASING an earlier question is forbidden.
+  or REPHRASING an earlier question is forbidden. "You decide" / "skip that" / "don't
+  need to answer" is a COMPLETE answer: make the decision per SDC standards, record it,
+  and never ask that question (or a reworded version of it) again.
 `;
 
 function extractJson(text) {
@@ -199,8 +204,34 @@ function normalizeResult(parsed, sm, otherSms) {
     if (deviceIds.has(id) && !out.spec.devicePurposes[id]) out.unmentionedDeviceIds.push(id);
   }
 
-  out.questions = (Array.isArray(parsed.questions) ? parsed.questions : []).map(String).slice(0, 3);
+  // No count cap (Dan: no quota, no cap) — repeat/reword dedupe happens in
+  // filterQuestions() at the call site; NOTHING is ever trimmed by count.
+  out.questions = (Array.isArray(parsed.questions) ? parsed.questions : [])
+    .map(q => String(q).trim()).filter(Boolean);
   return { result: out, fixups };
+}
+
+/** Question backstop — the ONLY post-filter on model questions (Dan: "no
+ *  quota and no cap; ten real questions are fine, zero is fine — never pad,
+ *  never suppress"). Drops repeats/rephrases of anything already asked this
+ *  session; NEVER trims by count. A skip-style answer ("you decide", "skip
+ *  that", "don't need to answer") is a COMPLETE answer — its questions sit in
+ *  qaHistory like any substantively-answered ones, so they dedupe here exactly
+ *  the same way and are never re-asked. */
+function filterQuestions(rawQuestions, qaHistory) {
+  const priorQs = (Array.isArray(qaHistory) ? qaHistory : [])
+    .flatMap(r => (r && r.questions) || [])
+    .map(q => String(q).toLowerCase());
+  const isRepeat = (q) => {
+    const words = q.toLowerCase().split(/\W+/).filter(w => w.length > 3);
+    return priorQs.some(pq => {
+      const shared = words.filter(w => pq.includes(w)).length;
+      return words.length > 0 && shared / words.length > 0.6;
+    });
+  };
+  return (Array.isArray(rawQuestions) ? rawQuestions : [])
+    .map(q => String(q).trim()).filter(Boolean)
+    .filter(q => !isRepeat(q));
 }
 
 /**
@@ -264,7 +295,9 @@ async function authorSpec({
   const qa = (Array.isArray(qaHistory) ? qaHistory : []).filter(r => r && (r.questions?.length || r.answer));
   if (qa.length) {
     userText += '\n\nQ&A HISTORY this session (questions you already asked and the engineer\'s answers — '
-      + 'NEVER re-ask these or anything derivable from them, in any wording):\n'
+      + 'NEVER re-ask these or anything derivable from them, in any wording. An answer like '
+      + '"you decide" / "skip that" / "don\'t need to answer" is a COMPLETE answer: decide it '
+      + 'per SDC standards, record the decision, and never ask it again in any form):\n'
       + qa.map((r, i) =>
         `Round ${i + 1}:\n`
         + (r.questions || []).map(q => `  Q: ${q}`).join('\n')
@@ -303,19 +336,10 @@ async function authorSpec({
   const parsed = extractJson(text);
   const { result, fixups } = normalizeResult(parsed, sm, otherSms);
 
-  // Backstop (mirrors summarizeDescription): drop any question that is a
+  // Backstop (shared with summarizeDescription): drop any question that is a
   // repeat/rephrase of one already asked this session — the prompt forbids
-  // it, this guarantees it.
-  const priorQs = qa.flatMap(r => r.questions || []).map(q => String(q).toLowerCase());
-  if (priorQs.length) {
-    result.questions = result.questions.filter(q => {
-      const words = String(q).toLowerCase().split(/\W+/).filter(w => w.length > 3);
-      return !priorQs.some(pq => {
-        const shared = words.filter(w => pq.includes(w)).length;
-        return words.length > 0 && shared / words.length > 0.6;
-      });
-    });
-  }
+  // it, this guarantees it. No count trimming, ever.
+  result.questions = filterQuestions(result.questions, qa);
 
   const costUSD = response.usage ? costOfUsage(response.usage, MODEL) : 0;
   return {
@@ -335,7 +359,8 @@ async function authorSpec({
 // STRUCTURED summary — four scannable sections (devices, sequence,
 // failureHandling, interactions) returned as JSON arrays — plus a
 // per-checklist-item coverage verdict (replacing the local regex heuristics
-// once it exists) and 2-4 questions back to the engineer. Used by
+// once it exists) and clarifying questions back to the engineer (no quota,
+// no cap — the Question policy governs). Used by
 // CreateStationPage's summary loop; the final Build then runs on the
 // serialized summary (+ original appended as reference).
 
@@ -379,7 +404,7 @@ Respond with ONLY one JSON object (no markdown fences, no prose):
     "valveFunctions": ["<one short line per valve function, e.g. 'gripper open/close — 1 double-solenoid'>", ...],
     "ioNotes": "<one short line of other IO detail the engineer stated — '' if none>"
   },
-  "questions": ["<0-3 short questions, mechanical intent only — obey the Question policy>"],
+  "questions": ["<every question that genuinely passes the self-answer test, mechanical intent only — no quota, no cap; zero is fine, ten real ones are fine>"],
   "learnedFacts": [
     { "fact": "<a standing rule or fact the engineer stated/corrected, one tight sentence>",
       "scope": "sdc-standard" | "this-project" }
@@ -409,10 +434,14 @@ Summary rules:
 - sequence: one physical step per line, no numbering prefix (the UI numbers them).
 - interactions: "station" should match one of the project's other station names when possible.
 - questions: obey the Question policy above — never ask about Standing SDC facts, learned
-  facts, or controls-architecture decisions. Zero questions is a good answer.
+  facts, or controls-architecture decisions. Ask EVERY question that genuinely passes the
+  self-answer test — there is no quota and no cap; ten real questions are fine, zero is
+  fine. Never pad, never suppress.
   NEVER ask a question whose answer is derivable from the description, the engineer's
   prior answers (Q&A history in the message), the standing knowledge above, or an
-  earlier question in this session. Asked-and-answered is answered forever.
+  earlier question in this session. Asked-and-answered is answered forever. "You decide" /
+  "skip that" / "don't need to answer" is a COMPLETE answer: make the decision per SDC
+  standards, record it, and never ask that question (or a reworded version of it) again.
 
 Coverage monotonicity:
 - When the message includes your PREVIOUS coverage verdicts, coverage may only IMPROVE.
@@ -515,7 +544,9 @@ async function summarizeDescription({
   const qa = (Array.isArray(qaHistory) ? qaHistory : []).filter(r => r && (r.questions?.length || r.answer));
   if (qa.length) {
     text += '\n\nQ&A HISTORY this session (questions you already asked and the engineer\'s answers — '
-      + 'NEVER re-ask these or anything derivable from them):\n'
+      + 'NEVER re-ask these or anything derivable from them, in any wording. An answer like '
+      + '"you decide" / "skip that" / "don\'t need to answer" is a COMPLETE answer: decide it '
+      + 'per SDC standards, record the decision, and never ask it again in any form):\n'
       + qa.map((r, i) =>
         `Round ${i + 1}:\n`
         + (r.questions || []).map(q => `  Q: ${q}`).join('\n')
@@ -654,22 +685,10 @@ async function summarizeDescription({
     && !summary.failureHandling.length && !summary.interactions.length) {
     throw new Error('Model returned an empty summary');
   }
-  // Question policy (Dan): no hard cap — the self-answer test in meKnowledge.md
-  // governs. Backstops only: dedupe against every question already asked this
-  // session (no repeats/rephrases sneaking through), soft-cap at 5 per round.
-  const priorQs = (Array.isArray(qaHistory) ? qaHistory : [])
-    .flatMap(r => r.questions || []).map(q => String(q).toLowerCase());
-  const isRepeat = (q) => {
-    const words = q.toLowerCase().split(/\W+/).filter(w => w.length > 3);
-    return priorQs.some(pq => {
-      const shared = words.filter(w => pq.includes(w)).length;
-      return words.length > 0 && shared / words.length > 0.6;
-    });
-  };
-  const questions = (Array.isArray(parsed.questions) ? parsed.questions : [])
-    .map(q => String(q).trim()).filter(Boolean)
-    .filter(q => !isRepeat(q))
-    .slice(0, 5);
+  // Question policy (Dan): NO quota and NO cap — the self-answer test in
+  // meKnowledge.md governs. The only backstop is the shared repeat/reword
+  // dedupe against every question already asked this session.
+  const questions = filterQuestions(parsed.questions, qaHistory);
   // Learned standing rules the engineer stated — only what the model
   // explicitly returned; the server decides what persists.
   const learnedFacts = (Array.isArray(parsed.learnedFacts) ? parsed.learnedFacts : [])
@@ -709,4 +728,4 @@ async function summarizeDescription({
   };
 }
 
-module.exports = { authorSpec, summarizeDescription };
+module.exports = { authorSpec, summarizeDescription, filterQuestions };

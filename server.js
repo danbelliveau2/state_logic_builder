@@ -584,6 +584,14 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     } catch (e) {
       return sendJson(res, 503, { error: 'Coordination compiler not available — run npm install: ' + e.message });
     }
+    // Compiles are paid model runs too — they MUST count as active work so the
+    // health check protects them from restarts (a compile was killed mid-run
+    // on 2026-08-20 because only generations were counted).
+    activeGenerations++;
+    let compileCounted = true;
+    const releaseCompile = () => {
+      if (compileCounted) { compileCounted = false; activeGenerations = Math.max(0, activeGenerations - 1); }
+    };
     try {
       const body = JSON.parse(await readBody(req) || '{}');
       const safe = safeFilename(body.filename || '');
@@ -636,11 +644,13 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         meta: result.meta,
       });
     } catch (e) {
-      if (e && e.code === 'AI_NOT_CONFIGURED') return sendJson(res, 503, { error: e.message });
+      if (e && e.code === 'AI_NOT_CONFIGURED') { releaseCompile(); return sendJson(res, 503, { error: e.message }); }
       // Always log compile failures server-side — a swallowed 500 cost a
       // 4.5-minute paid run with no diagnosable trace (2026-08-20).
       console.error('[jarvis-compile] FAILED:', e && e.stack ? e.stack : e);
       sendJson(res, 500, { error: e.message });
+    } finally {
+      releaseCompile();
     }
   }
 

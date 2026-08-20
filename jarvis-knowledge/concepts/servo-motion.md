@@ -145,3 +145,17 @@ many speed profiles per axis and where the transition points are; which
 corners blend and the wide-band clearance distances; which axis is the
 "safety-first" recovery axis; whether an axis needs a permissive derived
 from another axis's position; whether homing is MAH or torque-home.
+
+## Blend-start thresholds (taught by Dan, 2026-08-20)
+Blended moves NEVER start simultaneously. The second axis may begin only once the
+first axis passes a defined CLEARANCE THRESHOLD — a "safe elevation" (or safe
+distance) that is its own engineering value. Critically, this blend-start point is
+NOT automatically the same as the speed-transition point: a Z axis may switch
+fast/slow at its PickTransition (e.g. 60.0) yet only be safe for horizontal motion
+at some higher clearance. Treat them as potentially distinct named values:
+- speed-transition point → where the profile changes (fast⇄slow)
+- blend-start / safe-clear height → where the InPosWide wideband is anchored and
+  the next axis is permitted to start
+When the ME hasn't given a blend-start value, ask for it (it's genuinely unknowable
+mechanical intent — geometry) or flag the wideband clearance as *Verify for CE.
+Never assume peak-transition = safe-clear.

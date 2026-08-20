@@ -99,6 +99,86 @@ function ViewSwitcher({ view, onChange }) {
   );
 }
 
+// ── Flow-guidance bar — the "then what?" (Dan: "I reviewed the mechanical
+// sequence, then what?"). One compact line at the bottom of the center pane,
+// stage-aware from the active station's state:
+//   drawn, not compiled   → Compile the controls
+//   compiled, not approved→ Review Full Controls & Approve
+//   approved              → Generate
+// One line, one button, current stage highlighted. Hidden when there is
+// nothing drawn yet (Create Station owns that part of the journey).
+function FlowGuidanceBar() {
+  const sm = useDiagramStore(s =>
+    (s.project?.stateMachines ?? []).find(m => m.id === s.activeSmId) ??
+    s.project?.stateMachines?.[0] ?? null
+  );
+  const setView = useV2Shell(s => s.setView);
+
+  if (!sm || (sm.nodes ?? []).length === 0) return null;
+  const cs = sm.compiledSequence;
+  const stage = !cs ? 'compile' : cs.approved !== true ? 'approve' : 'generate';
+
+  const steps = [
+    { id: 'compile',  label: '⚙ Compile' },
+    { id: 'approve',  label: '✓ Review & Approve' },
+    { id: 'generate', label: '✨ Generate' },
+  ];
+  const stageIdx = steps.findIndex(x => x.id === stage);
+
+  const prompt = stage === 'compile'
+    ? 'Sequence look right?'
+    : stage === 'approve'
+      ? 'Controls are compiled —'
+      : 'Sequence approved —';
+  const action = stage === 'compile'
+    ? { label: '⚙ Compile the controls (Jarvis, ~4 min)', run: () => useV2Shell.getState().openCompile(sm.id) }
+    : stage === 'approve'
+      ? { label: 'Review Full Controls & Approve', run: () => setView('controls') }
+      : { label: 'Generate (fast — sequence already approved)', run: () => useV2Shell.getState().openGenerate() };
+
+  return (
+    <div
+      data-testid="flow-guidance-bar"
+      style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '5px 14px',
+        background: '#061d39', color: '#dbe6f2',
+        fontSize: 12, lineHeight: 1.2,
+        borderTop: '1px solid #14304f',
+        flex: 'none',
+      }}
+    >
+      {/* Stage trail — done steps muted+checked, current highlighted */}
+      <span style={{ display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+        {steps.map((s2, i) => (
+          <span key={s2.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {i > 0 && <span style={{ color: '#4a6584' }}>→</span>}
+            <span style={{
+              fontWeight: i === stageIdx ? 700 : 400,
+              color: i < stageIdx ? '#5a9a48' : i === stageIdx ? '#fff' : '#7d93ab',
+              background: i === stageIdx ? '#1574C4' : 'transparent',
+              borderRadius: 4, padding: i === stageIdx ? '2px 8px' : '2px 0',
+            }}>
+              {i < stageIdx ? '✓ ' : ''}{s2.label}
+            </span>
+          </span>
+        ))}
+      </span>
+      <span style={{ flex: 1 }} />
+      <span style={{ color: '#9db2c8', whiteSpace: 'nowrap' }}>{prompt}</span>
+      <button
+        data-testid="flow-guidance-action"
+        onClick={action.run}
+        style={{
+          background: '#1574C4', color: '#fff', border: 'none', borderRadius: 5,
+          padding: '5px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          whiteSpace: 'nowrap',
+        }}
+      >{action.label} →</button>
+    </div>
+  );
+}
+
 export function AppV2() {
   const store = useDiagramStore();
   const {
@@ -180,6 +260,8 @@ export function AppV2() {
                 ) : (
                   <Canvas headerExtra={<ViewSwitcher view={view} onChange={setView} />} />
                 )}
+                {/* Stage-aware "then what?" bar — compile → approve → generate */}
+                <FlowGuidanceBar />
               </main>
               <ContextPanelV2
                 collapsed={contextCollapsed}
