@@ -4,18 +4,32 @@
  * UPDATE THIS FILE WITH EVERY CHANGE BATCH — Dan reads it in the app.
  *
  * How to update:
- *   1. Bump UI_BUILD (v2.0.<n>) and BUILT_AT.
+ *   1. Bump UI_BUILD (v2.<minor>.<n>) and BUILT_AT.
  *   2. Add a new entry to the FRONT of SHIPPED with plain-English,
  *      Dan-facing lines (what he can see/do, not implementation detail).
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.0.6';
+export const UI_BUILD = 'v2.1.0';
 
 export const BUILT_AT = '2026-08-20';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.1.0',
+    date: '2026-08-20',
+    items: [
+      'THE BIG ONE — the thinking moved to Build time. Build ▾ → "Compile sequence (Jarvis)": Jarvis reasons through the FULL sequence once (~4 min, well under a dollar) and you review it BEFORE any code exists',
+      'Full Controls is real: the compiled sequence renders as a scannable view — every state with its number and actions, every transition with the actual rung condition, waits with their exits, handshakes with set/clear states, and amber "review before approving" flags',
+      '"Approve — I agree with this sequence" right on the compiled view — approval is your sign-off, and it flips Generate into translation mode (~2.5 min, ~$0.95 instead of reasoning from scratch)',
+      'Change something by explaining it: a talk-or-type notes box under the compiled sequence re-compiles with your notes attached (re-compiling always clears approval so you review again)',
+      'Approve and walk away — code pre-builds in the background from your approved sequence; when it\'s ready, Generate shows "✓ code built — instant" and Start is an immediate download',
+      'The Generate picker now tags each station: "approved → translation" (fast path) or "✓ code built — instant"',
+      'No compiled sequence yet? Full Controls says so honestly and offers the Compile button right there',
+      'Under the hood, today\'s batch: R02 rungs carry a state-map comment (readable in Studio 5000), generated comments are validated, stations can be addressed by name, and translation-mode numbers are live from real builds',
+    ],
+  },
   {
     version: 'v2.0.6',
     date: '2026-08-20',
@@ -111,6 +125,7 @@ export const SHIPPED = [
 
 // Being built right now — NOT in the current installed build yet.
 export const IN_PROGRESS = [
-  'Full Controls view — compiled coordination rendered on the canvas',
+  'Background pre-build service — the "instant Generate" backend piece (the UI is ready and lights up when it lands)',
+  'Compiled sequence rendered as real nodes on the canvas (today it\'s the structured list view)',
   'Jarvis brain moves to the shared SDC AppStack database — one Jarvis for the whole team',
 ];

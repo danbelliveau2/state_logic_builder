@@ -242,6 +242,69 @@ function checkL5kStrings(xml, errors) {
   }
 }
 
+// ── Studio 5000 import limits (Rule 12) ──────────────────────────────────────
+//
+// XML validity is NOT importability — Logix Designer rejects the whole import
+// on the first over-limit value. Real CE failure (v2.1.0): a ~640-char
+// Program Description died at import with "Failed to set the 'Description'
+// property (Invalid value. Text may be too long.)". Documented/observed
+// limits: descriptions and operand comments 512 chars; names 40 chars,
+// [A-Za-z_][A-Za-z0-9_]*, no consecutive or trailing underscores.
+
+const MAX_DESCRIPTION_CHARS = 512;
+const MAX_NAME_CHARS = 40;
+// Rung comments accept far more than descriptions; exact ceiling is not
+// documented — error only at a size that is certainly pathological, warn
+// well before it.
+const RUNG_COMMENT_ERROR_CHARS = 65000;
+const RUNG_COMMENT_WARN_CHARS = 4096;
+
+/** Last Name="..." attribute before position idx — context for messages. */
+function nearestNameBefore(xml, idx) {
+  const slice = xml.slice(Math.max(0, idx - 4000), idx);
+  const names = [...slice.matchAll(/<(?:Program|Routine|Tag|AddOnInstructionDefinition)\b[^>]*\bName="([^"]+)"/g)];
+  return names.length ? names[names.length - 1][1] : '(unknown)';
+}
+
+function checkImportLimits(xml, errors, warnings) {
+  // 1. Descriptions (Program/Routine/Tag/AOI) — 512 max
+  for (const m of xml.matchAll(/<Description>\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*<\/Description>/g)) {
+    const text = m[1];
+    if (text.length > MAX_DESCRIPTION_CHARS) {
+      errors.push(`Description too long for Studio 5000 import (${text.length} > ${MAX_DESCRIPTION_CHARS} chars) ` +
+        `near "${nearestNameBefore(xml, m.index)}" — import fails with "Text may be too long": "${text.slice(0, 60)}…"`);
+    }
+  }
+  // 2. Operand comments (tag member descriptions) — 512 max
+  for (const m of xml.matchAll(/<Comment Operand="([^"]+)">\s*<!\[CDATA\[([\s\S]*?)\]\]>/g)) {
+    if (m[2].length > MAX_DESCRIPTION_CHARS) {
+      errors.push(`Operand comment "${m[1]}" too long for import (${m[2].length} > ${MAX_DESCRIPTION_CHARS} chars) ` +
+        `near "${nearestNameBefore(xml, m.index)}"`);
+    }
+  }
+  // 3. Rung comments — generous but bounded
+  for (const m of xml.matchAll(/<Comment>\s*<!\[CDATA\[([\s\S]*?)\]\]>/g)) {
+    const len = m[1].length;
+    if (len > RUNG_COMMENT_ERROR_CHARS) {
+      errors.push(`Rung comment is ${len} chars (> ${RUNG_COMMENT_ERROR_CHARS}) near "${nearestNameBefore(xml, m.index)}" — will not import`);
+    } else if (len > RUNG_COMMENT_WARN_CHARS) {
+      warnings.push(`Rung comment is ${len} chars near "${nearestNameBefore(xml, m.index)}" — unusually long, verify it imports`);
+    }
+  }
+  // 4. Names: length + legal Logix identifier
+  for (const m of xml.matchAll(/<(Program|Routine|Tag|AddOnInstructionDefinition)\b[^>]*\bName="([^"]+)"/g)) {
+    const [, kind, name] = m;
+    if (name.length > MAX_NAME_CHARS) {
+      errors.push(`${kind} name "${name}" is ${name.length} chars — Logix names max ${MAX_NAME_CHARS}`);
+    }
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      errors.push(`${kind} name "${name}" is not a legal Logix identifier (letters/digits/underscores, must not start with a digit)`);
+    } else if (/__/.test(name) || /_$/.test(name)) {
+      errors.push(`${kind} name "${name}" has consecutive or trailing underscores — Logix rejects it`);
+    }
+  }
+}
+
 // ── Exitless-wait check (Rule 11) ────────────────────────────────────────────
 //
 // A "wait-style" transition is an R02 rung that MOVEs to a new state but is
@@ -420,6 +483,10 @@ function validateL5X(xml) {
   // 5. L5K string LEN consistency
   checkL5kStrings(xml, errors);
 
+  // 5b. Studio 5000 import limits (Rule 12): description/comment lengths,
+  //     name lengths, identifier legality — hard import gates.
+  checkImportLimits(xml, errors, warnings);
+
   // 6. No exitless waits (Rule 11): every wait-style R02 transition — one
   //    that holds a flowchart state until an external condition comes true —
   //    must be forceable by a fault/timeout path. Heuristic: the waiting
@@ -519,6 +586,80 @@ function extractRungsWithComments(programXml) {
 
 const CONDITION_OPS = /^(wait|decide|waitinput|waitrefpos|waitsmoutput|verify|check)$/i;
 
+// ── State-label comment consistency (Jason's-review fix) ────────────────────
+//
+// Comments are DOCUMENTATION, not logic — but wrong comments caused a real
+// red-cross review (V42: reviewer read the new logic under the legacy state
+// map). Every Status .STATE[n] tag comment and every R02 "State n: ..." rung
+// comment must be consistent with the IR's label/actions for state n.
+// Fuzzy: at least one significant word (>=4 chars) from the state's label or
+// its actions' device/operation names must appear in the comment.
+
+// Placeholder label words that carry no meaning ("Step 5", "State 19").
+const GENERIC_LABEL_WORDS = new Set(['step', 'state']);
+
+/** Significant expected words for one IR state (label + action device/op). */
+function stateExpectedWords(s) {
+  const words = new Set();
+  for (const w of splitWords(s.label)) if (w.length >= 4 && !GENERIC_LABEL_WORDS.has(w)) words.add(w);
+  for (const a of s.actions || []) {
+    for (const w of splitWords(a.deviceName)) if (w.length >= 4) words.add(w);
+    for (const w of splitWords(a.operation)) if (w.length >= 4) words.add(w);
+  }
+  // Convention words for special states — a terminal state commented
+  // "Cycle Complete" (or an initial "Home / Wait For Start") is correct even
+  // when the diagram node label is a generic placeholder.
+  if (s.isComplete) { words.add('complete'); words.add('cycle'); words.add('done'); words.add('finished'); }
+  if (s.isInitial) { words.add('home'); words.add('initial'); words.add('start'); words.add('wait'); }
+  return words;
+}
+
+function commentMatchesState(comment, expectedWords) {
+  if (expectedWords.size === 0) return true; // nothing to judge against
+  const norm = normIdent(comment);
+  for (const w of expectedWords) if (norm.includes(w)) return true;
+  return false;
+}
+
+/**
+ * Check Status.STATE[] tag comments and R02 rung comments against the IR's
+ * state labels. Label mismatch on a state the IR has = ERROR; a grid-state
+ * comment for a state the IR doesn't have = warning (stale template leftover).
+ */
+function checkStateComments(gridStates, progXml, rungs, errors, warnings, contract) {
+  const stateByNumber = new Map(gridStates.map(s => [s.stateNumber, s]));
+  const found = []; // { n, comment, where }
+
+  // (i) Status tag .STATE[n] operand comments (target program slice)
+  const tagRe = /<Comment Operand="\.STATE\[(\d+)\]">\s*<!\[CDATA\[([\s\S]*?)\]\]>/gi;
+  let m;
+  while ((m = tagRe.exec(progXml)) !== null) {
+    found.push({ n: parseInt(m[1], 10), comment: m[2].trim(), where: `Status tag comment .STATE[${m[1]}]` });
+  }
+
+  // (ii) R02 rung comments "State n: ..." (the injected STATE MAP line uses
+  //      "n=label" and never matches this pattern)
+  for (const r of rungs) {
+    if (!/R02/i.test(r.routine) || !r.comment) continue;
+    for (const cm of r.comment.matchAll(/\bState\s+(\d+)\s*:\s*([^\r\n|]+)/gi)) {
+      found.push({ n: parseInt(cm[1], 10), comment: cm[2].trim(), where: `R02 rung comment "State ${cm[1]}: ${cm[2].trim().slice(0, 60)}"` });
+    }
+  }
+
+  for (const f of found) {
+    if (!onSequenceGrid(f.n)) continue; // init/mode/fault comments are template law
+    const s = stateByNumber.get(f.n);
+    if (!s) {
+      warnings.push(`${f.where} describes state ${f.n}, but the ${contract} has no state ${f.n} — stale template comment, remove or retarget it`);
+      continue;
+    }
+    if (!commentMatchesState(f.comment, stateExpectedWords(s))) {
+      errors.push(`${f.where} says "${f.comment.slice(0, 80)}" but ${contract} state ${f.n} is "${s.label}" — ` +
+        'comment/label mismatch (comments must be generated from the state map, never copied from reference files)');
+    }
+  }
+}
+
 /**
  * Cross-check generated L5X against the source flowchart.
  * @returns {{ ok: boolean, errors: string[], warnings: string[] }}
@@ -552,10 +693,13 @@ function validateAgainstDiagram(projectJson, smId, l5x) {
     }
   }
 
-  // Pre-normalize rung blobs
+  // Pre-normalize rung blobs. LOGIC TEXT ONLY — rung comments are never
+  // device evidence (a wrong comment naming a device must not satisfy the
+  // check the logic alone would fail); comments are validated separately by
+  // checkStateComments.
   const normRungs = rungs.map(r => ({
     ...r,
-    blob: normIdent(r.text + ' ' + r.comment),
+    blob: normIdent(r.text),
     stateRefs: [...r.text.matchAll(/XIC\(Status\.State\[(\d+)\]\)/g)].map(m => parseInt(m[1], 10)),
   }));
 
@@ -617,6 +761,131 @@ function validateAgainstDiagram(projectJson, smId, l5x) {
     }
   }
 
+  // (c) state-label comment consistency (tag .STATE[] + R02 rung comments)
+  checkStateComments(flowStates, progXml, rungs, errors, warnings, 'diagram');
+
+  return { ok: errors.length === 0, errors, warnings };
+}
+
+// ── Compiled-IR cross-validation (JARVIS v1.1 translation mode) ─────────────
+//
+// When a station carries an engineer-APPROVED compiled sequence, the compiled
+// IR — not the drawn diagram — is the approval contract. This check mirrors
+// validateAgainstDiagram but sources its expectations from the compiled IR:
+//   (a) every compiled sequence-grid state has its MOVE(n,Control.StateReg)
+//       in R02, and each state's device actions are evidenced at that state;
+//   (b) no MOVE targets a sequence-grid state the compiled sequence doesn't
+//       have, and no device is commanded in a compiled state that has no
+//       action for it.
+
+function onSequenceGrid(n) {
+  return Number.isInteger(n) && n >= 4 && n <= 97 && (n - 4) % 3 === 0;
+}
+
+/**
+ * Cross-check generated L5X against an approved compiled sequence.
+ * @param {object} compiledIr  sm.compiledSequence.ir (irVersion 1, compiled)
+ * @param {string} l5x
+ * @returns {{ ok: boolean, errors: string[], warnings: string[] }}
+ */
+function validateAgainstCompiledIR(compiledIr, l5x) {
+  const errors = [];
+  const warnings = [];
+
+  if (!compiledIr || !Array.isArray(compiledIr.states)) {
+    return { ok: false, errors: ['Compiled-IR cross-check: compiled IR missing or malformed'], warnings };
+  }
+  const progXml = targetProgramXml(l5x);
+  if (!progXml) return { ok: false, errors: ['Compiled-IR cross-check: no <Program Use="Target"> in generated L5X'], warnings };
+
+  const rungs = extractRungsWithComments(progXml);
+  const gridStates = compiledIr.states.filter(s => onSequenceGrid(s.stateNumber));
+  const stateByNumber = new Map(gridStates.map(s => [s.stateNumber, s]));
+  const variants = deviceVariants(compiledIr.devices || []);
+
+  // (a1) every compiled state has a MOVE(n,Control.StateReg) in R02
+  const r02Blob = rungs.filter(r => /R02/i.test(r.routine)).map(r => r.text).join('\n');
+  for (const s of gridStates) {
+    if (!new RegExp(`MOVE?\\(${s.stateNumber},\\s*Control\\.StateReg\\)`).test(r02Blob)) {
+      errors.push(`Compiled state ${s.stateNumber} ("${s.label}") has no MOVE(${s.stateNumber},Control.StateReg) transition in R02_StateTransitions — the approved sequence requires it`);
+    }
+  }
+
+  // (b1) no MOVE targets a sequence-grid state the compiled sequence lacks
+  for (const m of r02Blob.matchAll(/MOVE?\((\d+),\s*Control\.StateReg\)/g)) {
+    const n = parseInt(m[1], 10);
+    if (onSequenceGrid(n) && !stateByNumber.has(n)) {
+      errors.push(`Generated logic transitions to state ${n}, but the APPROVED compiled sequence has no state ${n} — states must match the approval contract exactly`);
+    }
+  }
+
+  // Logic text only — rung comments are never device evidence (see the
+  // diagram variant above); comments get their own consistency check below.
+  const normRungs = rungs.map(r => ({
+    ...r,
+    blob: normIdent(r.text),
+    stateRefs: [...r.text.matchAll(/XIC\(Status\.State\[(\d+)\]\)/g)].map(x => parseInt(x[1], 10)),
+  }));
+
+  // (a2) each compiled state's device actions are evidenced at that state
+  for (const s of gridStates) {
+    for (const a of s.actions || []) {
+      if (!a.deviceId || !a.deviceName) continue;
+      const v = variants.get(a.deviceId);
+      if (!v || v.size === 0) continue;
+      const evidenced = normRungs.some(r =>
+        (r.stateRefs.includes(s.stateNumber) || r.text.includes(`State[${s.stateNumber}]`)) &&
+        rungMentionsDevice(r.blob, v));
+      if (!evidenced) {
+        errors.push(`Compiled action "${a.operation} -> ${a.deviceName}" at state ${s.stateNumber} ("${s.label}") ` +
+          `has no rung referencing Status.State[${s.stateNumber}] together with device "${a.deviceName}"`);
+      }
+    }
+  }
+
+  // (b2) no device commanded in a compiled state that has no action for it
+  const deviceForIdent = ident => {
+    const n = normIdent(ident);
+    let best = null, bestLen = 0;
+    for (const [id, set] of variants) {
+      for (const v of set) {
+        if (n.includes(v) && v.length > bestLen) { best = id; bestLen = v.length; }
+      }
+    }
+    return best;
+  };
+  const deviceName = id => (compiledIr.devices || []).find(d => d.id === id)?.name || id;
+  const stateHasDeviceAction = (s, devId) =>
+    (s.actions || []).some(a => a.deviceId === devId && !CONDITION_OPS.test(a.operation || ''));
+
+  for (const r of normRungs) {
+    const commands = [
+      ...[...r.text.matchAll(/OT[EL]\((q_[A-Za-z0-9_]+)\)/g)].map(m => m[1]),
+      ...[...r.text.matchAll(/MAM\((iq_[A-Za-z0-9_]+)/g)].map(m => m[1]),
+      ...[...r.text.matchAll(/MOVE\(HMI_([A-Za-z0-9_]+)\.Parameters\.Positions/g)].map(m => m[1]),
+    ];
+    if (!commands.length) continue;
+    const cmdDevices = new Set(commands.map(deviceForIdent).filter(Boolean));
+    if (!cmdDevices.size) continue;
+    for (const n of r.stateRefs) {
+      if (!onSequenceGrid(n)) continue;
+      const node = stateByNumber.get(n);
+      if (!node) {
+        errors.push(`Generated logic commands a device at state ${n} (${r.routine}) but the approved compiled sequence has no state ${n}`);
+        continue;
+      }
+      for (const devId of cmdDevices) {
+        if (!stateHasDeviceAction(node, devId)) {
+          errors.push(`Device "${deviceName(devId)}" is commanded at state ${n} ("${node.label}") in ${r.routine}, ` +
+            `but the approved compiled sequence has no ${deviceName(devId)} action there — approval-contract violation`);
+        }
+      }
+    }
+  }
+
+  // (c) state-label comment consistency against the approved compiled IR
+  checkStateComments(gridStates, progXml, rungs, errors, warnings, 'approved compiled sequence');
+
   return { ok: errors.length === 0, errors, warnings };
 }
 
@@ -628,4 +897,4 @@ function formatReport(report) {
   return lines.join('\n');
 }
 
-module.exports = { validateL5X, validateAgainstDiagram, formatReport, isLegalState };
+module.exports = { validateL5X, validateAgainstDiagram, validateAgainstCompiledIR, formatReport, isLegalState };

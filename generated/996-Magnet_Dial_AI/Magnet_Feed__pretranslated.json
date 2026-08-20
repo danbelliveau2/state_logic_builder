@@ -1,0 +1,29 @@
+{
+  "pretranslated": true,
+  "ready": true,
+  "ok": true,
+  "stale": false,
+  "project": "996-Magnet_Dial_AI",
+  "smId": "99600000-ae00-4a02-9d02-996000000002",
+  "smName": "Magnet_Feed",
+  "compiledAt": "2026-08-20T13:38:54.095Z",
+  "mode": "translation",
+  "jarvisVersion": "1.1.0",
+  "savedPath": "C:\\SDC-StateLogic\\generated\\996-Magnet_Dial_AI\\Magnet_Feed__jarvis_v1.1.0__2026-08-20_1403.L5X",
+  "savedIrPath": "C:\\SDC-StateLogic\\generated\\996-Magnet_Dial_AI\\Magnet_Feed__jarvis_v1.1.0__2026-08-20_1403.ir.json",
+  "buildId": "b_mt1lbqzj_zpl4jd",
+  "validation": {
+    "ok": true,
+    "errors": [],
+    "warnings": [
+      "Exitless wait: transition out of state 31 waits on q_StationComplete with no fault/timeout path — no R20_Alarms rung references Status.State[31] or the waited condition (Rule 11: no exitless waits)",
+      "Exitless wait: transition out of state 19 waits on p_MagnetReady, g_MachineBasic.AlwaysOff with no fault/timeout path — no R20_Alarms rung references Status.State[19] or the waited condition (Rule 11: no exitless waits)",
+      "Exitless wait: transition out of state 19 waits on p_MagnetReady, g_MachineBasic.AlwaysOn with no fault/timeout path — no R20_Alarms rung references Status.State[19] or the waited condition (Rule 11: no exitless waits)"
+    ]
+  },
+  "costUSD": 0.918,
+  "durationS": 246,
+  "attempts": 1,
+  "createdAt": "2026-08-20T14:03:04.161Z",
+  "error": null
+}

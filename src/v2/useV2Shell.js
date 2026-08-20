@@ -14,6 +14,24 @@ export const useV2Shell = create((set) => ({
   home: false,
   goHome: () => set({ home: true }),
   leaveHome: () => set({ home: false }),
+
+  // ── Center view: 'mechanical' (React Flow canvas) | 'controls' (compiled
+  // sequence). Lives here (not AppV2 local state) so the Build menu can land
+  // the user on Full Controls after a compile finishes.
+  view: 'mechanical',
+  setView: (view) => set({ view }),
+
+  // ── Compile-sequence modal (JARVIS v1.1 Build-time compile).
+  // compileFor = { smId, corrections } | null. Opened from the Build menu,
+  // the Full Controls empty state, and the edit-by-explaining loop.
+  compileFor: null,
+  openCompile: (smId, corrections = '') => set({ compileFor: { smId, corrections } }),
+  closeCompile: () => set({ compileFor: null }),
+
+  // Monotonic counter — bumped when a compile lands so CompiledControlsView
+  // refetches without prop-drilling from the modal.
+  compiledBump: 0,
+  bumpCompiled: () => set((s) => ({ compiledBump: s.compiledBump + 1 })),
 }));
 
 /**

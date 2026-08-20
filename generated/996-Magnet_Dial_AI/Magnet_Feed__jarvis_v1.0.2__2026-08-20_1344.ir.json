@@ -1,0 +1,836 @@
+{
+  "irVersion": 1,
+  "smId": "99600000-ae00-4a02-9d02-996000000002",
+  "smName": "Magnet_Feed",
+  "displayName": "Magnet_Feed",
+  "stationNumber": 1,
+  "description": "Feeds magnets from a dial stack: hold-down clamps the stack, vertical shuttle lifts it, horizontal shuttle presents the top magnet (coin-changer style). Retries presentation up to 3x on missing magnet, then declares the stack exhausted and requests a dial index. Top retainer holds the magnet down during every horizontal shuttle move (extend before horizontal extend, retract after shuttle-over) so it cannot magnetize and flip up.",
+  "devices": [
+    {
+      "id": "id_aivsht",
+      "type": "PneumaticLinearActuator",
+      "name": "VerticalShuttle",
+      "displayName": "Vertical_Shuttle",
+      "extras": {
+        "sensorArrangement": "1-sensor (Ret only)",
+        "homePosition": "Retract",
+        "axisNumber": 1,
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 300,
+        "disengageTimerMs": 300,
+        "vacOnTimerMs": 300,
+        "hasEject": false,
+        "timerMs": 1000
+      }
+    },
+    {
+      "id": "id_aihsht",
+      "type": "PneumaticLinearActuator",
+      "name": "HorizontalShuttle",
+      "displayName": "Horizontal_Shuttle",
+      "extras": {
+        "sensorArrangement": "1-sensor (Ret only)",
+        "homePosition": "Retract",
+        "axisNumber": 1,
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 300,
+        "disengageTimerMs": 300,
+        "vacOnTimerMs": 300,
+        "hasEject": false,
+        "timerMs": 1000
+      }
+    },
+    {
+      "id": "id_aihold",
+      "type": "PneumaticLinearActuator",
+      "name": "HoldDown",
+      "displayName": "Hold_Down",
+      "extras": {
+        "sensorArrangement": "1-sensor (Ret only)",
+        "homePosition": "Retract",
+        "axisNumber": 1,
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 300,
+        "disengageTimerMs": 300,
+        "vacOnTimerMs": 300,
+        "hasEject": false,
+        "timerMs": 1000
+      }
+    },
+    {
+      "id": "id_aitret",
+      "type": "PneumaticLinearActuator",
+      "name": "TopRetainer",
+      "displayName": "Top_Retainer",
+      "extras": {
+        "sensorArrangement": "1-sensor (Ret only)",
+        "homePosition": "Retract",
+        "axisNumber": 1,
+        "extTimerMs": 300,
+        "retTimerMs": 500,
+        "engageTimerMs": 300,
+        "disengageTimerMs": 300,
+        "vacOnTimerMs": 300,
+        "hasEject": false,
+        "timerMs": 1000
+      }
+    },
+    {
+      "id": "id_aimsen",
+      "type": "DigitalSensor",
+      "name": "MagnetSensor",
+      "displayName": "Magnet_Present",
+      "extras": {
+        "sensorArrangement": "",
+        "homePosition": "",
+        "axisNumber": 1,
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 300,
+        "disengageTimerMs": 300,
+        "vacOnTimerMs": 300,
+        "hasEject": false,
+        "timerMs": 1000
+      }
+    }
+  ],
+  "states": [
+    {
+      "nodeId": "id_ain21",
+      "type": "stateNode",
+      "label": "Wait for Index Complete",
+      "stateNumber": 4,
+      "isInitial": true,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Wait",
+          "deviceId": "_decision",
+          "deviceName": null,
+          "device": null,
+          "params": {
+            "decisionType": "signal",
+            "signalId": "id_aisidx",
+            "signalName": "Index_Complete",
+            "signalSource": "Dial_Index → Index Complete",
+            "signalType": "state",
+            "signalSmName": "Dial_Index",
+            "nodeMode": "wait",
+            "conditionType": "sensorOn",
+            "exitCount": 1,
+            "exit1Label": "True",
+            "exit2Label": "False",
+            "autoOpenPopup": false,
+            "exitLabelsCustomized": false,
+            "sensorInputType": "bool",
+            "retryEnabled": false,
+            "ptEnabled": false,
+            "conditions": [
+              {
+                "ref": "signal_id_aisidx",
+                "tag": "",
+                "label": "Index_Complete",
+                "inputType": "bool",
+                "conditionType": "on",
+                "signalType": "state",
+                "group": "Dial_Index → Index Complete"
+              }
+            ]
+          },
+          "detail": "decisionType=\"signal\" signalId=\"id_aisidx\" signalName=\"Index_Complete\" signalSource=\"Dial_Index → Index Complete\" signalType=\"state\" signalSmName=\"Dial_Index\" nodeMode=\"wait\" conditionType=\"sensorOn\" exitCount=1 exit1Label=\"True\" exit2Label=\"False\" autoOpenPopup=false exitLabelsCustomized=false sensorInputType=\"bool\" retryEnabled=false ptEnabled=false conditions=[{\"ref\":\"signal_id_aisidx\",\"tag\":\"\",\"label\":\"Index_Complete\",\"inputType\":\"bool\",\"conditionType\":\"on\",\"signalType\":\"state\",\"group\":\"Dial_Index → Index Complete\"}]"
+        }
+      ],
+      "entryFrom": [
+        31
+      ]
+    },
+    {
+      "nodeId": "id_ain22",
+      "type": "stateNode",
+      "label": "Clamp Stack",
+      "stateNumber": 7,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Extend",
+          "deviceId": "id_aihold",
+          "deviceName": "HoldDown",
+          "device": "Hold_Down",
+          "params": {
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "advanceCondition={\"type\":\"onComplete\"}"
+        },
+        {
+          "operation": "Extend",
+          "deviceId": "id_aitret",
+          "deviceName": "TopRetainer",
+          "device": "Top_Retainer",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        4
+      ]
+    },
+    {
+      "nodeId": "id_ain23",
+      "type": "stateNode",
+      "label": "Raise Vertical Shuttle",
+      "stateNumber": 10,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Extend",
+          "deviceId": "id_aivsht",
+          "deviceName": "VerticalShuttle",
+          "device": "Vertical_Shuttle",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        7
+      ]
+    },
+    {
+      "nodeId": "id_ain24",
+      "type": "stateNode",
+      "label": "Present Magnet",
+      "stateNumber": 13,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Extend",
+          "deviceId": "id_aihsht",
+          "deviceName": "HorizontalShuttle",
+          "device": "Horizontal_Shuttle",
+          "params": {
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "advanceCondition={\"type\":\"onComplete\"}"
+        },
+        {
+          "operation": "Retract",
+          "deviceId": "id_aitret",
+          "deviceName": "TopRetainer",
+          "device": "Top_Retainer",
+          "params": {
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "advanceCondition={\"type\":\"onComplete\"}"
+        },
+        {
+          "operation": "Decide",
+          "deviceId": "_decision",
+          "deviceName": null,
+          "device": null,
+          "params": {
+            "decisionType": "signal",
+            "signalName": "Magnet_Present",
+            "signalSource": "Magnet_Present",
+            "signalType": "sensor",
+            "nodeMode": "decide",
+            "conditionType": "on",
+            "sensorRef": "id_aimsen:sensor",
+            "sensorTag": "i_MagnetSensor",
+            "sensorInputType": "bool",
+            "exitCount": 2,
+            "exit1Label": "On",
+            "exit2Label": "Off",
+            "exitLabelsCustomized": false,
+            "retryEnabled": true,
+            "ptEnabled": false,
+            "updatePartTracking": false,
+            "autoOpenPopup": false,
+            "conditions": [
+              {
+                "ref": "id_aimsen:sensor",
+                "tag": "i_MagnetSensor",
+                "label": "Magnet_Present",
+                "inputType": "bool",
+                "conditionType": "on",
+                "signalType": "sensor",
+                "group": "Sensors"
+              }
+            ],
+            "retryMax": 3
+          },
+          "detail": "decisionType=\"signal\" signalName=\"Magnet_Present\" signalSource=\"Magnet_Present\" signalType=\"sensor\" nodeMode=\"decide\" conditionType=\"on\" sensorRef=\"id_aimsen:sensor\" sensorTag=\"i_MagnetSensor\" sensorInputType=\"bool\" exitCount=2 exit1Label=\"On\" exit2Label=\"Off\" exitLabelsCustomized=false retryEnabled=true ptEnabled=false updatePartTracking=false autoOpenPopup=false conditions=[{\"ref\":\"id_aimsen:sensor\",\"tag\":\"i_MagnetSensor\",\"label\":\"Magnet_Present\",\"inputType\":\"bool\",\"conditionType\":\"on\",\"signalType\":\"sensor\",\"group\":\"Sensors\"}] retryMax=3"
+        }
+      ],
+      "entryFrom": [
+        10,
+        16,
+        22
+      ]
+    },
+    {
+      "nodeId": "id_ain27",
+      "type": "stateNode",
+      "label": "Reload Shuttle Retry",
+      "stateNumber": 16,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Retract",
+          "deviceId": "id_aihsht",
+          "deviceName": "HorizontalShuttle",
+          "device": "Horizontal_Shuttle",
+          "params": {
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "advanceCondition={\"type\":\"onComplete\"}"
+        },
+        {
+          "operation": "Extend",
+          "deviceId": "id_aitret",
+          "deviceName": "TopRetainer",
+          "device": "Top_Retainer",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        13
+      ]
+    },
+    {
+      "nodeId": "id_ain26",
+      "type": "stateNode",
+      "label": "Magnet Ready",
+      "stateNumber": 19,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Decide",
+          "deviceId": "_decision",
+          "deviceName": null,
+          "device": null,
+          "params": {
+            "decisionType": "signal",
+            "signalId": "id_aismt",
+            "signalName": "Magnet_Taken",
+            "signalSource": "Magnet_Pick → Magnet Taken",
+            "signalSmName": "Magnet_Pick",
+            "signalType": "state",
+            "nodeMode": "decide",
+            "conditionType": "sensorOn",
+            "sensorInputType": "bool",
+            "exitCount": 2,
+            "exit1Label": "On",
+            "exit2Label": "Off",
+            "exitLabelsCustomized": false,
+            "retryEnabled": false,
+            "ptEnabled": false,
+            "updatePartTracking": false,
+            "autoOpenPopup": false,
+            "conditions": [
+              {
+                "ref": "signal_id_aismt",
+                "tag": "",
+                "label": "Magnet_Taken",
+                "inputType": "bool",
+                "conditionType": "on",
+                "signalType": "state",
+                "group": "Magnet_Pick → Magnet Taken"
+              }
+            ]
+          },
+          "detail": "decisionType=\"signal\" signalId=\"id_aismt\" signalName=\"Magnet_Taken\" signalSource=\"Magnet_Pick → Magnet Taken\" signalSmName=\"Magnet_Pick\" signalType=\"state\" nodeMode=\"decide\" conditionType=\"sensorOn\" sensorInputType=\"bool\" exitCount=2 exit1Label=\"On\" exit2Label=\"Off\" exitLabelsCustomized=false retryEnabled=false ptEnabled=false updatePartTracking=false autoOpenPopup=false conditions=[{\"ref\":\"signal_id_aismt\",\"tag\":\"\",\"label\":\"Magnet_Taken\",\"inputType\":\"bool\",\"conditionType\":\"on\",\"signalType\":\"state\",\"group\":\"Magnet_Pick → Magnet Taken\"}]"
+        }
+      ],
+      "entryFrom": [
+        13
+      ]
+    },
+    {
+      "nodeId": "id_ain2c",
+      "type": "stateNode",
+      "label": "Reload Shuttle",
+      "stateNumber": 22,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Retract",
+          "deviceId": "id_aihsht",
+          "deviceName": "HorizontalShuttle",
+          "device": "Horizontal_Shuttle",
+          "params": {
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "advanceCondition={\"type\":\"onComplete\"}"
+        },
+        {
+          "operation": "Extend",
+          "deviceId": "id_aitret",
+          "deviceName": "TopRetainer",
+          "device": "Top_Retainer",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        19,
+        25
+      ]
+    },
+    {
+      "nodeId": "id_ain2d",
+      "type": "stateNode",
+      "label": "Wait New Magnet Request",
+      "stateNumber": 25,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Wait",
+          "deviceId": "_decision",
+          "deviceName": null,
+          "device": null,
+          "params": {
+            "decisionType": "signal",
+            "signalId": "id_aispnm",
+            "signalName": "Present_New_Magnet",
+            "signalSource": "Magnet_Pick → Request New Magnet",
+            "signalSmName": "Magnet_Pick",
+            "signalType": "state",
+            "nodeMode": "wait",
+            "conditionType": "sensorOn",
+            "sensorInputType": "bool",
+            "exitCount": 1,
+            "exit1Label": "True",
+            "exit2Label": "False",
+            "exitLabelsCustomized": false,
+            "retryEnabled": false,
+            "ptEnabled": false,
+            "updatePartTracking": false,
+            "autoOpenPopup": false,
+            "conditions": [
+              {
+                "ref": "signal_id_aispnm",
+                "tag": "",
+                "label": "Present_New_Magnet",
+                "inputType": "bool",
+                "conditionType": "on",
+                "signalType": "state",
+                "group": "Magnet_Pick → Request New Magnet"
+              }
+            ]
+          },
+          "detail": "decisionType=\"signal\" signalId=\"id_aispnm\" signalName=\"Present_New_Magnet\" signalSource=\"Magnet_Pick → Request New Magnet\" signalSmName=\"Magnet_Pick\" signalType=\"state\" nodeMode=\"wait\" conditionType=\"sensorOn\" sensorInputType=\"bool\" exitCount=1 exit1Label=\"True\" exit2Label=\"False\" exitLabelsCustomized=false retryEnabled=false ptEnabled=false updatePartTracking=false autoOpenPopup=false conditions=[{\"ref\":\"signal_id_aispnm\",\"tag\":\"\",\"label\":\"Present_New_Magnet\",\"inputType\":\"bool\",\"conditionType\":\"on\",\"signalType\":\"state\",\"group\":\"Magnet_Pick → Request New Magnet\"}]"
+        }
+      ],
+      "entryFrom": [
+        19
+      ]
+    },
+    {
+      "nodeId": "id_ain28",
+      "type": "stateNode",
+      "label": "Unload Station",
+      "stateNumber": 28,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Retract",
+          "deviceId": "id_aihsht",
+          "deviceName": "HorizontalShuttle",
+          "device": "Horizontal_Shuttle",
+          "params": {
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "advanceCondition={\"type\":\"onComplete\"}"
+        },
+        {
+          "operation": "Retract",
+          "deviceId": "id_aihold",
+          "deviceName": "HoldDown",
+          "device": "Hold_Down",
+          "params": {
+            "advanceCondition": {
+              "type": "none"
+            }
+          },
+          "detail": "advanceCondition={\"type\":\"none\"}"
+        },
+        {
+          "operation": "Retract",
+          "deviceId": "id_aivsht",
+          "deviceName": "VerticalShuttle",
+          "device": "Vertical_Shuttle",
+          "params": {
+            "advanceCondition": {
+              "type": "none"
+            }
+          },
+          "detail": "advanceCondition={\"type\":\"none\"}"
+        },
+        {
+          "operation": "Retract",
+          "deviceId": "id_aitret",
+          "deviceName": "TopRetainer",
+          "device": "Top_Retainer",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        13
+      ]
+    },
+    {
+      "nodeId": "id_ain2a",
+      "type": "stateNode",
+      "label": "Station Complete",
+      "stateNumber": 31,
+      "isInitial": false,
+      "isComplete": true,
+      "actions": [],
+      "entryFrom": [
+        28
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "fromLabel": "Wait for Index Complete",
+      "toLabel": "Clamp Stack",
+      "fromState": 4,
+      "toState": 7,
+      "from": 4,
+      "to": 7,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Clamp Stack",
+      "toLabel": "Raise Vertical Shuttle",
+      "fromState": 7,
+      "toState": 10,
+      "from": 7,
+      "to": 10,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Raise Vertical Shuttle",
+      "toLabel": "Present Magnet",
+      "fromState": 10,
+      "toState": 13,
+      "from": 10,
+      "to": 13,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Present Magnet",
+      "toLabel": "Magnet Ready",
+      "fromState": 13,
+      "toState": 19,
+      "from": 13,
+      "to": 19,
+      "conditionType": "ready",
+      "label": "On",
+      "outcomeLabel": "On",
+      "branch": "pass",
+      "conditionText": "On",
+      "kind": "branch"
+    },
+    {
+      "fromLabel": "Present Magnet",
+      "toLabel": "Unload Station",
+      "fromState": 13,
+      "toState": 28,
+      "from": 13,
+      "to": 28,
+      "conditionType": "ready",
+      "label": "Off",
+      "outcomeLabel": "Off",
+      "branch": "fail",
+      "conditionText": "Off",
+      "kind": "branch"
+    },
+    {
+      "fromLabel": "Present Magnet",
+      "toLabel": "Reload Shuttle Retry",
+      "fromState": 13,
+      "toState": 16,
+      "from": 13,
+      "to": 16,
+      "conditionType": "ready",
+      "label": "Retry_Fail",
+      "outcomeLabel": "Retry_Fail",
+      "branch": "retry",
+      "conditionText": "Retry_Fail",
+      "kind": "branch"
+    },
+    {
+      "fromLabel": "Magnet Ready",
+      "toLabel": "Reload Shuttle",
+      "fromState": 19,
+      "toState": 22,
+      "from": 19,
+      "to": 22,
+      "conditionType": "ready",
+      "label": "On",
+      "outcomeLabel": "On",
+      "branch": "pass",
+      "conditionText": "On",
+      "kind": "branch"
+    },
+    {
+      "fromLabel": "Magnet Ready",
+      "toLabel": "Wait New Magnet Request",
+      "fromState": 19,
+      "toState": 25,
+      "from": 19,
+      "to": 25,
+      "conditionType": "ready",
+      "label": "Off",
+      "outcomeLabel": "Off",
+      "branch": "fail",
+      "conditionText": "Off",
+      "kind": "branch"
+    },
+    {
+      "fromLabel": "Wait New Magnet Request",
+      "toLabel": "Reload Shuttle",
+      "fromState": 25,
+      "toState": 22,
+      "from": 25,
+      "to": 22,
+      "conditionType": "ready",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "partner ready",
+      "kind": "recovery"
+    },
+    {
+      "fromLabel": "Reload Shuttle",
+      "toLabel": "Present Magnet",
+      "fromState": 22,
+      "toState": 13,
+      "from": 22,
+      "to": 13,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "recovery"
+    },
+    {
+      "fromLabel": "Reload Shuttle Retry",
+      "toLabel": "Present Magnet",
+      "fromState": 16,
+      "toState": 13,
+      "from": 16,
+      "to": 13,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "recovery"
+    },
+    {
+      "fromLabel": "Unload Station",
+      "toLabel": "Station Complete",
+      "fromState": 28,
+      "toState": 31,
+      "from": 28,
+      "to": 31,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Station Complete",
+      "toLabel": "Wait for Index Complete",
+      "fromState": 31,
+      "toState": 4,
+      "from": 31,
+      "to": 4,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "recovery"
+    }
+  ],
+  "waits": [
+    {
+      "stateNumber": 4,
+      "signal": "Ready",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    },
+    {
+      "stateNumber": 7,
+      "signal": "Ready",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    },
+    {
+      "stateNumber": 10,
+      "signal": "Ready",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    },
+    {
+      "stateNumber": 28,
+      "signal": "Ready",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    }
+  ],
+  "stateRanges": {
+    "reserved": {
+      "powerup": 0,
+      "sdc": [
+        1,
+        2,
+        3
+      ]
+    },
+    "sequence": {
+      "from": 4,
+      "to": 31
+    },
+    "lockout": 99,
+    "init": {
+      "from": 100,
+      "to": 127,
+      "cycleReady": 127
+    }
+  },
+  "machineSpec": {
+    "purpose": "Feed magnets one at a time from the indexed stack to the pick station",
+    "devicePurposes": [
+      {
+        "deviceName": "Vertical_Shuttle",
+        "purpose": "raises the stack"
+      },
+      {
+        "deviceName": "Horizontal_Shuttle",
+        "purpose": "presents one magnet coin-changer style"
+      },
+      {
+        "deviceName": "Hold_Down",
+        "purpose": "clamps the stack"
+      },
+      {
+        "deviceName": "Top_Retainer",
+        "purpose": "stops magnets flipping during shuttle moves"
+      },
+      {
+        "deviceName": "Magnet_Present",
+        "purpose": "confirms one is presented"
+      }
+    ],
+    "sequence": [],
+    "outcomeRules": [
+      {
+        "trigger": "no magnet at sensor after shuttle over",
+        "response": "shuttle back and re-present",
+        "retryCount": 3,
+        "escalation": "unclamp, lower shuttle, request next stack"
+      },
+      {
+        "trigger": "pick lost the magnet",
+        "response": "present a fresh one",
+        "retryCount": null,
+        "escalation": ""
+      },
+      {
+        "trigger": "pick gave up",
+        "response": "unclamp, lower shuttle, request next stack",
+        "retryCount": null,
+        "escalation": "unclamp, lower shuttle, request next stack"
+      }
+    ],
+    "relationships": [
+      {
+        "withSm": "Magnet_Pick",
+        "kind": "feeds",
+        "description": "one magnet at a time, on demand"
+      },
+      {
+        "withSm": "Dial_Index",
+        "kind": "requests-index",
+        "description": "when stack is exhausted"
+      }
+    ],
+    "partnerDeclarations": [
+      {
+        "partnerSmName": "Dial_Index",
+        "partnerStationNumber": 0,
+        "kind": "signals",
+        "description": "indexes a fresh stack into place when the feeder requests it",
+        "partnerOutcomeRules": []
+      },
+      {
+        "partnerSmName": "Magnet_Pick",
+        "partnerStationNumber": 2,
+        "kind": "consumes",
+        "description": "receives one magnet at a time from the feeder, on demand",
+        "partnerOutcomeRules": []
+      }
+    ]
+  },
+  "warnings": [],
+  "text": "# Intermediate Representation — Magnet_Feed\nStation number: 1\nDescription: Feeds magnets from a dial stack: hold-down clamps the stack, vertical shuttle lifts it, horizontal shuttle presents the top magnet (coin-changer style). Retries presentation up to 3x on missing magnet, then declares the stack exhausted and requests a dial index. Top retainer holds the magnet down during every horizontal shuttle move (extend before horizontal extend, retract after shuttle-over) so it cannot magnetize and flip up.\n\n## Devices\n- [PneumaticLinearActuator] VerticalShuttle \"Vertical_Shuttle\" sensorArrangement=\"1-sensor (Ret only)\" homePosition=\"Retract\" axisNumber=1 extTimerMs=500 retTimerMs=500 engageTimerMs=300 disengageTimerMs=300 vacOnTimerMs=300 hasEject=false timerMs=1000\n- [PneumaticLinearActuator] HorizontalShuttle \"Horizontal_Shuttle\" sensorArrangement=\"1-sensor (Ret only)\" homePosition=\"Retract\" axisNumber=1 extTimerMs=500 retTimerMs=500 engageTimerMs=300 disengageTimerMs=300 vacOnTimerMs=300 hasEject=false timerMs=1000\n- [PneumaticLinearActuator] HoldDown \"Hold_Down\" sensorArrangement=\"1-sensor (Ret only)\" homePosition=\"Retract\" axisNumber=1 extTimerMs=500 retTimerMs=500 engageTimerMs=300 disengageTimerMs=300 vacOnTimerMs=300 hasEject=false timerMs=1000\n- [PneumaticLinearActuator] TopRetainer \"Top_Retainer\" sensorArrangement=\"1-sensor (Ret only)\" homePosition=\"Retract\" axisNumber=1 extTimerMs=300 retTimerMs=500 engageTimerMs=300 disengageTimerMs=300 vacOnTimerMs=300 hasEject=false timerMs=1000\n- [DigitalSensor] MagnetSensor \"Magnet_Present\" sensorArrangement=\"\" homePosition=\"\" axisNumber=1 extTimerMs=500 retTimerMs=500 engageTimerMs=300 disengageTimerMs=300 vacOnTimerMs=300 hasEject=false timerMs=1000\n\n## States (assigned state numbers — these are FINAL, use them as-is)\n- State 4: \"Wait for Index Complete\" {INITIAL}\n    action: Wait -> _decision (decisionType=\"signal\" signalId=\"id_aisidx\" signalName=\"Index_Complete\" signalSource=\"Dial_Index → Index Complete\" signalType=\"state\" signalSmName=\"Dial_Index\" nodeMode=\"wait\" conditionType=\"sensorOn\" exitCount=1 exit1Label=\"True\" exit2Label=\"False\" autoOpenPopup=false exitLabelsCustomized=false sensorInputType=\"bool\" retryEnabled=false ptEnabled=false conditions=[{\"ref\":\"signal_id_aisidx\",\"tag\":\"\",\"label\":\"Index_Complete\",\"inputType\":\"bool\",\"conditionType\":\"on\",\"signalType\":\"state\",\"group\":\"Dial_Index → Index Complete\"}])\n- State 7: \"Clamp Stack\"\n    action: Extend -> HoldDown (advanceCondition={\"type\":\"onComplete\"})\n    action: Extend -> TopRetainer\n- State 10: \"Raise Vertical Shuttle\"\n    action: Extend -> VerticalShuttle\n- State 13: \"Present Magnet\"\n    action: Extend -> HorizontalShuttle (advanceCondition={\"type\":\"onComplete\"})\n    action: Retract -> TopRetainer (advanceCondition={\"type\":\"onComplete\"})\n    action: Decide -> _decision (decisionType=\"signal\" signalName=\"Magnet_Present\" signalSource=\"Magnet_Present\" signalType=\"sensor\" nodeMode=\"decide\" conditionType=\"on\" sensorRef=\"id_aimsen:sensor\" sensorTag=\"i_MagnetSensor\" sensorInputType=\"bool\" exitCount=2 exit1Label=\"On\" exit2Label=\"Off\" exitLabelsCustomized=false retryEnabled=true ptEnabled=false updatePartTracking=false autoOpenPopup=false conditions=[{\"ref\":\"id_aimsen:sensor\",\"tag\":\"i_MagnetSensor\",\"label\":\"Magnet_Present\",\"inputType\":\"bool\",\"conditionType\":\"on\",\"signalType\":\"sensor\",\"group\":\"Sensors\"}] retryMax=3)\n- State 16: \"Reload Shuttle Retry\"\n    action: Retract -> HorizontalShuttle (advanceCondition={\"type\":\"onComplete\"})\n    action: Extend -> TopRetainer\n- State 19: \"Magnet Ready\"\n    action: Decide -> _decision (decisionType=\"signal\" signalId=\"id_aismt\" signalName=\"Magnet_Taken\" signalSource=\"Magnet_Pick → Magnet Taken\" signalSmName=\"Magnet_Pick\" signalType=\"state\" nodeMode=\"decide\" conditionType=\"sensorOn\" sensorInputType=\"bool\" exitCount=2 exit1Label=\"On\" exit2Label=\"Off\" exitLabelsCustomized=false retryEnabled=false ptEnabled=false updatePartTracking=false autoOpenPopup=false conditions=[{\"ref\":\"signal_id_aismt\",\"tag\":\"\",\"label\":\"Magnet_Taken\",\"inputType\":\"bool\",\"conditionType\":\"on\",\"signalType\":\"state\",\"group\":\"Magnet_Pick → Magnet Taken\"}])\n- State 22: \"Reload Shuttle\"\n    action: Retract -> HorizontalShuttle (advanceCondition={\"type\":\"onComplete\"})\n    action: Extend -> TopRetainer\n- State 25: \"Wait New Magnet Request\"\n    action: Wait -> _decision (decisionType=\"signal\" signalId=\"id_aispnm\" signalName=\"Present_New_Magnet\" signalSource=\"Magnet_Pick → Request New Magnet\" signalSmName=\"Magnet_Pick\" signalType=\"state\" nodeMode=\"wait\" conditionType=\"sensorOn\" sensorInputType=\"bool\" exitCount=1 exit1Label=\"True\" exit2Label=\"False\" exitLabelsCustomized=false retryEnabled=false ptEnabled=false updatePartTracking=false autoOpenPopup=false conditions=[{\"ref\":\"signal_id_aispnm\",\"tag\":\"\",\"label\":\"Present_New_Magnet\",\"inputType\":\"bool\",\"conditionType\":\"on\",\"signalType\":\"state\",\"group\":\"Magnet_Pick → Request New Magnet\"}])\n- State 28: \"Unload Station\"\n    action: Retract -> HorizontalShuttle (advanceCondition={\"type\":\"onComplete\"})\n    action: Retract -> HoldDown (advanceCondition={\"type\":\"none\"})\n    action: Retract -> VerticalShuttle (advanceCondition={\"type\":\"none\"})\n    action: Retract -> TopRetainer\n- State 31: \"Station Complete\" {CYCLE-COMPLETE}\n\n## Transitions\n- [4] \"Wait for Index Complete\" -> [7] \"Clamp Stack\" (type=ready label=\"Ready\")\n- [7] \"Clamp Stack\" -> [10] \"Raise Vertical Shuttle\" (type=ready label=\"Ready\")\n- [10] \"Raise Vertical Shuttle\" -> [13] \"Present Magnet\" (type=ready label=\"Ready\")\n- [13] \"Present Magnet\" -> [19] \"Magnet Ready\" (type=ready label=\"On\" outcome=\"On\" branch=pass)\n- [13] \"Present Magnet\" -> [28] \"Unload Station\" (type=ready label=\"Off\" outcome=\"Off\" branch=fail)\n- [13] \"Present Magnet\" -> [16] \"Reload Shuttle Retry\" (type=ready label=\"Retry_Fail\" outcome=\"Retry_Fail\" branch=retry)\n- [19] \"Magnet Ready\" -> [22] \"Reload Shuttle\" (type=ready label=\"On\" outcome=\"On\" branch=pass)\n- [19] \"Magnet Ready\" -> [25] \"Wait New Magnet Request\" (type=ready label=\"Off\" outcome=\"Off\" branch=fail)\n- [25] \"Wait New Magnet Request\" -> [22] \"Reload Shuttle\" (type=ready)\n- [22] \"Reload Shuttle\" -> [13] \"Present Magnet\" (type=ready label=\"Ready\")\n- [16] \"Reload Shuttle Retry\" -> [13] \"Present Magnet\" (type=ready label=\"Ready\")\n- [28] \"Unload Station\" -> [31] \"Station Complete\" (type=ready label=\"Ready\")\n- [31] \"Station Complete\" -> [4] \"Wait for Index Complete\" (type=ready label=\"Ready\")\n\n## MACHINE SPEC (mechanical intent — compile the coordination)\nThis section is AUTHORITATIVE intent authored by the mechanical engineer.\nSynthesize the signals, waits, exits, and cross-station handshakes that\nrealize it. EVERY wait you create must have an exit for every partner\nfailure mode listed here PLUS a timeout — no exitless waits.\n\nStation purpose: Feed magnets one at a time from the indexed stack to the pick station\n\n### Device purposes\n- Vertical_Shuttle: raises the stack\n- Horizontal_Shuttle: presents one magnet coin-changer style\n- Hold_Down: clamps the stack\n- Top_Retainer: stops magnets flipping during shuttle moves\n- Magnet_Present: confirms one is presented\n\n### Outcome rules (verbatim — each one needs a reachable path in the program)\n- WHEN: no magnet at sensor after shuttle over -> DO: shuttle back and re-present [retry up to 3x]. WHEN RETRIES RUN OUT: unclamp, lower shuttle, request next stack\n- WHEN: pick lost the magnet -> DO: present a fresh one.\n- WHEN: pick gave up -> DO: unclamp, lower shuttle, request next stack. WHEN RETRIES RUN OUT: unclamp, lower shuttle, request next stack\n\n### Relationships declared by this station\n- feeds -> Magnet_Pick: one magnet at a time, on demand\n- requests-index -> Dial_Index: when stack is exhausted\n\n### Reciprocal declarations by partner stations (their side of the handshake)\n- Dial_Index (station 0) declares signals -> this station: indexes a fresh stack into place when the feeder requests it\n- Magnet_Pick (station 2) declares consumes -> this station: receives one magnet at a time from the feeder, on demand",
+  "generatedAt": "2026-08-20T13:44:15.891Z",
+  "jarvisVersion": "1.0.2",
+  "l5xFile": "Magnet_Feed__jarvis_v1.0.2__2026-08-20_1344.L5X",
+  "validationOk": true
+}

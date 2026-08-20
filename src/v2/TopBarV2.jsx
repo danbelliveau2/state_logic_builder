@@ -25,6 +25,7 @@ import { JarvisPage } from '../components/jarvis/JarvisPage.jsx';
 import { ProjectPickerModal } from '../components/modals/ProjectPickerModal.jsx';
 import { useAutoSaveStatus } from './useAutoSaveStatus.js';
 import { useV2Shell, closeAllProjectsToHome } from './useV2Shell.js';
+import { canCompile, compileBlockReason } from './compiledSequence.js';
 import {
   DEFAULT_SCALE, currentScale, isMaxScale, isMinScale, readScale,
   scaleLabel, stepScale, subscribeScale, writeScale,
@@ -256,13 +257,36 @@ function BuildMenu() {
       </button>
       {open && (
         <div className="v2-build__menu">
+          {/* Compile-first pipeline (JARVIS v1.1): think once at Build time,
+              review + approve the sequence, then Generate translates it. */}
+          <button
+            className="v2-build__item v2-build__item--primary"
+            data-testid="build-compile-item"
+            disabled={!canCompile(sm)}
+            title={compileBlockReason(sm) ?? undefined}
+            onClick={() => { setOpen(false); useV2Shell.getState().openCompile(sm.id); }}
+          >
+            <span className="v2-build__item-label">⚙ Compile sequence (Jarvis)…</span>
+            <span className="v2-build__item-hint">
+              {sm?.compiledSequence?.ir
+                ? (sm.compiledSequence.approved
+                    ? 'Compiled ✓ approved — re-compile replaces it'
+                    : 'Compiled — review & approve in Full Controls')
+                : 'Jarvis thinks the sequence through once — review & approve before Generate'}
+            </span>
+          </button>
+
           <button
             className="v2-build__item v2-build__item--primary"
             disabled={!sm || (sm.nodes ?? []).length === 0}
             onClick={() => { setOpen(false); setGenerateOpen(true); }}
           >
             <span className="v2-build__item-label">✨ Generate with Jarvis…</span>
-            <span className="v2-build__item-hint">AI L5X with live progress + validation</span>
+            <span className="v2-build__item-hint">
+              {sm?.compiledSequence?.approved
+                ? 'Approved sequence → fast translation mode'
+                : 'AI L5X with live progress + validation'}
+            </span>
           </button>
 
           <button

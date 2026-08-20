@@ -15,7 +15,7 @@
  * CommonJS, plain Node — required by client.js and scripts/jarvisBenchmark.cjs.
  */
 
-const JARVIS_VERSION = '1.0.2';
+const JARVIS_VERSION = '1.1.0';
 
 const HISTORY = [
   {
@@ -42,6 +42,20 @@ const HISTORY = [
       'true splits a plan across responses, operations concatenated); anchor disambiguation via optional ' +
       '"occurrence"/"nearComment" on updateRung/spliceRungs; ambiguity errors now list matched rung numbers ' +
       'AND comments so repair rounds can disambiguate trivially',
+    templates: 'V4.2',
+  },
+  {
+    version: '1.1.0',
+    date: '2026-08-20',
+    changes: 'Pipeline inversion ACTIVE: Build-time compileSequence (one reasoning call) -> engineer ' +
+      'approval -> translation-mode generation (effort medium, validated against the approved compiled IR). ' +
+      'Approval now kicks off a background PRE-TRANSLATION server-side; a fresh pretranslation short-circuits ' +
+      '/api/generate/stream in <1s (meta.mode=pretranslated). Jason\'s-review fixes: the merge engine ' +
+      'deterministically injects the full STATE MAP as the first R02 rung comment (immune to Studio 5000 ' +
+      'tag-comment collisions on import); validator now checks Status .STATE[n] tag comments and R02 rung ' +
+      'comments against the IR state labels (mismatch = error) and no longer counts rung comments as device ' +
+      'evidence. smId params accept id, name, or displayName on all generate/compile endpoints; compile ' +
+      'questions are pushed to the Jarvis question queue.',
     templates: 'V4.2',
   },
 ];

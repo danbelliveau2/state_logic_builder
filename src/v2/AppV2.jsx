@@ -14,9 +14,11 @@
  *   - Modals           — JarvisGenerateModal, SpecEditorModal,
  *                        ProjectPickerModal, plus the store-flag modals below
  *
- * View switcher: "Mechanical" is the canvas as-is; "Full Controls" shows an
- * honest placeholder banner — the compiled-IR rendering lands with the
- * Jarvis tier-2 integration milestone.
+ * View switcher: "Mechanical" is the canvas as-is; "Full Controls" renders
+ * the station's Build-time compiled sequence (CompiledControlsView) — or an
+ * honest banner + inline Compile button when none exists yet. The view state
+ * lives in useV2Shell so the Build menu can land the user on Full Controls
+ * after a compile finishes.
  */
 
 import { useEffect, useState, useCallback, Component } from 'react';
@@ -36,6 +38,8 @@ import { StationsPanel } from './StationsPanel.jsx';
 import { TREE_WIDTH } from './FeatureTreeV2.jsx';
 import { ContextPanelV2 } from './ContextPanelV2.jsx';
 import { StartScreen } from './StartScreen.jsx';
+import { CompiledControlsView } from './CompiledControlsView.jsx';
+import { CompileSequenceModal } from './CompileSequenceModal.jsx';
 import { useV2Shell } from './useV2Shell.js';
 
 // ── Error Boundary (same behavior as classic App) ───────────────────────────
@@ -89,7 +93,7 @@ function ViewSwitcher({ view, onChange }) {
       <button
         className={`canvas-mode-btn${view === 'controls' ? ' canvas-mode-btn--active' : ''}`}
         onClick={() => onChange('controls')}
-        title="Full Controls view — compiled logic (coming with Jarvis tier-2)"
+        title="Full Controls view — the compiled sequence: states, transitions, waits, handshakes"
       >Full Controls</button>
     </div>
   );
@@ -106,7 +110,10 @@ export function AppV2() {
     showRecipeManager,
   } = store;
 
-  const [view, setView] = useState('mechanical');
+  // View lives in the v2 shell store so the Build menu / compile modal can
+  // land the user on Full Controls when a compile finishes.
+  const view = useV2Shell(s => s.view);
+  const setView = useV2Shell(s => s.setView);
   const [contextCollapsed, setContextCollapsed] = useState(false);
 
   // Clean-slate start screen (all project tabs closed).
@@ -161,17 +168,18 @@ export function AppV2() {
             >
               <StationsPanel />
               <main className="v2-center">
-                {view === 'controls' && (
-                  <div className="v2-controls-banner">
-                    Compiled view — coming with Jarvis tier-2 integration
-                  </div>
+                {/* Mechanical = the React Flow canvas (view switcher rides
+                    inside the canvas SM-title pill via headerExtra so header
+                    elements never overlap). Full Controls = the compiled
+                    sequence view, which mirrors the same header row and hosts
+                    the same switcher in the same spot. */}
+                {view === 'controls' ? (
+                  <CompiledControlsView
+                    headerExtra={<ViewSwitcher view={view} onChange={setView} />}
+                  />
+                ) : (
+                  <Canvas headerExtra={<ViewSwitcher view={view} onChange={setView} />} />
                 )}
-                {/* Same canvas in both views for now. When the compiled-IR
-                    rendering lands (Jarvis tier-2), 'controls' swaps in the
-                    compiled representation instead of the banner. The view
-                    switcher rides inside the canvas SM-title pill (headerExtra)
-                    so header elements never overlap. */}
-                <Canvas headerExtra={<ViewSwitcher view={view} onChange={setView} />} />
               </main>
               <ContextPanelV2
                 collapsed={contextCollapsed}
@@ -193,6 +201,8 @@ export function AppV2() {
         {showActionModal && <ActionModal />}
         {showProjectManager && <ProjectManagerModal />}
         {showRecipeManager && <RecipeManagerModal />}
+        {/* Compile-sequence modal — self-gates on useV2Shell.compileFor. */}
+        <CompileSequenceModal />
         <VersionBadge />
       </ReactFlowProvider>
     </ErrorBoundary>

@@ -34,7 +34,32 @@
  *   GET    /api/jarvis/ir             Latest compiled IR for one station:
  *                                     ?filename=<project.json>&smId=<id|name> ->
  *                                     { file, mtimeMs, smName, ir } (404 when
- *                                     no build has produced an IR yet)
+ *                                     no build has produced an IR yet).
+ *                                     ?source=compiled -> the Build-time
+ *                                     compiled sequence stored on the project
+ *                                     (sm.compiledSequence), 404 if none.
+ *   POST   /api/jarvis/compile        JARVIS v1.1 Build-time compile (the ONE
+ *                                     thinking step): { filename, smId } ->
+ *                                     { ok, ir, questions, cost, validation, meta }.
+ *                                     Saves sm.compiledSequence into the project.
+ *   POST   /api/jarvis/compile/approve  { filename, smId, approved } — engineer
+ *                                     approval flag; approved:true flips
+ *                                     /api/generate into translation mode for
+ *                                     that station AND kicks off a background
+ *                                     PRE-TRANSLATION (in-process; counted in
+ *                                     activeGenerations; result saved to
+ *                                     generated/<project>/ + sidecar
+ *                                     <sm>__pretranslated.json). approved:false
+ *                                     marks any pretranslation stale (files kept).
+ *   GET    /api/jarvis/pretranslated  ?filename=&smId= -> { ready, fresh,
+ *                                     inFlight, savedPath, buildId, validation, … }.
+ *                                     fresh = built from the station's CURRENT
+ *                                     compiledAt, still approved, validation ok.
+ *                                     A fresh pretranslation makes
+ *                                     /api/generate/stream return instantly
+ *                                     (meta.mode='pretranslated').
+ *                                     smId accepts SM id, name, or displayName
+ *                                     (all generate/compile endpoints do).
  *   POST   /api/jarvis/diagram        Describe-your-station -> project draft:
  *                                     { description, images:[{name,base64,mediaType}] }
  *                                     -> { ok, filename, summary, openQuestions, fixups, meta }
@@ -246,7 +271,12 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       }
       if (!projectJson) return sendJson(res, 400, { error: 'Provide filename or projectJson' });
 
-      const result = await gen.generateL5X(projectJson, body.smId, body.options || {});
+      // smId accepts id, name, or displayName — resolve to the stable id here
+      // (buildIR matches by id only).
+      const sm = findSm_(projectJson, body.smId);
+      if (!sm) return sendJson(res, 404, { error: 'State machine not found: ' + (body.smId || '(first)') });
+
+      const result = await gen.generateL5X(projectJson, sm.id, body.options || {});
       sendJson(res, 200, result);
     } catch (e) {
       if (e && e.code === 'AI_NOT_CONFIGURED') {
@@ -319,8 +349,50 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       if (!fs.existsSync(fp)) { send('error', { error: 'Project not found: ' + safe }); clearInterval(keepalive); releaseGeneration(); return res.end(); }
       const projectJson = JSON.parse(fs.readFileSync(fp, 'utf8'));
 
+      // smId accepts id, name, or displayName (buildIR matches by id only).
+      const sm = findSm_(projectJson, query.smId);
+      if (!sm) { send('error', { error: 'State machine not found: ' + (query.smId || '(first)') }); clearInterval(keepalive); releaseGeneration(); return res.end(); }
+
+      // SHORT-CIRCUIT: a FRESH pretranslation (built in the background when
+      // the engineer approved the compiled sequence) IS this exact result —
+      // serve it instantly instead of re-running a paid translation. Stale
+      // (sequence recompiled/edited or approval revoked) = ignored.
+      try {
+        const { rec, fresh } = pretransStatus_(projectJson, safe, sm);
+        if (fresh) {
+          const l5x = fs.readFileSync(rec.savedPath, 'utf8');
+          let ir = null;
+          try { if (rec.savedIrPath) ir = JSON.parse(fs.readFileSync(rec.savedIrPath, 'utf8')); } catch (_) {}
+          let reviewNotes = [];
+          try { reviewNotes = gen.extractReviewNotes(l5x); } catch (_) {}
+          send('progress', { pct: 100, stage: 'done', detail: `Pretranslated build served instantly (built ${rec.createdAt} on approval)` });
+          send('done', {
+            ok: rec.ok === true,
+            l5x,
+            validation: rec.validation,
+            reviewNotes,
+            ir,
+            meta: {
+              mode: 'pretranslated',
+              smName: sm.name,
+              projectName: projectJson.name,
+              jarvisVersion: rec.jarvisVersion,
+              pretranslatedAt: rec.createdAt,
+              compiledAt: rec.compiledAt,
+              costEstimate: { totalUSD: 0, note: `no new spend — translation ($${rec.costUSD ?? '?'}) already ran at approval time` },
+            },
+            savedPath: rec.savedPath,
+            savedIrPath: rec.savedIrPath,
+            buildId: rec.buildId,
+          });
+          clearInterval(keepalive);
+          releaseGeneration();
+          return res.end();
+        }
+      } catch (e) { console.warn('[generate] pretranslation check failed (full run proceeds):', e.message); }
+
       send('progress', { pct: 2, stage: 'start', detail: `Loaded ${safe}` });
-      const result = await gen.generateL5X(projectJson, query.smId || undefined, {
+      const result = await gen.generateL5X(projectJson, sm.id, {
         onProgress, signal: abort.signal,
       });
 
@@ -373,6 +445,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
             attempts: result.meta?.attempts?.length ?? null,
             validationOk: result.ok === true,
             filePath: savedPath,
+            mode: result.meta?.mode ?? null,
           }).id;
       } catch (e) { console.warn('[generate] build record failed:', e.message); }
       send('done', { ...result, savedPath, savedIrPath, buildId });
@@ -402,13 +475,32 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       const fp = path.join(DATA_DIR_, safe);
       if (!fs.existsSync(fp)) return sendJson(res, 404, { error: 'Project not found: ' + safe });
       const projectJson = JSON.parse(fs.readFileSync(fp, 'utf8'));
-      const sms = projectJson.stateMachines || [];
-      const want = query.smId ? String(query.smId) : null;
-      const sm = want
-        ? (sms.find(s => s.id === want) ||
-           sms.find(s => (s.name || '').toLowerCase() === want.toLowerCase()))
-        : sms[0];
-      if (!sm) return sendJson(res, 404, { error: 'State machine not found: ' + (want || '(first)') });
+      const sm = findSm_(projectJson, query.smId);
+      if (!sm) return sendJson(res, 404, { error: 'State machine not found: ' + (query.smId || '(first)') });
+
+      // ?source=compiled — the Build-time compiled sequence stored ON the
+      // project (JARVIS v1.1), not a generated-build .ir.json. Additive:
+      // without the param, behavior below is unchanged.
+      if (String(query.source || '') === 'compiled') {
+        if (!sm.compiledSequence || !sm.compiledSequence.ir) {
+          return sendJson(res, 404, {
+            error: 'No compiled sequence yet — compile this station with Jarvis Build first',
+            project: projectJson.name || safe.replace('.json', ''),
+            smName: sm.name,
+          });
+        }
+        return sendJson(res, 200, {
+          file: null,
+          source: 'compiled',
+          smName: sm.name,
+          compiledAt: sm.compiledSequence.compiledAt || null,
+          approved: sm.compiledSequence.approved === true,
+          jarvisVersion: sm.compiledSequence.jarvisVersion || null,
+          cost: sm.compiledSequence.cost ?? null,
+          questions: sm.compiledSequence.questions || [],
+          ir: sm.compiledSequence.ir,
+        });
+      }
 
       // Same sanitizers the auto-save uses, so prefixes line up exactly.
       const clean = (s) => String(s || 'unnamed').replace(/[^a-zA-Z0-9_\-]/g, '_');
@@ -438,6 +530,334 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         mtimeMs: latest.mtimeMs,
         smName: sm.name,
         ir,
+      });
+    } catch (e) {
+      sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // ── JARVIS v1.1 pipeline inversion: Build-time compile ─────────────────────
+  //
+  // Thinking happens ONCE, interactively, at Build time (compileSequence);
+  // the compiled sequence is reviewed/edited by the engineer; approving it
+  // flips /api/generate into near-mechanical translation mode. Nothing here
+  // touches the existing generation path — with no compiledSequence on any
+  // SM, every current endpoint behaves exactly as before.
+
+  /** Locate an SM in a project by id, name, OR displayName (case-insensitive);
+   *  first SM default. Every endpoint that takes an smId resolves through
+   *  this — callers can pass whichever identifier they have. */
+  function findSm_(projectJson, smId) {
+    const sms = projectJson.stateMachines || [];
+    const want = smId ? String(smId) : null;
+    if (!want) return sms[0];
+    const lc = want.toLowerCase();
+    return sms.find(s => s.id === want) ||
+           sms.find(s => (s.name || '').toLowerCase() === lc) ||
+           sms.find(s => (s.displayName || '').toLowerCase() === lc);
+  }
+
+  /** Save a project object with the same last-5 auto-backup discipline as
+   *  handleSave (which takes a raw body, so it can't be reused directly). */
+  function saveProjectWithBackup_(safe, projectJson) {
+    const filePath = path.join(DATA_DIR_, safe);
+    if (fs.existsSync(filePath)) {
+      const backupDir = path.join(DATA_DIR_, '_backups');
+      if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      fs.copyFileSync(filePath, path.join(backupDir, safe.replace('.json', `__${ts}.json`)));
+      const prefix = safe.replace('.json', '__');
+      const backups = fs.readdirSync(backupDir).filter(f => f.startsWith(prefix)).sort().reverse();
+      for (const old of backups.slice(5)) fs.unlinkSync(path.join(backupDir, old));
+    }
+    fs.writeFileSync(filePath, JSON.stringify(projectJson, null, 2), 'utf8');
+  }
+
+  /** POST /api/jarvis/compile — body: { filename, smId }. Runs the ONE
+   *  Build-time reasoning call (coordinationAuthor.compileSequence), saves
+   *  sm.compiledSequence = { ir, compiledAt, jarvisVersion, approved:false,
+   *  cost, questions } into the project file, returns { ir, questions, cost }. */
+  async function handleJarvisCompile(req, res) {
+    let author;
+    try {
+      author = require('./src/lib/agentGenerator/coordinationAuthor.js');
+    } catch (e) {
+      return sendJson(res, 503, { error: 'Coordination compiler not available — run npm install: ' + e.message });
+    }
+    try {
+      const body = JSON.parse(await readBody(req) || '{}');
+      const safe = safeFilename(body.filename || '');
+      if (!safe) return sendJson(res, 400, { error: 'Invalid or missing filename' });
+      const fp = path.join(DATA_DIR_, safe);
+      if (!fs.existsSync(fp)) return sendJson(res, 404, { error: 'Project not found: ' + safe });
+      const projectJson = JSON.parse(fs.readFileSync(fp, 'utf8'));
+      const sm = findSm_(projectJson, body.smId);
+      if (!sm) return sendJson(res, 404, { error: 'State machine not found: ' + (body.smId || '(first)') });
+
+      const result = await author.compileSequence({ projectJson, smId: sm.id });
+
+      sm.compiledSequence = {
+        ir: result.ir,
+        compiledAt: new Date().toISOString(),
+        jarvisVersion: result.meta.compilerVersion,
+        approved: false,   // engineer must review + approve before Generate translates
+        cost: result.cost,
+        questions: result.questions,
+      };
+      saveProjectWithBackup_(safe, projectJson);
+
+      // Compile questions also land in the Jarvis question queue (source
+      // 'generation') so the controls team sees them without opening the
+      // station — answers flow into meKnowledge.md via the existing route.
+      try {
+        const qs = (result.questions || []).map(q => String(q).trim()).filter(Boolean);
+        if (qs.length) {
+          const arr = readQuestions();
+          for (const question of qs) {
+            arr.push({
+              id: 'q_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8),
+              question,
+              context: `Station ${sm.displayName || sm.name} — compile of ${projectJson.name || safe}`,
+              source: 'generation',
+              askedAt: new Date().toISOString(),
+              status: 'open',
+            });
+          }
+          writeQuestions(arr);
+        }
+      } catch (e) { console.warn('[jarvis-compile] question queue push failed:', e.message); }
+
+      sendJson(res, 200, {
+        ok: result.validation.ok,
+        ir: result.ir,
+        questions: result.questions,
+        cost: result.cost,
+        validation: result.validation,
+        meta: result.meta,
+      });
+    } catch (e) {
+      if (e && e.code === 'AI_NOT_CONFIGURED') return sendJson(res, 503, { error: e.message });
+      // Always log compile failures server-side — a swallowed 500 cost a
+      // 4.5-minute paid run with no diagnosable trace (2026-08-20).
+      console.error('[jarvis-compile] FAILED:', e && e.stack ? e.stack : e);
+      sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  /** POST /api/jarvis/compile/approve — body: { filename, smId, approved }.
+   *  Approving is the engineer's "I agree with everything to this point":
+   *  the next Generate runs in translation mode against this sequence. */
+  async function handleJarvisCompileApprove(req, res) {
+    try {
+      const body = JSON.parse(await readBody(req) || '{}');
+      const safe = safeFilename(body.filename || '');
+      if (!safe) return sendJson(res, 400, { error: 'Invalid or missing filename' });
+      const fp = path.join(DATA_DIR_, safe);
+      if (!fs.existsSync(fp)) return sendJson(res, 404, { error: 'Project not found: ' + safe });
+      const projectJson = JSON.parse(fs.readFileSync(fp, 'utf8'));
+      const sm = findSm_(projectJson, body.smId);
+      if (!sm) return sendJson(res, 404, { error: 'State machine not found: ' + (body.smId || '(first)') });
+      if (!sm.compiledSequence || !sm.compiledSequence.ir) {
+        return sendJson(res, 404, { error: 'No compiled sequence on this station — compile it first' });
+      }
+      sm.compiledSequence.approved = body.approved === true;
+      sm.compiledSequence.approvedAt = body.approved === true ? new Date().toISOString() : null;
+      saveProjectWithBackup_(safe, projectJson);
+
+      // Dan's directive: "once approved, start building the code in the
+      // background — you know you're going to need it." Approval kicks off a
+      // server-side PRE-TRANSLATION; /api/generate/stream serves it in <1s
+      // when it's still fresh. Un-approval invalidates (marks stale, keeps
+      // files) any existing pretranslation.
+      let pretranslation = null;
+      if (body.approved === true) {
+        pretranslation = pretransInFlight_.has(safe + '::' + sm.id) ? 'already-running' : 'started';
+        if (pretranslation === 'started') {
+          setImmediate(() => runPretranslation_(safe, projectJson, sm)
+            .catch(e => console.warn('[pretranslate] unhandled failure:', e.message)));
+        }
+      } else {
+        pretranslation = invalidatePretranslation_(safe, projectJson, sm) ? 'invalidated' : 'none';
+      }
+
+      sendJson(res, 200, { ok: true, smName: sm.name, approved: sm.compiledSequence.approved, pretranslation });
+    } catch (e) {
+      sendJson(res, 500, { error: e.message });
+    }
+  }
+
+  // ── JARVIS v2.1: background pre-translation on approval ────────────────────
+  //
+  // The moment an engineer approves a compiled sequence, the translation is
+  // going to be needed — so it runs immediately, in-process, tagged with the
+  // compiledAt hash it was built from. A sidecar record at
+  // generated/<project>/<sm>__pretranslated.json makes it restart-safe.
+  // Freshness = ready + not stale + validation ok + compiledAt still matches
+  // the station's current compiledSequence + station still approved. A stale
+  // pretranslation is simply ignored (files kept) and a full translate runs.
+
+  const pretransInFlight_ = new Set(); // `${filename}::${smId}`
+
+  const cleanGenName_ = (s) => String(s || 'unnamed').replace(/[^a-zA-Z0-9_\-]/g, '_');
+  function generatedDirFor_(projectJson, safe) {
+    return path.join(__dirname, 'generated', cleanGenName_(projectJson.name || safe.replace('.json', '')));
+  }
+  function pretransFileFor_(projectJson, safe, sm) {
+    return path.join(generatedDirFor_(projectJson, safe), cleanGenName_(sm.name) + '__pretranslated.json');
+  }
+  function readPretranslation_(projectJson, safe, sm) {
+    try { return JSON.parse(fs.readFileSync(pretransFileFor_(projectJson, safe, sm), 'utf8')); }
+    catch (_) { return null; }
+  }
+  /** Freshness verdict for a station's pretranslation record. */
+  function pretransStatus_(projectJson, safe, sm) {
+    const rec = readPretranslation_(projectJson, safe, sm);
+    const cs = sm.compiledSequence || {};
+    const ready = Boolean(rec && rec.ready && rec.savedPath && fs.existsSync(rec.savedPath));
+    const fresh = ready && rec.stale !== true && rec.ok === true &&
+      cs.approved === true && Boolean(rec.compiledAt) && rec.compiledAt === cs.compiledAt;
+    return { rec, ready, fresh };
+  }
+  /** Mark an existing pretranslation stale (files kept). Returns true if one existed. */
+  function invalidatePretranslation_(safe, projectJson, sm) {
+    const rec = readPretranslation_(projectJson, safe, sm);
+    if (!rec) return false;
+    rec.stale = true;
+    rec.staleAt = new Date().toISOString();
+    rec.staleReason = 'approval revoked';
+    try { fs.writeFileSync(pretransFileFor_(projectJson, safe, sm), JSON.stringify(rec, null, 2), 'utf8'); }
+    catch (e) { console.warn('[pretranslate] invalidate write failed:', e.message); return false; }
+    return true;
+  }
+
+  /** Run the normal translation pipeline in the background and persist the
+   *  result. Counts in activeGenerations so nobody restarts the server over
+   *  a paid in-flight run. Never throws to the caller. */
+  async function runPretranslation_(safe, projectJson, sm) {
+    const key = safe + '::' + sm.id;
+    if (pretransInFlight_.has(key)) return;
+    let gen;
+    try { gen = require('./src/lib/agentGenerator/client.js'); }
+    catch (e) { console.warn('[pretranslate] agentGenerator unavailable:', e.message); return; }
+
+    pretransInFlight_.add(key);
+    activeGenerations++;
+    const startedAt = Date.now();
+    const compiledAt = sm.compiledSequence?.compiledAt || null;
+    const sidecarPath = pretransFileFor_(projectJson, safe, sm);
+    console.log(`[pretranslate] started: ${projectJson.name || safe} / ${sm.name} (compiledAt ${compiledAt})`);
+    try {
+      const result = await gen.generateL5X(projectJson, sm.id, {});
+      const durationS = Math.round((Date.now() - startedAt) / 1000);
+
+      let savedPath = null, savedIrPath = null, buildId = null;
+      if (result.l5x) {
+        const ver = result.meta?.jarvisVersion || '0';
+        const date = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '');
+        const dir = generatedDirFor_(projectJson, safe);
+        fs.mkdirSync(dir, { recursive: true });
+        savedPath = path.join(dir, `${cleanGenName_(sm.name)}__jarvis_v${ver}__${date}.L5X`);
+        fs.writeFileSync(savedPath, result.l5x, 'utf8');
+        if (result.ir && result.ir.irVersion) {
+          try {
+            savedIrPath = savedPath.replace(/\.L5X$/i, '.ir.json');
+            fs.writeFileSync(savedIrPath, JSON.stringify({
+              ...result.ir,
+              generatedAt: new Date().toISOString(),
+              jarvisVersion: result.meta?.jarvisVersion ?? null,
+              l5xFile: path.basename(savedPath),
+              validationOk: result.ok === true,
+              pretranslated: true,
+              compiledAt,
+            }, null, 2), 'utf8');
+          } catch (e) { savedIrPath = null; console.warn('[pretranslate] IR save failed:', e.message); }
+        }
+        try {
+          buildId = require('./src/lib/agentGenerator/buildScores.js').recordBuild(
+            path.join(__dirname, 'jarvis-knowledge', 'buildScores.json'), {
+              project: projectJson.name || safe.replace('.json', ''),
+              sm: sm.name,
+              jarvisVersion: result.meta?.jarvisVersion ?? null,
+              costUSD: result.meta?.costEstimate?.totalUSD ?? null,
+              durationS,
+              attempts: result.meta?.attempts?.length ?? null,
+              validationOk: result.ok === true,
+              filePath: savedPath,
+              mode: 'translation',
+              pretranslated: true,
+            }).id;
+        } catch (e) { console.warn('[pretranslate] build record failed:', e.message); }
+      }
+
+      fs.mkdirSync(path.dirname(sidecarPath), { recursive: true });
+      fs.writeFileSync(sidecarPath, JSON.stringify({
+        pretranslated: true,
+        ready: Boolean(result.l5x),
+        ok: result.ok === true,
+        stale: false,
+        project: projectJson.name || safe.replace('.json', ''),
+        smId: sm.id,
+        smName: sm.name,
+        compiledAt,
+        mode: result.meta?.mode ?? null,
+        jarvisVersion: result.meta?.jarvisVersion ?? null,
+        savedPath, savedIrPath, buildId,
+        validation: result.validation ?? null,
+        costUSD: result.meta?.costEstimate?.totalUSD ?? null,
+        durationS,
+        attempts: result.meta?.attempts?.length ?? null,
+        createdAt: new Date().toISOString(),
+        error: null,
+      }, null, 2), 'utf8');
+      console.log(`[pretranslate] done: ${sm.name} in ${durationS}s — ok=${result.ok === true}, saved ${savedPath}`);
+    } catch (e) {
+      console.warn(`[pretranslate] failed for ${sm.name}:`, e.message);
+      try {
+        fs.mkdirSync(path.dirname(sidecarPath), { recursive: true });
+        fs.writeFileSync(sidecarPath, JSON.stringify({
+          pretranslated: true, ready: false, ok: false, stale: false,
+          project: projectJson.name || safe.replace('.json', ''),
+          smId: sm.id, smName: sm.name, compiledAt,
+          savedPath: null, savedIrPath: null, buildId: null, validation: null,
+          createdAt: new Date().toISOString(),
+          error: e.message || String(e),
+        }, null, 2), 'utf8');
+      } catch (e2) { console.warn('[pretranslate] sidecar write failed:', e2.message); }
+    } finally {
+      activeGenerations = Math.max(0, activeGenerations - 1);
+      pretransInFlight_.delete(key);
+    }
+  }
+
+  /** GET /api/jarvis/pretranslated?filename=&smId= — is a pretranslated build
+   *  ready, and is it FRESH (built from the station's CURRENT compiledAt,
+   *  still approved, validation ok)? */
+  function handleJarvisPretranslated(res, query) {
+    try {
+      const safe = safeFilename(query.filename || '');
+      if (!safe) return sendJson(res, 400, { error: 'Invalid or missing filename' });
+      const fp = path.join(DATA_DIR_, safe);
+      if (!fs.existsSync(fp)) return sendJson(res, 404, { error: 'Project not found: ' + safe });
+      const projectJson = JSON.parse(fs.readFileSync(fp, 'utf8'));
+      const sm = findSm_(projectJson, query.smId);
+      if (!sm) return sendJson(res, 404, { error: 'State machine not found: ' + (query.smId || '(first)') });
+
+      const { rec, ready, fresh } = pretransStatus_(projectJson, safe, sm);
+      sendJson(res, 200, {
+        ready, fresh,
+        inFlight: pretransInFlight_.has(safe + '::' + sm.id),
+        stale: rec ? rec.stale === true : false,
+        savedPath: rec?.savedPath ?? null,
+        savedIrPath: rec?.savedIrPath ?? null,
+        buildId: rec?.buildId ?? null,
+        validation: rec?.validation ?? null,
+        compiledAt: rec?.compiledAt ?? null,
+        currentCompiledAt: sm.compiledSequence?.compiledAt ?? null,
+        approved: sm.compiledSequence?.approved === true,
+        jarvisVersion: rec?.jarvisVersion ?? null,
+        costUSD: rec?.costUSD ?? null,
+        durationS: rec?.durationS ?? null,
+        error: rec?.error ?? null,
       });
     } catch (e) {
       sendJson(res, 500, { error: e.message });
@@ -1130,6 +1550,21 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
 
     if (pathname === '/api/jarvis/ir') {
       if (method === 'GET') return handleJarvisIr(res, query);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    if (pathname === '/api/jarvis/compile') {
+      if (method === 'POST') return handleJarvisCompile(req, res);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    if (pathname === '/api/jarvis/compile/approve') {
+      if (method === 'POST') return handleJarvisCompileApprove(req, res);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    if (pathname === '/api/jarvis/pretranslated') {
+      if (method === 'GET') return handleJarvisPretranslated(res, query);
       return sendJson(res, 405, { error: 'Method not allowed' });
     }
 

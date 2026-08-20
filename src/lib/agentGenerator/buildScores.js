@@ -74,6 +74,10 @@ function recordBuild(file, b = {}) {
     durationS: numOrNull(b.durationS),
     attempts: numOrNull(b.attempts),
     validationOk: b.validationOk === true,
+    // 'authoring' | 'translation' | null (pre-v2.1 records have null)
+    mode: b.mode ? String(b.mode) : null,
+    // true when this build ran in the background on compile-approval
+    pretranslated: b.pretranslated === true,
     score: null,
     scoredBy: null,
     scoreComment: null,

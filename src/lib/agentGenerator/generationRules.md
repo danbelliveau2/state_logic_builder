@@ -171,3 +171,18 @@ retry counters, and cross-station handshakes that realize them.
   engineer placeholder per Rule 8.
 - The spec's plain-language text goes into rung comments and alarm messages
   (station-prefixed per Rule 7) so the running machine speaks the ME's words.
+
+## Rule 12 — Studio 5000 import limits are hard validation gates
+
+XML validity is NOT importability. Logix Designer rejects the whole import on
+the first over-limit value (real CE failure: a ~640-char Program Description
+died with "Failed to set the 'Description' property — Text may be too long").
+
+- Descriptions (Program, Routine, Tag, AOI) and operand comments: max 512
+  characters. Write them short; the merge engine truncates the program
+  description to fit, but truncation loses your words — budget for it.
+- Names (programs, routines, tags): max 40 characters, must start with a
+  letter or underscore, contain only letters/digits/underscores, no
+  consecutive or trailing underscores.
+- Rung comments have generous limits but keep them focused — one `State N:`
+  line plus any `*Replace` notes.

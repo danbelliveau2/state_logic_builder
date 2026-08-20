@@ -28,5 +28,37 @@
     "scoredBy": null,
     "scoreComment": null,
     "filePath": "C:\\SDC-StateLogic\\generated\\Test_Project\\SDCServoPNP__jarvis_v1.0.2__2026-08-20_1311.L5X"
+  },
+  {
+    "id": "b_mt1knkes_9poqt7",
+    "at": "2026-08-20T13:44:15.892Z",
+    "project": "996-Magnet_Dial_AI",
+    "sm": "Magnet_Feed",
+    "jarvisVersion": "1.0.2",
+    "costUSD": 0.9479,
+    "durationS": 257,
+    "attempts": 1,
+    "validationOk": true,
+    "score": null,
+    "scoredBy": null,
+    "scoreComment": null,
+    "filePath": "C:\\SDC-StateLogic\\generated\\996-Magnet_Dial_AI\\Magnet_Feed__jarvis_v1.0.2__2026-08-20_1344.L5X"
+  },
+  {
+    "id": "b_mt1lbqzj_zpl4jd",
+    "at": "2026-08-20T14:03:04.159Z",
+    "project": "996-Magnet_Dial_AI",
+    "sm": "Magnet_Feed",
+    "jarvisVersion": "1.1.0",
+    "costUSD": 0.918,
+    "durationS": 246,
+    "attempts": 1,
+    "validationOk": true,
+    "mode": "translation",
+    "pretranslated": true,
+    "score": null,
+    "scoredBy": null,
+    "scoreComment": null,
+    "filePath": "C:\\SDC-StateLogic\\generated\\996-Magnet_Dial_AI\\Magnet_Feed__jarvis_v1.1.0__2026-08-20_1403.L5X"
   }
 ]

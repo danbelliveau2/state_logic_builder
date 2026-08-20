@@ -29,6 +29,10 @@ import { useDiagramStore } from '../../store/useDiagramStore.js';
 import { buildProgramName } from '../../lib/tagNaming.js';
 import { ProgressRing } from '../jarvis/ProgressRing.jsx';
 import { BuildScoreRow } from '../jarvis/BuildScoreRow.jsx';
+// Pretranslation status (v2.1.0 pipeline inversion) — pure helpers, no v2 UI.
+// The endpoint may not exist yet; fetchPretranslated feature-detects and
+// returns null, so this modal degrades to the normal flow silently.
+import { fetchPretranslated, isPretranslatedReady } from '../../v2/compiledSequence.js';
 
 const STAGE_LABELS = {
   start: 'Loading project',
@@ -55,6 +59,9 @@ export function JarvisGenerateModal({ onClose }) {
   const [selectedIds, setSelectedIds] = useState(() => new Set(activeSm ? [activeSm.id] : []));
   const [avgCost, setAvgCost] = useState(null); // { avg, n } from benchmark history
   const [avgDuration, setAvgDuration] = useState(null); // avg seconds per station from history
+  // smId -> pretranslation payload (code pre-built after approval). Only
+  // populated when the backend endpoint exists (feature-detected).
+  const [pretransById, setPretransById] = useState({});
 
   // ── Run state ──
   const [pct, setPct] = useState(0);
@@ -93,6 +100,23 @@ export function JarvisGenerateModal({ onClose }) {
         }
       })
       .catch(() => {});
+  }, []);
+
+  // Pretranslation probe — only stations with an APPROVED compiled sequence
+  // can have pre-built code. Free GETs; silently absent until the backend
+  // endpoint lands (fetchPretranslated feature-detects non-JSON responses).
+  useEffect(() => {
+    const filename = useDiagramStore.getState().currentFilename;
+    if (!filename) return;
+    let alive = true;
+    const candidates = sms.filter(s => s.compiledSequence?.approved === true);
+    candidates.forEach(s => {
+      fetchPretranslated(filename, s.id).then(p => {
+        if (alive && p) setPretransById(prev => ({ ...prev, [s.id]: p }));
+      });
+    });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Elapsed timer (runs only once generation starts)
@@ -374,6 +398,18 @@ export function JarvisGenerateModal({ onClose }) {
                             {buildProgramName(s.stationNumber, s.name)}{empty ? ' — no logic drawn' : ''}
                             {s.id === activeSm?.id ? ' · active' : ''}
                           </span>
+                          {isPretranslatedReady(pretransById[s.id]) ? (
+                            <span data-testid={`instant-tag-${s.id}`} style={{
+                              marginLeft: 6, fontSize: 9, fontWeight: 700, color: '#166534',
+                              background: '#f0fdf4', border: '1px solid #86efac',
+                              borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap',
+                            }}>✓ code built — instant</span>
+                          ) : s.compiledSequence?.approved ? (
+                            <span data-testid={`translation-tag-${s.id}`} style={{
+                              marginLeft: 6, fontSize: 9, fontWeight: 700, color: '#1574C4',
+                              background: '#e0efff', borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap',
+                            }} title="Approved compiled sequence — Generate translates it instead of reasoning from scratch (~2.5 min, ~$0.95)">approved → translation</span>
+                          ) : null}
                         </span>
                       </label>
                     );
@@ -381,6 +417,17 @@ export function JarvisGenerateModal({ onClose }) {
                   <div data-testid="cost-hint" style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
                     Cost: {costHint}
                   </div>
+                  {/* Instant path — every selected station has pre-built code
+                      from its approved sequence: Start = immediate download. */}
+                  {nSelected > 0 && selectedSms.every(s => isPretranslatedReady(pretransById[s.id])) && (
+                    <div data-testid="instant-note" style={{
+                      marginTop: 6, fontSize: 11, fontWeight: 700, color: '#166534',
+                      background: '#f0fdf4', border: '1px dashed #86efac',
+                      borderRadius: 6, padding: '5px 10px',
+                    }}>
+                      ✓ Code already built from your approved sequence{nSelected > 1 ? 's' : ''} — instant
+                    </div>
+                  )}
                 </div>
               )}
             </div>

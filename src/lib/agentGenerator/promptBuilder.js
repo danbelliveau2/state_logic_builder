@@ -287,16 +287,37 @@ An abbreviated (illustrative, not complete) plan:
 
 // ── Entry point ──────────────────────────────────────────────────────────────
 
+/** True when this SM carries an engineer-APPROVED compiled sequence (JARVIS
+ *  v1.1 pipeline inversion) — generation then runs in TRANSLATION mode. */
+function hasApprovedCompiledSequence(sm) {
+  return Boolean(sm && sm.compiledSequence &&
+    sm.compiledSequence.approved === true &&
+    sm.compiledSequence.ir && sm.compiledSequence.ir.text);
+}
+
 /**
  * Build the edit-plan prompt for one state machine of a project.
  *
- * @returns {{ system, stableText, jobText, ir, meta }}
+ * Two modes (meta.mode):
+ *   'authoring'   — the model designs the station's logic from the diagram IR
+ *                   (the original v1.0.x pipeline; unchanged byte-for-byte).
+ *   'translation' — the SM carries an APPROVED compiled sequence
+ *                   (sm.compiledSequence.approved === true): the thinking
+ *                   already happened at Build time, was reviewed by the
+ *                   engineer, and Generate is near-mechanical translation of
+ *                   that sequence into the edit plan. The stable (cacheable)
+ *                   prefix is identical in both modes.
+ *
+ * @returns {{ system, stableText, jobText, ir, compiledIr, meta }}
  *   stableText — per-template stable content (cacheable prefix)
  *   jobText    — per-job content (the IR + task instructions)
+ *   compiledIr — the approved compiled IR in translation mode, else null
  */
 function buildGenerationPrompt(projectJson, smId, options = {}) {
   const ir = buildIR(projectJson, smId);
   const sm = (projectJson.stateMachines || []).find(s => s.id === ir.smId);
+  const translation = hasApprovedCompiledSequence(sm);
+  const compiledIr = translation ? sm.compiledSequence.ir : null;
 
   const rulesText = fs.readFileSync(RULES_PATH, 'utf8');
   const ruleCount = countRules(rulesText);
@@ -310,12 +331,20 @@ function buildGenerationPrompt(projectJson, smId, options = {}) {
 
   const stationNumber = options.stationNumber ?? ir.stationNumber ?? 1;
 
-  const system =
-    'You are an SDC Automation controls engineer performing template surgery: ' +
-    'you adapt an SDC V4.2 standard template L5X to a specific station flowchart ' +
-    'by authoring a surgical JSON edit plan. A deterministic merge engine applies ' +
-    'your plan to the template; you never write XML. The template is the law — ' +
-    'change only what the flowchart requires, keep every idiom and all boilerplate.';
+  const system = translation
+    ? ('You are an SDC Automation controls engineer performing template surgery in ' +
+       'TRANSLATION mode: the station\'s sequence was already compiled at Build time ' +
+       'and APPROVED by the engineer. Every state, transition, and condition is ' +
+       'already decided — do not redesign anything. You translate that approved ' +
+       'sequence into a surgical JSON edit plan against the SDC V4.2 standard ' +
+       'template. A deterministic merge engine applies your plan; you never write ' +
+       'XML. The template is the law for idioms and boilerplate; the approved ' +
+       'sequence is the law for logic.')
+    : ('You are an SDC Automation controls engineer performing template surgery: ' +
+       'you adapt an SDC V4.2 standard template L5X to a specific station flowchart ' +
+       'by authoring a surgical JSON edit plan. A deterministic merge engine applies ' +
+       'your plan to the template; you never write XML. The template is the law — ' +
+       'change only what the flowchart requires, keep every idiom and all boilerplate.');
 
   const stableText = [
     '# GENERATION RULES (the law)',
@@ -344,28 +373,51 @@ function buildGenerationPrompt(projectJson, smId, options = {}) {
     extracts,
   ].join('\n');
 
-  const jobText = [
-    '# TASK',
-    `Adapt the template into station S${String(stationNumber).padStart(2, '0')} ("${ir.smName}")`,
-    'from the flowchart below. Use the ASSIGNED STATE NUMBERS exactly as given.',
-    'Every flowchart state needs its R02 transition rung, its R03/servo command',
-    'logic, its Status.STATE[n] comment, and a matching alarm where the template',
-    'pattern calls for one. Remove or retarget template rungs for states the',
-    'flowchart does not have.',
-    '',
-    ir.text,
-    '',
-    '# OUTPUT',
-    'Respond with ONLY the JSON edit plan object. No markdown fences, no prose',
-    'before or after the JSON.',
-  ].join('\n');
+  const jobText = translation
+    ? [
+      '# TASK — TRANSLATION MODE',
+      `Translate the APPROVED compiled sequence below into station S${String(stationNumber).padStart(2, '0')} ("${ir.smName}").`,
+      'The compiled sequence is AUTHORITATIVE — the engineer reviewed and approved',
+      'it. Every state, transition, and condition is already decided: follow it',
+      'exactly. Do NOT redesign, renumber, add, or remove states; do NOT second-',
+      'guess conditions — implement each transition\'s conditionText as the rung',
+      'condition it describes. Every compiled state needs its R02 transition rung,',
+      'its R03/servo command logic, its Status.STATE[n] comment, and the alarm the',
+      'template pattern calls for (waits get fault-timer alarms). Handshake signals',
+      'listed in the sequence need their tags (addTag) and their latch/unlatch and',
+      'consume rungs. Remove or retarget template rungs for states the sequence',
+      'does not have. This is mechanical translation, not design.',
+      '',
+      compiledIr.text,
+      '',
+      '# OUTPUT',
+      'Respond with ONLY the JSON edit plan object. No markdown fences, no prose',
+      'before or after the JSON.',
+    ].join('\n')
+    : [
+      '# TASK',
+      `Adapt the template into station S${String(stationNumber).padStart(2, '0')} ("${ir.smName}")`,
+      'from the flowchart below. Use the ASSIGNED STATE NUMBERS exactly as given.',
+      'Every flowchart state needs its R02 transition rung, its R03/servo command',
+      'logic, its Status.STATE[n] comment, and a matching alarm where the template',
+      'pattern calls for one. Remove or retarget template rungs for states the',
+      'flowchart does not have.',
+      '',
+      ir.text,
+      '',
+      '# OUTPUT',
+      'Respond with ONLY the JSON edit plan object. No markdown fences, no prose',
+      'before or after the JSON.',
+    ].join('\n');
 
   return {
     system,
     stableText,
     jobText,
     ir,
+    compiledIr,
     meta: {
+      mode: translation ? 'translation' : 'authoring',
       projectName: projectJson.name,
       smId: ir.smId,
       smName: ir.smName,
@@ -382,4 +434,10 @@ function buildGenerationPrompt(projectJson, smId, options = {}) {
   };
 }
 
-module.exports = { buildGenerationPrompt, selectTemplate, countRules };
+module.exports = {
+  buildGenerationPrompt, selectTemplate, countRules,
+  hasApprovedCompiledSequence,
+  // Distilled per-template pattern notes — reused by coordinationAuthor.js
+  // (the Build-time compile step) so template knowledge lives in ONE place.
+  TEMPLATE_NOTES, COMMON_NOTES,
+};

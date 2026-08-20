@@ -148,6 +148,17 @@ function normalizeText(t) {
   return t == null ? t : t.replace(/\r?\n/g, CRLF);
 }
 
+// Studio 5000 rejects the whole import when a Description/operand comment
+// exceeds 512 chars ("Text may be too long" — real CE failure). Every
+// description this engine writes is capped to fit.
+const MAX_DESCRIPTION_CHARS = 512;
+
+/** Cap a (CRLF-normalized) description at the Logix limit, marking the cut. */
+function capDescription(t) {
+  if (t == null || t.length <= MAX_DESCRIPTION_CHARS) return t;
+  return t.slice(0, MAX_DESCRIPTION_CHARS - 1).replace(/\s+$/, '') + '…';
+}
+
 // ── L5K / Decorated string machinery ─────────────────────────────────────────
 
 /** Decode an L5K/Decorated string body ($-escapes) to { text, bufferSize }.
@@ -555,7 +566,7 @@ function opAddTag(xml, prog, op, errors) {
   if (!tags) { errors.push('addTag: target program <Tags> section not found'); return xml; }
 
   const desc = op.description
-    ? `<Description>${CRLF}<![CDATA[${op.description}]]>${CRLF}</Description>${CRLF}`
+    ? `<Description>${CRLF}<![CDATA[${capDescription(normalizeText(op.description))}]]>${CRLF}</Description>${CRLF}`
     : '';
   let block;
   if (op.dataType === 'TIMER') {
@@ -608,9 +619,9 @@ function opSetTagComment(xml, prog, op, errors) {
     if (!has) { errors.push(`setTagComment ${op.tag}: no comment with operand "${op.operand}" to remove`); return xml; }
     tagXml = tagXml.replace(re, '');
   } else if (has) {
-    tagXml = tagXml.replace(re, `<Comment Operand="${op.operand}">${CRLF}<![CDATA[${normalizeText(op.text)}]]>${CRLF}</Comment>${CRLF}`);
+    tagXml = tagXml.replace(re, `<Comment Operand="${op.operand}">${CRLF}<![CDATA[${capDescription(normalizeText(op.text))}]]>${CRLF}</Comment>${CRLF}`);
   } else {
-    const block = `<Comment Operand="${op.operand}">${CRLF}<![CDATA[${normalizeText(op.text)}]]>${CRLF}</Comment>${CRLF}`;
+    const block = `<Comment Operand="${op.operand}">${CRLF}<![CDATA[${capDescription(normalizeText(op.text))}]]>${CRLF}</Comment>${CRLF}`;
     const cIdx = tagXml.indexOf('<Comments>');
     if (cIdx !== -1) {
       const insertAt = cIdx + '<Comments>'.length;
@@ -679,6 +690,37 @@ function setProgramDescriptionXml(xml, prog, text, errors) {
   return xml.slice(0, openEnd) + descBlock + xml.slice(openEnd);
 }
 
+/**
+ * Engine-owned: embed the full generated state map as the FIRST rung comment
+ * of R02_StateTransitions. Deterministic — injected from the IR after all
+ * model operations, so the model can never omit or corrupt it.
+ *
+ * Why (Jason's V42 review): the generated program reuses the legacy tag names
+ * (Status / StateLogicStatus) while assigning different meanings to the same
+ * state numbers; importing into a Studio 5000 project that already carries
+ * legacy-commented tags keeps the OLD operand descriptions, so reviewers read
+ * the new logic under the old labels. The map traveling inside the routine is
+ * immune to tag-comment collisions.
+ */
+function injectStateMap(xml, prog, stateMapText, errors) {
+  const rm = /<Routine Name="(R02[A-Za-z0-9_]*)"/g;
+  rm.lastIndex = prog.start;
+  const m = rm.exec(xml);
+  if (!m || m.index > prog.end) {
+    errors.push('State-map injection: no R02* routine found in the target program');
+    return xml;
+  }
+  return withRoutineRungs(xml, prog, m[1], errors, rungs => {
+    if (rungs.length === 0) { errors.push(`State-map injection: routine ${m[1]} has no rungs`); return null; }
+    const existing = (rungs[0].comment || '')
+      // Re-generation safety: strip any previous STATE MAP line first.
+      .split(/\r?\n/).filter(l => !/^STATE MAP \(generated/.test(l.trim())).join(CRLF)
+      .replace(/^(\r?\n)+/, '');
+    rungs[0].comment = stateMapText + (existing ? CRLF + existing : '');
+    return rungs;
+  });
+}
+
 function renumberAllRoutines(xml, prog) {
   // For every RLLContent in the target program, renumber rungs sequentially.
   let out = xml;
@@ -726,7 +768,10 @@ function deriveProgramName(smName, stationNumber) {
  *
  * @param {string} templateXml  Template file contents (utf8, BOM+CRLF intact)
  * @param {object} plan         Validated edit plan (editPlanSchema.validatePlan)
- * @param {object} opts         { smName, stationNumber, stamp }
+ * @param {object} opts         { smName, stationNumber, stamp, stateMap }
+ *                              stateMap: preformatted "STATE MAP (generated —
+ *                              authoritative): 4=… | 7=…" line injected as the
+ *                              first R02 rung comment (engine-owned).
  * @returns {{ xml: string, programName: string, log: string[] }}
  * @throws {MergeError} on any assertion failure (errors listed)
  */
@@ -755,6 +800,14 @@ function applyEditPlan(templateXml, plan, opts = {}) {
     else for (let k = before; k < errors.length; k++) errors[k] = `operations[${i}]: ${errors[k]}`;
   }
 
+  // 1b. Engine-owned state-map comment on R02 rung 0 (runs AFTER model ops so
+  //     a model updateRung on that rung can't erase it; opts.stateMap comes
+  //     from the IR the caller generated against).
+  if (opts.stateMap) {
+    const prog = targetProgramRange(xml);
+    if (prog) xml = injectStateMap(xml, prog, String(opts.stateMap), errors);
+  }
+
   // 2. Program rename (global, word-boundary; string bodies use step 3)
   xml = renameProgram(xml, oldName, newName, errors);
   log.push(`renameProgram: ${oldName} -> ${newName}`);
@@ -771,8 +824,10 @@ function applyEditPlan(templateXml, plan, opts = {}) {
       const extra = (plan.operations || [])
         .filter(o => o.op === 'setProgramDescription')
         .map(o => o.text).join('\n');
-      const desc = [opts.stamp, extra].filter(Boolean).join('\n');
-      if (desc) xml = setProgramDescriptionXml(xml, prog, desc.replace(/\r?\n/g, CRLF), errors);
+      // Stamp line first; model prose truncated so the TOTAL never exceeds
+      // the 512-char Logix description limit (import fails past it).
+      const desc = capDescription([opts.stamp, extra].filter(Boolean).join('\n').replace(/\r?\n/g, CRLF));
+      if (desc) xml = setProgramDescriptionXml(xml, prog, desc, errors);
     }
   }
 
