@@ -401,6 +401,158 @@ function checkExitlessWaits(rungs, warnings) {
   }
 }
 
+// ── R02 rung order (Rule 15 — Jason's review, Aug 2026) ─────────────────────
+//
+// "There are many out of order state transitions": R02's layout is template
+// law — sequence-state MOVE rungs in ASCENDING target order (synthesized /
+// side-path states sit at their numeric position, like the indexer's 31/34/37
+// recovery states), all BEFORE the override block (lockout 99, init 100→124,
+// restart, fault 127, manual 1, safety 0), then the State_Engine call. The
+// last write to Control.StateReg wins the scan.
+
+function checkR02Order(rungs, errors) {
+  const r02 = rungs.filter(r => /R02/i.test(r.routine));
+  if (!r02.length) return;
+
+  const seq = [];        // { n, idx } — targets 4..97
+  const overrides = [];  // { n, idx } — targets 99, 100-127
+  let engineIdx = -1;
+  let lastMoveIdx = -1;
+  r02.forEach((r, idx) => {
+    if (engineIdx === -1 && /State_Engine/i.test(r.text)) engineIdx = idx;
+    for (const m of r.text.matchAll(/MOVE?\((\d+),\s*Control\.StateReg\)/g)) {
+      const n = parseInt(m[1], 10);
+      lastMoveIdx = idx;
+      if (n >= 4 && n <= 97) seq.push({ n, idx });
+      else if (n === 99 || (n >= 100 && n <= 127)) overrides.push({ n, idx });
+    }
+  });
+
+  // (1) sequence-state rungs strictly ascending by target
+  for (let i = 1; i < seq.length; i++) {
+    if (seq[i].n < seq[i - 1].n) {
+      errors.push(`R02 rung order: the rung for state ${seq[i].n} appears AFTER the rung for state ${seq[i - 1].n} — ` +
+        'sequence-state MOVE rungs must be laid out in ascending target order; splice each rung at its numeric position (Rule 15)');
+    }
+  }
+
+  // (2) every sequence rung before the override block
+  if (seq.length && overrides.length) {
+    const firstOverride = Math.min(...overrides.map(o => o.idx));
+    for (const s of seq) {
+      if (s.idx > firstOverride) {
+        errors.push(`R02 rung order: the rung for sequence state ${s.n} appears after the lockout/init override block — ` +
+          'all sequence rungs come before the overrides (last write to Control.StateReg wins the scan) (Rule 15)');
+      }
+    }
+  }
+
+  // (3) override block internally ascending (99 → 100 → … → 124 → 127)
+  for (let i = 1; i < overrides.length; i++) {
+    if (overrides[i].n < overrides[i - 1].n) {
+      errors.push(`R02 rung order: override rung for state ${overrides[i].n} appears after the rung for state ${overrides[i - 1].n} — ` +
+        'the override block keeps template order: lockout 99, init 100→124 ascending, fault 127 (Rule 15)');
+    }
+  }
+
+  // (4) State_Engine call after every MOVE(n,Control.StateReg)
+  if (engineIdx !== -1 && lastMoveIdx > engineIdx) {
+    errors.push('R02 rung order: a MOVE(n,Control.StateReg) rung appears after the State_Engine call — ' +
+      'the engine call comes after every state-transition rung (Rule 15)');
+  }
+}
+
+// ── Motion trigger shape (Rule 16 — Jason's review, Aug 2026) ───────────────
+//
+// "The motion triggers have been reformatted": the template shape is ONE auto
+// MAM per axis routine, in the single "Axis Motion Command" rung — manual
+// branch (Status.State[1] + {Axis}ManMoveTrig) OR'd with a plain
+// XIC(Status.State[n]) list, gated by ServoActionStatus + AxisHomedStatus +
+// {Axis}Permissive. Invented shapes (per-state ONS trigger rungs, OTL/OTU
+// move-trigger latches, sub-step counters) are errors. Because MAM only
+// executes on rung false→true and state bits swap atomically, two states
+// that are CONSECUTIVE in R02 and both in one axis's MAM list mean the
+// second move never executes — that needs the template family's trigger/wait
+// split (the indexer's Trigger Index → Wait For Index Complete shape).
+
+function checkMotionTriggerShape(rungs, errors) {
+  const seen = new Set();
+  const emit = msg => { if (!seen.has(msg)) { seen.add(msg); errors.push(msg); } };
+
+  // Flow adjacency (fromState -> toState) from R02 sequence rungs.
+  const flowEdges = [];
+  for (const r of rungs.filter(x => /R02/i.test(x.routine))) {
+    const tos = [...r.text.matchAll(/MOVE?\((\d+),\s*Control\.StateReg\)/g)]
+      .map(m => parseInt(m[1], 10)).filter(n => n >= 4 && n <= 97);
+    if (!tos.length) continue;
+    const froms = [...r.text.matchAll(/XIC\(Status\.State\[(\d+)\]\)/g)]
+      .map(m => parseInt(m[1], 10)).filter(n => n >= 4 && n <= 97);
+    for (const t of tos) for (const f of froms) if (f !== t) flowEdges.push([f, t]);
+  }
+
+  const byRoutine = new Map();
+  for (const r of rungs) {
+    if (!byRoutine.has(r.routine)) byRoutine.set(r.routine, []);
+    byRoutine.get(r.routine).push(r);
+  }
+
+  for (const [routine, rs] of byRoutine) {
+    const mamRungs = [];
+    for (const r of rs) {
+      const calls = extractInstructions(r.text).filter(c => c.name === 'MAM');
+      const main = calls.filter(c => !/inch/i.test(c.args[1] || ''));
+      if (main.length) mamRungs.push(r);
+    }
+    if (!mamRungs.length) continue; // not a servo routine
+
+    if (mamRungs.length > 1) {
+      emit(`Motion trigger shape: ${routine} has ${mamRungs.length} main MAM rungs — the template has exactly ` +
+        'ONE "Axis Motion Command" rung per axis (Rule 16)');
+    }
+
+    for (const r of mamRungs) {
+      for (const m of r.text.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*MoveTrig)\b/g)) {
+        if (!/ManMoveTrig$/.test(m[1])) {
+          emit(`Motion trigger shape: the MAM rung in ${routine} is gated by invented trigger latch "${m[1]}" — ` +
+            'the auto branch is a plain XIC(Status.State[n]) list, never a latch bit (Rule 16)');
+        }
+      }
+      for (const gate of ['ServoActionStatus', 'AxisHomedStatus', 'Permissive']) {
+        if (!r.text.includes(gate)) {
+          emit(`Motion trigger shape: the MAM rung in ${routine} is missing the standard ${gate} gating (Rule 16)`);
+        }
+      }
+      const autoStates = [...r.text.matchAll(/XIC\(Status\.State\[(\d+)\]\)/g)]
+        .map(m => parseInt(m[1], 10)).filter(n => n !== 1);
+      if (!autoStates.length) {
+        emit(`Motion trigger shape: the MAM rung in ${routine} has no XIC(Status.State[n]) auto state list — ` +
+          'the template gates the auto branch on the OR of every state in which the axis moves (Rule 16)');
+      }
+      const listed = new Set(autoStates);
+      for (const [f, t] of flowEdges) {
+        if (listed.has(f) && listed.has(t)) {
+          emit(`Motion trigger shape: states ${f} and ${t} are consecutive in R02 and BOTH in the ${routine} MAM ` +
+            'state list — the MAM rung never goes false between them, so the second move NEVER EXECUTES; use the ' +
+            "template family's trigger/wait split (move state → wait/confirm state not in the list → next move state) (Rule 16)");
+        }
+      }
+    }
+
+    for (const r of rs) {
+      for (const m of r.text.matchAll(/OT[ELU]\(([A-Za-z_][A-Za-z0-9_]*MoveTrig)\)/g)) {
+        if (!/ManMoveTrig$/.test(m[1])) {
+          emit(`Motion trigger shape: ${routine} drives invented move trigger "${m[1]}" — per-state trigger ` +
+            'latch rungs are a forbidden shape (Rule 16)');
+        }
+      }
+      if (/\b[A-Za-z_][A-Za-z0-9_]*MoveStep\b/.test(r.text)) {
+        emit(`Motion trigger shape: ${routine} uses a same-state sub-step counter (…MoveStep) — forbidden shape; ` +
+          'split segments into real states (Rule 16)');
+      }
+    }
+  }
+}
+
 // ── Main entry points ────────────────────────────────────────────────────────
 
 /**
@@ -536,6 +688,15 @@ function validateL5X(xml, opts = {}) {
   //    ProgramAlarmHandler coverage). Warning, not error — the heuristic
   //    can't see cross-program recovery paths.
   checkExitlessWaits(rungs, warnings);
+
+  // 7. R02 rung order is template law (Rule 15): sequence rungs ascending,
+  //    before the override block; State_Engine call after every state MOVE.
+  checkR02Order(rungs, errors);
+
+  // 8. Motion trigger shape is template law (Rule 16): one MAM per axis,
+  //    state-list gating, no invented trigger latches, no consecutive
+  //    same-axis move states.
+  checkMotionTriggerShape(rungs, errors);
 
   if (seenStateMoves.length === 0 && rungs.length > 0) {
     warnings.push('No MOVE(n, Control.StateReg) state transitions found');

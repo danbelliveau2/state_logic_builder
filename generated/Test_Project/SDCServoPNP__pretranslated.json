@@ -1,27 +1,25 @@
 {
   "pretranslated": true,
   "ready": true,
-  "ok": false,
+  "ok": true,
   "stale": false,
   "project": "Test_Project",
   "smId": "id_mt1h9ftw",
   "smName": "SDCServoPNP",
-  "compiledAt": "2026-08-20T15:25:14.089Z",
+  "compiledAt": "2026-08-21T12:47:03.060Z",
   "mode": "translation",
-  "jarvisVersion": "1.1.1",
-  "savedPath": "C:\\SDC-StateLogic\\generated\\Test_Project\\SDCServoPNP__jarvis_v1.1.1__2026-08-20_1546.L5X",
-  "savedIrPath": "C:\\SDC-StateLogic\\generated\\Test_Project\\SDCServoPNP__jarvis_v1.1.1__2026-08-20_1546.ir.json",
-  "buildId": "b_mt1p0xfg_gu145g",
+  "jarvisVersion": "1.1.2",
+  "savedPath": "C:\\SDC-StateLogic\\generated\\Test_Project\\SDCServoPNP__jarvis_v1.1.2__2026-08-21_1300.L5X",
+  "savedIrPath": "C:\\SDC-StateLogic\\generated\\Test_Project\\SDCServoPNP__jarvis_v1.1.2__2026-08-21_1300.ir.json",
+  "buildId": "b_mt2yj8mt_8rhauk",
   "validation": {
-    "ok": false,
-    "errors": [
-      "Speed changes specified but not implemented: the approved compiled sequence describes multiple speeds for \"VerticalAxis\" (fast/slow), but the generated logic stages no AutoSpeed index for it — each speed segment needs its own AutoSpeed[i]/Accel[i]/Decel[i] staging branch (Rule 14)"
-    ],
+    "ok": true,
+    "errors": [],
     "warnings": []
   },
-  "costUSD": 3.4863,
-  "durationS": 840,
-  "attempts": 5,
-  "createdAt": "2026-08-20T15:46:37.757Z",
+  "costUSD": 3.1853,
+  "durationS": 761,
+  "attempts": 4,
+  "createdAt": "2026-08-21T13:00:34.807Z",
   "error": null
 }

@@ -15,7 +15,7 @@
  * CommonJS, plain Node — required by client.js and scripts/jarvisBenchmark.cjs.
  */
 
-const JARVIS_VERSION = '1.1.1';
+const JARVIS_VERSION = '1.1.2';
 
 const HISTORY = [
   {
@@ -71,6 +71,21 @@ const HISTORY = [
       'template verbatim — EQ/NE/LT/GT/GE/LE) and 14 (motion intent coverage). Validator: long-family compare ' +
       'mnemonics = ERROR; multi-speed intent with <2 staged AutoSpeed indices = ERROR; wideband intent with ' +
       'no InPosWide in R02 = ERROR (prose-only blend mention = warning).',
+    templates: 'V4.2',
+  },
+  {
+    version: '1.1.2',
+    date: '2026-08-21',
+    changes: 'Jason\'s v1.1.1 review (out-of-order state transitions, reformatted motion triggers): ' +
+      'STRUCTURAL FIDELITY LAW added to jarvis-knowledge/concepts (README + servo-motion.md + ' +
+      'coordination.md) — template structural shapes (rung ordering, trigger rung format, staging shape) ' +
+      'are law; problems the template doesn\'t visibly solve are solved the way the template family solves ' +
+      'them elsewhere (back-to-back same-axis moves = the indexer\'s trigger/wait split), never by invention. ' +
+      'promptBuilder COMMON_NOTES + coordinationAuthor OUTPUT_SPEC reinforce R02 ordering + motion trigger ' +
+      'laws. Rules 15 (R02 rung order) and 16 (motion trigger shape). Validator: R02 sequence rungs must be ' +
+      'ascending before the override block = ERROR; invented move-trigger latches / extra per-axis MAMs / ' +
+      'missing state-list+gating = ERROR; consecutive same-axis move states both in one MAM list (second ' +
+      'move never executes) = ERROR.',
     templates: 'V4.2',
   },
 ];

@@ -205,3 +205,31 @@ if it describes blended/rounded corners, the relevant R02 transitions must use
 the wideband `[MAM.PC + InPos , MAM.IP + InPosWide]` pattern. The HOW lives in
 the engineering concepts (`jarvis-knowledge/concepts/servo-motion.md`) —
 described-but-unimplemented speed changes are a validation error.
+
+## Rule 15 — R02 rung order is template law
+
+Sequence-state `MOVE(n,Control.StateReg)` rungs appear in ASCENDING target
+order — a synthesized or side-path state's rung sits at its NUMERIC position
+(the indexer's 31/34/37 recovery states do exactly this), never interleaved
+by flow order and never appended after the override block. All sequence rungs
+come before the override block, which keeps the template's order: lockout 99,
+init 100→124 ascending, restart logic, fault 127, manual 1, safety 0, the
+State_Engine call, the cycle timer. The last write to Control.StateReg wins
+the scan. Real CE failure (Jason, Aug 2026): synthesized states 34/37/40
+spliced mid-sequence read as "out of order state transitions". The validator
+rejects out-of-order sequence rungs.
+
+## Rule 16 — Motion trigger shape is template law
+
+Each axis has ONE auto MAM, inside the template's single "Axis Motion
+Command" rung: manual branch (`Status.State[1]` + `{Axis}ManMoveTrig`) OR'd
+with a plain `XIC(Status.State[n])` list of the auto move states, gated by
+`ServoActionStatus` + `AxisHomedStatus` + `{Axis}Permissive`. Per-state ONS
+trigger rungs, OTL/OTU move-trigger latches, sub-step counters, and
+StateChanged droppers are forbidden shapes (Jason, Aug 2026: "the motion
+triggers have been reformatted"). Back-to-back moves on one axis are handled
+the indexer's way — a trigger state (in the MAM list) exits to a wait/confirm
+state (NOT in the list) so the rung drops false before the next move state.
+Position and speed staging are parallel branches in the ONE Auto Mode rung
+per axis. The validator rejects extra per-axis MAMs, trigger-latch gating,
+and consecutive same-axis move states.

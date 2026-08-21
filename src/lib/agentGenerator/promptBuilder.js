@@ -217,7 +217,35 @@ const COMMON_NOTES = `
   fast-then-slow stages two segments with two AutoSpeed indices.
 - Instruction mnemonics: use EXACTLY the mnemonic family the template extracts
   use (V4.2/v37 exports use EQ/NE/LT/GT/GE/LE) — never substitute the
-  EQU/NEQ/LES/GRT/GEQ/LEQ spellings or vice versa; they import differently.`;
+  EQU/NEQ/LES/GRT/GEQ/LEQ spellings or vice versa; they import differently.
+- STRUCTURAL FIDELITY (two altitudes): sequence LOGIC is where your reasoning
+  is the product — think freely. Rung EXPRESSION speaks SDC: trigger shapes,
+  rung ordering, staging structure, routine layout use the template family's
+  vocabulary. Lookup hierarchy: (1) template family shows the construct — use
+  its shape, period; (2) constructs from real SDC code fill remaining gaps;
+  (3) only when neither shows it, build in SDC's idiom and flag it as
+  "PROPOSED NON-STANDARD PATTERN: …" for CE review — never ship an invented
+  shape silently as standard.
+- R02 RUNG ORDER LAW: sequence-state MOVE rungs appear in ASCENDING state-
+  number order (synthesized/side-path states sit at their numeric position,
+  like the indexer's 31/34/37 recovery states — never interleaved by flow,
+  never appended at the end), followed by the override block in template
+  order: lockout 99, init 100→124 ascending, restart logic, fault 127,
+  manual 1, safety 0, State_Engine call, cycle timer. Last write to
+  Control.StateReg wins the scan. Splice every new sequence rung at its
+  numeric position.
+- MOTION TRIGGER LAW: each axis keeps ONE auto MAM, inside the template's
+  single "Axis Motion Command" rung — manual branch (Status.State[1] +
+  {Axis}ManMoveTrig) OR'd with a plain XIC(Status.State[n]) list of the auto
+  move states, gated by ServoActionStatus + AxisHomedStatus + {Axis}Permissive.
+  NEVER per-state ONS trigger rungs, OTL/OTU move-trigger latches, sub-step
+  counters, or StateChanged droppers. MAM only fires on rung false→true and
+  state bits swap atomically, so two CONSECUTIVE states in one axis's list
+  means the second move never executes: back-to-back moves on one axis use
+  the indexer's trigger/wait split — the move state (in the list) exits to a
+  wait/confirm state (NOT in the list), then the next move state. Position
+  and speed-profile staging live as parallel branches in the ONE Auto Mode
+  staging rung per axis — never as separate speed-profile rungs.`;
 
 const TEMPLATE_NOTES = {
   'S05_ServoPNP.L5X': `

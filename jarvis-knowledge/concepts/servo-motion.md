@@ -108,16 +108,68 @@ is simply never allowed to move unless Z is up (or close enough, per the
 same clearance judgment). A permissive is the static form of the concept;
 the blended transition is the dynamic form.
 
-## Re-commanding and sub-steps
+## STRUCTURAL FIDELITY — think freely about the logic, speak SDC in the rungs
 
-MAM is edge-triggered by its rung going false→true. The template gets its
-re-trigger naturally because no two consecutive states command the same
-axis. When one flowchart state genuinely contains two segments of the SAME
-axis (fast-then-slow within one drawn state), split it into two staged
-segments the same way the template splits states — separate state numbers on
-the grid are the clean, template-shaped answer. A same-state sub-step
-counter is a workaround that hides the motion structure from R02 and from
-the state map; prefer real states.
+Two altitudes (Dan, Aug 2026). LOGIC altitude — what states exist, what
+conditions govern transitions, how recovery and retries work — is where your
+reasoning is the product: think freely. EXPRESSION altitude — how that logic
+is written into rungs (trigger shapes, R02 rung ordering, staging structure,
+routine layout) — speaks the template family's existing vocabulary. Lookup
+hierarchy at the expression altitude: (1) if the template family shows the
+construct, use ITS shape, period — the indexer answers the PNP's re-trigger
+question (see below); (2) constructs seen in real SDC code fill gaps the
+templates don't show; (3) only when neither shows it, build it in SDC's idiom
+and flag it as a "PROPOSED NON-STANDARD PATTERN: …" decision for CE review —
+never ship an invented shape silently as if it were standard.
+
+Shapes that never change:
+- **One MAM per axis**, in the one "Axis Motion Command" rung:
+  `XIC(SafetyOK)[XIC(Status.State[1]) XIC({Axis}ManMoveTrig) ,XIO(Status.State[1]) [state list] ]XIC(iq_{Axis}.ServoActionStatus)XIC(iq_{Axis}.AxisHomedStatus)XIC({Axis}Permissive)MAM(...)`.
+  The auto branch is a plain OR list of the states in which the axis moves —
+  never a latch bit, never per-state ONS trigger rungs, never OTL/OTU
+  "AutoMoveTrig" machinery, never StateChanged one-scan droppers.
+- **One Auto Mode staging rung per axis.** Position AND speed profile are
+  staged as parallel MOVE branches keyed on `Status.State[n]` inside that ONE
+  rung — not spread across separate "speed profile" rungs.
+- **Every named position gets its own `AOI_RangeCheck` instance** in the Axis
+  Position Monitor rung — transition points included (they are named
+  `Positions[i]` slots like any other). In-position tests are the RangeCheck
+  `.InPos`/`.InPosWide` bits; ad-hoc `SUB`/`LT` position-error math is not a
+  template shape.
+- **R02 rung order**: sequence-state rungs in ASCENDING state-number order
+  (the indexer's recovery states 31/34/37 sit numerically after 22 even
+  though they are side paths — numeric order, not flow order), then the
+  override block in template order: lockout 99, init 100→124, restart logic,
+  fault 127, manual 1, safety stop 0, the State_Engine call, cycle timer.
+  Overrides come last because the LAST write to Control.StateReg wins the scan.
+
+## Re-commanding: back-to-back moves on one axis
+
+MAM executes only on its rung going false→true, and the state engine swaps
+`Status.State[n]` bits atomically — there is NO scan where no state bit is
+set. So if two CONSECUTIVE states both sit in one axis's MAM state list, the
+rung never goes false between them and the second move NEVER EXECUTES — the
+axis stalls at the first target until the fault timer trips. Per-state ONS
+latches "solving" this are the invented-shape defect Jason rejected.
+
+How the template family actually solves it — the indexer does consecutive
+index moves on ONE axis, cycle after cycle: the dial's MAM list contains only
+state 13 ("Trigger Index"); R02 leaves 13 on `IndexerAxis_MAM.IP` into state
+16 ("Wait For Index Complete"), which is NOT in the MAM list, and completion
+is detected there (`MAM.PC` + on-station). The rung is false all through 16,
+so re-entering 13 gives the next false→true edge for free. **The shape is a
+trigger-state / wait-state split: command the move in one state, confirm it
+in a following state that is not in the axis's MAM list.**
+
+Apply that to a fast/slow stroke (two segments, same axis, nothing physical
+between them): fast segment state (in the MAM list, staged to the transition
+point) → wait/verify state (NOT in the list; transition on `MAM.PC` + the
+transition-point window) → slow segment state (in the list, staged to the
+final position). The wait state costs nothing at runtime — its condition is
+already true the scan it is entered — and it keeps the motion structure
+visible in R02 and the state map. When one drawn flowchart state contains
+two segments of the same axis, the compile synthesizes these states on the
+grid; a same-state sub-step counter or trigger latch is never the answer.
 
 ## Homing and recovery philosophy
 

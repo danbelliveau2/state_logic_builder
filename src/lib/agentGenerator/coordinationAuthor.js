@@ -156,6 +156,26 @@ Rules:
   clearance permits the next axis to start early; grips/releases/process
   actions are always advance:'complete'. Wideband transitions' conditionText
   uses the template idiom [Axis_MAM.PC + {Pos}.InPos , Axis_MAM.IP + {Pos}.InPosWide].
+- STRUCTURAL FIDELITY (two altitudes): sequence LOGIC is yours — think freely
+  about states, transitions, recovery, retries. Rung EXPRESSION speaks SDC:
+  never design a sequence that forces the translator to invent a rung shape
+  when the template family already has one; if a genuinely new expression
+  pattern seems necessary, flag it as "PROPOSED NON-STANDARD PATTERN: …" in
+  reviewFlags instead of implying it silently. MAM only
+  executes on its rung going false→true and state bits swap atomically, so
+  BACK-TO-BACK MOVES ON THE SAME AXIS (two consecutive states both commanding
+  one axis — e.g. fast-then-slow segments) require the template family's
+  trigger/wait split: synthesize a wait/confirm state between the two move
+  states (the indexer's "Trigger Index" -> "Wait For Index Complete" shape).
+  The wait state is NOT a move state for that axis; its transition confirms
+  the first segment (MAM.PC + in-position window), so the axis's motion
+  command rung drops false and the next segment re-triggers naturally. Never
+  rely on (or imply) per-state one-shot trigger latches — they are a defect.
+- R02 ORDER: generated R02 rungs are laid out in ASCENDING state-number order
+  (synthesized states sit at their numeric position, like the indexer's
+  31/34/37 recovery states), with the lockout/init/fault/manual/safety
+  override block after all sequence rungs. Order your states and transitions
+  accordingly; flow may jump numerically, the rung layout never does.
 `;
 
 // ── Mechanical validation of the compiled IR ────────────────────────────────
