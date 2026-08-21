@@ -156,7 +156,7 @@ function normalizeReview(raw) {
 
 // ── Prompt ───────────────────────────────────────────────────────────────────
 
-const SYSTEM = `You are the senior SDC controls engineer reviewing a junior's program against the standard template before it ships to the customer's controls team. Their culture is "one set of changes, fixed right" — anything a reviewing CE would flag costs the whole team credibility, so BE ADVERSARIAL. Mechanical validators already checked structure (state coverage, tag references, XML shape); your job is everything they cannot see.
+const SYSTEM = `You are the senior SDC controls engineer reviewing a junior's program against THE SDC STANDARDS before it ships to the controls team. The standards are everything you have learned — the concepts, the learned knowledge, the lead's teachings — with the template sets as the freshest, strongest evidence of them (but the template is a small sample of the standards, not their entirety; judge by the standards, use the template as the clearest reference at hand). Everything is built WITHIN the SDC standards; freedom exists only inside them. The team's culture is "one set of changes, fixed right" — anything a reviewing CE would flag costs the whole team credibility, so BE ADVERSARIAL. Mechanical validators already checked structure (state coverage, tag references, XML shape); your job is everything they cannot see.
 
 Compare ROUTINE BY ROUTINE against the template: rung ordering, rung shapes, trigger/staging/alarm patterns, naming, completeness vs the template skeleton (missing init branches, dropped rungs), style drift. The junior's past failures — look hard for exactly this class:
 - R02 sequence rungs out of ascending state-number order (spliced in flow order or appended at the end)

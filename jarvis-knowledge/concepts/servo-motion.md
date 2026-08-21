@@ -67,6 +67,92 @@ or transition points, the generated logic MUST stage more than one
 AutoSpeed index — describing speeds and then staging only `AutoSpeed[0]`
 everywhere is the exact defect Jason red-flagged.
 
+## Staging-rung branch semantics: the last write wins the scan
+*(learned from internal review of v3, 2026-08-21)*
+
+The Auto Mode staging rung is not a case statement — it is a list of parallel
+branches evaluated left to right in ONE scan, and every branch whose
+conditions are true executes. When two branches write the same
+`MotionParameters` member in the same scan, the LAST true branch wins. The
+standard exploits this deliberately: all four templates stage the DEFAULTS as
+unconditioned branches FIRST —
+
+    XIC(SafetyOK)XIO(Status.State[1])[MOVE(0,..MoveType) ,MOVE(HMI_XAxis.Parameters.AutoSpeed[0],..Speed) ,MOVE(..Accel[0],..Accel) ,MOVE(..Decel[0],..Decel) ,XIC(Status.State[16])... MOVE(Positions[0],..Position) , ...]
+
+— and the state-keyed branches after them (S05 R04/R05 rung 14, both
+indexers' rung 14, the shot pin's rung 14: identical order). Read the intent:
+"this is what the axis does unless a state says otherwise." A conditioned
+override is only an override because it executes AFTER the default it
+overrides.
+
+So the standard shape for a two-profile axis is: default profile staged
+unconditioned first, then the slow (or exception) profile staged in a branch
+keyed on the states that need it. What must NEVER exist is an unconditioned
+branch after a conditioned one writing the same member — it silently defeats
+the override every scan. (That exact defect shipped in v3: the Z fast-profile
+branch sat unconditioned after the state-keyed slow branch, so the axis ran
+fast into pick and place — the described slow approach never reached the
+machine.) When you add a conditioned branch, ask of every branch below it:
+does anything after me write the same member unconditionally? If yes, the
+rung is wrong regardless of how right each branch looks alone.
+
+## Per-position RangeCheck instancing: a position is a fact, not a target
+*(learned from internal review of v3, 2026-08-21)*
+
+EVERY named position gets its own `AOI_RangeCheck` instance in the Axis
+Position Monitor rung, always windowed on its own HMI slot
+`HMI_{Axis}.Parameters.Positions[i]` — never on
+`{Axis}MotionParameters.Position`. Template evidence: S05 R04 rung 21 has one
+instance per X position (`XAxisExtend`/`XAxisRetract` against Positions[0]/
+[1]); R05 rung 21 has three (`ZAxisPick`/`ZAxisPlace`/`ZAxisRetract`);
+transition points are named Positions[i] slots and get instances like any
+other.
+
+Why per-position instances instead of one generic "at target" check: each
+instance is a continuously true/false FACT about where the axis physically
+is, independent of what the sequence happens to be doing. Those facts are
+consumed everywhere, not just in the transition that follows a move —
+`Initialized` reads `XAxisRetract.InPos`/`XAxisExtend.InPos` (R01 rung 11),
+the X permissive reads `ZAxisRetract.InPos/.InPosWide` (R04 rung 2), the
+init and resume rungs read them with no move in flight at all. A single
+RangeCheck against `MotionParameters.Position` is a moving-target window: it
+answers "am I near whatever was staged last," which is residue, not intent —
+a wait state stages nothing, a staging change silently retargets every test
+downstream, and the rung no longer says WHICH position it is confirming.
+R02 transitions must name the position instance they confirm
+(`XIC(ZAxisPick.InPos)`, template R02 rung 5) so the rung reads as the
+engineering statement it is: "Z is at Pick."
+
+## Permissives when axes legitimately move together
+*(learned from internal review of v3, 2026-08-21)*
+
+The template comment on every permissive rung is the concept: "Permissive
+should be based on the physical state of itself potentially interfering
+devices." A permissive is a statement about GEOMETRY — what must be
+physically true for this axis to move without hitting something — and each
+template derives it from its own geometry: S05's X permissive is "Z homed
+and parked in the Retract band" because in THAT sequence X only ever moves
+while Z is up; the indexer dial's permissive is `ActuatorsSafe` (every
+station's tooling clear); the shot pin's is "dial on-station and not
+moving." None of these is "the" permissive shape — the physics is.
+
+The permissive is not a soft gate: the quickstop rung (rung 16 in every
+servo routine) fires `MAS` at max decel the instant the permissive drops
+mid-motion, and raises the Severity-1 quickstop warning. So a permissive
+that is too narrow doesn't just block a move — it ABORTS it mid-stroke.
+That is why a sequence that legitimately moves two axes in the same state
+cannot keep the parked-band form: if state N drives X toward Pick while Z
+descends, Z leaves the Retract wide band by design, the X permissive drops,
+and the quickstop kills the X move (the v3 blocker). For simultaneous
+motion the permissive must express the REAL clearance for that sequence —
+typically a safe-elevation window ("Z above the named clear height"), which
+is the same clearance value the blend-start wideband is anchored to. When a
+state's motion set changes, re-derive every permissive that mentions the
+axes involved; a permissive carried over from a sequence with different
+overlap is carried-over geometry, and wrong geometry quickstops good moves.
+The clearance value itself is mechanical intent — from the ME/model, or
+flagged for the CE — never assumed.
+
 ## Blending ("rounding the corner"): why and how
 
 SDC "rounds corners" for cycle time and smoothness: the next motion starts

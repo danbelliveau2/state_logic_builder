@@ -1,242 +1,272 @@
 [
-  {
-    "id": "seed_std_draft_01",
-    "question": "Jason's finding first: he saw an action commanded in the wrong state (Z move in the gripper-close state) in the generated PnP. Which rung exactly? The agent's self-checks compare code against the diagram — this case becomes a permanent automated check.",
-    "context": "Standards draft review",
-    "source": "manual",
-    "askedAt": "2026-08-19T20:58:09.424Z",
-    "status": "open"
-  },
-  {
-    "id": "seed_std_draft_02",
-    "question": "What's the acceptance test for generated code — what makes you trust it enough to run on a machine, beyond importing clean?",
-    "context": "Standards draft review",
-    "source": "manual",
-    "askedAt": "2026-08-19T20:58:09.424Z",
-    "status": "open"
-  },
-  {
-    "id": "seed_std_draft_03",
-    "question": "Wideband policy: which transitions may early-advance, in one rule? (Current guess: only when the next motion can't collide with the settling axis.)",
-    "context": "Standards draft review",
-    "source": "manual",
-    "askedAt": "2026-08-19T20:58:09.424Z",
-    "status": "open"
-  },
-  {
-    "id": "seed_std_draft_04",
-    "question": "Manual servo speeds: manual/jog rungs read Accel[0]/Decel[0] (shared with auto) in the template. Intentional, or should manual have its own indices?",
-    "context": "Standards draft review",
-    "source": "manual",
-    "askedAt": "2026-08-19T20:58:09.424Z",
-    "status": "open"
-  },
-  {
-    "id": "seed_std_draft_05",
-    "question": "Init-with-part: templates re-enter mid-sequence when a part is already gripped at power-up (124 + GripperClosed). What's the general rule for choosing the re-entry state on any new station?",
-    "context": "Standards draft review",
-    "source": "manual",
-    "askedAt": "2026-08-19T20:58:09.424Z",
-    "status": "open"
-  },
-  {
-    "id": "seed_std_draft_06",
-    "question": "Fault vs warning: the rule for which conditions fault (stop) vs warn (q_Pause)? \"Waiting for upstream\" = warning — what else?",
-    "context": "Standards draft review",
-    "source": "manual",
-    "askedAt": "2026-08-19T20:58:09.424Z",
-    "status": "open"
-  },
-  {
-    "id": "seed_std_draft_07",
-    "question": "q_ActuatorsSafe: the precise definition per station type. All actuators home? Or a defined safe subset per application?",
-    "context": "Standards draft review",
-    "source": "manual",
-    "askedAt": "2026-08-19T20:58:09.424Z",
-    "status": "open"
-  },
-  {
-    "id": "seed_std_draft_08",
-    "question": "Homing: when torque-home (AOI_TorqueHome) vs MAH? Who decides, and what marks a station as needing homing before auto?",
-    "context": "Standards draft review",
-    "source": "manual",
-    "askedAt": "2026-08-19T20:58:09.424Z",
-    "status": "open"
-  },
-  {
-    "id": "seed_std_draft_09",
-    "question": "HMI_Toggle vs Tracking OpStatus: V4.2 sources Lockout/DryRun/SS from \\Tracking...OpStatus. Is HMI_Toggle officially dead in new programs?",
-    "context": "Standards draft review",
-    "source": "manual",
-    "askedAt": "2026-08-19T20:58:09.424Z",
-    "status": "open"
-  },
-  {
-    "id": "seed_std_draft_10",
-    "question": "Where should the agent ask vs. decide? Before generating, it asks a short list (devices, transitions, timeouts, handshakes). What must ALWAYS be asked, and what may it default?",
-    "context": "Standards draft review",
-    "source": "manual",
-    "askedAt": "2026-08-19T20:58:09.424Z",
-    "status": "open"
-  },
-  {
-    "id": "q_mt1o9ey4_qiwzoc",
-    "question": "What Z height (mm from Retract = 0) clears the pick nest, the place nest, and any surrounding fixtures, so the horizontal axis may start moving while Z is still rising? That value becomes the AOI_RangeCheck wide deadband on ZAxisRetract (the rounded-corner threshold and the X-axis permissive) — the template default of 5 mm is almost certainly too tight.",
-    "context": "Station SDC Servo PNP — compile of Test_Project",
-    "source": "generation",
-    "askedAt": "2026-08-20T15:25:14.092Z",
-    "status": "open"
-  },
-  {
-    "id": "q_mt1onxya_hqs9a0",
-    "question": "Trigger and acquisition mechanics, per camera family we actually buy (Cognex/Keyence/other): how does the PLC trigger — hardwired output, EtherNet/IP assembly bit, or explicit message? And is 'result ready' one handshake or two (acquisition complete vs. evaluation complete)? I want to model the handshake correctly per family instead of assuming the legacy four-wire q_Trigger/i_TrigRdy/i_ResultReady/i_InspPass shape everywhere.",
-    "context": "Vision system concepts",
-    "source": "training",
-    "askedAt": "2026-08-20T15:36:31.906Z",
-    "status": "open"
-  },
-  {
-    "id": "q_mt1onxyh_5uknr3",
-    "question": "When does a vision application send coordinates versus just pass/fail? What's the judgment — is it purely 'a downstream motion needs correction', or are there cases where we take coordinates anyway (drift monitoring, SPC)? And when coordinates ARE sent, who consumes them — servo target offset, robot frame shift, or operator display only?",
-    "context": "Vision system concepts",
-    "source": "training",
-    "askedAt": "2026-08-20T15:36:31.913Z",
-    "status": "open"
-  },
-  {
-    "id": "q_mt1onxyj_1pbxpz",
-    "question": "Where does vision result data live, by convention? Part tracking gets the boolean (and numerics like X_Offset in Molex), but what about the raw job outputs — do we keep a per-camera or per-job UDT, copy from the input assembly into named tags, or read on demand? What's the naming/structure you'd want a new hire to follow?",
-    "context": "Vision system concepts",
-    "source": "training",
-    "askedAt": "2026-08-20T15:36:31.915Z",
-    "status": "open"
-  },
-  {
-    "id": "q_mt1onxym_lkjzgk",
-    "question": "Motion overlap during exposure: what's the rule for what may move while the camera is exposing? Dial locked (shot pin / IndexComplete) before imaging a dial-mounted part is obvious — but do we ever image during motion (flying trigger), and how do you choose the settle time before the trigger versus the legacy fixed 50 ms dwell?",
-    "context": "Vision system concepts",
-    "source": "training",
-    "askedAt": "2026-08-20T15:36:31.918Z",
-    "status": "open"
-  },
-  {
-    "id": "q_mt1onxyo_0yo7zw",
-    "question": "State structure per vision mode: the legacy convention compiled every inspection into 4 sub-states (verify trigger ready → settle dwell → trigger → check results). Does that skeleton hold for job-select and coordinate-feedback applications, or do those genuinely need different/extra states (job load + acknowledge, offset transfer + accept)? What's the state anatomy you'd draw for each mode?",
-    "context": "Vision system concepts",
-    "source": "training",
-    "askedAt": "2026-08-20T15:36:31.920Z",
-    "status": "open"
-  },
-  {
-    "id": "q_mt1onxyr_a96ft2",
-    "question": "Retry vs. route vs. fault on a failed inspection: when is a fail just 'record FAILURE to part tracking and let the reject station sort it' versus 'retry the trigger (bounded by search timeout)' versus 'fault the station'? Is the driver the process (can a retry change the answer?), the part cost, or line policy — and who sets the retry count?",
-    "context": "Vision system concepts",
-    "source": "training",
-    "askedAt": "2026-08-20T15:36:31.923Z",
-    "status": "open"
-  },
-  {
-    "id": "q_mt1onxyu_4hlco3",
-    "question": "Mode selection judgment: given a new motion requirement, how do you decide between electronic gearing, point-to-point (MAM), and blended point-to-point? Is gearing strictly for continuously-synchronized axes (follower tied to a master), or do we also use it where a chassis/cam would have been used mechanically? A decision tree in your words is what I'm after.",
-    "context": "Servo motion concepts",
-    "source": "training",
-    "askedAt": "2026-08-20T15:36:31.926Z",
-    "status": "open"
-  },
-  {
-    "id": "q_mt1onxyx_hq5pg2",
-    "question": "Electronic gearing mechanics at SDC: how are gear ratios established and tuned in software — fixed ratio computed from mechanics, or tuned empirically per machine? And what instruction set do we actually standardize on — MAG for direct ratios, MAPC for position cam profiles, something else? What does the surrounding rung structure look like (engage/disengage sequencing, ratio staging, fault handling)?",
-    "context": "Servo motion concepts",
-    "source": "training",
-    "askedAt": "2026-08-20T15:36:31.929Z",
-    "status": "open"
-  },
-  {
-    "id": "q_mt1onxyz_dyjcz4",
-    "question": "Do we use camming (MAPC/MATC) or registration inputs (MAR) anywhere in current standards — and if so, for what class of application? If a job needs a nonlinear master/slave profile, is that an SDC-supported pattern or do we push the mechanics/vendor to solve it another way?",
-    "context": "Servo motion concepts",
-    "source": "training",
-    "askedAt": "2026-08-20T15:36:31.931Z",
-    "status": "open"
-  },
-  {
-    "id": "q_mt1onxz2_uepwc4",
-    "question": "The standard axis module (the ~22-rung per-axis block): which rungs are pure boilerplate that never change, and which are the per-application ones? I read the staging rung, the wideband transition thresholds, and the permissive derivation as the application-dependent set — what else varies, and what should NEVER be touched per application?",
-    "context": "Servo motion concepts",
-    "source": "training",
-    "askedAt": "2026-08-20T15:36:31.934Z",
-    "status": "open"
-  },
-  {
-    "id": "q_mt1onxz5_72bcui",
-    "question": "Blending threshold judgment: when you pick the wideband (InPosWide) distance that lets the next axis start early, what are you actually computing — worst-case clearance geometry plus margin, or a tuned-on-the-machine value? And is there a class of corners you refuse to blend on principle even when the geometry technically clears?",
-    "context": "Servo motion concepts",
-    "source": "training",
-    "askedAt": "2026-08-20T15:36:31.937Z",
-    "status": "open"
-  },
-  {
-    "id": "q_mt1qzuhi_jw90fu",
-    "question": "The cycle currently ends at Cycle Complete after the next-cycle signal and restarts at the pick move — do you want an explicit internal loop-back edge instead, or is a supervisor-driven restart fine once this gets integrated?",
-    "context": "Create Station \"ServoPNP\" — built with this question open; Jarvis decided per SDC standards.",
-    "source": "create-station",
-    "askedAt": "2026-08-20T16:41:46.518Z",
-    "status": "open"
-  },
-  {
-    "id": "q_mt1qzuhk_644uld",
-    "question": "Default position values are placeholders (Horizontal Home 0 / Pick 350 / Place 50; Vertical Retract 0 / transitions 60 / Pick and Place 100 mm) — can you give real travel and transition-point values, or should the CE set them at commissioning?",
-    "context": "Create Station \"ServoPNP\" — built with this question open; Jarvis decided per SDC standards.",
-    "source": "create-station",
-    "askedAt": "2026-08-20T16:41:46.520Z",
-    "status": "open"
-  },
-  {
-    "id": "q_mt1qzuhm_24g2h4",
-    "question": "Is the pick transition point the same height as the place transition point, or do they differ (they are configured independently right now)?",
-    "context": "Create Station \"ServoPNP\" — built with this question open; Jarvis decided per SDC standards.",
-    "source": "create-station",
-    "askedAt": "2026-08-20T16:41:46.522Z",
-    "status": "open"
-  },
-  {
-    "id": "q_mt1qzuhp_bktcyo",
-    "question": "What Z clearance threshold should the horizontal blend start at on the retract moves (e.g. Z past 80 mm of a 100 mm stroke) so the wideband InPosWide band can be set correctly?",
-    "context": "Create Station \"ServoPNP\" — built with this question open; Jarvis decided per SDC standards.",
-    "source": "create-station",
-    "askedAt": "2026-08-20T16:41:46.525Z",
-    "status": "open"
-  },
-  {
-    "id": "q_mt1qzuhr_1h4wql",
-    "question": "Is the horizontal Home position distinct from the Pick position, or should Home coincide with Pick to save cycle time?",
-    "context": "Create Station \"ServoPNP\" — built with this question open; Jarvis decided per SDC standards.",
-    "source": "create-station",
-    "askedAt": "2026-08-20T16:41:46.527Z",
-    "status": "open"
-  },
-  {
-    "id": "q_mt1ry7jr_x78xw5",
-    "question": "Blend-start clearance (states 22 and 37): at what vertical height above the nests is the gripper/part clear for horizontal travel? Vertical Retract is 0 mm and the pick/place transition points are 60 mm — I need the separate safe-clear elevation that anchors the VerticalAxisRetract wideband, since the blend-start point is not the speed-transition point.",
-    "context": "Station ServoPNP — compile of Test_Project_v2",
-    "source": "generation",
-    "askedAt": "2026-08-20T17:08:29.751Z",
-    "status": "open"
-  },
-  {
-    "id": "q_mt1ry7jr_w8sji7",
-    "question": "Blended corner into place (46→25): how close to the Place position (mm) may the horizontal axis be before the vertical axis may begin descending to PlaceTransition — or should that descent wait for the horizontal move to fully complete?",
-    "context": "Station ServoPNP — compile of Test_Project_v2",
-    "source": "generation",
-    "askedAt": "2026-08-20T17:08:29.751Z",
-    "status": "open"
-  },
-  {
-    "id": "q_mt1sytxy_udvxma",
-    "question": "While studying Dan's corrected version of Test_Project / SDCServoPNP, I drew this tentative lesson — is it right, or was that edit specific to this station? \"For pneumatic actuations confirmed only by a timer rather than a sensor, bias the preset conservatively toward the station's proven default instead of the theoretical minimum stroke time; an extra 100-150 ms of grip settle is cheap compared to releasing a part that was not fully clamped, and the value can be tuned down at buyoff with real hardware.\"",
-    "context": "Test_Project / SDCServoPNP (synthetic test correction)",
-    "source": "generation",
-    "askedAt": "2026-08-20T17:36:58.390Z",
-    "status": "open"
-  }
+ {
+  "id": "q_mt1onxz2_uepwc4",
+  "question": "The standard axis module (the ~22-rung per-axis block): which rungs are pure boilerplate that never change, and which are the per-application ones? I read the staging rung, the wideband transition thresholds, and the permissive derivation as the application-dependent set — what else varies, and what should NEVER be touched per application?",
+  "context": "Servo motion concepts",
+  "source": "training",
+  "askedAt": "2026-08-20T15:36:31.934Z",
+  "status": "open",
+  "priority": 1
+ },
+ {
+  "id": "seed_std_draft_02",
+  "question": "What's the acceptance test for generated code — what makes you trust it enough to run on a machine, beyond importing clean?",
+  "context": "Standards draft review",
+  "source": "manual",
+  "askedAt": "2026-08-19T20:58:09.424Z",
+  "status": "open",
+  "priority": 2
+ },
+ {
+  "id": "seed_std_draft_03",
+  "question": "Wideband policy: which transitions may early-advance, in one rule? (Current guess: only when the next motion can't collide with the settling axis.)",
+  "context": "Standards draft review",
+  "source": "manual",
+  "askedAt": "2026-08-19T20:58:09.424Z",
+  "status": "open",
+  "priority": 3
+ },
+ {
+  "id": "q_mt1onxz5_72bcui",
+  "question": "Blending threshold judgment: when you pick the wideband (InPosWide) distance that lets the next axis start early, what are you actually computing — worst-case clearance geometry plus margin, or a tuned-on-the-machine value? And is there a class of corners you refuse to blend on principle even when the geometry technically clears?",
+  "context": "Servo motion concepts",
+  "source": "training",
+  "askedAt": "2026-08-20T15:36:31.937Z",
+  "status": "open",
+  "priority": 4
+ },
+ {
+  "id": "q_mt1onxyu_4hlco3",
+  "question": "Mode selection judgment: given a new motion requirement, how do you decide between electronic gearing, point-to-point (MAM), and blended point-to-point? Is gearing strictly for continuously-synchronized axes (follower tied to a master), or do we also use it where a chassis/cam would have been used mechanically? A decision tree in your words is what I'm after.",
+  "context": "Servo motion concepts",
+  "source": "training",
+  "askedAt": "2026-08-20T15:36:31.926Z",
+  "status": "open",
+  "priority": 5
+ },
+ {
+  "id": "seed_std_draft_05",
+  "question": "Init-with-part: templates re-enter mid-sequence when a part is already gripped at power-up (124 + GripperClosed). What's the general rule for choosing the re-entry state on any new station?",
+  "context": "Standards draft review",
+  "source": "manual",
+  "askedAt": "2026-08-19T20:58:09.424Z",
+  "status": "open",
+  "priority": 6
+ },
+ {
+  "id": "seed_std_draft_06",
+  "question": "Fault vs warning: the rule for which conditions fault (stop) vs warn (q_Pause)? \"Waiting for upstream\" = warning — what else?",
+  "context": "Standards draft review",
+  "source": "manual",
+  "askedAt": "2026-08-19T20:58:09.424Z",
+  "status": "open",
+  "priority": 7
+ },
+ {
+  "id": "seed_std_draft_07",
+  "question": "q_ActuatorsSafe: the precise definition per station type. All actuators home? Or a defined safe subset per application?",
+  "context": "Standards draft review",
+  "source": "manual",
+  "askedAt": "2026-08-19T20:58:09.424Z",
+  "status": "open",
+  "priority": 8
+ },
+ {
+  "id": "seed_std_draft_08",
+  "question": "Homing: when torque-home (AOI_TorqueHome) vs MAH? Who decides, and what marks a station as needing homing before auto?",
+  "context": "Standards draft review",
+  "source": "manual",
+  "askedAt": "2026-08-19T20:58:09.424Z",
+  "status": "open",
+  "priority": 9
+ },
+ {
+  "id": "seed_std_draft_04",
+  "question": "Manual servo speeds: manual/jog rungs read Accel[0]/Decel[0] (shared with auto) in the template. Intentional, or should manual have its own indices?",
+  "context": "Standards draft review",
+  "source": "manual",
+  "askedAt": "2026-08-19T20:58:09.424Z",
+  "status": "open",
+  "priority": 10
+ },
+ {
+  "id": "seed_std_draft_09",
+  "question": "HMI_Toggle vs Tracking OpStatus: V4.2 sources Lockout/DryRun/SS from \\Tracking...OpStatus. Is HMI_Toggle officially dead in new programs?",
+  "context": "Standards draft review",
+  "source": "manual",
+  "askedAt": "2026-08-19T20:58:09.424Z",
+  "status": "open",
+  "priority": 11
+ },
+ {
+  "id": "seed_std_draft_10",
+  "question": "Where should the agent ask vs. decide? Before generating, it asks a short list (devices, transitions, timeouts, handshakes). What must ALWAYS be asked, and what may it default?",
+  "context": "Standards draft review",
+  "source": "manual",
+  "askedAt": "2026-08-19T20:58:09.424Z",
+  "status": "open",
+  "priority": 12
+ },
+ {
+  "id": "q_mt1onxyx_hq5pg2",
+  "question": "Electronic gearing mechanics at SDC: how are gear ratios established and tuned in software — fixed ratio computed from mechanics, or tuned empirically per machine? And what instruction set do we actually standardize on — MAG for direct ratios, MAPC for position cam profiles, something else? What does the surrounding rung structure look like (engage/disengage sequencing, ratio staging, fault handling)?",
+  "context": "Servo motion concepts",
+  "source": "training",
+  "askedAt": "2026-08-20T15:36:31.929Z",
+  "status": "open",
+  "priority": 13
+ },
+ {
+  "id": "q_mt1onxyz_dyjcz4",
+  "question": "Do we use camming (MAPC/MATC) or registration inputs (MAR) anywhere in current standards — and if so, for what class of application? If a job needs a nonlinear master/slave profile, is that an SDC-supported pattern or do we push the mechanics/vendor to solve it another way?",
+  "context": "Servo motion concepts",
+  "source": "training",
+  "askedAt": "2026-08-20T15:36:31.931Z",
+  "status": "open",
+  "priority": 14
+ },
+ {
+  "id": "q_mt1onxyo_0yo7zw",
+  "question": "State structure per vision mode: the legacy convention compiled every inspection into 4 sub-states (verify trigger ready → settle dwell → trigger → check results). Does that skeleton hold for job-select and coordinate-feedback applications, or do those genuinely need different/extra states (job load + acknowledge, offset transfer + accept)? What's the state anatomy you'd draw for each mode?",
+  "context": "Vision system concepts",
+  "source": "training",
+  "askedAt": "2026-08-20T15:36:31.920Z",
+  "status": "open",
+  "priority": 15
+ },
+ {
+  "id": "q_mt1onxym_lkjzgk",
+  "question": "Motion overlap during exposure: what's the rule for what may move while the camera is exposing? Dial locked (shot pin / IndexComplete) before imaging a dial-mounted part is obvious — but do we ever image during motion (flying trigger), and how do you choose the settle time before the trigger versus the legacy fixed 50 ms dwell?",
+  "context": "Vision system concepts",
+  "source": "training",
+  "askedAt": "2026-08-20T15:36:31.918Z",
+  "status": "open",
+  "priority": 16
+ },
+ {
+  "id": "q_mt1onxya_hqs9a0",
+  "question": "Trigger and acquisition mechanics, per camera family we actually buy (Cognex/Keyence/other): how does the PLC trigger — hardwired output, EtherNet/IP assembly bit, or explicit message? And is 'result ready' one handshake or two (acquisition complete vs. evaluation complete)? I want to model the handshake correctly per family instead of assuming the legacy four-wire q_Trigger/i_TrigRdy/i_ResultReady/i_InspPass shape everywhere.",
+  "context": "Vision system concepts",
+  "source": "training",
+  "askedAt": "2026-08-20T15:36:31.906Z",
+  "status": "open",
+  "priority": 17
+ },
+ {
+  "id": "q_mt1onxyr_a96ft2",
+  "question": "Retry vs. route vs. fault on a failed inspection: when is a fail just 'record FAILURE to part tracking and let the reject station sort it' versus 'retry the trigger (bounded by search timeout)' versus 'fault the station'? Is the driver the process (can a retry change the answer?), the part cost, or line policy — and who sets the retry count?",
+  "context": "Vision system concepts",
+  "source": "training",
+  "askedAt": "2026-08-20T15:36:31.923Z",
+  "status": "open",
+  "priority": 18
+ },
+ {
+  "id": "q_mt1onxyh_5uknr3",
+  "question": "When does a vision application send coordinates versus just pass/fail? What's the judgment — is it purely 'a downstream motion needs correction', or are there cases where we take coordinates anyway (drift monitoring, SPC)? And when coordinates ARE sent, who consumes them — servo target offset, robot frame shift, or operator display only?",
+  "context": "Vision system concepts",
+  "source": "training",
+  "askedAt": "2026-08-20T15:36:31.913Z",
+  "status": "open",
+  "priority": 19
+ },
+ {
+  "id": "q_mt1onxyj_1pbxpz",
+  "question": "Where does vision result data live, by convention? Part tracking gets the boolean (and numerics like X_Offset in Molex), but what about the raw job outputs — do we keep a per-camera or per-job UDT, copy from the input assembly into named tags, or read on demand? What's the naming/structure you'd want a new hire to follow?",
+  "context": "Vision system concepts",
+  "source": "training",
+  "askedAt": "2026-08-20T15:36:31.915Z",
+  "status": "open",
+  "priority": 20
+ },
+ {
+  "id": "q_mt1qzuhi_jw90fu",
+  "question": "The cycle currently ends at Cycle Complete after the next-cycle signal and restarts at the pick move — do you want an explicit internal loop-back edge instead, or is a supervisor-driven restart fine once this gets integrated?",
+  "context": "Create Station \"ServoPNP\" — built with this question open; Jarvis decided per SDC standards.",
+  "source": "create-station",
+  "askedAt": "2026-08-20T16:41:46.518Z",
+  "status": "open",
+  "priority": 21
+ },
+ {
+  "id": "seed_std_draft_01",
+  "question": "Jason's finding first: he saw an action commanded in the wrong state (Z move in the gripper-close state) in the generated PnP. Which rung exactly? The agent's self-checks compare code against the diagram — this case becomes a permanent automated check.",
+  "context": "Standards draft review",
+  "source": "manual",
+  "askedAt": "2026-08-19T20:58:09.424Z",
+  "status": "open",
+  "priority": 22
+ },
+ {
+  "id": "q_mt1sytxy_udvxma",
+  "question": "While studying Dan's corrected version of Test_Project / SDCServoPNP, I drew this tentative lesson — is it right, or was that edit specific to this station? \"For pneumatic actuations confirmed only by a timer rather than a sensor, bias the preset conservatively toward the station's proven default instead of the theoretical minimum stroke time; an extra 100-150 ms of grip settle is cheap compared to releasing a part that was not fully clamped, and the value can be tuned down at buyoff with real hardware.\"",
+  "context": "Test_Project / SDCServoPNP (synthetic test correction)",
+  "source": "generation",
+  "askedAt": "2026-08-20T17:36:58.390Z",
+  "status": "open",
+  "priority": 23
+ },
+ {
+  "id": "q_mt1ry7jr_x78xw5",
+  "question": "Blend-start clearance (states 22 and 37): at what vertical height above the nests is the gripper/part clear for horizontal travel? Vertical Retract is 0 mm and the pick/place transition points are 60 mm — I need the separate safe-clear elevation that anchors the VerticalAxisRetract wideband, since the blend-start point is not the speed-transition point.",
+  "context": "Station ServoPNP — compile of Test_Project_v2",
+  "source": "generation",
+  "askedAt": "2026-08-20T17:08:29.751Z",
+  "status": "open",
+  "priority": 24
+ },
+ {
+  "id": "q_mt1qzuhp_bktcyo",
+  "question": "What Z clearance threshold should the horizontal blend start at on the retract moves (e.g. Z past 80 mm of a 100 mm stroke) so the wideband InPosWide band can be set correctly?",
+  "context": "Create Station \"ServoPNP\" — built with this question open; Jarvis decided per SDC standards.",
+  "source": "create-station",
+  "askedAt": "2026-08-20T16:41:46.525Z",
+  "status": "open",
+  "priority": 25
+ },
+ {
+  "id": "q_mt1ry7jr_w8sji7",
+  "question": "Blended corner into place (46→25): how close to the Place position (mm) may the horizontal axis be before the vertical axis may begin descending to PlaceTransition — or should that descent wait for the horizontal move to fully complete?",
+  "context": "Station ServoPNP — compile of Test_Project_v2",
+  "source": "generation",
+  "askedAt": "2026-08-20T17:08:29.751Z",
+  "status": "open",
+  "priority": 26
+ },
+ {
+  "id": "q_mt1o9ey4_qiwzoc",
+  "question": "What Z height (mm from Retract = 0) clears the pick nest, the place nest, and any surrounding fixtures, so the horizontal axis may start moving while Z is still rising? That value becomes the AOI_RangeCheck wide deadband on ZAxisRetract (the rounded-corner threshold and the X-axis permissive) — the template default of 5 mm is almost certainly too tight.",
+  "context": "Station SDC Servo PNP — compile of Test_Project",
+  "source": "generation",
+  "askedAt": "2026-08-20T15:25:14.092Z",
+  "status": "open",
+  "priority": 27
+ },
+ {
+  "id": "q_mt1qzuhm_24g2h4",
+  "question": "Is the pick transition point the same height as the place transition point, or do they differ (they are configured independently right now)?",
+  "context": "Create Station \"ServoPNP\" — built with this question open; Jarvis decided per SDC standards.",
+  "source": "create-station",
+  "askedAt": "2026-08-20T16:41:46.522Z",
+  "status": "open",
+  "priority": 28
+ },
+ {
+  "id": "q_mt1qzuhr_1h4wql",
+  "question": "Is the horizontal Home position distinct from the Pick position, or should Home coincide with Pick to save cycle time?",
+  "context": "Create Station \"ServoPNP\" — built with this question open; Jarvis decided per SDC standards.",
+  "source": "create-station",
+  "askedAt": "2026-08-20T16:41:46.527Z",
+  "status": "open",
+  "priority": 29
+ },
+ {
+  "id": "q_mt1qzuhk_644uld",
+  "question": "Default position values are placeholders (Horizontal Home 0 / Pick 350 / Place 50; Vertical Retract 0 / transitions 60 / Pick and Place 100 mm) — can you give real travel and transition-point values, or should the CE set them at commissioning?",
+  "context": "Create Station \"ServoPNP\" — built with this question open; Jarvis decided per SDC standards.",
+  "source": "create-station",
+  "askedAt": "2026-08-20T16:41:46.520Z",
+  "status": "open",
+  "priority": 30
+ }
 ]
