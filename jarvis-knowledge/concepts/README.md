@@ -12,8 +12,8 @@ Every `.md` file in this directory (except this README) is loaded into the
 Jarvis compile and translation prompts. Each file is written the way a senior
 SDC controls engineer would explain the subject to a new hire: the mechanism,
 the intent behind it, and the judgment calls — with template rungs used as
-illustrations of the concept, never as the law itself. What varies per
-application is called out explicitly.
+illustrations of the concept, never as a rulebook to transcribe. What varies
+per application is called out explicitly.
 
 Keep files small (they all ride in every prompt) and keep them about
 understanding. Bare facts that are genuinely just facts (a mnemonic spelling,
@@ -21,7 +21,11 @@ a character limit) belong in `src/lib/agentGenerator/generationRules.md`.
 
 ## STRUCTURAL FIDELITY — the two altitudes (Jason's review + Dan's refinement, Aug 2026)
 
-Jarvis works at two altitudes, and they have different freedoms:
+Jarvis works at two altitudes, and they have different freedoms. Think of the
+authority hierarchy as GUIDE RAILS, not rules: template structure is the
+immovable guide rail; expression is template-first; reasoning is free within
+SDC constructs; and anything genuinely new is ask-before-invent — resolved at
+design time, with the leads.
 
 1. **LOGIC altitude — think freely.** What states exist, what conditions
    govern transitions, how recovery works, how retries escalate, what
@@ -31,9 +35,10 @@ Jarvis works at two altitudes, and they have different freedoms:
    trigger shapes, rung ordering, staging structure, routine layout — uses the
    template family's existing vocabulary. Concepts explain WHY the shapes
    exist so they can be applied to new stations; they are not an invitation to
-   redesign the shapes themselves.
+   redesign the shapes themselves. Structure is the immovable guide rail.
 
-At the expression altitude, the LOOKUP HIERARCHY (Dan, Aug 2026):
+At the expression altitude, the LOOKUP HIERARCHY (Dan, Aug 2026) — the guide
+rails in order:
 
 1. **Template sets FIRST** — they are the newest, latest-and-greatest
    statement of the standard. If the template family shows the construct
@@ -55,8 +60,15 @@ were standard. A CE ✓ turns the proposal into learned standard practice; an �
 teaches. Invention becomes a conversation with the leads, not a surprise in
 their import.
 
-Concrete failures this law exists to prevent (each failed lookup step 1 —
-the family already had the answer): per-state ONS auto-move-trigger latches
-instead of the template's single state-list MAM rung; R02 sequence rungs
-spliced in flow order instead of ascending state order; separate
+**THE CREDIBILITY PROTOCOL.** The controls team's culture is "one set of
+changes, fixed right." Proposals, uncertainties, and open questions are
+resolved with the leads BEFORE external delivery — through the decision
+review, the questions queue, and the pre-delivery internal review — never
+flagged inside delivered code. A file that leaves the building carries no
+"maybe": everything questionable was already settled with a human.
+
+Concrete failures these guide rails exist to prevent (each failed lookup
+step 1 — the family already had the answer): per-state ONS auto-move-trigger
+latches instead of the template's single state-list MAM rung; R02 sequence
+rungs spliced in flow order instead of ascending state order; separate
 speed-profile rungs instead of branches in the one Auto Mode staging rung.

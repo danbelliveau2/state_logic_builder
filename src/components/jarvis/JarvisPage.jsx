@@ -855,6 +855,108 @@ function CorrectionStatus({ build }) {
   );
 }
 
+// ── Pre-delivery internal review (the "pre-Jason pass") ─────────────────────
+// Jarvis's own adversarial review of the generated file against the template,
+// run as the last pipeline stage. 'ship' = clean; 'fix' = NOT ready for
+// external delivery — a human decides (never auto-regenerated).
+
+const REVIEW_SEVERITY_COLOR = { blocker: 'danger', style: 'warning', note: 'muted' };
+
+/** Small grid-row chip: "✓ internal review: ship" / "⚠ internal review: N findings". */
+function InternalReviewChip({ ir }) {
+  if (!ir) return null;
+  const failed = ir.verdict == null; // review attempted but didn't complete
+  const ship = ir.verdict === 'ship';
+  const n = (ir.findings || []).length;
+  const label = failed ? 'review failed'
+    : ship ? '✓ internal review: ship'
+    : `⚠ internal review: ${n} finding${n === 1 ? '' : 's'}`;
+  const title = failed ? `Internal review did not complete: ${ir.error || 'unknown error'}`
+    : ship ? 'Jarvis reviewed this file against the template like the senior CE would — clean to send'
+    : 'Jarvis\'s own review found issues — NOT ready for external delivery until a human decides';
+  return (
+    <span
+      title={title}
+      style={{
+        marginLeft: 6, fontSize: 9, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase',
+        borderRadius: 999, padding: '1px 6px', whiteSpace: 'nowrap',
+        background: failed ? C.sidebar : ship ? '#e6f4ea' : '#fdecec',
+        color: failed ? C.muted : ship ? C.success : C.danger,
+      }}
+    >{label}</span>
+  );
+}
+
+/** Expanded-row section: verdict banner + expandable findings list. */
+function InternalReviewDetail({ ir }) {
+  const [open, setOpen] = useState(false);
+  if (!ir) return null;
+  const ship = ir.verdict === 'ship';
+  const failed = ir.verdict == null;
+  const findings = ir.findings || [];
+  const missing = ir.missingVsTemplate || [];
+  const expandable = findings.length > 0 || missing.length > 0;
+  return (
+    <div style={{
+      border: `1px solid ${failed ? C.border : ship ? C.success : C.danger}`,
+      borderRadius: 8, padding: '10px 14px',
+      background: failed ? C.sidebar : ship ? '#f2faf4' : '#fef7f7',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12.5, fontWeight: 800, color: failed ? C.muted : ship ? C.success : C.danger }}>
+          {failed ? 'Internal review did not complete'
+            : ship ? '✓ Internal review: ship — Jarvis put his name on it'
+            : '⚠ Internal review: fix — NOT ready for external delivery'}
+        </span>
+        {ir.costUSD != null && <span style={{ fontSize: 10.5, color: C.light }}>${Number(ir.costUSD).toFixed(2)}</span>}
+        {expandable && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }}
+            style={{ background: 'none', border: 'none', padding: 0, color: C.primary, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}
+          >{open ? '▾ hide findings' : `▸ ${findings.length + missing.length} finding${findings.length + missing.length === 1 ? '' : 's'}`}</button>
+        )}
+      </div>
+      <div style={{ fontSize: 12, color: C.text, marginTop: 6 }}>
+        {failed ? (ir.error || 'The review call failed — the build is kept, but treat it as UNREVIEWED, not clean.') : (ir.summary || '')}
+      </div>
+      {!ship && !failed && (
+        <div style={{ fontSize: 11.5, color: C.danger, marginTop: 6, fontWeight: 600 }}>
+          Jarvis never regenerates on his own verdict — review the findings and decide: fix and rebuild, or overrule.
+        </div>
+      )}
+      {open && (
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {findings.map((f, i) => (
+            <div key={i} style={{ fontSize: 12, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 6, padding: '7px 10px' }}>
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase',
+                borderRadius: 999, padding: '1px 6px', marginRight: 8,
+                background: f.severity === 'blocker' ? '#fdecec' : f.severity === 'style' ? '#fdf6e3' : C.sidebar,
+                color: C[REVIEW_SEVERITY_COLOR[f.severity] || 'muted'],
+              }}>{f.severity}</span>
+              {f.routine && <span style={{ fontFamily: 'Consolas, monospace', fontSize: 11, color: C.muted, marginRight: 6 }}>{f.routine}</span>}
+              <span>{f.finding}</span>
+              {f.templateEvidence && (
+                <div style={{ marginTop: 4, fontSize: 11, color: C.muted }}>
+                  Template evidence: <span style={{ fontFamily: 'Consolas, monospace' }}>{f.templateEvidence}</span>
+                </div>
+              )}
+            </div>
+          ))}
+          {missing.length > 0 && (
+            <div style={{ fontSize: 12, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 6, padding: '7px 10px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.muted, marginBottom: 4 }}>
+                Missing vs template
+              </div>
+              {missing.map((m, i) => <div key={i}>• {m}</div>)}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** One expanded grid row: download, review, upload-corrected, learning state. */
 function GenerationDetail({ row, onUpdated }) {
   return (
@@ -891,6 +993,8 @@ function GenerationDetail({ row, onUpdated }) {
           </span>
         )}
       </div>
+
+      {row.internalReview && <InternalReviewDetail ir={row.internalReview} />}
 
       {row.orphan ? (
         <div style={{ fontSize: 12, color: C.muted }}>
@@ -982,8 +1086,15 @@ function stationStatus(sm, activeList, pretrans, gaps) {
   if (cs?.approved === true) {
     if (p && p.error) return { key: 'failed', label: `✗ Code build failed — ${String(p.error).slice(0, 80)}`, tone: 'bad' };
     if (isPretranslatedReady(p)) {
-      return p.ok === false
-        ? { key: 'ready-warn', label: '⚠ Code built — validation reported errors', tone: 'warn' }
+      if (p.ok === false) return { key: 'ready-warn', label: '⚠ Code built — validation reported errors', tone: 'warn' };
+      // Pre-delivery internal review verdict (Jarvis's own adversarial pass
+      // against the template) gates "ready": 'fix' = a human decides first.
+      if (p.internalReview && p.internalReview.verdict === 'fix') {
+        const n = (p.internalReview.findings || []).length;
+        return { key: 'ready-review', label: `⚠ Code built — internal review: ${n} finding${n === 1 ? '' : 's'}, not ready to send`, tone: 'warn' };
+      }
+      return p.internalReview && p.internalReview.verdict === 'ship'
+        ? { key: 'ready', label: '✓ Code ready — internal review: ship', tone: 'ok' }
         : { key: 'ready', label: '✓ Code ready', tone: 'ok' };
     }
     return { key: 'approved', label: 'Approved — Generate builds the code', tone: 'muted' };
@@ -1419,6 +1530,7 @@ function GenerationsTab({ gens, track, active, questions, onQuestionUpdate, onRo
                         }}
                       >{row.correction.status === 'done' ? '✓ corrected' : row.correction.status === 'failed' ? 'analysis failed' : 'analyzing…'}</span>
                     )}
+                    <InternalReviewChip ir={row.internalReview} />
                   </td>
                   <td style={td}>{row.project || '—'}</td>
                   <td style={{ ...td, whiteSpace: 'nowrap' }}>{row.jarvisVersion ? `v${row.jarvisVersion}` : '—'}</td>

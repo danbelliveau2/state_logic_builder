@@ -10,12 +10,21 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.1.3';
+export const UI_BUILD = 'v2.1.4';
 
 export const BUILT_AT = '2026-08-21';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.1.4',
+    date: '2026-08-21',
+    items: [
+      "Every build now gets Jarvis's own adversarial review against the template before it's marked ready to send — the same pass a senior CE would make: rung ordering, trigger shapes, missing template blocks, style drift",
+      'The Code grid shows the verdict on every build: "✓ internal review: ship" or "⚠ internal review: N findings" — open the row for the findings themselves, each with the template evidence',
+      'A "fix" verdict never re-runs generation on its own — the build is marked "not ready for external delivery" and a human decides: fix and rebuild, or overrule',
+    ],
+  },
   {
     version: 'v2.1.3',
     date: '2026-08-21',

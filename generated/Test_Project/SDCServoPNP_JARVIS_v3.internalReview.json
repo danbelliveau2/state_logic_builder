@@ -1,0 +1,91 @@
+{
+  "verdict": "fix",
+  "findings": [
+    {
+      "severity": "blocker",
+      "routine": "R04_XAxisServo",
+      "finding": "Axis Position Monitor collapses the named positions into one generic instance: AOI_RangeCheck(HorizontalAxisAtTarget, HorizontalAxisMotionParameters.Position, ...). The declared positions InBetween, Pick and Place get no RangeCheck of their own, so there is no XAxisInBetween.InPos / XAxisPick.InPos / XAxisPlace.InPos to test. This is an invented shape (a moving-target window that only works off whatever the staging rung last wrote) and the junior's own comment admits it. Same defect in R05 (PickTransition, Pick, PlaceTransition have no instance — only Retract, Place and AtTarget).",
+      "templateEvidence": "R04 rung 21 / R05 rung 21: [AOI_RangeCheck(XAxisExtend,HMI_XAxis.Parameters.Positions[0],0.5,...,5) ,AOI_RangeCheck(XAxisRetract,HMI_XAxis.Parameters.Positions[1],0.5,...,5)] — one instance per named position, always against Parameters.Positions[i], never against MotionParameters.Position."
+    },
+    {
+      "severity": "blocker",
+      "routine": "R02_StateTransitions",
+      "finding": "Because of the AtTarget shortcut, the sequence transitions test HorizontalAxisAtTarget/VerticalAxisAtTarget instead of the position the approved sequence names (rung 5 should be XAxisInBetween.InPos/.InPosWide, rung 6 XAxisPick.InPos + ZAxisPickTransition.InPos, rung 7 ZAxisPick.InPos, rungs 16/19/21 the respective transition points). These rungs only read correctly because the previous state's staged value is still resident in MotionParameters.Position — a wait state stages nothing. Any future staging change silently retargets the in-position test, and the rung no longer says which position it is confirming.",
+      "templateEvidence": "Template R02 rung 5: XIC(Status.State[7])XIC(ZAxis_MAM.PC)XIC(ZAxisPick.InPos) — every transition names the position instance it is confirming."
+    },
+    {
+      "severity": "blocker",
+      "routine": "R05_ZAxisServo",
+      "finding": "Auto Mode staging rung 14: the slow-profile branch is conditioned on states 13/19/28/52, but the fast-profile branch that follows it in the same parallel group is UNCONDITIONED. Both branches execute every scan and the fast MOVEs are last, so AutoSpeed[1]/Accel[1]/Decel[1] always wins — the axis runs fast into pick and into place. The described fast/slow motion never reaches the machine, which is exactly the defect Jason red-flagged. Either default fast first and override with the conditioned slow branch after it, or gate the fast branch with XIO of the slow states.",
+      "templateEvidence": "Template R04/R05 rung 14 stage the defaults (MoveType, AutoSpeed, Accel, Decel) as unconditioned branches FIRST and then the state-keyed branches — the conditioned branch always follows the default it overrides."
+    },
+    {
+      "severity": "blocker",
+      "routine": "R02_StateTransitions",
+      "finding": "The template's resume-with-part-held path is gone. Template rung 6 carries the second branch [XIC(Status.State[2]) XIO(Initialized) XIC(PartStarted) XIC(CycleRunning)] XIC(GripperClosed) into the Z-retract state; nothing equivalent exists here. Combined with rung 24, which still requires XIO(PartStarted) to enter init 100, a cycle stop or restart while the gripper is holding a part deadlocks in state 2: PartStarted blocks 100, and state 3 is blocked because R01 rung 11 Initialized was narrowed to Home+Retract+GripperOpened only (the template's GripperClosed / X-at-extend posture branch was dropped). Either restore the carrying-part branch in Initialized or restore the resume branch — as written the station has no way out.",
+      "templateEvidence": "Template R02 rung 6: [XIC(Status.State[10]) ,XIC(Status.State[2]) XIO(Initialized) XIC(PartStarted) XIC(CycleRunning)]XIC(GripperClosed)...MOVE(13,Control.StateReg); and R01 rung 11: XIC(ZAxisRetract.InPos)[XIC(GripperOpened) XIC(XAxisRetract.InPos) ,XIC(GripperClosed) XIC(XAxisExtend.InPos)]OTE(Initialized)."
+    },
+    {
+      "severity": "blocker",
+      "routine": "R04_XAxisServo",
+      "finding": "XAxisPermissive is carried over unchanged as Z-homed AND ZAxisRetract.InPos/.InPosWide, but state 10 stages a SIMULTANEOUS X move to Pick and Z descent to PickTransition. The moment Z leaves the Retract wide band the permissive drops, rung 16 fires MAS at max decel and aborts the X move mid-stroke (and raises the quickstop warning). The permissive has to express the real clearance for this sequence (a safe-elevation window, not the Retract band) or state 10 cannot run the two moves concurrently.",
+      "templateEvidence": "Template R04 rung 2 permissive + rung 16 quickstop: the template only ever moves X while Z is parked at Retract (X states 16/31/103/106 never overlap a Z move), so the Retract-band permissive is sufficient there — it is not here."
+    },
+    {
+      "severity": "blocker",
+      "routine": "R20_Alarms",
+      "finding": "Rung 6 handles the state-4 'axis not homed at cycle start' condition as a Severity 1 warning feeding q_Pause. A warning sets WarningActive, not AlarmActive, so q_AlarmActive never goes true and R02 rung 29 never drives state 127 — the approved sequence's [4]->[127] exit ('Axis Not Homed - Home Axes In Manual') does not exist in the code. It also mixes a non-timeout condition into a timeout alarm rung whose MOVE(5000,Control.FaultTime) only executes on the other branch.",
+      "templateEvidence": "Template R20 rungs 5-9 are single-purpose timeout alarms ([states] MOVE(FaultTime) XIC(Status.TimeoutFlt)) with no Severity move; the Severity 1 warning shape (rung 10 + R03 rung 4 q_Pause) is reserved for the non-faulting wait."
+    },
+    {
+      "severity": "style",
+      "routine": "R20_Alarms",
+      "finding": "Nine distinct timeout messages named in the approved sequence ('X Axis Failed To Reach In-Between Position - Check Axis And Rehome', 'Z Axis Failed To Clear Pick...', 'X Axis Failed To Return Home...') are collapsed into five grouped rungs with generic text listing state numbers in the comment. The operator at the HMI gets 'Failed To Reach Commanded Position' and has to open the program to learn which move stalled.",
+      "templateEvidence": "Template R20 rungs 5-9: one alarm per move with an explicit label — 'Waiting For X Axis To Extend', 'Waiting For X Axis To Retract', 'Waiting For Z Axis To Extend To Pick', 'Waiting For Z Axis To Extend To Place'."
+    },
+    {
+      "severity": "style",
+      "routine": "R04_XAxisServo",
+      "finding": "Naming is half-converted: HorizontalAxisPermissive / HorizontalAxis_MAM / HorizontalAxisMotionParameters / HorizontalAxisAtTarget sit next to XAxisReady, XAxisONS, XAxis_MSO, XAxis_MAJ, XAxis_MAS_All, XAxisInchAmount in the same routine (same in R05, and R20 rung 4 pairs ZAxisQuickstopMessage with VerticalAxisRetract). Pick one family and carry it through.",
+      "templateEvidence": "Template R04/R05 use a single consistent {Axis}* prefix for every derived tag: XAxisReady, XAxisPermissive, XAxisMotionParameters, XAxis_MAM, XAxisRetract."
+    },
+    {
+      "severity": "style",
+      "routine": "R02_StateTransitions",
+      "finding": "Rung descriptions have drifted long and explanatory ('- horizontal is out of the MAM list so the next segment re-triggers', '- the wideband is the safe-clear height', '- no pick sensing, part assumed gripped, empty pick never faults'), as do R04/R05 rung 21. The template's sequence rungs are a terse 'State nn: <action>' plus the standard application-dependent note.",
+      "templateEvidence": "Template R02 rung 12: 'State 31: Retract x axis (Application dependent - add wideband positioning permissive to advance to next state before move finishes)' — one line, action first, boilerplate note verbatim."
+    },
+    {
+      "severity": "style",
+      "routine": "R03_StateLogic",
+      "finding": "Boilerplate handshake rungs were rewritten inconsistently: rung 7 (Station Complete) drops \\S00_IndexerSP.q_WaitStationsComplete and the CycleStationB / part-status branch for a state 31/4 seal, while rung 6 immediately above still gates on \\S00_IndexerSP.q_WaitStationsComplete. Rung 3 (Actuators Safe) likewise abandons the template's position-based form for a state-list form. Retargeting is fine; leaving half the indexer handshake behind is not.",
+      "templateEvidence": "Template R03 rung 7: XIC(\\S00_IndexerSP.q_WaitStationsComplete)[XIC(CycleStationB)[...Success ,Failure ,Lockout] ,XIO(CycleStationB)]OTE(q_StationComplete); rung 3 is position-based off the RangeCheck bits."
+    },
+    {
+      "severity": "note",
+      "routine": "R03_StateLogic",
+      "finding": "Added rung 10 implements PartInGripper as a sealed OTE rather than the OTL@16 / OTU@25 the compiled sequence specifies. Functionally equivalent here, but it is an added non-template rung — call it out for the CE rather than letting it read as boilerplate.",
+      "templateEvidence": "Template R03 has no PartInGripper rung; the closest template idiom is the sealed PartStarted rung 5."
+    },
+    {
+      "severity": "note",
+      "routine": "R02_StateTransitions",
+      "finding": "Sequence rungs are in correct ascending state order (4,7,10,13,16,19,22,25,28,31,34,37,40,43,46,49,52,55,58,61) with the override block after them, init 100/103/106/124 all present including the carrying-part 106 branch, the state map comment is on rung 0, and no invented ONS/OTL move triggers appear — the MAM state lists split correctly across the wait states. That part is right; keep it.",
+      "templateEvidence": "Template R02 rung order: sequence rungs ascending, then 99, 100→124, restart, 127, 1, 0, State_Engine, cycle timer."
+    }
+  ],
+  "missingVsTemplate": [
+    "Per-named-position AOI_RangeCheck instances: XAxisInBetween, XAxisPick, XAxisPlace, ZAxisPick, ZAxisPickTransition, ZAxisPlaceTransition (template R04/R05 rung 21)",
+    "Resume-from-stop branch on the Z-retract sequence rung: [XIC(Status.State[2]) XIO(Initialized) XIC(PartStarted) XIC(CycleRunning)] XIC(GripperClosed) (template R02 rung 6)",
+    "Carrying-part posture branch in the Initialized rung: XIC(GripperClosed) XIC(XAxisExtend.InPos) (template R01 rung 11)",
+    "Working fast/slow profile selection in the Z Auto Mode staging rung — the slow branch is present but unconditionally overwritten (template R04/R05 rung 14 default-then-override ordering)",
+    "A real fault exit for 'axis not homed at cycle start' (approved [4]->[127]); currently only a Severity 1 warning",
+    "Per-move alarm rungs with distinct operator messages (template R20 rungs 5-9)"
+  ],
+  "summary": "Structure and ordering are good — R02 is in ascending state order, the init block is complete, and you used the indexer trigger/wait split instead of inventing move latches. But five things behave wrong. The AtTarget RangeCheck shortcut is an invented shape: every named position gets its own instance against Parameters.Positions[i], and right now your transitions only work off residue in MotionParameters.Position. The Z staging rung's unconditioned fast branch overwrites the slow branch every scan, so the axis runs fast into pick and place — the exact single-speed defect we get bounced for. You dropped the template's resume-with-part-held branch and narrowed Initialized, which deadlocks the station in state 2 after a stop with a part in the gripper. And X's permissive is still the Retract-band form while state 10 drives Z down at the same time, so the quickstop MAS will abort the X move. Fix those, tighten the comments back to template terseness, and finish the naming conversion.",
+  "template": "S05_ServoPNP.L5X",
+  "model": "claude-opus-5",
+  "costUSD": 0.6812,
+  "durationS": 197,
+  "at": "2026-08-21T14:08:02.045Z"
+}

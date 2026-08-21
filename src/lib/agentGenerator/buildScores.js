@@ -5,7 +5,8 @@
  *
  * Storage: <repo>/jarvis-knowledge/buildScores.json — a flat array:
  *   [{ id, at, project, sm, jarvisVersion, costUSD, durationS, attempts,
- *      validationOk, score (1-10) | null, scoredBy, scoreComment, filePath }]
+ *      validationOk, internalReview | null, score (1-10) | null, scoredBy,
+ *      scoreComment, filePath }]
  *
  * Server-side only (CommonJS, Node built-ins). server.js mounts
  * handleBuildsRoute() for:
@@ -80,6 +81,19 @@ function recordBuild(file, b = {}) {
     mode: b.mode ? String(b.mode) : null,
     // true when this build ran in the background on compile-approval
     pretranslated: b.pretranslated === true,
+    // PRE-DELIVERY INTERNAL REVIEW (internalReviewer.js) — Jarvis's own
+    // adversarial pass against the template before the file can go external.
+    // { verdict: 'ship'|'fix'|null, findings, missingVsTemplate, summary,
+    //   costUSD, error? } — null when the review didn't run (gated off or
+    //   pre-review build). verdict null with error = review attempted, failed.
+    internalReview: (b.internalReview && typeof b.internalReview === 'object') ? {
+      verdict: b.internalReview.verdict ?? null,
+      findings: Array.isArray(b.internalReview.findings) ? b.internalReview.findings : [],
+      missingVsTemplate: Array.isArray(b.internalReview.missingVsTemplate) ? b.internalReview.missingVsTemplate : [],
+      summary: String(b.internalReview.summary || ''),
+      costUSD: numOrNull(b.internalReview.costUSD),
+      ...(b.internalReview.error ? { error: String(b.internalReview.error) } : {}),
+    } : null,
     score: null,
     scoredBy: null,
     scoreComment: null,

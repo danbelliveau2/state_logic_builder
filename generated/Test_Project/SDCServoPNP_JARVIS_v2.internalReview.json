@@ -1,0 +1,144 @@
+{
+  "verdict": "fix",
+  "findings": [
+    {
+      "severity": "blocker",
+      "routine": "R02_StateTransitions",
+      "finding": "Sequence rungs are laid out in FLOW order, not ascending state-number order: rungs run 4, 7, 10, 13, 16, 19, **34**, 22, **37**, 25, 28, **40**, 31. States 34/37/40 are spliced mid-sequence exactly where the flow happens to reach them. A CE scrolling for 'State 22' finds it after 34.",
+      "templateEvidence": "Template R02 rungs 1-12 run 2,3,4,7,10,13,16,19,22,25,28,31 strictly ascending; the indexer's side-path recovery states 31/34/37/40/42 sit at their NUMERIC position, not their flow position."
+    },
+    {
+      "severity": "blocker",
+      "routine": "R02_StateTransitions",
+      "finding": "State map does not match the approved sequence. Approved states 43, 46, 49, 52, 55, 58, 61 are absent, and the numbers 34/37/40 have been re-purposed (approved: 34=Wait For In-Between Traverse, 37=Wait For Pick Approach, 40=Wait For Z at Pick Transition; generated: 34=Z fast to Retract, 37=Z slow into Place, 40=Z fast to Retract). State numbers are FINAL per the approved sequence — the trigger-state/wait-state splits the compiler synthesized have been collapsed away.",
+      "templateEvidence": "Approved sequence 'States (numbers are FINAL — approved by the engineer)' plus review flag: 'Synthesized states 34/37/40/43/46/49/52/55/58/61 exist because MAM only fires on rung false->true'."
+    },
+    {
+      "severity": "blocker",
+      "routine": "R04_XAxisServo",
+      "finding": "Invented per-state ONS trigger latch: rung 16 ORs five ONS one-shots into OTL(HorizontalAxisAutoMoveTrig), rung 17 unlatches it on MAM.IP/.PC, and rung 18 gates the MAM off the latch instead of the state list. This is precisely the shape the standard forbids; the collapsed wait states were 'solved' with a latch instead of the indexer trigger/wait split.",
+      "templateEvidence": "Template R04 rung 15: XIC(SafetyOK)[XIC(Status.State[1]) XIC(XAxisManMoveTrig) ,XIO(Status.State[1]) [XIC(Status.State[16]) ,XIC(Status.State[31]) ,XIC(Status.State[103]) ,XIC(Status.State[106]) ] ]...MAM(...) — plain OR state list, no latch, no ONS."
+    },
+    {
+      "severity": "blocker",
+      "routine": "R05_ZAxisServo",
+      "finding": "Same invented latch on the Z axis, worse: rung 17 chains ten per-state ONS one-shots (ZAxisONS.5–.14) into OTL(VerticalAxisAutoMoveTrig), rung 18 unlatches, rung 19 MAM gated by the latch. Also note the unlatch on MAM.IP means the trigger drops the same scan the move starts — a re-entry into the state during .IP re-fires the latch.",
+      "templateEvidence": "Template R05 rung 15 auto branch: [XIC(Status.State[7]) ,XIC(Status.State[13]) ,XIC(Status.State[22]) ,XIC(Status.State[28]) ,XIC(Status.State[100]) ] straight into the single MAM."
+    },
+    {
+      "severity": "blocker",
+      "routine": "R04_XAxisServo",
+      "finding": "Speed profile split into its own rung (rung 15) separate from the Auto Mode staging rung (rung 14). Position and speed must stage as parallel MOVE branches inside the ONE Auto Mode rung.",
+      "templateEvidence": "Template R04 rung 14 'Auto Mode' stages MoveType, AutoSpeed, Accel, Decel AND all state-keyed Position branches in a single rung."
+    },
+    {
+      "severity": "blocker",
+      "routine": "R05_ZAxisServo",
+      "finding": "Z axis speed staging split across TWO extra rungs (rung 15 'SPEED PROFILE 0 - SLOW', rung 16 'SPEED PROFILE 1 - FAST') outside the Auto Mode rung 14. Two-profile staging is correct and required here, but it belongs as branches inside the one staging rung.",
+      "templateEvidence": "Template R05 rung 14 'Auto Mode' — one rung, all MOVEs including speed/accel/decel, keyed on Status.State[n] branches."
+    },
+    {
+      "severity": "blocker",
+      "routine": "R04_XAxisServo",
+      "finding": "Rung 24 Position Monitor drops AOI_RangeCheck for Pick and Place and substitutes SUB/ABS position-error math, which R02 then tests with LT(HorizontalAxisPickError,0.5)/LT(...Place...,0.5). Every named position gets its own AOI_RangeCheck instance; ad-hoc error math is not a template shape and it silently discards the .InPosWide bit the blend pattern needs.",
+      "templateEvidence": "Template R04 rung 21: [AOI_RangeCheck(XAxisExtend,...,0.5,...,5) ,AOI_RangeCheck(XAxisRetract,...,0.5,...,5)] — one instance per named position."
+    },
+    {
+      "severity": "blocker",
+      "routine": "R05_ZAxisServo",
+      "finding": "Same defect on Z: PickTransition and PlaceTransition get SUB/ABS error tags instead of AOI_RangeCheck instances, and R02 rungs 9 and 14 use LT(err,0.5)/LT(err,5) as a hand-rolled InPos/InPosWide. Transition points are named Positions[i] slots like any other and get their own RangeCheck.",
+      "templateEvidence": "Template R05 rung 21 instantiates AOI_RangeCheck for ZAxisPick, ZAxisPlace AND ZAxisRetract — every named position, transition points included."
+    },
+    {
+      "severity": "blocker",
+      "routine": "R02_StateTransitions",
+      "finding": "Init block branch dropped: there is a state 100 and a state 103 but no state 106 carrying-part path, and state 124 (rung 19) has no branch at all — it falls through to state 4 only. The approved sequence requires two exits from 124: XIC(q_PartGripperClose) -> 46 (place the held part) and XIO(q_PartGripperClose) -> 4. As written a fault while holding a part drives X all the way Home before the part-held path is picked up at state 4.",
+      "templateEvidence": "Template R02 rung 16 'State 106: Initialization extend x axis' (gripper-closed branch) and rung 17 which merges 103/106 into 124."
+    },
+    {
+      "severity": "blocker",
+      "routine": "R02_StateTransitions",
+      "finding": "The approved [4]->[127] exit ('Axis Not Homed - Home Axes In Manual' on cycle start with an axis unhomed) is not implemented anywhere in R02 or R20. Rung 4 simply refuses to advance, so the operator gets a silent stall instead of an instruction.",
+      "templateEvidence": "Approved sequence transition '[4] -> [127] {timeout branch=fail}' and R20's alarm-per-wait pattern (template rungs 5-10)."
+    },
+    {
+      "severity": "blocker",
+      "routine": "R20_Alarms",
+      "finding": "Per-state wait alarms have been lumped: Alarm[0] covers states 7/100/103, Alarm[1] covers 10/13, Alarm[3] covers 19/34/22/37, Alarm[4] covers 25/28/40. The approved sequence enumerates a distinct message per wait ('X Axis Failed To Reach In-Between Position - Check Axis And Rehome', 'Z Axis Failed To Reach Pick - Check Axis And Rehome', etc.). Lumped alarms tell the operator nothing actionable — they cannot tell which axis or which segment failed.",
+      "templateEvidence": "Template R20 rungs 5-9: one alarm per motion ('Waiting For X Axis To Extend', 'Waiting For X Axis To Retract', 'Waiting For Z Axis To Extend To Pick', 'Waiting For Z Axis To Extend To Place', 'Waiting For Z Axis To Retract')."
+    },
+    {
+      "severity": "blocker",
+      "routine": "R20_Alarms",
+      "finding": "Rung 11 'Idle/ready wait at state 4 has no fault timer — XIC(Status.State[4])MOVE(0,Control.FaultTime)' is an invented rung with no template counterpart. Control.FaultTime is written by the alarm rungs that own a wait; a bare zeroing rung is a new pattern shipped silently.",
+      "templateEvidence": "Template R20 has no FaultTime-zeroing rung; every Control.FaultTime write sits inside the alarm rung for the state it bounds (e.g. rung 10 'Waiting For Part Present' MOVE(10000,Control.FaultTime))."
+    },
+    {
+      "severity": "blocker",
+      "routine": "R03_StateLogic",
+      "finding": "Rung 4 q_Pause boilerplate rewritten to [XIC(AlarmActive) ,XIC(WarningActive) ,XIC(Status.TimeoutFlt) ]XIO(FaultReset). The sequence calls this the 'Standard template pause request'; nothing in it requires the change, and the new form pauses the dial on any warning.",
+      "templateEvidence": "Template R03 rung 4: XIC(Alarm[5].Active)OTE(q_Pause)."
+    },
+    {
+      "severity": "blocker",
+      "routine": "R01_Inputs",
+      "finding": "Rung 11 Initialized gutted: the template's two posture branches (gripper open + X retract, gripper closed + X extend) are replaced with Z-at-Retract plus two homed bits. X position is no longer part of Initialized, so states 2/3/4 will call the station initialized with X parked anywhere in the stroke.",
+      "templateEvidence": "Template R01 rung 11: XIC(ZAxisRetract.InPos)[XIC(GripperOpened) XIC(XAxisRetract.InPos) ,XIC(GripperClosed) XIC(XAxisExtend.InPos) ]OTE(Initialized)."
+    },
+    {
+      "severity": "style",
+      "routine": "R02_StateTransitions",
+      "finding": "Rung 0 carries the state map TWICE — a 'STATE MAP (generated — authoritative)' block and then a second 'Start Of State Machine | State map: ...' listing the same states in a different (flow) order. Two conflicting maps in one comment is worse than none.",
+      "templateEvidence": "Template R02 rung 0 comment is 'Start Of State Machine' with NOP()."
+    },
+    {
+      "severity": "style",
+      "routine": "R02_StateTransitions",
+      "finding": "Rung descriptions run to three and four sentences of prose ('Wideband blend out of Z Retract and X In-Between - no dead stop at the corner.', 'Strict in-position on both axes: the fast descent must be fully stopped...'). Template rung comments are one terse line naming the state and the action.",
+      "templateEvidence": "Template R02 rung 7: 'State 16: Extend x axis (Application dependent - add wideband positioning permissive...)' — one line, action only."
+    },
+    {
+      "severity": "style",
+      "routine": "R04_XAxisServo",
+      "finding": "Naming family is mixed inside one routine: HorizontalAxisMotionParameters / HorizontalAxis_MAM / HorizontalAxisAutoMoveTrig alongside XAxisPermissive / XAxisManMoveTrig / XAxis_MAS_All / iq_XAxis / HMI_XAxis. Pick one axis prefix per routine; the reader should not have to map two names onto one axis. Same in R05 (VerticalAxis* vs ZAxis*).",
+      "templateEvidence": "Template R04/R05 use a single prefix throughout: XAxisMotionParameters, XAxis_MAM, XAxisPermissive, XAxisManMoveTrig."
+    },
+    {
+      "severity": "style",
+      "routine": "R03_StateLogic",
+      "finding": "The part-held bit is named PartHeld; the approved sequence names it PartInGripper. Also the template PartStarted rung's clearing conditions (XIO(g_MachineBasic.PowerUpCP), XIO(GripperClosed)) were dropped when the rung was rebuilt as an OTL/OTU pair with PartStarted hung off a branch.",
+      "templateEvidence": "Template R03 rung 5: [XIC(Status.State[13]) ,XIC(PartStarted) XIO(Status.State[28]) XIO(g_MachineBasic.PowerUpCP) XIO(GripperClosed) ]OTE(PartStarted); approved sequence 'PartInGripper is a latched command-state bit (OTL at 16, OTU at 25)'."
+    },
+    {
+      "severity": "note",
+      "routine": "R02_StateTransitions",
+      "finding": "Rung 17 gates the 127->100 recovery entry with XIC(CycleRunning); the approved transition specifies XIC(FaultReset) XIC(SafetyOK). Recovering into an init move without a SafetyOK term relies on the state 0 override rung to catch it.",
+      "templateEvidence": "Approved transition '[127] -> [100] {recovery}: XIC(Status.State[127]) XIC(FaultReset) XIC(SafetyOK) MOVE(100,Control.StateReg)'."
+    },
+    {
+      "severity": "note",
+      "routine": "R03_StateLogic",
+      "finding": "q_ActuatorsSafe (rung 3) and q_StationComplete (rung 7) are rebuilt state-keyed rather than posture/part-tracking keyed. That is what the approved handshake table asks for (set@4 clear@7, set@31 clear@4), so it is not a finding against the sequence — flagging only so the CE sees the template rungs were replaced deliberately.",
+      "templateEvidence": "Template R03 rungs 3 and 7."
+    }
+  ],
+  "missingVsTemplate": [
+    "R02: init state 106 carrying-part branch (template rung 16) — only 100/103 present",
+    "R02: branch exits out of state 124 (approved 124->46 part held / 124->4 empty); rung 19 falls through to state 4 unconditionally",
+    "R02: approved states 43, 46, 49, 52, 55, 58, 61 (the synthesized trigger/wait splits) have no rungs",
+    "R02: [4]->[127] 'Axis Not Homed - Home Axes In Manual' exit",
+    "R04 rung 21 / R05 rung 21 equivalents: AOI_RangeCheck instances for XAxisPick, XAxisPlace, ZAxisPickTransition, ZAxisPlaceTransition (replaced with SUB/ABS error math)",
+    "R04/R05: the single 'Auto Mode' staging rung — position and speed split across 2 (X) and 3 (Z) rungs",
+    "R04/R05: the plain state-list auto branch on the Axis Motion Command rung — replaced by OTL/OTU AutoMoveTrig latches plus per-state ONS rungs",
+    "R01 rung 11: the gripper/X-position posture branches of Initialized",
+    "R03 rung 4: template q_Pause rung",
+    "R03 rung 5: template PartStarted rung conditions",
+    "R20: per-move alarm rungs — five distinct waits collapsed into lumped multi-state alarms"
+  ],
+  "summary": "This bounces. Three of the four failure modes you were warned about are in here at once: R02 sequence rungs are in flow order with 34/37/40 spliced between 19/22/25/28, both servo routines invent OTL/OTU AutoMoveTrig latches fed by per-state ONS rungs to gate the MAM, and speed staging was pulled out into separate profile rungs instead of branches inside the one Auto Mode rung. On top of that the approved state map was rewritten — states 43/46/49/52/55/58/61 are gone and 34/37/40 were re-purposed, which is exactly what the latch was invented to paper over; go back and implement the compiler's trigger-state/wait-state splits as drawn. Also restore init 106 and the 124 part-held branch, give every named position (including the two transition points) its own AOI_RangeCheck instead of SUB/ABS/LT error math, un-lump the R20 alarms so the operator learns which axis failed, and put the template's Initialized, PartStarted and q_Pause rungs back the way they were. Tighten the rung comments to one terse line and pick one axis prefix per routine while you're in there.",
+  "template": "S05_ServoPNP.L5X",
+  "model": "claude-opus-5",
+  "costUSD": 0.5598,
+  "durationS": 125,
+  "at": "2026-08-21T14:10:07.760Z"
+}

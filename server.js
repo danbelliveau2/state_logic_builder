@@ -30,7 +30,15 @@
  *                                     Closing the connection cancels the model stream.
  *                                     On success the L5X is also saved to
  *                                     generated/<project>/<sm>__jarvis_v<ver>__<date>.L5X
- *                                     plus the structured IR as <same base>.ir.json
+ *                                     plus the structured IR as <same base>.ir.json.
+ *                                     The done payload (and the build record)
+ *                                     carries internalReview — Jarvis's own
+ *                                     pre-delivery adversarial review of the
+ *                                     file against the template ('ship'|'fix';
+ *                                     'fix' = not ready for external delivery,
+ *                                     a human decides — never auto-relooped).
+ *                                     Gate: JARVIS_INTERNAL_REVIEW=on|off
+ *                                     (default on).
  *   GET    /api/jarvis/ir             Latest compiled IR for one station:
  *                                     ?filename=<project.json>&smId=<id|name> ->
  *                                     { file, mtimeMs, smName, ir } (404 when
@@ -403,6 +411,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
             ok: rec.ok === true,
             l5x,
             validation: rec.validation,
+            internalReview: rec.internalReview ?? null,
             reviewNotes,
             ir,
             meta: {
@@ -479,6 +488,10 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
             validationOk: result.ok === true,
             filePath: savedPath,
             mode: result.meta?.mode ?? null,
+            // Pre-delivery internal review — Jarvis's own adversarial pass
+            // against the template (client.js last stage). 'fix' = not ready
+            // for external delivery until a human decides.
+            internalReview: result.internalReview ?? null,
           }).id;
       } catch (e) { console.warn('[generate] build record failed:', e.message); }
       send('done', { ...result, savedPath, savedIrPath, buildId });
@@ -831,6 +844,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
               filePath: savedPath,
               mode: 'translation',
               pretranslated: true,
+              internalReview: result.internalReview ?? null,
             }).id;
         } catch (e) { console.warn('[pretranslate] build record failed:', e.message); }
       }
@@ -849,6 +863,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         jarvisVersion: result.meta?.jarvisVersion ?? null,
         savedPath, savedIrPath, buildId,
         validation: result.validation ?? null,
+        internalReview: result.internalReview ?? null,
         costUSD: result.meta?.costEstimate?.totalUSD ?? null,
         durationS,
         attempts: result.meta?.attempts?.length ?? null,
@@ -898,6 +913,8 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         savedIrPath: rec?.savedIrPath ?? null,
         buildId: rec?.buildId ?? null,
         validation: rec?.validation ?? null,
+        ok: rec?.ok ?? null,
+        internalReview: rec?.internalReview ?? null,
         compiledAt: rec?.compiledAt ?? null,
         currentCompiledAt: sm.compiledSequence?.compiledAt ?? null,
         approved: sm.compiledSequence?.approved === true,

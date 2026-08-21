@@ -15,6 +15,12 @@
  *   Failures at any stage (bad JSON, schema errors, merge assertion failures,
  *   validation errors) are fed back to the model for a revised plan, up to
  *   JARVIS_MAX_ATTEMPTS total model calls.
+ *   LAST STAGE (validation passed): the PRE-DELIVERY INTERNAL REVIEW
+ *   (internalReviewer.js) — Jarvis adversarially reviews the finished file
+ *   against the template like the senior CE would; result rides on
+ *   result.internalReview ({verdict:'ship'|'fix', findings, ...}). A 'fix'
+ *   verdict never auto-loops regeneration — a human decides.
+ *   Gate: JARVIS_INTERNAL_REVIEW=on|off (default on).
  *
  * Configuration (.env, all optional). Quality is the constraint, not cost —
  * caps exist for visibility and runaway protection only:
@@ -482,9 +488,39 @@ async function generateL5X(projectJson, smId, options = {}) {
     messages.push({ role: 'user', content: feedback });
   }
 
+  // ── PRE-DELIVERY INTERNAL REVIEW (the "pre-Jason pass") ────────────────────
+  // Last pipeline stage: before any generated file can be marked ready to go
+  // external, Jarvis reviews it the way the senior CE would — adversarially,
+  // against the template (internalReviewer.js, ONE model call, effort high).
+  // Mechanical validation above catches structure; this catches style drift,
+  // missing template blocks, wrong-shaped logic. A 'fix' verdict does NOT
+  // auto-loop regeneration (cost discipline) — it marks the build "not ready
+  // for external delivery" so a human decides.
+  // Gate: JARVIS_INTERNAL_REVIEW=on|off (default on).
+  let internalReview = null;
+  const reviewEnabled = String(process.env.JARVIS_INTERNAL_REVIEW || 'on').toLowerCase() !== 'off';
+  if (reviewEnabled && validation.ok && l5x) {
+    onProgress(94, 'review', 'Internal review — Jarvis checking the file against the template like the senior CE would');
+    try {
+      const { reviewGenerated } = require('./internalReviewer');
+      internalReview = await reviewGenerated({ l5x, projectJson, smId, signal: abortSignal });
+      totalCost += internalReview.costUSD || 0;
+      onProgress(98, 'review', internalReview.verdict === 'ship'
+        ? '✓ Internal review: ship'
+        : `⚠ Internal review: ${internalReview.findings.length} finding(s) — not ready for external delivery`);
+    } catch (e) {
+      // A review failure never fails the build — but it is reported honestly
+      // (verdict null = "review didn't run", NOT "reviewed clean").
+      if (e && (e.name === 'AbortError' || e.name === 'APIUserAbortError')) throw e;
+      internalReview = { verdict: null, error: e.message || String(e), findings: [], missingVsTemplate: [], summary: '' };
+      onProgress(98, 'review', 'Internal review failed (build kept): ' + (e.message || e));
+    }
+  }
+
   return {
     ok: validation.ok,
     l5x,
+    internalReview,
     validation,
     editPlan,
     reviewNotes: l5x ? extractReviewNotes(l5x) : [],
@@ -508,7 +544,8 @@ async function generateL5X(projectJson, smId, options = {}) {
         totalUSD: Number(totalCost.toFixed(4)),
         model: MODEL,
         pricingPerM: PRICING[MODEL] || PRICING['claude-opus-5'],
-        note: 'input + 2.0x cache-write (1h TTL) + 0.10x cache-read + output, per attempt',
+        note: 'input + 2.0x cache-write (1h TTL) + 0.10x cache-read + output, per attempt'
+          + (internalReview && internalReview.costUSD ? `; includes internal review ($${internalReview.costUSD})` : ''),
       },
     },
   };
