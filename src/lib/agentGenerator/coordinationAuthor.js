@@ -118,7 +118,7 @@ Respond with ONLY one JSON object (no markdown fences, no prose before/after):
   ],
   "reviewFlags": [ "<*Replace/*Verify item or design decision the CE must review>" ],
   "questions": [ "<CONTROLS-ARCHITECTURE question that PASSES the self-answer test — usually empty>" ],
-  "summary": "<3-5 sentence plain-English narrative of the compiled sequence>"
+  "summary": "<AT MOST 5 short sentences / ~80 words, plain English: what the cycle does, how it recovers, what talks to the supervisor. This is read in ten seconds by the mechanical engineer — never a paragraph-by-paragraph walkthrough; the states/transitions carry the detail>"
 }
 
 Rules:

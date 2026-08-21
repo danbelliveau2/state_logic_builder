@@ -71,6 +71,23 @@ export function mirrorApproved(smId, approved) {
   }));
 }
 
+/** Mirror a decision review (Code grid ✓/✗ on Jarvis's decisions) into the
+ *  in-memory store — same store-consistency rule as compile/approve: the
+ *  server wrote decisionReviews into the project FILE; auto-save would
+ *  clobber it unless the in-memory project carries it too. */
+export function mirrorDecisionReviews(smId, decisionReviews) {
+  useDiagramStore.setState((s) => ({
+    project: {
+      ...s.project,
+      stateMachines: (s.project?.stateMachines ?? []).map((m) =>
+        m.id === smId && m.compiledSequence
+          ? { ...m, compiledSequence: { ...m.compiledSequence, decisionReviews } }
+          : m
+      ),
+    },
+  }));
+}
+
 /** GET the compiled sequence for one station.
  *  → { status: 'ok', data } | { status: 'none' } | { status: 'error', error } */
 export async function fetchCompiledIr(filename, smId) {

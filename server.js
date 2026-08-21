@@ -304,6 +304,24 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
   // Restarting mid-generation kills the SSE and loses a paid model run.
   let activeGenerations = 0;
 
+  // WHAT is running, not just how many — an in-memory map alongside the
+  // counter, registered at the same acquire/release points (generation
+  // stream, compile, pretranslation). GET /api/jarvis/active serves it so
+  // the Generations grid can show live "Generating — Station X" rows.
+  // Entries: { type: 'generation'|'compile'|'pretranslation', project, sm, startedAt }.
+  const activeWork_ = new Map();
+  let activeWorkSeq_ = 0;
+  function registerActiveWork_(type, project, sm) {
+    const id = 'w' + (++activeWorkSeq_);
+    activeWork_.set(id, { type, project: project ?? null, sm: sm ?? null, startedAt: new Date().toISOString() });
+    return id;
+  }
+  function updateActiveWork_(id, project, sm) {
+    const w = activeWork_.get(id);
+    if (w) { w.project = project ?? w.project; w.sm = sm ?? w.sm; }
+  }
+  function releaseActiveWork_(id) { activeWork_.delete(id); }
+
   /** GET /api/generate/stream?filename=&smId= — SSE live-progress generation.
    *  One connection runs the whole pipeline: progress events stream as the
    *  model works, the final `done` event carries the full result payload
@@ -312,9 +330,10 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
    *  generated/<project>/<sm>__jarvis_v<version>__<date>.L5X. */
   async function handleGenerateStream(req, res, query) {
     activeGenerations++;
+    const workId = registerActiveWork_('generation'); // names filled in once the SM is resolved
     let counted = true;
     const releaseGeneration = () => {
-      if (counted) { counted = false; activeGenerations = Math.max(0, activeGenerations - 1); }
+      if (counted) { counted = false; activeGenerations = Math.max(0, activeGenerations - 1); releaseActiveWork_(workId); }
     };
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -365,6 +384,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       // smId accepts id, name, or displayName (buildIR matches by id only).
       const sm = findSm_(projectJson, query.smId);
       if (!sm) { send('error', { error: 'State machine not found: ' + (query.smId || '(first)') }); clearInterval(keepalive); releaseGeneration(); return res.end(); }
+      updateActiveWork_(workId, projectJson.name || safe.replace('.json', ''), sm.name);
 
       // SHORT-CIRCUIT: a FRESH pretranslation (built in the background when
       // the engineer approved the compiled sequence) IS this exact result —
@@ -601,9 +621,10 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     // health check protects them from restarts (a compile was killed mid-run
     // on 2026-08-20 because only generations were counted).
     activeGenerations++;
+    const compileWorkId = registerActiveWork_('compile');
     let compileCounted = true;
     const releaseCompile = () => {
-      if (compileCounted) { compileCounted = false; activeGenerations = Math.max(0, activeGenerations - 1); }
+      if (compileCounted) { compileCounted = false; activeGenerations = Math.max(0, activeGenerations - 1); releaseActiveWork_(compileWorkId); }
     };
     try {
       const body = JSON.parse(await readBody(req) || '{}');
@@ -614,6 +635,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       const projectJson = JSON.parse(fs.readFileSync(fp, 'utf8'));
       const sm = findSm_(projectJson, body.smId);
       if (!sm) return sendJson(res, 404, { error: 'State machine not found: ' + (body.smId || '(first)') });
+      updateActiveWork_(compileWorkId, projectJson.name || safe.replace('.json', ''), sm.name);
 
       const result = await author.compileSequence({ projectJson, smId: sm.id });
 
@@ -765,6 +787,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
 
     pretransInFlight_.add(key);
     activeGenerations++;
+    const pretransWorkId = registerActiveWork_('pretranslation', projectJson.name || safe.replace('.json', ''), sm.name);
     const startedAt = Date.now();
     const compiledAt = sm.compiledSequence?.compiledAt || null;
     const sidecarPath = pretransFileFor_(projectJson, safe, sm);
@@ -848,6 +871,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       } catch (e2) { console.warn('[pretranslate] sidecar write failed:', e2.message); }
     } finally {
       activeGenerations = Math.max(0, activeGenerations - 1);
+      releaseActiveWork_(pretransWorkId);
       pretransInFlight_.delete(key);
     }
   }
@@ -1443,6 +1467,74 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     } catch (e) { sendJson(res, 500, { error: e.message }); }
   }
 
+  /** POST /api/jarvis/decisions/review — approve/deny one of Jarvis's compile
+   *  decisions (reviewFlags). Body: { filename, smId, decisionText,
+   *  verdict: 'good'|'denied', why?, reviewer }.
+   *  - Both verdicts land in sm.compiledSequence.decisionReviews[] (the
+   *    project file) — ✓ is reinforcement data for later.
+   *  - ✗ (denied, why required) also runs the correction-learning lesson
+   *    path: the reviewer's why is appended to the matching concept doc,
+   *    attributed and dated (same files correction lessons land in).
+   *  NOTE: the client MUST mirror decisionReviews into its in-memory store
+   *  (same store-consistency rule as compile/approve — auto-save would
+   *  otherwise clobber this write). */
+  async function handleJarvisDecisionReview(req, res) {
+    try {
+      const body = JSON.parse(await readBody(req) || '{}');
+      const safe = safeFilename(body.filename || '');
+      if (!safe) return sendJson(res, 400, { error: 'Invalid or missing filename' });
+      const decisionText = String(body.decisionText || '').trim();
+      const verdict = body.verdict === 'good' ? 'good' : body.verdict === 'denied' ? 'denied' : null;
+      const reviewer = String(body.reviewer || '').trim();
+      const why = String(body.why || '').trim();
+      if (!decisionText) return sendJson(res, 400, { error: 'decisionText is required' });
+      if (!verdict) return sendJson(res, 400, { error: "verdict must be 'good' or 'denied'" });
+      if (!reviewer) return sendJson(res, 400, { error: 'reviewer is required' });
+      if (verdict === 'denied' && !why) return sendJson(res, 400, { error: 'A denial needs a why — that is what Jarvis learns from' });
+
+      const fp = path.join(DATA_DIR_, safe);
+      if (!fs.existsSync(fp)) return sendJson(res, 404, { error: 'Project not found: ' + safe });
+      const projectJson = JSON.parse(fs.readFileSync(fp, 'utf8'));
+      const sm = findSm_(projectJson, body.smId);
+      if (!sm) return sendJson(res, 404, { error: 'State machine not found: ' + (body.smId || '(first)') });
+      if (!sm.compiledSequence) return sendJson(res, 409, { error: 'Station has no compiled sequence to review decisions on' });
+
+      const review = { decisionText, verdict, why: why || null, reviewer, at: new Date().toISOString() };
+      const reviews = (sm.compiledSequence.decisionReviews || [])
+        .filter(r => r.decisionText !== decisionText); // re-review replaces
+      reviews.push(review);
+      sm.compiledSequence.decisionReviews = reviews;
+      saveProjectWithBackup_(safe, projectJson);
+
+      // Denied → lesson path (same concept docs correction learning writes to).
+      let learned = null;
+      if (verdict === 'denied') {
+        try {
+          const learner = require('./src/lib/agentGenerator/correctionLearner.js');
+          const t = (decisionText + ' ' + why).toLowerCase();
+          const conceptArea =
+            /servo|axis|axes|motion|home|position|speed|blend/.test(t) ? 'servo-motion'
+            : /vision|camera|inspect/.test(t) ? 'vision-systems'
+            : /pneumatic|valve|solenoid|cylinder|gripper/.test(t) ? 'pneumatics'
+            : /handshake|coordinat|upstream|downstream|signal/.test(t) ? 'coordination'
+            : /recover|e.?stop|lockout/.test(t) ? 'recovery'
+            : /alarm|fault/.test(t) ? 'alarms'
+            : 'general';
+          const date = new Date().toISOString().slice(0, 10);
+          const label = `${projectJson.name || safe} / ${sm.name}`;
+          const line = `- (${date}, ${reviewer} denied a compile decision on ${label}) ${why} [decision was: "${decisionText.slice(0, 160)}"]`;
+          const file = learner.appendCorrectionLesson(learner.CONCEPTS_DIR, conceptArea, line);
+          learned = { conceptArea, file: path.basename(file) };
+          console.log(`[decision-review] ${reviewer} denied a decision on ${label} → lesson filed in ${conceptArea}`);
+        } catch (e) {
+          console.warn('[decision-review] lesson filing failed (review still recorded):', e.message);
+        }
+      }
+
+      sendJson(res, 200, { ok: true, review, learned, decisionReviews: reviews });
+    } catch (e) { sendJson(res, 500, { error: e.message }); }
+  }
+
   /** Background correction analysis — in-process async, same pattern as
    *  pretranslation: counted in activeGenerations so nobody restarts the
    *  server mid-model-call; result (or honest failure) lands on the build
@@ -1857,6 +1949,24 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       return require('./src/lib/agentGenerator/buildScores.js').handleLearnedLineRoute(req, res, {
         sendJson, readBody, mdPath: ME_KNOWLEDGE_PATH_,
       });
+    }
+
+    // Live in-flight work — what's generating RIGHT NOW (generation stream,
+    // compile, pretranslation), for the Generations grid's in-progress rows.
+    if (pathname === '/api/jarvis/active') {
+      if (method === 'GET') {
+        return sendJson(res, 200, {
+          activeGenerations,
+          active: [...activeWork_.entries()].map(([id, w]) => ({ id, ...w })),
+        });
+      }
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    // Approve/deny one of Jarvis's compile decisions (Code grid).
+    if (pathname === '/api/jarvis/decisions/review') {
+      if (method === 'POST') return handleJarvisDecisionReview(req, res);
+      return sendJson(res, 405, { error: 'Method not allowed' });
     }
 
     // Build scoring — module owns the routes; see src/lib/agentGenerator/buildScores.js

@@ -31,6 +31,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { DictatedTextarea } from './DictatedTextarea.jsx';
+import { useDiagramStore } from '../../store/useDiagramStore.js';
+import { useV2Shell } from '../../v2/useV2Shell.js';
+import { servoGaps, servoGapSummary } from '../../v2/servoValues.js';
+import { fetchPretranslated, isPretranslatedReady, mirrorDecisionReviews } from '../../v2/compiledSequence.js';
 
 const C = {
   primary: 'var(--color-primary)',
@@ -911,9 +915,411 @@ function GenerationDetail({ row, onUpdated }) {
   );
 }
 
-function GenerationsTab({ gens, track, onRowUpdated }) {
+// Live in-flight work (from GET /api/jarvis/active) rendered as spinner rows
+// at the top of the grid — Dan: "if it's generating at the time, it'll show
+// you generating." Flips to a normal reviewable row on completion (the same
+// 4s poll refreshes the grid).
+const ACTIVE_TYPE_LABEL = {
+  generation: 'Generating',
+  pretranslation: 'Pre-building (approved sequence)',
+  compile: 'Compiling sequence',
+};
+
+function fmtElapsed(startedAtIso, now) {
+  const ms = now - new Date(startedAtIso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return '0:00';
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function ActiveRow({ w, now }) {
+  return (
+    <tr data-testid={`active-row-${w.id}`} style={{ background: C.primaryBg }}>
+      <td style={{ ...td, width: 18 }}>
+        <span
+          aria-hidden
+          style={{
+            display: 'inline-block', width: 12, height: 12, borderRadius: '50%',
+            border: `2px solid ${C.primary}`, borderTopColor: 'transparent',
+            animation: 'jarvisActiveSpin 0.9s linear infinite',
+          }}
+        />
+      </td>
+      <td style={{ ...td, fontWeight: 700, color: C.primary }} colSpan={9}>
+        {ACTIVE_TYPE_LABEL[w.type] || 'Working'} — {w.sm || 'station…'}
+        {w.project ? ` (${w.project})` : ''}
+        <span style={{ color: C.muted, fontWeight: 400 }}> — {fmtElapsed(w.startedAt, now)} elapsed</span>
+        <span style={{ color: C.light, fontWeight: 400, fontSize: 11 }}> · appears below when done</span>
+      </td>
+    </tr>
+  );
+}
+
+// ── Station pipeline — mission control (Dan: "give me a grid view of: the
+// code compile status; any questions you need answered; any decisions you
+// want a controls engineer's input on; and when it's done, the L5X right
+// there, and next to it score it and provide feedback") ─────────────────────
+
+/** Truncate a decision to its first clause for the one-line list. */
+function firstClause(s) {
+  const t = String(s).trim();
+  const m = t.split(/(?<=[.;:])\s+|\s+—\s+/)[0] || t;
+  return m.length > 110 ? m.slice(0, 110) + '…' : m;
+}
+
+/** Derive one station's pipeline status.
+ *  → { key, label, tone: 'live'|'ok'|'warn'|'bad'|'muted', live? } */
+function stationStatus(sm, activeList, pretrans, gaps) {
+  const act = (activeList || []).find(w => w.sm === sm.name);
+  if (act) {
+    const label = act.type === 'compile' ? 'Compiling'
+      : act.type === 'pretranslation' ? 'Building code'
+      : 'Generating';
+    return { key: 'live', label, tone: 'live', live: act };
+  }
+  const cs = sm.compiledSequence;
+  const p = pretrans?.[sm.id];
+  if (cs?.approved === true) {
+    if (p && p.error) return { key: 'failed', label: `✗ Code build failed — ${String(p.error).slice(0, 80)}`, tone: 'bad' };
+    if (isPretranslatedReady(p)) {
+      return p.ok === false
+        ? { key: 'ready-warn', label: '⚠ Code built — validation reported errors', tone: 'warn' }
+        : { key: 'ready', label: '✓ Code ready', tone: 'ok' };
+    }
+    return { key: 'approved', label: 'Approved — Generate builds the code', tone: 'muted' };
+  }
+  if (cs) return { key: 'awaiting-approve', label: 'Compiled — awaiting approve', tone: 'warn' };
+  if (gaps.length > 0) return { key: 'servo-needed', label: `⚠ ${servoGapSummary(gaps)}`, tone: 'warn', servo: true };
+  return { key: 'not-compiled', label: 'Not compiled', tone: 'muted' };
+}
+
+const STATUS_TONE = {
+  live:  { color: C.primary, bg: C.primaryBg },
+  ok:    { color: C.success, bg: '#e6f4ea' },
+  warn:  { color: '#7a6220', bg: '#fdf6e3' },
+  bad:   { color: C.danger, bg: '#fdecec' },
+  muted: { color: C.muted, bg: C.sidebar },
+};
+
+/** ✓/✗ review controls for ONE decision line. */
+function DecisionLine({ text, review, onReview }) {
+  const [showFull, setShowFull] = useState(false);
+  const [denying, setDenying] = useState(false);
+  const [why, setWhy] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const short = firstClause(text);
+  const truncated = short !== text.trim();
+
+  async function submit(verdict) {
+    setBusy(true); setError(null);
+    try {
+      await onReview(text, verdict, verdict === 'denied' ? why.trim() : '');
+      setDenying(false);
+    } catch (e) { setError(e.message); }
+    setBusy(false);
+  }
+
+  return (
+    <div style={{ padding: '5px 0', borderBottom: `1px solid ${C.border}` }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+        <span style={{ flex: 1, fontSize: 12.5, lineHeight: 1.5, color: C.text }} title={text}>
+          {showFull ? text : short}
+          {truncated && (
+            <button
+              onClick={() => setShowFull(f => !f)}
+              style={{ background: 'none', border: 'none', color: C.primary, fontSize: 11, cursor: 'pointer', padding: '0 4px' }}
+            >{showFull ? 'less' : 'more'}</button>
+          )}
+        </span>
+        {review ? (
+          <span style={{
+            flexShrink: 0, fontSize: 10.5, fontWeight: 700, borderRadius: 999, padding: '2px 9px',
+            background: review.verdict === 'good' ? '#e6f4ea' : '#fdecec',
+            color: review.verdict === 'good' ? C.success : C.danger,
+          }} title={review.verdict === 'denied' ? `${review.reviewer}: ${review.why}` : `Approved by ${review.reviewer}`}>
+            {review.verdict === 'good' ? `✓ ${review.reviewer}` : `✗ denied — ${review.reviewer}`}
+          </span>
+        ) : (
+          <span style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+            <button
+              disabled={busy}
+              title="Good decision — recorded (reinforcement)"
+              onClick={() => submit('good')}
+              style={{ background: '#e6f4ea', border: `1px solid ${C.success}`, color: C.success, borderRadius: 5, width: 26, height: 22, fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }}
+            >✓</button>
+            <button
+              disabled={busy}
+              title="Deny — tell Jarvis why (he learns from it)"
+              onClick={() => setDenying(d => !d)}
+              style={{ background: '#fdecec', border: `1px solid ${C.danger}`, color: C.danger, borderRadius: 5, width: 26, height: 22, fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }}
+            >✗</button>
+          </span>
+        )}
+      </div>
+      {denying && !review && (
+        <div style={{ marginTop: 6 }}>
+          <DictatedTextarea
+            rows={2} value={why} onChange={setWhy}
+            placeholder="Why is this wrong? Jarvis files this as a lesson — talk or type…"
+            style={{
+              width: '100%', boxSizing: 'border-box', resize: 'vertical', fontSize: 12,
+              border: `1px solid ${C.border}`, borderRadius: 6, padding: '6px 9px',
+              fontFamily: 'inherit', color: C.text, background: C.surface, lineHeight: 1.5,
+            }}
+          />
+          <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center' }}>
+            <button
+              disabled={busy || !why.trim()}
+              onClick={() => submit('denied')}
+              style={{ background: why.trim() ? C.danger : C.border, color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+            >{busy ? 'Sending…' : 'Deny & teach'}</button>
+            <button
+              disabled={busy}
+              onClick={() => { setDenying(false); setError(null); }}
+              style={{ background: 'none', border: `1px solid ${C.border}`, color: C.muted, borderRadius: 6, padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}
+            >Cancel</button>
+            {error && <span style={{ color: C.danger, fontSize: 11 }}>{error}</span>}
+          </div>
+        </div>
+      )}
+      {error && !denying && <div style={{ color: C.danger, fontSize: 11, marginTop: 3 }}>{error}</div>}
+    </div>
+  );
+}
+
+function sectionHead(label) {
+  return (
+    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.muted, margin: '0 0 6px' }}>
+      {label}
+    </div>
+  );
+}
+
+/** One station's expanded row: status detail → questions → decisions → code+review. */
+function StationDetail({ sm, projectName, status, stationQuestions, onQuestionUpdate, latestBuild, onRowUpdated, gaps }) {
+  const filename = useDiagramStore(s => s.currentFilename);
+  const [reviewer, setReviewer] = useState('Jason');
+  const cs = sm.compiledSequence;
+  const flags = (cs?.ir?.reviewFlags || []).map(String);
+  const reviews = cs?.decisionReviews || [];
+  const reviewFor = (text) => reviews.find(r => r.decisionText === text) || null;
+
+  async function reviewDecision(decisionText, verdict, why) {
+    const r = await fetch('/api/jarvis/decisions/review', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename, smId: sm.id, decisionText, verdict, why, reviewer }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    mirrorDecisionReviews(sm.id, data.decisionReviews); // auto-save consistency
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* 1 — status detail */}
+      <div>
+        {sectionHead('Pipeline status')}
+        <div style={{ fontSize: 12.5, color: C.text, lineHeight: 1.6 }}>
+          {status.label}
+          {cs && <span style={{ color: C.light }}> — compiled {String(cs.compiledAt || '').slice(0, 16).replace('T', ' ')}{cs.approved ? `, approved` : ', not yet approved'}</span>}
+        </div>
+        {gaps.length > 0 && (
+          <button
+            data-testid={`station-servo-link-${sm.name}`}
+            onClick={() => useV2Shell.getState().openServoTable(sm.id)}
+            style={{ background: 'none', border: 'none', color: C.primary, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, textDecoration: 'underline', marginTop: 4 }}
+          >Open the servo values table → fill in what's known</button>
+        )}
+      </div>
+
+      {/* 2 — open questions for this station, answerable inline */}
+      {stationQuestions.length > 0 && (
+        <div>
+          {sectionHead(`Questions Jarvis needs answered (${stationQuestions.length})`)}
+          {stationQuestions.map(q => <QuestionCard key={q.id} q={q} onUpdate={onQuestionUpdate} />)}
+        </div>
+      )}
+
+      {/* 3 — decisions & assumptions: one short line each, ✓ / ✗-with-why */}
+      {flags.length > 0 && (
+        <div data-testid={`station-decisions-${sm.name}`}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            {sectionHead(`Jarvis's decisions & assumptions (${flags.length})`)}
+            <span style={{ fontSize: 11, color: C.light, marginLeft: 'auto' }}>reviewing as</span>
+            <select
+              value={reviewer} onChange={e => setReviewer(e.target.value)}
+              style={{ border: `1px solid ${C.border}`, borderRadius: 6, padding: '3px 7px', fontSize: 11, color: C.text, background: C.surface }}
+            >
+              {ANSWERERS.filter(n => n !== 'Other').map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: '4px 12px' }}>
+            {flags.map((f, i) => (
+              <DecisionLine key={i} text={f} review={reviewFor(f)} onReview={reviewDecision} />
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: C.light, marginTop: 4 }}>
+            ✓ records the decision as good. ✗ asks why — the why is filed into Jarvis's concept
+            knowledge, attributed to you.
+          </div>
+        </div>
+      )}
+
+      {/* 4 — the code + the full review loop (same block as the history grid) */}
+      <div>
+        {sectionHead('Code & feedback')}
+        {latestBuild
+          ? <GenerationDetail row={latestBuild} onUpdated={onRowUpdated} />
+          : <div style={{ fontSize: 12.5, color: C.light }}>No generated file yet — it lands here the moment a build finishes.</div>}
+      </div>
+    </div>
+  );
+}
+
+/** The mission-control grid: one row per station of the OPEN project. */
+function StationPipeline({ active, gens, questions, onQuestionUpdate, onRowUpdated, now }) {
+  const project = useDiagramStore(s => s.project);
+  const filename = useDiagramStore(s => s.currentFilename);
+  const [expandedId, setExpandedId] = useState(null);
+  const [pretrans, setPretrans] = useState({}); // smId -> payload
+
+  const sms = project?.stateMachines ?? [];
+  const activeCount = (active || []).length;
+
+  // Pretranslation status for approved stations — refetched when in-flight
+  // work count changes (a finishing pre-build flips "building" → "code ready").
+  useEffect(() => {
+    if (!filename) return;
+    let alive = true;
+    sms.filter(s => s.compiledSequence?.approved === true).forEach(s => {
+      fetchPretranslated(filename, s.id).then(p => {
+        if (alive && p) setPretrans(prev => ({ ...prev, [s.id]: p }));
+      });
+    });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filename, activeCount, sms.map(s => `${s.id}:${s.compiledSequence?.approved ? 1 : 0}:${s.compiledSequence?.compiledAt || ''}`).join('|')]);
+
+  if (sms.length === 0) return null;
+
+  const buildsFor = (sm) => (gens?.builds || [])
+    .filter(b => b.sm === sm.name && (!project?.name || !b.project || b.project === project.name))
+    .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+  const openQuestionsFor = (sm) => (questions || []).filter(q =>
+    q.status === 'open' &&
+    (String(q.context || '').includes(sm.name) || (sm.displayName && String(q.context || '').includes(sm.displayName))));
+
+  return (
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: '14px 18px', marginBottom: 16, overflowX: 'auto' }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>
+        {project?.name || 'Current project'} — station pipeline
+      </div>
+      <div style={{ fontSize: 11.5, color: C.light, marginBottom: 10 }}>
+        Live status per station: compile → approve → code. Open a row for Jarvis's questions,
+        his decisions to approve or deny, and the file with its review.
+      </div>
+      <table data-testid="station-pipeline" style={{ borderCollapse: 'collapse', width: '100%' }}>
+        <thead>
+          <tr>
+            <th style={th}></th>
+            <th style={th}>Station</th>
+            <th style={th}>Status</th>
+            <th style={th}>Questions</th>
+            <th style={th}>Decisions</th>
+            <th style={th}>Latest score</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sms.map(sm => {
+            const gaps = servoGaps(sm);
+            const status = stationStatus(sm, active, pretrans, gaps);
+            const tone = STATUS_TONE[status.tone];
+            const builds = buildsFor(sm);
+            const latest = builds[0] || null;
+            const qs = openQuestionsFor(sm);
+            const flags = (sm.compiledSequence?.ir?.reviewFlags || []);
+            const reviewed = (sm.compiledSequence?.decisionReviews || []).length;
+            const expanded = expandedId === sm.id;
+            return [
+              <tr
+                key={sm.id}
+                data-testid={`pipeline-row-${sm.name}`}
+                onClick={() => setExpandedId(e => (e === sm.id ? null : sm.id))}
+                style={{ cursor: 'pointer', background: expanded ? C.primaryBg : undefined }}
+              >
+                <td style={{ ...td, color: C.muted, fontSize: 10, width: 18 }}>{expanded ? '▾' : '▸'}</td>
+                <td style={{ ...td, fontWeight: 700, whiteSpace: 'nowrap' }}>{sm.displayName || sm.name}</td>
+                <td style={td}>
+                  <span
+                    data-testid={`pipeline-status-${sm.name}`}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      fontSize: 11.5, fontWeight: 700, borderRadius: 999, padding: '2px 10px',
+                      background: tone.bg, color: tone.color, whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {status.tone === 'live' && (
+                      <span aria-hidden style={{
+                        display: 'inline-block', width: 9, height: 9, borderRadius: '50%',
+                        border: `2px solid ${C.primary}`, borderTopColor: 'transparent',
+                        animation: 'jarvisActiveSpin 0.9s linear infinite',
+                      }} />
+                    )}
+                    {status.label}
+                    {status.live && <span style={{ fontWeight: 400 }}>— {fmtElapsed(status.live.startedAt, now)} elapsed</span>}
+                  </span>
+                </td>
+                <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                  {qs.length > 0
+                    ? <span style={{ background: C.primary, color: '#fff', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 8px' }}>{qs.length} open</span>
+                    : <span style={{ color: C.light }}>—</span>}
+                </td>
+                <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                  {flags.length > 0
+                    ? <span style={{ color: reviewed >= flags.length ? C.success : C.muted, fontSize: 12 }}>{reviewed}/{flags.length} reviewed</span>
+                    : <span style={{ color: C.light }}>—</span>}
+                </td>
+                <td style={{ ...td, whiteSpace: 'nowrap', fontWeight: 700, color: latest?.score != null ? (latest.score >= 7 ? C.success : latest.score >= 4 ? C.warning : C.danger) : C.light }}>
+                  {latest?.score != null ? `${latest.score}/10` : latest ? 'unscored' : '—'}
+                </td>
+              </tr>,
+              expanded && (
+                <tr key={`${sm.id}-detail`}>
+                  <td style={{ ...td, background: C.sidebar, padding: '14px 16px' }} colSpan={6}>
+                    <StationDetail
+                      sm={sm}
+                      projectName={project?.name}
+                      status={status}
+                      stationQuestions={qs}
+                      onQuestionUpdate={onQuestionUpdate}
+                      latestBuild={latest}
+                      onRowUpdated={onRowUpdated}
+                      gaps={gaps}
+                    />
+                  </td>
+                </tr>
+              ),
+            ];
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function GenerationsTab({ gens, track, active, questions, onQuestionUpdate, onRowUpdated }) {
   const [expandedId, setExpandedId] = useState(null);
   const [showTrack, setShowTrack] = useState(false);
+  // 1s ticker so the "2:31 elapsed" on in-progress rows counts live.
+  const [now, setNow] = useState(() => Date.now());
+  const hasActive = (active || []).length > 0;
+  useEffect(() => {
+    if (!hasActive) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [hasActive]);
   if (!gens) return <div style={{ color: C.light, fontSize: 13 }}>Loading…</div>;
 
   const buildList = gens.builds || [];
@@ -940,6 +1346,18 @@ function GenerationsTab({ gens, track, onRowUpdated }) {
 
   return (
     <div>
+      <style>{'@keyframes jarvisActiveSpin { to { transform: rotate(360deg); } }'}</style>
+
+      {/* Mission control — one row per station of the open project */}
+      <StationPipeline
+        active={active}
+        gens={gens}
+        questions={questions}
+        onQuestionUpdate={onQuestionUpdate}
+        onRowUpdated={onRowUpdated}
+        now={now}
+      />
+
       <p style={{ fontSize: 13, color: C.muted, margin: '0 0 14px', lineHeight: 1.6 }}>
         Every program Jarvis has generated, in one grid. Open a row to download the L5X,
         review it (what was good, what was bad — talk or text — and a 1-10 score), and
@@ -976,6 +1394,7 @@ function GenerationsTab({ gens, track, onRowUpdated }) {
             </tr>
           </thead>
           <tbody>
+            {(active || []).map(w => <ActiveRow key={w.id} w={w} now={now} />)}
             {rows.map(row => {
               const expanded = expandedId === row.id;
               const scoreColor = row.score == null ? C.light : row.score >= 7 ? C.success : row.score >= 4 ? C.warning : C.danger;
@@ -1030,7 +1449,7 @@ function GenerationsTab({ gens, track, onRowUpdated }) {
                 ),
               ];
             })}
-            {rows.length === 0 && <tr><td style={td} colSpan={10}>No generations yet — the grid fills in as Jarvis builds stations.</td></tr>}
+            {rows.length === 0 && !hasActive && <tr><td style={td} colSpan={10}>No generations yet — the grid fills in as Jarvis builds stations.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -1114,7 +1533,7 @@ function TrackRecordDetails({ track }) {
 // ── Page shell ───────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'generations', label: 'Generations' },
+  { id: 'generations', label: 'Generated code' },
   { id: 'questions', label: 'Questions for Controls' },
   { id: 'knowledge', label: 'What Jarvis knows' },
 ];
@@ -1125,6 +1544,7 @@ export function JarvisPage({ onClose }) {
   const [knowledge, setKnowledge] = useState(null);
   const [track, setTrack] = useState(null);
   const [gens, setGens] = useState(null);
+  const [active, setActive] = useState([]); // live in-flight work (GET /api/jarvis/active)
   const [loadError, setLoadError] = useState(null);
 
   useEffect(() => {
@@ -1140,10 +1560,25 @@ export function JarvisPage({ onClose }) {
     if (tab === 'generations') getJson('/api/jarvis/generations').then(setGens).catch(e => setLoadError(e.message));
   }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // While a correction analysis is running in the background, poll the grid
-  // every 4s so the "analyzing…" row flips to lessons without a manual refresh.
+  // Live in-flight work — poll GET /api/jarvis/active every 4s while the grid
+  // is showing so "Generating — Station X" rows appear/disappear on their own.
+  useEffect(() => {
+    if (tab !== 'generations') return;
+    let alive = true;
+    const load = () => getJson('/api/jarvis/active')
+      .then(d => { if (alive) setActive(Array.isArray(d.active) ? d.active : []); })
+      .catch(() => { if (alive) setActive([]); });
+    load();
+    const t = setInterval(load, 4000);
+    return () => { alive = false; clearInterval(t); };
+  }, [tab]);
+
+  // While a correction analysis OR any live generation/compile/pretranslation
+  // is running, poll the grid every 4s so the "analyzing…" row flips to
+  // lessons and a finished in-progress row flips to its reviewable row
+  // without a manual refresh.
   const analyzing = tab === 'generations'
-    && (gens?.builds || []).some(b => b.correction?.status === 'analyzing');
+    && ((gens?.builds || []).some(b => b.correction?.status === 'analyzing') || active.length > 0);
   useEffect(() => {
     if (!analyzing) return;
     const t = setInterval(() => {
@@ -1168,7 +1603,9 @@ export function JarvisPage({ onClose }) {
     <div
       data-testid="jarvis-page"
       style={{
-        position: 'fixed', inset: 0, zIndex: 900,
+        // 1200 — above .modal-overlay (1000) so "See all generated code →"
+        // from inside the Generate modal lands ON TOP of it, not under it.
+        position: 'fixed', inset: 0, zIndex: 1200,
         background: 'var(--color-bg)',
         display: 'flex', flexDirection: 'column',
       }}
@@ -1254,6 +1691,9 @@ export function JarvisPage({ onClose }) {
             <GenerationsTab
               gens={gens}
               track={track}
+              active={active}
+              questions={questions}
+              onQuestionUpdate={updateQuestion}
               onRowUpdated={(updated) => setGens(g => (g ? {
                 ...g,
                 builds: (g.builds || []).map(b => (b.id === updated.id ? updated : b)),

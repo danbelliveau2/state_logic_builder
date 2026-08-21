@@ -38,6 +38,13 @@ export const useV2Shell = create((set) => ({
   generateOpen: false,
   openGenerate: () => set({ generateOpen: true }),
   closeGenerate: () => set({ generateOpen: false }),
+
+  // ── Servo values table (ServoValuesTable) — the station-level editable
+  // grid of axis × named position values. Opened from the Code grid's
+  // readiness warning, the feature tree, and the flow bar's compile hint.
+  servoTableFor: null, // smId | null
+  openServoTable: (smId) => set({ servoTableFor: smId }),
+  closeServoTable: () => set({ servoTableFor: null }),
 }));
 
 /**

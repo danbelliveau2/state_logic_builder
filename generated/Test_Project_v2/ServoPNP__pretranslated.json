@@ -1,0 +1,25 @@
+{
+  "pretranslated": true,
+  "ready": true,
+  "ok": true,
+  "stale": false,
+  "project": "Test_Project_v2",
+  "smId": "id_mt1pblpx",
+  "smName": "ServoPNP",
+  "compiledAt": "2026-08-20T17:08:29.748Z",
+  "mode": "translation",
+  "jarvisVersion": "1.1.1",
+  "savedPath": "C:\\SDC-StateLogic\\generated\\Test_Project_v2\\ServoPNP__jarvis_v1.1.1__2026-08-21_1150.L5X",
+  "savedIrPath": "C:\\SDC-StateLogic\\generated\\Test_Project_v2\\ServoPNP__jarvis_v1.1.1__2026-08-21_1150.ir.json",
+  "buildId": "b_mt2w1kaj_3a6gtl",
+  "validation": {
+    "ok": true,
+    "errors": [],
+    "warnings": []
+  },
+  "costUSD": 1.9453,
+  "durationS": 538,
+  "attempts": 3,
+  "createdAt": "2026-08-21T11:50:50.877Z",
+  "error": null
+}

@@ -1,23 +1,28 @@
 /**
- * CompiledControlsView — the "Full Controls" view made REAL (v2.1.0).
+ * CompiledControlsView — the "Full Controls" review screen (v2.1.3 —
+ * the TEN-SECOND screen).
  *
- * When the active station has a Build-time compiled sequence
- * (GET /api/jarvis/ir?source=compiled), this renders it as a clean read-only
- * structured view over the canvas area — v1 rendering, not React Flow nodes:
- *   · ordered state list (number, label, actions, each state's outgoing
- *     transitions with their real rung conditionText)
- *   · waits called out with their exits
- *   · handshakes and review-flags columns (flags in amber)
- *   · compiledAt / cost / compiler version + the APPROVE toggle — approval
- *     is the engineer's "I agree with this sequence" and flips Generate
- *     into translation mode (near-mechanical, fast, cheap)
- *   · edit-by-explaining: a dictated notes box that re-compiles with the
- *     notes attached (feature-detected — hidden if the compiler doesn't
- *     take notes yet)
+ * Dan rejected every long-form rendering of the compiled sequence (per-state
+ * text wall, detailed diagram, CE briefs, and the decisions/flags exception
+ * list — "it would take me longer to read than to write it myself").
+ * What remains fits one glance:
+ *   1. Meta strip (compiledAt / cost / compiler version / counts) + the big
+ *      green APPROVE toggle + ↻ Re-compile + the LIVE pretranslation status
+ *      strip (building… / ✓ ready + Generate / stale / failed + Retry)
+ *   2. The summary paragraph (Jarvis's 3-5 sentence narrative) — nothing more
+ *   3. VALUE BLANKS: the "*Verify" flags that need a real number become
+ *      literal fill-in inputs, one short label each (full flag text in the
+ *      tooltip), mic on every blank; filling one feeds a re-compile
+ *   4. Handshakes collapsed to ONE line — expandable, collapsed by default
+ *
+ * Everything else (decision prose, mapping notes, per-state detail, open
+ * questions) lives in the build record / Jarvis queue / generated-file
+ * comments — NOT on this screen. The screen's job: read 5 sentences, fill
+ * any blanks you know, click Approve / Generate. Ten seconds.
  *
  * No compiled sequence → the honest banner plus an inline "Compile
- * sequence" button. Everything here consumes endpoints defensively; the
- * pretranslation status endpoint may not exist yet and is feature-detected.
+ * sequence" button. Endpoints are consumed defensively; the pretranslation
+ * status endpoint is feature-detected.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -29,164 +34,9 @@ import {
   compileBlockReason,
   fetchCompiledIr,
   fetchPretranslated,
-  getCorrectionsSupport,
   isPretranslatedReady,
   mirrorApproved,
 } from './compiledSequence.js';
-
-/** Open queue items whose context names THIS station (best-effort match on
- *  the station's display name / name — that's what askers put in context). */
-function useStationQueueQuestions(sm, bump) {
-  const [items, setItems] = useState([]);
-  const smKey = sm?.id ?? null;
-  useEffect(() => {
-    let alive = true;
-    if (!sm) { setItems([]); return; }
-    (async () => {
-      try {
-        const r = await fetch('/api/jarvis/questions');
-        if (!r.ok) return;
-        const arr = await r.json();
-        if (!alive || !Array.isArray(arr)) return;
-        const names = [sm.displayName, sm.name].filter(Boolean);
-        setItems(arr.filter(q => q && q.status === 'open' &&
-          names.some(n => String(q.context || '').includes(n))));
-      } catch { /* queue endpoint unavailable — quiet */ }
-    })();
-    return () => { alive = false; };
-  }, [smKey, bump]); // eslint-disable-line react-hooks/exhaustive-deps
-  return [items, setItems];
-}
-
-// ── Open questions, answered INLINE (Dan: "when you're in full controls
-// view, maybe that's where you get the controls-specific questions answered")
-// Sources: the compile's own open questions + any queue items whose context
-// names this station. Each gets a talk-or-type answer box; "Apply answers"
-// re-compiles with the answers attached as corrections (the same
-// feature-detected path the edit-by-explaining loop uses). Answering also
-// resolves the matching queue item. If this compiler version doesn't take
-// corrections, the answers fold into the station spec's source description
-// instead and the user is prompted to re-compile.
-function OpenQuestionsSection({ sm, smId, compiledQuestions, queueItems, onQueueResolved }) {
-  const openCompile = useV2Shell((s) => s.openCompile);
-  const [answers, setAnswers] = useState({});
-  const [answeredKeys, setAnsweredKeys] = useState(() => new Set());
-  const [busy, setBusy] = useState(false);
-  const [specFallbackNote, setSpecFallbackNote] = useState(false);
-
-  // Normalize to rows { key, text, queueId? } — a compile question that also
-  // sits in the queue shows ONCE (and answering it resolves the queue item).
-  const rows = useMemo(() => {
-    const out = [];
-    const norm = (t) => String(t ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
-    const queueByText = new Map(queueItems.map(q => [norm(q.question), q]));
-    const seen = new Set();
-    for (const q of compiledQuestions) {
-      const text = typeof q === 'string' ? q : q.question ?? q.text ?? JSON.stringify(q);
-      const n = norm(text);
-      if (!n || seen.has(n)) continue;
-      seen.add(n);
-      out.push({ key: `c:${n}`, text, queueId: queueByText.get(n)?.id ?? null });
-    }
-    for (const q of queueItems) {
-      const n = norm(q.question);
-      if (!n || seen.has(n)) continue;
-      seen.add(n);
-      out.push({ key: `q:${q.id}`, text: q.question, queueId: q.id });
-    }
-    return out.filter(r => !answeredKeys.has(r.key));
-  }, [compiledQuestions, queueItems, answeredKeys]);
-
-  if (rows.length === 0 && !specFallbackNote) return null;
-
-  const answeredRows = rows.filter(r => (answers[r.key] ?? '').trim());
-
-  async function apply() {
-    if (answeredRows.length === 0) return;
-    setBusy(true);
-    try {
-      // Resolve matching queue items (best-effort — the queue may be offline).
-      const resolvedIds = [];
-      await Promise.all(answeredRows.filter(r => r.queueId).map(r =>
-        fetch(`/api/jarvis/questions/${encodeURIComponent(r.queueId)}/answer`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ answer: answers[r.key].trim(), answeredBy: 'ME (Full Controls)' }),
-        }).then(res => { if (res.ok) resolvedIds.push(r.queueId); }).catch(() => {})
-      ));
-      if (resolvedIds.length) onQueueResolved(resolvedIds);
-
-      const block = 'Answers to the open controls questions:\n' +
-        answeredRows.map(r => `Q: ${r.text}\nA: ${answers[r.key].trim()}`).join('\n');
-
-      if (getCorrectionsSupport() !== 'no') {
-        // Corrections path (same feature detection as edit-by-explaining):
-        // re-compile with the answers attached.
-        openCompile(smId, block);
-      } else {
-        // Fallback: fold the answers into the station spec's source
-        // description so the next compile reads them, and say so honestly.
-        const store = useDiagramStore.getState();
-        const spec = sm?.machineSpec ?? { version: 1 };
-        store.updateStateMachine(smId, {
-          machineSpec: {
-            ...spec,
-            sourceDescription: `${spec.sourceDescription ?? ''}\n\n${block}`.trim(),
-          },
-        });
-        setSpecFallbackNote(true);
-      }
-      setAnsweredKeys(prev => new Set([...prev, ...answeredRows.map(r => r.key)]));
-      setAnswers({});
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="v2-cc__banner v2-cc__banner--amber" data-testid="cc-questions">
-      {rows.length > 0 && (
-        <>
-          <b>{rows.length} open question{rows.length === 1 ? '' : 's'} for the controls team — answer them right here:</b>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
-            {rows.map((r, i) => (
-              <div key={r.key} data-testid={`cc-question-${i}`}>
-                <div style={{ marginBottom: 4 }}>{r.text}</div>
-                <DictatedTextarea
-                  value={answers[r.key] ?? ''}
-                  onChange={(v) => setAnswers(a => ({ ...a, [r.key]: v }))}
-                  rows={2}
-                  placeholder="Type or talk your answer — leave blank to skip for now"
-                  micTestId={`cc-question-mic-${i}`}
-                  data-testid={`cc-answer-${i}`}
-                  className="v2-cc__notes"
-                />
-              </div>
-            ))}
-          </div>
-          <div style={{ marginTop: 8 }}>
-            <button
-              className="v2-cc__compile-btn"
-              data-testid="cc-apply-answers-btn"
-              disabled={busy || answeredRows.length === 0}
-              title={answeredRows.length === 0 ? 'Answer at least one question first' : 'Re-compile the sequence with these answers applied'}
-              onClick={apply}
-            >
-              {busy ? 'Applying…' : `Apply answer${answeredRows.length === 1 ? '' : 's'} (re-compile)`}
-            </button>
-          </div>
-        </>
-      )}
-      {specFallbackNote && (
-        <div data-testid="cc-answers-spec-note" style={{ marginTop: 8 }}>
-          This compiler version doesn't take corrections yet — your answers were
-          folded into the station spec instead. Hit ↻ Re-compile to build with
-          them applied.
-        </div>
-      )}
-    </div>
-  );
-}
 
 function fmtWhen(iso) {
   if (!iso) return '—';
@@ -251,52 +101,217 @@ function ApproveControl({ filename, smId, approved, onChanged }) {
   );
 }
 
-// ── One state card ──────────────────────────────────────────────────────────
-function StateCard({ st, transitions, waitStates }) {
-  const outs = transitions.filter((t) => (t.fromState ?? t.from) === st.stateNumber);
-  const isWait = waitStates.has(st.stateNumber);
-  return (
-    <div className="v2-cc__state" data-testid={`cc-state-${st.stateNumber}`}>
-      <div className="v2-cc__state-head">
-        <span className="v2-cc__snum">{st.stateNumber}</span>
-        <span className="v2-cc__sname">{st.label || st.nodeId}</span>
-        {st.isInitial && <span className="v2-cc__tag v2-cc__tag--blue">initial</span>}
-        {st.isComplete && <span className="v2-cc__tag v2-cc__tag--green">cycle complete</span>}
-        {isWait && <span className="v2-cc__tag v2-cc__tag--wait">wait</span>}
-        {st.synthesized && <span className="v2-cc__tag v2-cc__tag--amber" title="Added by Jarvis, not drawn by the ME">synthesized</span>}
+// ── Pretranslation status strip — nothing waits silently ───────────────────
+// After Approve, the code pre-builds in the background; this strip always
+// says what's happening: building (pulse + elapsed), ready (Generate right
+// there), stale, failed (+Retry), or invalidated after Revoke.
+function PretransStrip({ approved, revokedAt, approvedAt, pretrans: p, onRetry, retryBusy }) {
+  const openGenerate = useV2Shell((s) => s.openGenerate);
+  const [, forceTick] = useState(0);
+
+  const ready = !!p && isPretranslatedReady(p);
+  const validationFailed = !!p && p.ready === true && p.validation && p.validation.ok === false;
+  const failed = !!p && !p.inFlight && (p.error != null || validationFailed);
+  // "Building": the server says so, or we just approved and the sidecar
+  // hasn't appeared yet (grace window so the strip never sits silent).
+  const building = approved && !ready && !failed && (
+    p?.inFlight === true ||
+    (approvedAt != null && !p?.ready && Date.now() - approvedAt < 8 * 60_000)
+  );
+
+  // 1s tick for the elapsed counter while building.
+  useEffect(() => {
+    if (!building) return undefined;
+    const t = setInterval(() => forceTick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [building]);
+
+  if (!approved) {
+    if (!revokedAt) return null;
+    return (
+      <div className="v2-cc__pretrans v2-cc__pretrans--muted" data-testid="cc-pretrans-revoked">
+        Pre-built code invalidated — approve again to rebuild it.
       </div>
-      {(st.actions ?? []).length > 0 && (
-        <ul className="v2-cc__actions">
-          {st.actions.map((a, i) => (
-            <li key={i}>
-              <b>{a.operation}</b>
-              {(a.device || a.deviceName) && <span className="v2-cc__dev"> {a.device ?? a.deviceName}</span>}
-              {a.detail && <span className="v2-cc__detail"> — {a.detail}</span>}
-            </li>
-          ))}
-        </ul>
-      )}
-      {outs.length > 0 && (
-        <div className="v2-cc__outs">
-          {outs.map((t, i) => (
-            <div className="v2-cc__out" key={i}>
-              <div className="v2-cc__out-head">
-                <span className="v2-cc__arrow">→</span>
-                <span className="v2-cc__snum v2-cc__snum--to">{t.toState ?? t.to}</span>
-                <span className="v2-cc__out-label">{t.toLabel}</span>
-                {(t.label || t.outcomeLabel) && (
-                  <span className={`v2-cc__tag ${
-                    /fail|timeout/i.test(t.label ?? t.outcomeLabel ?? '') ? 'v2-cc__tag--amber' : 'v2-cc__tag--blue'
-                  }`}>{t.label ?? t.outcomeLabel}</span>
-                )}
-                {t.kind && <span className="v2-cc__kind">{t.kind}</span>}
-              </div>
-              {t.conditionText && <code className="v2-cc__cond">{t.conditionText}</code>}
-            </div>
-          ))}
+    );
+  }
+  if (ready) {
+    return (
+      <div className="v2-cc__pretrans v2-cc__pretrans--ready" data-testid="cc-instant-note">
+        <span>✓ Code is built — Generate is instant</span>
+        <button
+          className="v2-cc__pretrans-btn"
+          data-testid="cc-pretrans-generate-btn"
+          onClick={openGenerate}
+        >Generate</button>
+      </div>
+    );
+  }
+  if (building) {
+    const secs = approvedAt != null ? Math.max(0, Math.floor((Date.now() - approvedAt) / 1000)) : null;
+    const elapsed = secs != null ? `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}` : null;
+    return (
+      <div className="v2-cc__pretrans v2-cc__pretrans--building" data-testid="cc-pretrans-building">
+        <span className="v2-cc__pretrans-pulse" aria-hidden="true" />
+        <span>
+          ⚙ Jarvis is building the code in the background — ready in ~4 min
+          {elapsed ? ` · ${elapsed} elapsed` : ''}
+        </span>
+      </div>
+    );
+  }
+  if (failed) {
+    return (
+      <div className="v2-cc__pretrans v2-cc__pretrans--failed" data-testid="cc-pretrans-failed">
+        <span>
+          Background build {validationFailed ? 'failed validation' : 'failed'}
+          {p.error ? `: ${String(p.error)}` : ''} — Generate still works (full translation).
+        </span>
+        <button
+          className="v2-cc__pretrans-btn"
+          data-testid="cc-pretrans-retry-btn"
+          disabled={retryBusy}
+          onClick={onRetry}
+        >{retryBusy ? 'Retrying…' : 'Retry'}</button>
+      </div>
+    );
+  }
+  if (p && p.ready) {
+    return (
+      <div className="v2-cc__pretrans v2-cc__pretrans--muted" data-testid="cc-pretrans-stale">
+        Sequence changed since the last build — Generate will re-translate (~2 min).
+      </div>
+    );
+  }
+  if (p) {
+    return (
+      <div className="v2-cc__pretrans v2-cc__pretrans--muted" data-testid="cc-pretrans-none">
+        No pre-built code yet — Generate will translate (~2 min).
+      </div>
+    );
+  }
+  return null;
+}
+
+// ── Value blanks — the *Verify flags as literal fill-in inputs ──────────────
+// A "*Verify …" (or "*Replace …") flag is Jarvis saying "I defaulted this,
+// give me the real value." Instead of prose, each becomes one line:
+//   {short label}: [___] {unit} (default N)      — full flag text in tooltip.
+
+const BLANK_MAX = 5;
+
+/** Derive { label, unit, defaultVal, full } from one *-flag's prose. */
+function parseBlankFlag(text) {
+  const full = String(text).trim();
+  // Strip the "*Verify (…): " / "*Replace: " prefix.
+  let rest = full.replace(/^\*\s*\w+\s*(\([^)]*\))?\s*:?\s*/i, '');
+  // Label = first clause, cut at sentence end or " — ", capped.
+  let label = rest.split(/(?<=[a-z0-9)])\.\s|—|\. /)[0].trim();
+  if (label.length > 90) label = label.slice(0, 87).trimEnd() + '…';
+  if (label) label = label[0].toUpperCase() + label.slice(1);
+  const def = /defaulted to\s+(\d+(?:\.\d+)?)\s*(mm|ms|s|deg|°|%)?/i.exec(full);
+  const unitMatch = def?.[2] ?? (/(\d+(?:\.\d+)?)\s*(mm|ms|deg|°)\b/.exec(full)?.[2] ?? '');
+  return {
+    full,
+    label: label || full.slice(0, 90),
+    unit: unitMatch || '',
+    defaultVal: def ? def[1] : null,
+  };
+}
+
+function ValueBlanks({ flags, smId }) {
+  const openCompile = useV2Shell((s) => s.openCompile);
+  const [vals, setVals] = useState({});
+
+  const blanks = useMemo(
+    () => (flags ?? []).map(String).filter((f) => f.trimStart().startsWith('*')).map(parseBlankFlag),
+    [flags]
+  );
+  if (blanks.length === 0) return null;
+
+  const shown = blanks.slice(0, BLANK_MAX);
+  const extra = blanks.length - shown.length;
+  const filled = shown.map((b, i) => ({ b, v: (vals[i] ?? '').trim() })).filter((x) => x.v);
+
+  function apply() {
+    if (filled.length === 0) return;
+    const block =
+      'Verified values from the ME — replace the defaults with these:\n' +
+      filled.map(({ b, v }) => `- ${b.label}: ${v}${b.unit && !/[a-z]/i.test(v) ? ` ${b.unit}` : ''}\n  (flag: ${b.full})`).join('\n');
+    openCompile(smId, block);
+    setVals({});
+  }
+
+  return (
+    <div className="v2-cc__blanks" data-testid="cc-blanks">
+      <div className="v2-cc__blanks-head">
+        Jarvis needs {blanks.length} real value{blanks.length === 1 ? '' : 's'} — fill what you know
+      </div>
+      {shown.map((b, i) => (
+        <div className="v2-cc__blank" key={i} title={b.full} data-testid={`cc-blank-${i}`}>
+          <span className="v2-cc__blank-label">{b.label}</span>
+          <DictatedTextarea
+            value={vals[i] ?? ''}
+            onChange={(v) => setVals((o) => ({ ...o, [i]: v.replace(/\n/g, ' ') }))}
+            rows={1}
+            placeholder={b.defaultVal != null ? `default ${b.defaultVal}${b.unit ? ` ${b.unit}` : ''}` : b.unit || 'value'}
+            micTestId={`cc-blank-mic-${i}`}
+            data-testid={`cc-blank-input-${i}`}
+            className="v2-cc__blank-input"
+          />
+          {b.unit && <span className="v2-cc__blank-unit">{b.unit}</span>}
+        </div>
+      ))}
+      {extra > 0 && (
+        <div className="v2-cc__blanks-more" data-testid="cc-blanks-more">
+          +{extra} more in Jarvis's notes (with the build in the Code grid)
         </div>
       )}
+      <div className="v2-cc__blanks-actions">
+        <button
+          className="v2-cc__compile-btn"
+          data-testid="cc-blanks-apply-btn"
+          disabled={filled.length === 0}
+          title={filled.length === 0 ? 'Fill at least one value first' : 'Re-compile the sequence with these values applied'}
+          onClick={apply}
+        >Apply value{filled.length === 1 ? '' : 's'} (re-compile)</button>
+      </div>
     </div>
+  );
+}
+
+// ── Handshakes — ONE line, expandable ───────────────────────────────────────
+function HandshakesLine({ handshakes }) {
+  const list = handshakes ?? [];
+  if (list.length === 0) return null;
+  const oneLine = list
+    .map((h) => `${h.signal} ${h.direction === 'out' ? '⇒' : '⇐'}`)
+    .join(', ');
+  return (
+    <details className="v2-cc__hsline" data-testid="cc-handshakes">
+      <summary className="v2-cc__hsline-summary" data-testid="cc-handshakes-line">
+        Handshakes: {list.length} ({oneLine})
+      </summary>
+      <div className="v2-cc__hs-grid">
+        {list.map((h, i) => (
+          <div className="v2-cc__hs" key={i}>
+            <div className="v2-cc__hs-head">
+              <span className={`v2-cc__hs-dir ${h.direction === 'out' ? 'v2-cc__hs-dir--out' : 'v2-cc__hs-dir--in'}`}>
+                {h.direction === 'out' ? '⇒' : '⇐'}
+              </span>
+              <code className="v2-cc__hs-sig">{h.signal}</code>
+              {h.partner && <span className="v2-cc__hs-partner">{h.partner}</span>}
+            </div>
+            {h.purpose && <div className="v2-cc__hs-purpose">{h.purpose}</div>}
+            {(h.setAtState != null || h.clearAtState != null) && (
+              <div className="v2-cc__hs-states">
+                {h.setAtState != null && <span>set @ {h.setAtState}</span>}
+                {h.clearAtState != null && <span>clear @ {h.clearAtState}</span>}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -313,10 +328,11 @@ export function CompiledControlsView({ headerExtra }) {
   const [state, setState] = useState({ status: 'loading' }); // loading | ok | none | error
   const [approved, setApproved] = useState(false);
   const [pretrans, setPretrans] = useState(null);
-  const [notes, setNotes] = useState('');
+  const [approvedAt, setApprovedAt] = useState(null); // Date.now() of this session's approve — anchors the elapsed counter
+  const [revokedAt, setRevokedAt] = useState(null);
+  const [retryBusy, setRetryBusy] = useState(false);
 
   const smId = sm?.id ?? null;
-  const [queueItems, setQueueItems] = useStationQueueQuestions(sm, compiledBump);
 
   useEffect(() => {
     let alive = true;
@@ -335,29 +351,57 @@ export function CompiledControlsView({ headerExtra }) {
     return () => { alive = false; };
   }, [filename, smId, compiledBump]);
 
-  // Pretranslation status (feature-detected) — worth showing once approved.
+  // Pretranslation status (feature-detected) — POLLED every 5s while approved
+  // so the strip tracks the background build live. Stops re-fetching once the
+  // build is ready+fresh (nothing left to learn until the next re-compile).
   useEffect(() => {
     let alive = true;
+    let latest = null;
     setPretrans(null);
-    if (!filename || !smId || !approved) return;
-    fetchPretranslated(filename, smId).then((p) => { if (alive) setPretrans(p); });
-    return () => { alive = false; };
+    if (!filename || !smId || !approved) return undefined;
+    const poll = () => {
+      if (latest && isPretranslatedReady(latest)) return; // terminal — done
+      fetchPretranslated(filename, smId).then((p) => {
+        if (!alive) return;
+        latest = p;
+        setPretrans(p);
+      });
+    };
+    poll();
+    const t = setInterval(poll, 5000);
+    return () => { alive = false; clearInterval(t); };
   }, [filename, smId, approved, compiledBump]);
 
   const ir = state.status === 'ok' ? state.data.ir : null;
-  const states = useMemo(
-    () => [...(ir?.states ?? [])].sort((a, b) => (a.stateNumber ?? 0) - (b.stateNumber ?? 0)),
-    [ir]
-  );
-  const waitStates = useMemo(
-    () => new Set((ir?.waits ?? []).map((w) => w.stateNumber)),
-    [ir]
-  );
+  const stateCount = ir?.states?.length ?? 0;
 
   const compilable = canCompile(sm);
   const blockReason = compileBlockReason(sm);
-  const correctionsOk = getCorrectionsSupport() !== 'no';
-  const instant = isPretranslatedReady(pretrans);
+
+  function onApprovedChanged(next) {
+    setApproved(next);
+    if (next) { setApprovedAt(Date.now()); setRevokedAt(null); }
+    else { setRevokedAt(Date.now()); setApprovedAt(null); setPretrans(null); }
+  }
+
+  // Retry a failed background build — re-approving kicks the server's
+  // pretranslation off again.
+  async function retryPretranslation() {
+    setRetryBusy(true);
+    try {
+      const r = await fetch('/api/jarvis/compile/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, smId, approved: true }),
+      });
+      if (r.ok) {
+        mirrorApproved(smId, true);
+        setApprovedAt(Date.now());
+        setPretrans(null); // forget the failed record; the poll refreshes it
+      }
+    } catch { /* strip keeps showing the failure — retry again */ }
+    finally { setRetryBusy(false); }
+  }
 
   return (
     <div className="v2-cc" data-testid="cc-view">
@@ -412,16 +456,16 @@ export function CompiledControlsView({ headerExtra }) {
           </div>
         )}
 
-        {/* ── Compiled sequence ── */}
+        {/* ── Compiled sequence — the ten-second screen ── */}
         {state.status === 'ok' && ir && (
           <>
-            {/* Meta + approve strip */}
+            {/* 1 — meta + approve + live pretranslation status */}
             <div className="v2-cc__meta" data-testid="cc-meta">
               <div className="v2-cc__meta-facts">
                 <span title={state.data.compiledAt ?? ''}>Compiled <b>{fmtWhen(state.data.compiledAt)}</b></span>
                 {typeof state.data.cost === 'number' && <span>Cost <b>${state.data.cost.toFixed(2)}</b></span>}
                 {state.data.jarvisVersion && <span>Compiler <b>v{state.data.jarvisVersion}</b></span>}
-                <span><b>{states.length}</b> states · <b>{(ir.transitions ?? []).length}</b> transitions</span>
+                <span><b>{stateCount}</b> states · <b>{(ir.transitions ?? []).length}</b> transitions</span>
                 <button
                   className="v2-cc__recompile"
                   data-testid="cc-recompile-btn"
@@ -433,140 +477,33 @@ export function CompiledControlsView({ headerExtra }) {
                 filename={filename}
                 smId={smId}
                 approved={approved}
-                onChanged={setApproved}
+                onChanged={onApprovedChanged}
               />
-              {instant && (
-                <div className="v2-cc__instant" data-testid="cc-instant-note">
-                  Code is already built ✓ — Generate = instant download
-                </div>
-              )}
+              <PretransStrip
+                approved={approved}
+                approvedAt={approvedAt}
+                revokedAt={revokedAt}
+                pretrans={pretrans}
+                onRetry={retryPretranslation}
+                retryBusy={retryBusy}
+              />
             </div>
 
-            {ir.summary && <p className="v2-cc__summary">{ir.summary}</p>}
+            {/* 2 — the summary paragraph. Nothing more. */}
+            {ir.summary && <p className="v2-cc__summary" data-testid="cc-summary">{ir.summary}</p>}
 
-            {/* Open questions from the compile + this station's queue items —
-                answered inline with talk-or-type boxes. */}
-            <OpenQuestionsSection
-              sm={sm}
-              smId={smId}
-              compiledQuestions={state.data.questions ?? []}
-              queueItems={queueItems}
-              onQueueResolved={(ids) => setQueueItems(items => items.filter(q => !ids.includes(q.id)))}
-            />
+            {/* 3 — value blanks: the *Verify flags as fill-in inputs */}
+            <ValueBlanks flags={ir.reviewFlags} smId={smId} />
 
-            {/* Review flags — amber, above the fold: read these before approving */}
-            {(ir.reviewFlags ?? []).length > 0 && (
-              <div className="v2-cc__flags" data-testid="cc-flags">
-                <div className="v2-cc__flags-title">
-                  ⚠ Review before approving ({ir.reviewFlags.length})
-                </div>
-                <ul>
-                  {ir.reviewFlags.map((f, i) => <li key={i}>{String(f)}</li>)}
-                </ul>
-              </div>
-            )}
+            {/* 4 — handshakes, one line, expandable */}
+            <HandshakesLine handshakes={ir.handshakes} />
 
-            {/* Two columns: states (main) · waits + handshakes (side) */}
-            <div className="v2-cc__grid">
-              <div className="v2-cc__col-states">
-                <div className="v2-cc__coltitle">Sequence — {states.length} states</div>
-                {states.map((st) => (
-                  <StateCard
-                    key={st.nodeId ?? st.stateNumber}
-                    st={st}
-                    transitions={ir.transitions ?? []}
-                    waitStates={waitStates}
-                  />
-                ))}
-              </div>
-
-              <div className="v2-cc__col-side">
-                {(ir.waits ?? []).length > 0 && (
-                  <div className="v2-cc__side-card" data-testid="cc-waits">
-                    <div className="v2-cc__coltitle">Waits ({ir.waits.length})</div>
-                    {ir.waits.map((w, i) => (
-                      <div className="v2-cc__wait" key={i}>
-                        <div className="v2-cc__wait-head">
-                          <span className="v2-cc__snum">{w.stateNumber}</span>
-                          <span className="v2-cc__wait-sig">{w.signal}</span>
-                        </div>
-                        <div className="v2-cc__wait-src">
-                          {w.mode && <span className="v2-cc__tag v2-cc__tag--wait">{w.mode}</span>}
-                          {w.source ?? w.partner ?? ''}
-                        </div>
-                        {(w.exits ?? []).map((x, j) => (
-                          <div className="v2-cc__wait-exit" key={j}>
-                            <span className="v2-cc__arrow">→</span>
-                            <span className="v2-cc__snum v2-cc__snum--to">{x.toState}</span>
-                            <span className="v2-cc__wait-when">{x.when}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {(ir.handshakes ?? []).length > 0 && (
-                  <div className="v2-cc__side-card" data-testid="cc-handshakes">
-                    <div className="v2-cc__coltitle">Handshakes ({ir.handshakes.length})</div>
-                    {ir.handshakes.map((h, i) => (
-                      <div className="v2-cc__hs" key={i}>
-                        <div className="v2-cc__hs-head">
-                          <span className={`v2-cc__hs-dir ${h.direction === 'out' ? 'v2-cc__hs-dir--out' : 'v2-cc__hs-dir--in'}`}>
-                            {h.direction === 'out' ? '⇒' : '⇐'}
-                          </span>
-                          <code className="v2-cc__hs-sig">{h.signal}</code>
-                          {h.partner && <span className="v2-cc__hs-partner">{h.partner}</span>}
-                        </div>
-                        {h.purpose && <div className="v2-cc__hs-purpose">{h.purpose}</div>}
-                        {(h.setAtState != null || h.clearAtState != null) && (
-                          <div className="v2-cc__hs-states">
-                            {h.setAtState != null && <span>set @ {h.setAtState}</span>}
-                            {h.clearAtState != null && <span>clear @ {h.clearAtState}</span>}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* ── Edit-by-explaining loop ── */}
-            <div className="v2-cc__edit" data-testid="cc-edit">
-              <div className="v2-cc__coltitle">Change something?</div>
-              {correctionsOk ? (
-                <>
-                  <p className="v2-cc__edit-sub">
-                    Explain the change in your own words — type or talk — and
-                    Jarvis re-compiles the sequence with your notes. Approval
-                    clears on re-compile, so you review again.
-                  </p>
-                  <DictatedTextarea
-                    value={notes}
-                    onChange={setNotes}
-                    rows={3}
-                    placeholder="e.g. The hold-down must release BEFORE the shuttle retracts, and give the magnet check 4 retries instead of 3…"
-                    micTestId="cc-notes-mic"
-                    data-testid="cc-notes"
-                    className="v2-cc__notes"
-                  />
-                  <div className="v2-cc__edit-actions">
-                    <button
-                      className="v2-cc__compile-btn"
-                      data-testid="cc-apply-btn"
-                      disabled={!notes.trim()}
-                      onClick={() => { openCompile(smId, notes.trim()); setNotes(''); }}
-                    >Apply changes (re-compile)</button>
-                  </div>
-                </>
-              ) : (
-                <p className="v2-cc__edit-sub" data-testid="cc-edit-fallback">
-                  This compiler version doesn't take change notes yet —
-                  re-compile picks up spec and diagram edits: make the change
-                  there, then hit ↻ Re-compile above.
-                </p>
-              )}
+            {/* Everything else — decision prose, mappings, per-state detail —
+                lives with the build in the Code grid and in the generated
+                file's comments, not on this screen. */}
+            <div className="v2-cc__rest-note" data-testid="cc-rest-note">
+              Jarvis's full notes and the per-state detail travel with the
+              build — see the file's entry in the Code grid.
             </div>
           </>
         )}

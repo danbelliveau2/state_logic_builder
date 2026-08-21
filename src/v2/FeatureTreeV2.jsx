@@ -37,6 +37,8 @@ import { DEVICE_TYPES } from '../lib/deviceTypes.js';
 import { computeMachineTotals } from '../lib/machineTotals.js';
 import { SpecEditorModal } from '../components/modals/SpecEditorModal.jsx';
 import { DocumentsDrawer } from './DocumentsDrawer.jsx';
+import { hasServoAxes, servoGaps } from './servoValues.js';
+import { useV2Shell } from './useV2Shell.js';
 import {
   draftsKeyFor, loadDrafts, deleteDraft, onDraftsChanged,
   requestResumeDraft, draftLabel, timeAgo,
@@ -199,6 +201,34 @@ function StationTreeNode({ sm, open, active, buildFailed, onRowClick, onCaretCli
                 : <span style={{ color: AMBER, fontWeight: 700 }}>—</span>}
             </Value>
           </div>
+          {/* Servo values line — only when the station has servo axes. The
+              mechanical team's position table: gaps in amber, opens the
+              station-level Servo values table. */}
+          {hasServoAxes(sm) && (() => {
+            const gaps = servoGaps(sm);
+            const missing = gaps.reduce((n, g) => n + g.missing.length, 0);
+            return (
+              <div
+                className="v2-tree__row v2-tree__row--small"
+                data-testid={`tree-servo-values-${sm.name}`}
+                role="button" tabIndex={0}
+                onClick={(e) => { e.stopPropagation(); useV2Shell.getState().openServoTable(sm.id); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); useV2Shell.getState().openServoTable(sm.id); } }}
+                title={missing > 0
+                  ? `${missing} servo position value${missing === 1 ? '' : 's'} still missing (mechanical prerequisite) — click to fill in the table`
+                  : 'Servo position table complete — click to review/edit'}
+              >
+                <span className="v2-tree__dot">·</span>
+                <span className="v2-tree__name-small">Servo values</span>
+                <Leader />
+                <Value small>
+                  {missing > 0
+                    ? <span style={{ color: AMBER, fontWeight: 700 }}>{missing} missing</span>
+                    : <span style={{ color: GREEN, fontWeight: 700 }}>✓</span>}
+                </Value>
+              </div>
+            );
+          })()}
           {devices.length === 0 && (
             <div className="v2-tree__empty-leaf">No devices declared.</div>
           )}

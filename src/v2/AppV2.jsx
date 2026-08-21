@@ -25,6 +25,7 @@ import { useEffect, useState, useCallback, Component } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { Canvas } from '../components/Canvas.jsx';
 import { CreateStationPage } from '../components/jarvis/CreateStationPage.jsx';
+import { JarvisPage } from '../components/jarvis/JarvisPage.jsx';
 import { AddDeviceModal } from '../components/modals/AddDeviceModal.jsx';
 import { ActionModal } from '../components/modals/ActionModal.jsx';
 import { ProjectManagerModal } from '../components/modals/ProjectManagerModal.jsx';
@@ -40,6 +41,8 @@ import { ContextPanelV2 } from './ContextPanelV2.jsx';
 import { StartScreen } from './StartScreen.jsx';
 import { CompiledControlsView } from './CompiledControlsView.jsx';
 import { CompileSequenceModal } from './CompileSequenceModal.jsx';
+import { ServoValuesTable } from './ServoValuesTable.jsx';
+import { servoGaps, servoGapSummary, servoGapDetail } from './servoValues.js';
 import { useV2Shell } from './useV2Shell.js';
 
 // ── Error Boundary (same behavior as classic App) ───────────────────────────
@@ -114,9 +117,43 @@ function FlowGuidanceBar() {
   );
   const setView = useV2Shell(s => s.setView);
 
+  // Does this station have any generated builds? Gates the small "view code →"
+  // link on the Generate stage (opens the Generated code grid).
+  const [hasBuilds, setHasBuilds] = useState(false);
+  const [codeOpen, setCodeOpen] = useState(false);
+  const smName = sm?.name ?? null;
+  useEffect(() => {
+    if (!smName) { setHasBuilds(false); return; }
+    let alive = true;
+    fetch('/api/jarvis/generations')
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (!alive || !d) return;
+        setHasBuilds((d.builds || []).some(b => b.sm === smName));
+      })
+      .catch(() => { if (alive) setHasBuilds(false); });
+    return () => { alive = false; };
+  }, [smName]);
+
   if (!sm || (sm.nodes ?? []).length === 0) return null;
   const cs = sm.compiledSequence;
   const stage = !cs ? 'compile' : cs.approved !== true ? 'approve' : 'generate';
+
+  // Servo readiness — a MECHANICAL prerequisite (position tables filled out
+  // before compile). Soft gate: compile stays clickable, a confirm lists
+  // what's missing (values sometimes genuinely defer to commissioning).
+  const gaps = servoGaps(sm);
+  const gapSummary = stage === 'compile' ? servoGapSummary(gaps) : null;
+  function runCompileWithGate() {
+    if (gaps.length > 0) {
+      const ok = confirm(
+        `Servo position values are still missing:\n\n${servoGapDetail(gaps)}\n\n` +
+        'These normally come from the mechanical team before compile. Compile anyway?'
+      );
+      if (!ok) return;
+    }
+    useV2Shell.getState().openCompile(sm.id);
+  }
 
   const steps = [
     { id: 'compile',  label: '⚙ Compile' },
@@ -131,7 +168,7 @@ function FlowGuidanceBar() {
       ? 'Controls are compiled —'
       : 'Sequence approved —';
   const action = stage === 'compile'
-    ? { label: '⚙ Compile the controls (Jarvis, ~4 min)', run: () => useV2Shell.getState().openCompile(sm.id) }
+    ? { label: '⚙ Compile the controls (Jarvis, ~4 min)', run: runCompileWithGate }
     : stage === 'approve'
       ? { label: 'Review Full Controls & Approve', run: () => setView('controls') }
       : { label: 'Generate (fast — sequence already approved)', run: () => useV2Shell.getState().openGenerate() };
@@ -165,6 +202,31 @@ function FlowGuidanceBar() {
         ))}
       </span>
       <span style={{ flex: 1 }} />
+      {stage === 'generate' && hasBuilds && (
+        <button
+          data-testid="flow-guidance-view-code"
+          onClick={() => setCodeOpen(true)}
+          title="Open the Generated code grid — this station's builds, live progress, reviews"
+          style={{
+            background: 'none', border: 'none', color: '#8fc1f0', fontSize: 12,
+            fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', padding: 0,
+            textDecoration: 'underline',
+          }}
+        >view code →</button>
+      )}
+      {codeOpen && <JarvisPage onClose={() => setCodeOpen(false)} />}
+      {gapSummary && (
+        <button
+          data-testid="flow-guidance-servo-gap"
+          onClick={() => useV2Shell.getState().openServoTable(sm.id)}
+          title="Open the servo values table — fill in what the mechanical team knows"
+          style={{
+            background: 'none', border: 'none', color: '#e3c76b', fontSize: 12,
+            fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', padding: 0,
+            textDecoration: 'underline',
+          }}
+        >⚠ {gapSummary}</button>
+      )}
       <span style={{ color: '#9db2c8', whiteSpace: 'nowrap' }}>{prompt}</span>
       <button
         data-testid="flow-guidance-action"
@@ -285,6 +347,8 @@ export function AppV2() {
         {showRecipeManager && <RecipeManagerModal />}
         {/* Compile-sequence modal — self-gates on useV2Shell.compileFor. */}
         <CompileSequenceModal />
+        {/* Servo values table — self-gates on useV2Shell.servoTableFor. */}
+        <ServoValuesTable />
         <VersionBadge />
       </ReactFlowProvider>
     </ErrorBoundary>

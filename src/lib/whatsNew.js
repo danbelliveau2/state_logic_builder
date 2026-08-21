@@ -10,12 +10,29 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.1.2';
+export const UI_BUILD = 'v2.1.3';
 
-export const BUILT_AT = '2026-08-20';
+export const BUILT_AT = '2026-08-21';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.1.3',
+    date: '2026-08-21',
+    items: [
+      'NEW "Code" button in the top bar — the Code page: live pipeline status, answer questions, approve/deny Jarvis\'s decisions, get the file, score it — one grid; badge shows how many builds are running right now',
+      'Every station is a row with its live status: servo positions needed / not compiled / compiling (spinner + elapsed) / compiled — awaiting approve / building code / ✓ code ready / failed — honestly',
+      'Open a station row: Jarvis\'s open questions with talk-or-type answers, his decisions & assumptions each as one short line with ✓ (good) or ✗ (deny — say why, and the why is filed into his knowledge, attributed to you), then the L5X with the full review block beside it',
+      'Work in flight shows in the history grid too: "Generating — Station X (Project Y) — 2:31 elapsed", flipping to the reviewable row on completion',
+      'Servo position tables are now a first-class prerequisite: a station missing values shows "⚠ Servo positions needed — VerticalAxis (2 of 5 values)" before compile; compile stays clickable with an honest confirm',
+      'The Servo values table — Axis | Position | Value | role tag, editable inline, "+ add named value" per axis (BlendStart/SafeClear become real named positions the generator reads); opened from the warning, the station tree ("Servo values" line), or the flow bar',
+      'The "then what?" bar adds a "view code →" link on the Generate stage once a station has builds, and the Generate window\'s finish screen links "See all generated code →"',
+      "Full Controls is now the ten-second screen: the summary paragraph, fill-in blanks for the values Jarvis needs, handshakes on one line, Approve — that's it",
+      'The "*Verify — needs a real value" flags became literal fill-in inputs (mic on each, full explanation in the tooltip) — type the number, "Apply values" re-compiles with them',
+      "Everything long-form — Jarvis's decision notes, mappings, per-state detail — travels with the build instead of cluttering the review screen",
+      'Approve now shows what happens next, live: "⚙ Jarvis is building the code in the background" with elapsed time, then "✓ Code is built — Generate is instant" with a Generate button right there; failures show honestly with a Retry',
+    ],
+  },
   {
     version: 'v2.1.2',
     date: '2026-08-20',

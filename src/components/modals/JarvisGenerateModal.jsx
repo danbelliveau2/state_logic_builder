@@ -29,6 +29,7 @@ import { useDiagramStore } from '../../store/useDiagramStore.js';
 import { buildProgramName } from '../../lib/tagNaming.js';
 import { ProgressRing } from '../jarvis/ProgressRing.jsx';
 import { BuildScoreRow } from '../jarvis/BuildScoreRow.jsx';
+import { JarvisPage } from '../jarvis/JarvisPage.jsx';
 // Pretranslation status (v2.1.0 pipeline inversion) — pure helpers, no v2 UI.
 // The endpoint may not exist yet; fetchPretranslated feature-detects and
 // returns null, so this modal degrades to the normal flow silently.
@@ -75,6 +76,7 @@ export function JarvisGenerateModal({ onClose }) {
   const [scored, setScored] = useState({});     // buildId -> scored build
   const [streamedTokens, setStreamedTokens] = useState(0); // real content tokens (0 = silent reasoning phase)
   const [stalled, setStalled] = useState(false); // no SSE events (not even keepalives) for >90s
+  const [codeOpen, setCodeOpen] = useState(false); // "See all generated code →" (Generated code grid)
 
   const esRef = useRef(null);
   const cancelRef = useRef(false);
@@ -722,9 +724,22 @@ export function JarvisGenerateModal({ onClose }) {
             </>
           )}
           {finished && (
-            <button className="btn btn--secondary" onClick={onClose}>Close</button>
+            <>
+              <button
+                data-testid="see-all-generated-code"
+                onClick={() => setCodeOpen(true)}
+                title="Open the Generated code grid — every build: download, review, upload the corrected version"
+                style={{
+                  background: 'none', border: 'none', color: '#1574C4', fontSize: 12,
+                  fontWeight: 600, cursor: 'pointer', textDecoration: 'underline',
+                  marginRight: 'auto', padding: 0,
+                }}
+              >See all generated code →</button>
+              <button className="btn btn--secondary" onClick={onClose}>Close</button>
+            </>
           )}
         </div>
+        {codeOpen && <JarvisPage onClose={() => setCodeOpen(false)} />}
       </div>
     </div>
   );

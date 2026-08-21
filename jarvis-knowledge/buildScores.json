@@ -130,5 +130,39 @@
     },
     "goodNotes": "",
     "badNotes": ""
+  },
+  {
+    "id": "b_mt2vlomk_55dx7q",
+    "at": "2026-08-21T11:38:29.996Z",
+    "project": "Test_Project_v2",
+    "sm": "ServoPNP",
+    "jarvisVersion": "1.1.1",
+    "costUSD": 2.468,
+    "durationS": 602,
+    "attempts": 3,
+    "validationOk": true,
+    "mode": "translation",
+    "pretranslated": true,
+    "score": null,
+    "scoredBy": null,
+    "scoreComment": null,
+    "filePath": "C:\\SDC-StateLogic\\generated\\Test_Project_v2\\ServoPNP__jarvis_v1.1.1__2026-08-21_1138.L5X"
+  },
+  {
+    "id": "b_mt2w1kaj_3a6gtl",
+    "at": "2026-08-21T11:50:50.875Z",
+    "project": "Test_Project_v2",
+    "sm": "ServoPNP",
+    "jarvisVersion": "1.1.1",
+    "costUSD": 1.9453,
+    "durationS": 538,
+    "attempts": 3,
+    "validationOk": true,
+    "mode": "translation",
+    "pretranslated": true,
+    "score": null,
+    "scoredBy": null,
+    "scoreComment": null,
+    "filePath": "C:\\SDC-StateLogic\\generated\\Test_Project_v2\\ServoPNP__jarvis_v1.1.1__2026-08-21_1150.L5X"
   }
 ]

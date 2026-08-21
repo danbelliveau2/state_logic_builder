@@ -26,6 +26,7 @@ import { ProjectPickerModal } from '../components/modals/ProjectPickerModal.jsx'
 import { useAutoSaveStatus } from './useAutoSaveStatus.js';
 import { useV2Shell, closeAllProjectsToHome } from './useV2Shell.js';
 import { canCompile, compileBlockReason } from './compiledSequence.js';
+import { servoGaps, servoGapDetail } from './servoValues.js';
 import {
   DEFAULT_SCALE, currentScale, isMaxScale, isMinScale, readScale,
   scaleLabel, stepScale, subscribeScale, writeScale,
@@ -267,7 +268,20 @@ function BuildMenu() {
             data-testid="build-compile-item"
             disabled={!canCompile(sm)}
             title={compileBlockReason(sm) ?? undefined}
-            onClick={() => { setOpen(false); useV2Shell.getState().openCompile(sm.id); }}
+            onClick={() => {
+              setOpen(false);
+              // Soft gate — servo position tables are a mechanical prerequisite;
+              // compile stays clickable (values sometimes defer to commissioning).
+              const gaps = servoGaps(sm);
+              if (gaps.length > 0) {
+                const ok = confirm(
+                  `Servo position values are still missing:\n\n${servoGapDetail(gaps)}\n\n` +
+                  'These normally come from the mechanical team before compile. Compile anyway?'
+                );
+                if (!ok) return;
+              }
+              useV2Shell.getState().openCompile(sm.id);
+            }}
           >
             <span className="v2-build__item-label">⚙ Compile sequence (Jarvis)…</span>
             <span className="v2-build__item-hint">
@@ -411,6 +425,52 @@ function JarvisButton() {
   );
 }
 
+// ── Code button — the generated-code page, promoted to a top-level destination
+// (Dan: "there should be a page — the code generation page — where you get the
+// stuff for the different stations"). Opens the Jarvis page directly on the
+// Generated code grid. Badge = number of builds in flight RIGHT NOW (from
+// GET /api/jarvis/active), so "is it generating?" is answerable from anywhere.
+function CodeButton() {
+  const [open, setOpen] = useState(false);
+  const [activeCount, setActiveCount] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const r = await fetch('/api/jarvis/active');
+        if (!r.ok) return;
+        const d = await r.json();
+        if (alive) setActiveCount(Array.isArray(d.active) ? d.active.length : 0);
+      } catch {
+        if (alive) setActiveCount(0); // server offline — no badge, button still opens
+      }
+    };
+    load();
+    const t = setInterval(load, 5000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
+
+  return (
+    <>
+      <button
+        className="v2-jarvis__btn"
+        data-testid="code-open-btn"
+        onClick={() => setOpen(true)}
+        title="Generated code — every build in one grid: download, review, upload the corrected version; live while it's generating"
+      >
+        Code
+        {activeCount > 0 && (
+          <span className="v2-jarvis__badge" data-testid="code-topbar-badge" title={`${activeCount} generating right now`}>
+            {activeCount}
+          </span>
+        )}
+      </button>
+      {open && <JarvisPage onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
 export function TopBarV2() {
   return (
     <header className="v2-topbar">
@@ -420,6 +480,7 @@ export function TopBarV2() {
       <div className="v2-topbar__spacer" />
       <AutoSaveIndicator />
       <ScaleControl />
+      <CodeButton />
       <JarvisButton />
       <BuildMenu />
     </header>

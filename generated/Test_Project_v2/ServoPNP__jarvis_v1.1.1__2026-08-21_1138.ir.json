@@ -1,0 +1,881 @@
+{
+  "irVersion": 1,
+  "smId": "id_mt1pblpx",
+  "smName": "ServoPNP",
+  "displayName": "ServoPNP",
+  "stationNumber": 1,
+  "description": "Two-axis servo pick and place with sensorless timer gripper; fast/slow transition-point motion with blended corners.",
+  "devices": [
+    {
+      "id": "id_fba676b8-6a8d-4201-b6d3-64386f043279",
+      "type": "ServoAxis",
+      "name": "HorizontalAxis",
+      "displayName": "Horizontal_Axis",
+      "extras": {
+        "sensorArrangement": "",
+        "homePosition": "ServoMove",
+        "axisNumber": 1,
+        "motionType": "linear",
+        "positions": [
+          {
+            "name": "Home",
+            "defaultValue": 0,
+            "moveType": "Pos",
+            "isHome": true,
+            "isRecipe": false,
+            "type": "position"
+          },
+          {
+            "name": "Pick",
+            "defaultValue": 350,
+            "moveType": "Pos",
+            "isHome": false,
+            "isRecipe": false,
+            "type": "position"
+          },
+          {
+            "name": "Place",
+            "defaultValue": 50,
+            "moveType": "Pos",
+            "isHome": false,
+            "isRecipe": false,
+            "type": "position"
+          }
+        ],
+        "speedProfiles": [
+          {
+            "name": "Slow",
+            "speed": 150,
+            "accel": 1500,
+            "decel": 1500
+          },
+          {
+            "name": "Fast",
+            "speed": 2500,
+            "accel": 25000,
+            "decel": 25000
+          }
+        ],
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "vacOnTimerMs": 300,
+        "hasEject": false,
+        "timerMs": 1000
+      }
+    },
+    {
+      "id": "id_382a2b73-85f9-4495-82ed-c494cd83e596",
+      "type": "ServoAxis",
+      "name": "VerticalAxis",
+      "displayName": "Vertical_Axis",
+      "extras": {
+        "sensorArrangement": "",
+        "homePosition": "ServoMove",
+        "axisNumber": 2,
+        "motionType": "linear",
+        "positions": [
+          {
+            "name": "Retract",
+            "defaultValue": 0,
+            "moveType": "Pos",
+            "isHome": true,
+            "isRecipe": false,
+            "type": "position"
+          },
+          {
+            "name": "PickTransition",
+            "defaultValue": 60,
+            "moveType": "Pos",
+            "isHome": false,
+            "isRecipe": false,
+            "type": "position"
+          },
+          {
+            "name": "Pick",
+            "defaultValue": 100,
+            "moveType": "Pos",
+            "isHome": false,
+            "isRecipe": false,
+            "type": "position"
+          },
+          {
+            "name": "PlaceTransition",
+            "defaultValue": 60,
+            "moveType": "Pos",
+            "isHome": false,
+            "isRecipe": false,
+            "type": "position"
+          },
+          {
+            "name": "Place",
+            "defaultValue": 100,
+            "moveType": "Pos",
+            "isHome": false,
+            "isRecipe": false,
+            "type": "position"
+          }
+        ],
+        "speedProfiles": [
+          {
+            "name": "Slow",
+            "speed": 100,
+            "accel": 1000,
+            "decel": 1000
+          },
+          {
+            "name": "Fast",
+            "speed": 2000,
+            "accel": 20000,
+            "decel": 20000
+          }
+        ],
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "vacOnTimerMs": 300,
+        "hasEject": false,
+        "timerMs": 1000
+      }
+    },
+    {
+      "id": "id_e76efbfe-5415-4424-bd8b-ded0e7a6e8dc",
+      "type": "PneumaticGripper",
+      "name": "PartGripper",
+      "displayName": "Part_Gripper",
+      "extras": {
+        "sensorArrangement": "No sensors",
+        "homePosition": "Disengage",
+        "axisNumber": 1,
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "vacOnTimerMs": 300,
+        "hasEject": false,
+        "timerMs": 1000
+      }
+    }
+  ],
+  "states": [
+    {
+      "nodeId": "id_af6023d5-6216-421d-b301-31caa6812cdb",
+      "type": "stateNode",
+      "label": "Home / Wait for Start (Vertical at Retract)",
+      "stateNumber": 4,
+      "isInitial": true,
+      "isComplete": false,
+      "actions": [],
+      "entryFrom": []
+    },
+    {
+      "nodeId": "id_02937374-3e11-4cab-9b8c-8ad1cdce5ca4",
+      "type": "stateNode",
+      "label": "Horizontal Fast to Pick",
+      "stateNumber": 7,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_fba676b8-6a8d-4201-b6d3-64386f043279",
+          "deviceName": "HorizontalAxis",
+          "device": "Horizontal_Axis",
+          "params": {
+            "positionName": "Pick",
+            "speedProfile": "Fast",
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "positionName=\"Pick\" speedProfile=\"Fast\" advanceCondition={\"type\":\"onComplete\"}"
+        }
+      ],
+      "entryFrom": [
+        4
+      ]
+    },
+    {
+      "nodeId": "id_a6b49b34-3c13-47fc-9b5d-ffa70540b5f5",
+      "type": "stateNode",
+      "label": "Vertical Fast Down to Pick Transition",
+      "stateNumber": 10,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_382a2b73-85f9-4495-82ed-c494cd83e596",
+          "deviceName": "VerticalAxis",
+          "device": "Vertical_Axis",
+          "params": {
+            "positionName": "PickTransition",
+            "speedProfile": "Fast",
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "positionName=\"PickTransition\" speedProfile=\"Fast\" advanceCondition={\"type\":\"onComplete\"}"
+        }
+      ],
+      "entryFrom": [
+        7
+      ]
+    },
+    {
+      "nodeId": "id_a15d3dde-1b65-49d8-820b-5e670ba10159",
+      "type": "stateNode",
+      "label": "Vertical Slow Down to Pick",
+      "stateNumber": 13,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_382a2b73-85f9-4495-82ed-c494cd83e596",
+          "deviceName": "VerticalAxis",
+          "device": "Vertical_Axis",
+          "params": {
+            "positionName": "Pick",
+            "speedProfile": "Slow",
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "positionName=\"Pick\" speedProfile=\"Slow\" advanceCondition={\"type\":\"onComplete\"}"
+        }
+      ],
+      "entryFrom": [
+        10
+      ]
+    },
+    {
+      "nodeId": "id_c1662d6b-1893-4a65-8ff0-14fed9f16983",
+      "type": "stateNode",
+      "label": "Close Gripper (250 ms Timer)",
+      "stateNumber": 16,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Engage",
+          "deviceId": "id_e76efbfe-5415-4424-bd8b-ded0e7a6e8dc",
+          "deviceName": "PartGripper",
+          "device": "Part_Gripper",
+          "params": {
+            "advanceCondition": {
+              "type": "timer",
+              "timerMs": 250
+            }
+          },
+          "detail": "advanceCondition={\"type\":\"timer\",\"timerMs\":250}"
+        }
+      ],
+      "entryFrom": [
+        13
+      ]
+    },
+    {
+      "nodeId": "id_9d592617-b16b-41f0-ae56-e51ef3c27274",
+      "type": "stateNode",
+      "label": "Vertical Slow Up to Pick Transition",
+      "stateNumber": 19,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_382a2b73-85f9-4495-82ed-c494cd83e596",
+          "deviceName": "VerticalAxis",
+          "device": "Vertical_Axis",
+          "params": {
+            "positionName": "PickTransition",
+            "speedProfile": "Slow",
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "positionName=\"PickTransition\" speedProfile=\"Slow\" advanceCondition={\"type\":\"onComplete\"}"
+        }
+      ],
+      "entryFrom": [
+        16
+      ]
+    },
+    {
+      "nodeId": "id_2d0cf934-d16a-4dfd-a2ae-9596e751c565",
+      "type": "stateNode",
+      "label": "Vertical Fast to Retract; Horizontal Blends to Place",
+      "stateNumber": 22,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_382a2b73-85f9-4495-82ed-c494cd83e596",
+          "deviceName": "VerticalAxis",
+          "device": "Vertical_Axis",
+          "params": {
+            "positionName": "Retract",
+            "speedProfile": "Fast",
+            "advanceCondition": {
+              "type": "none"
+            }
+          },
+          "detail": "positionName=\"Retract\" speedProfile=\"Fast\" advanceCondition={\"type\":\"none\"}"
+        },
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_fba676b8-6a8d-4201-b6d3-64386f043279",
+          "deviceName": "HorizontalAxis",
+          "device": "Horizontal_Axis",
+          "params": {
+            "positionName": "Place",
+            "speedProfile": "Fast",
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "positionName=\"Place\" speedProfile=\"Fast\" advanceCondition={\"type\":\"onComplete\"}"
+        }
+      ],
+      "entryFrom": [
+        19
+      ]
+    },
+    {
+      "nodeId": "id_8de76aff-416d-4ef1-9224-8eeaa7d3d0c4",
+      "type": "stateNode",
+      "label": "Vertical Fast Down to Place Transition (Blended Corner)",
+      "stateNumber": 25,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_382a2b73-85f9-4495-82ed-c494cd83e596",
+          "deviceName": "VerticalAxis",
+          "device": "Vertical_Axis",
+          "params": {
+            "positionName": "PlaceTransition",
+            "speedProfile": "Fast",
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "positionName=\"PlaceTransition\" speedProfile=\"Fast\" advanceCondition={\"type\":\"onComplete\"}"
+        }
+      ],
+      "entryFrom": [
+        22
+      ]
+    },
+    {
+      "nodeId": "id_700d4ed6-dbf8-448e-a014-c71a693104c6",
+      "type": "stateNode",
+      "label": "Vertical Slow Down to Place",
+      "stateNumber": 28,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_382a2b73-85f9-4495-82ed-c494cd83e596",
+          "deviceName": "VerticalAxis",
+          "device": "Vertical_Axis",
+          "params": {
+            "positionName": "Place",
+            "speedProfile": "Slow",
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "positionName=\"Place\" speedProfile=\"Slow\" advanceCondition={\"type\":\"onComplete\"}"
+        }
+      ],
+      "entryFrom": [
+        25
+      ]
+    },
+    {
+      "nodeId": "id_4ff44aa2-c689-48ce-951c-b15a98e9f27f",
+      "type": "stateNode",
+      "label": "Open Gripper (250 ms Timer)",
+      "stateNumber": 31,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Disengage",
+          "deviceId": "id_e76efbfe-5415-4424-bd8b-ded0e7a6e8dc",
+          "deviceName": "PartGripper",
+          "device": "Part_Gripper",
+          "params": {
+            "advanceCondition": {
+              "type": "timer",
+              "timerMs": 250
+            }
+          },
+          "detail": "advanceCondition={\"type\":\"timer\",\"timerMs\":250}"
+        }
+      ],
+      "entryFrom": [
+        28
+      ]
+    },
+    {
+      "nodeId": "id_56b46b96-d1f5-469c-8fc7-861b4316c211",
+      "type": "stateNode",
+      "label": "Vertical Slow Up to Place Transition",
+      "stateNumber": 34,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_382a2b73-85f9-4495-82ed-c494cd83e596",
+          "deviceName": "VerticalAxis",
+          "device": "Vertical_Axis",
+          "params": {
+            "positionName": "PlaceTransition",
+            "speedProfile": "Slow",
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "positionName=\"PlaceTransition\" speedProfile=\"Slow\" advanceCondition={\"type\":\"onComplete\"}"
+        }
+      ],
+      "entryFrom": [
+        31
+      ]
+    },
+    {
+      "nodeId": "id_0f6b90a7-08d6-4729-b369-49cf31e5e3ce",
+      "type": "stateNode",
+      "label": "Vertical Fast to Retract; Horizontal Blends to Home",
+      "stateNumber": 37,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_382a2b73-85f9-4495-82ed-c494cd83e596",
+          "deviceName": "VerticalAxis",
+          "device": "Vertical_Axis",
+          "params": {
+            "positionName": "Retract",
+            "speedProfile": "Fast",
+            "advanceCondition": {
+              "type": "none"
+            }
+          },
+          "detail": "positionName=\"Retract\" speedProfile=\"Fast\" advanceCondition={\"type\":\"none\"}"
+        },
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_fba676b8-6a8d-4201-b6d3-64386f043279",
+          "deviceName": "HorizontalAxis",
+          "device": "Horizontal_Axis",
+          "params": {
+            "positionName": "Home",
+            "speedProfile": "Fast",
+            "advanceCondition": {
+              "type": "onComplete"
+            }
+          },
+          "detail": "positionName=\"Home\" speedProfile=\"Fast\" advanceCondition={\"type\":\"onComplete\"}"
+        }
+      ],
+      "entryFrom": [
+        34
+      ]
+    },
+    {
+      "nodeId": "id_3779faed-4187-4371-955d-c39a8f0caed0",
+      "type": "stateNode",
+      "label": "Wait for Next-Cycle Signal",
+      "stateNumber": 40,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Wait",
+          "deviceId": "_decision",
+          "deviceName": null,
+          "device": null,
+          "params": {
+            "nodeMode": "wait",
+            "signalName": "NextCycleRequest",
+            "signalSource": "Supervisor",
+            "signalType": "condition",
+            "conditionType": "sensorOn",
+            "exitCount": 1,
+            "exit1Label": "On",
+            "exit2Label": "Off"
+          },
+          "detail": "nodeMode=\"wait\" signalName=\"NextCycleRequest\" signalSource=\"Supervisor\" signalType=\"condition\" conditionType=\"sensorOn\" exitCount=1 exit1Label=\"On\" exit2Label=\"Off\""
+        }
+      ],
+      "entryFrom": [
+        37
+      ]
+    },
+    {
+      "nodeId": "id_d15112cb-fc83-419c-8bd9-5fdda3314ee7",
+      "type": "stateNode",
+      "label": "Cycle Complete",
+      "stateNumber": 43,
+      "isInitial": false,
+      "isComplete": true,
+      "actions": [],
+      "entryFrom": [
+        40
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "fromLabel": "Home / Wait for Start (Vertical at Retract)",
+      "toLabel": "Horizontal Fast to Pick",
+      "fromState": 4,
+      "toState": 7,
+      "from": 4,
+      "to": 7,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Horizontal Fast to Pick",
+      "toLabel": "Vertical Fast Down to Pick Transition",
+      "fromState": 7,
+      "toState": 10,
+      "from": 7,
+      "to": 10,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Vertical Fast Down to Pick Transition",
+      "toLabel": "Vertical Slow Down to Pick",
+      "fromState": 10,
+      "toState": 13,
+      "from": 10,
+      "to": 13,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Vertical Slow Down to Pick",
+      "toLabel": "Close Gripper (250 ms Timer)",
+      "fromState": 13,
+      "toState": 16,
+      "from": 13,
+      "to": 16,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Close Gripper (250 ms Timer)",
+      "toLabel": "Vertical Slow Up to Pick Transition",
+      "fromState": 16,
+      "toState": 19,
+      "from": 16,
+      "to": 19,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Vertical Slow Up to Pick Transition",
+      "toLabel": "Vertical Fast to Retract; Horizontal Blends to Place",
+      "fromState": 19,
+      "toState": 22,
+      "from": 19,
+      "to": 22,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Vertical Fast to Retract; Horizontal Blends to Place",
+      "toLabel": "Vertical Fast Down to Place Transition (Blended Corner)",
+      "fromState": 22,
+      "toState": 25,
+      "from": 22,
+      "to": 25,
+      "conditionType": "verify",
+      "label": "HorizontalAxisiq_MAM.PC=On\nHorizontalAxisiq_PlaceRC.In_Range=On",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "HorizontalAxisiq_MAM.PC=On\nHorizontalAxisiq_PlaceRC.In_Range=On",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Vertical Fast Down to Place Transition (Blended Corner)",
+      "toLabel": "Vertical Slow Down to Place",
+      "fromState": 25,
+      "toState": 28,
+      "from": 25,
+      "to": 28,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Vertical Slow Down to Place",
+      "toLabel": "Open Gripper (250 ms Timer)",
+      "fromState": 28,
+      "toState": 31,
+      "from": 28,
+      "to": 31,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Open Gripper (250 ms Timer)",
+      "toLabel": "Vertical Slow Up to Place Transition",
+      "fromState": 31,
+      "toState": 34,
+      "from": 31,
+      "to": 34,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Vertical Slow Up to Place Transition",
+      "toLabel": "Vertical Fast to Retract; Horizontal Blends to Home",
+      "fromState": 34,
+      "toState": 37,
+      "from": 34,
+      "to": 37,
+      "conditionType": "ready",
+      "label": "Ready",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Ready",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Vertical Fast to Retract; Horizontal Blends to Home",
+      "toLabel": "Wait for Next-Cycle Signal",
+      "fromState": 37,
+      "toState": 40,
+      "from": 37,
+      "to": 40,
+      "conditionType": "verify",
+      "label": "HorizontalAxisiq_MAM.PC=On\nHorizontalAxisiq_HomeRC.In_Range=On",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "HorizontalAxisiq_MAM.PC=On\nHorizontalAxisiq_HomeRC.In_Range=On",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Wait for Next-Cycle Signal",
+      "toLabel": "Cycle Complete",
+      "fromState": 40,
+      "toState": 43,
+      "from": 40,
+      "to": 43,
+      "conditionType": "ready",
+      "label": "NextCycleRequest=On",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "NextCycleRequest=On",
+      "kind": "sequence"
+    }
+  ],
+  "waits": [
+    {
+      "stateNumber": 4,
+      "signal": "Ready",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    },
+    {
+      "stateNumber": 7,
+      "signal": "Ready",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    },
+    {
+      "stateNumber": 10,
+      "signal": "Ready",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    },
+    {
+      "stateNumber": 13,
+      "signal": "Ready",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    },
+    {
+      "stateNumber": 16,
+      "signal": "Ready",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    },
+    {
+      "stateNumber": 19,
+      "signal": "Ready",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    },
+    {
+      "stateNumber": 25,
+      "signal": "Ready",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    },
+    {
+      "stateNumber": 28,
+      "signal": "Ready",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    },
+    {
+      "stateNumber": 31,
+      "signal": "Ready",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    },
+    {
+      "stateNumber": 34,
+      "signal": "Ready",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    },
+    {
+      "stateNumber": 40,
+      "signal": "NextCycleRequest=On",
+      "source": null,
+      "partner": null,
+      "direction": "incoming",
+      "mode": "handshake"
+    }
+  ],
+  "stateRanges": {
+    "reserved": {
+      "powerup": 0,
+      "sdc": [
+        1,
+        2,
+        3
+      ]
+    },
+    "sequence": {
+      "from": 4,
+      "to": 43
+    },
+    "lockout": 99,
+    "init": {
+      "from": 100,
+      "to": 127,
+      "cycleReady": 127
+    }
+  },
+  "machineSpec": {
+    "purpose": "A standalone 2-axis servo pick-and-place that picks a part at the pick position and places it at the place position, looping on a next-cycle signal.",
+    "devicePurposes": [
+      {
+        "deviceName": "Horizontal_Axis",
+        "purpose": "Traverses between pick, place, and home positions."
+      },
+      {
+        "deviceName": "Vertical_Axis",
+        "purpose": "Raises and lowers the gripper into the pick and place positions, with a safe retract height."
+      },
+      {
+        "deviceName": "Part_Gripper",
+        "purpose": "Holds the part during transfer; sensorless, timer-based open/close."
+      }
+    ],
+    "sequence": [],
+    "outcomeRules": [
+      {
+        "trigger": "Any fault during the cycle",
+        "response": "Recover by first moving the vertical axis up to the safe/retract height before doing anything else.",
+        "retryCount": null,
+        "escalation": ""
+      },
+      {
+        "trigger": "Recovery with the gripper commanded closed",
+        "response": "Assume a part is held and go to the place sequence.",
+        "retryCount": null,
+        "escalation": ""
+      },
+      {
+        "trigger": "Recovery with the gripper commanded open",
+        "response": "Assume no part is held and return to the pick sequence.",
+        "retryCount": null,
+        "escalation": ""
+      }
+    ],
+    "relationships": [],
+    "partnerDeclarations": []
+  },
+  "warnings": [],
+  "text": "# Intermediate Representation — ServoPNP\nStation number: 1\nDescription: Two-axis servo pick and place with sensorless timer gripper; fast/slow transition-point motion with blended corners.\n\n## Devices\n- [ServoAxis] HorizontalAxis \"Horizontal_Axis\" sensorArrangement=\"\" homePosition=\"ServoMove\" axisNumber=1 motionType=\"linear\" positions=[{\"name\":\"Home\",\"defaultValue\":0,\"moveType\":\"Pos\",\"isHome\":true,\"isRecipe\":false,\"type\":\"position\"},{\"name\":\"Pick\",\"defaultValue\":350,\"moveType\":\"Pos\",\"isHome\":false,\"isRecipe\":false,\"type\":\"position\"},{\"name\":\"Place\",\"defaultValue\":50,\"moveType\":\"Pos\",\"isHome\":false,\"isRecipe\":false,\"type\":\"position\"}] speedProfiles=[{\"name\":\"Slow\",\"speed\":150,\"accel\":1500,\"decel\":1500},{\"name\":\"Fast\",\"speed\":2500,\"accel\":25000,\"decel\":25000}] extTimerMs=500 retTimerMs=500 engageTimerMs=250 disengageTimerMs=250 vacOnTimerMs=300 hasEject=false timerMs=1000\n- [ServoAxis] VerticalAxis \"Vertical_Axis\" sensorArrangement=\"\" homePosition=\"ServoMove\" axisNumber=2 motionType=\"linear\" positions=[{\"name\":\"Retract\",\"defaultValue\":0,\"moveType\":\"Pos\",\"isHome\":true,\"isRecipe\":false,\"type\":\"position\"},{\"name\":\"PickTransition\",\"defaultValue\":60,\"moveType\":\"Pos\",\"isHome\":false,\"isRecipe\":false,\"type\":\"position\"},{\"name\":\"Pick\",\"defaultValue\":100,\"moveType\":\"Pos\",\"isHome\":false,\"isRecipe\":false,\"type\":\"position\"},{\"name\":\"PlaceTransition\",\"defaultValue\":60,\"moveType\":\"Pos\",\"isHome\":false,\"isRecipe\":false,\"type\":\"position\"},{\"name\":\"Place\",\"defaultValue\":100,\"moveType\":\"Pos\",\"isHome\":false,\"isRecipe\":false,\"type\":\"position\"}] speedProfiles=[{\"name\":\"Slow\",\"speed\":100,\"accel\":1000,\"decel\":1000},{\"name\":\"Fast\",\"speed\":2000,\"accel\":20000,\"decel\":20000}] extTimerMs=500 retTimerMs=500 engageTimerMs=250 disengageTimerMs=250 vacOnTimerMs=300 hasEject=false timerMs=1000\n- [PneumaticGripper] PartGripper \"Part_Gripper\" sensorArrangement=\"No sensors\" homePosition=\"Disengage\" axisNumber=1 extTimerMs=500 retTimerMs=500 engageTimerMs=250 disengageTimerMs=250 vacOnTimerMs=300 hasEject=false timerMs=1000\n\n## States (assigned state numbers — these are FINAL, use them as-is)\n- State 4: \"Home / Wait for Start (Vertical at Retract)\" {INITIAL}\n- State 7: \"Horizontal Fast to Pick\"\n    action: ServoMove -> HorizontalAxis (positionName=\"Pick\" speedProfile=\"Fast\" advanceCondition={\"type\":\"onComplete\"})\n- State 10: \"Vertical Fast Down to Pick Transition\"\n    action: ServoMove -> VerticalAxis (positionName=\"PickTransition\" speedProfile=\"Fast\" advanceCondition={\"type\":\"onComplete\"})\n- State 13: \"Vertical Slow Down to Pick\"\n    action: ServoMove -> VerticalAxis (positionName=\"Pick\" speedProfile=\"Slow\" advanceCondition={\"type\":\"onComplete\"})\n- State 16: \"Close Gripper (250 ms Timer)\"\n    action: Engage -> PartGripper (advanceCondition={\"type\":\"timer\",\"timerMs\":250})\n- State 19: \"Vertical Slow Up to Pick Transition\"\n    action: ServoMove -> VerticalAxis (positionName=\"PickTransition\" speedProfile=\"Slow\" advanceCondition={\"type\":\"onComplete\"})\n- State 22: \"Vertical Fast to Retract; Horizontal Blends to Place\"\n    action: ServoMove -> VerticalAxis (positionName=\"Retract\" speedProfile=\"Fast\" advanceCondition={\"type\":\"none\"})\n    action: ServoMove -> HorizontalAxis (positionName=\"Place\" speedProfile=\"Fast\" advanceCondition={\"type\":\"onComplete\"})\n- State 25: \"Vertical Fast Down to Place Transition (Blended Corner)\"\n    action: ServoMove -> VerticalAxis (positionName=\"PlaceTransition\" speedProfile=\"Fast\" advanceCondition={\"type\":\"onComplete\"})\n- State 28: \"Vertical Slow Down to Place\"\n    action: ServoMove -> VerticalAxis (positionName=\"Place\" speedProfile=\"Slow\" advanceCondition={\"type\":\"onComplete\"})\n- State 31: \"Open Gripper (250 ms Timer)\"\n    action: Disengage -> PartGripper (advanceCondition={\"type\":\"timer\",\"timerMs\":250})\n- State 34: \"Vertical Slow Up to Place Transition\"\n    action: ServoMove -> VerticalAxis (positionName=\"PlaceTransition\" speedProfile=\"Slow\" advanceCondition={\"type\":\"onComplete\"})\n- State 37: \"Vertical Fast to Retract; Horizontal Blends to Home\"\n    action: ServoMove -> VerticalAxis (positionName=\"Retract\" speedProfile=\"Fast\" advanceCondition={\"type\":\"none\"})\n    action: ServoMove -> HorizontalAxis (positionName=\"Home\" speedProfile=\"Fast\" advanceCondition={\"type\":\"onComplete\"})\n- State 40: \"Wait for Next-Cycle Signal\"\n    action: Wait -> _decision (nodeMode=\"wait\" signalName=\"NextCycleRequest\" signalSource=\"Supervisor\" signalType=\"condition\" conditionType=\"sensorOn\" exitCount=1 exit1Label=\"On\" exit2Label=\"Off\")\n- State 43: \"Cycle Complete\" {CYCLE-COMPLETE}\n\n## Transitions\n- [4] \"Home / Wait for Start (Vertical at Retract)\" -> [7] \"Horizontal Fast to Pick\" (type=ready label=\"Ready\")\n- [7] \"Horizontal Fast to Pick\" -> [10] \"Vertical Fast Down to Pick Transition\" (type=ready label=\"Ready\")\n- [10] \"Vertical Fast Down to Pick Transition\" -> [13] \"Vertical Slow Down to Pick\" (type=ready label=\"Ready\")\n- [13] \"Vertical Slow Down to Pick\" -> [16] \"Close Gripper (250 ms Timer)\" (type=ready label=\"Ready\")\n- [16] \"Close Gripper (250 ms Timer)\" -> [19] \"Vertical Slow Up to Pick Transition\" (type=ready label=\"Ready\")\n- [19] \"Vertical Slow Up to Pick Transition\" -> [22] \"Vertical Fast to Retract; Horizontal Blends to Place\" (type=ready label=\"Ready\")\n- [22] \"Vertical Fast to Retract; Horizontal Blends to Place\" -> [25] \"Vertical Fast Down to Place Transition (Blended Corner)\" (type=verify label=\"HorizontalAxisiq_MAM.PC=On\nHorizontalAxisiq_PlaceRC.In_Range=On\")\n- [25] \"Vertical Fast Down to Place Transition (Blended Corner)\" -> [28] \"Vertical Slow Down to Place\" (type=ready label=\"Ready\")\n- [28] \"Vertical Slow Down to Place\" -> [31] \"Open Gripper (250 ms Timer)\" (type=ready label=\"Ready\")\n- [31] \"Open Gripper (250 ms Timer)\" -> [34] \"Vertical Slow Up to Place Transition\" (type=ready label=\"Ready\")\n- [34] \"Vertical Slow Up to Place Transition\" -> [37] \"Vertical Fast to Retract; Horizontal Blends to Home\" (type=ready label=\"Ready\")\n- [37] \"Vertical Fast to Retract; Horizontal Blends to Home\" -> [40] \"Wait for Next-Cycle Signal\" (type=verify label=\"HorizontalAxisiq_MAM.PC=On\nHorizontalAxisiq_HomeRC.In_Range=On\")\n- [40] \"Wait for Next-Cycle Signal\" -> [43] \"Cycle Complete\" (type=ready label=\"NextCycleRequest=On\")\n\n## MACHINE SPEC (mechanical intent — compile the coordination)\nThis section is AUTHORITATIVE intent authored by the mechanical engineer.\nSynthesize the signals, waits, exits, and cross-station handshakes that\nrealize it. EVERY wait you create must have an exit for every partner\nfailure mode listed here PLUS a timeout — no exitless waits.\n\nStation purpose: A standalone 2-axis servo pick-and-place that picks a part at the pick position and places it at the place position, looping on a next-cycle signal.\n\n### Device purposes\n- Horizontal_Axis: Traverses between pick, place, and home positions.\n- Vertical_Axis: Raises and lowers the gripper into the pick and place positions, with a safe retract height.\n- Part_Gripper: Holds the part during transfer; sensorless, timer-based open/close.\n\n### Outcome rules (verbatim — each one needs a reachable path in the program)\n- WHEN: Any fault during the cycle -> DO: Recover by first moving the vertical axis up to the safe/retract height before doing anything else..\n- WHEN: Recovery with the gripper commanded closed -> DO: Assume a part is held and go to the place sequence..\n- WHEN: Recovery with the gripper commanded open -> DO: Assume no part is held and return to the pick sequence..",
+  "generatedAt": "2026-08-21T11:38:29.995Z",
+  "jarvisVersion": "1.1.1",
+  "l5xFile": "ServoPNP__jarvis_v1.1.1__2026-08-21_1138.L5X",
+  "validationOk": true,
+  "pretranslated": true,
+  "compiledAt": "2026-08-20T17:08:29.748Z"
+}
