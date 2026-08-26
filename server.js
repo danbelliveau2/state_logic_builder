@@ -99,15 +99,47 @@
  *                                     (dated, attributed; section/file created if
  *                                     missing; one retry on write conflict)
  *   POST   /api/jarvis/questions/:id/dismiss   mark a question dismissed
+ *   POST   /api/jarvis/examples       example intake (ask-for-examples doctrine):
+ *                                     { filename, base64|content, topic?, requestId?,
+ *                                     uploadedBy? } — saves to plc-reference/
+ *                                     training-queue/, resolves the linked
+ *                                     example-request question, and spawns an
+ *                                     immediate curriculum study pass (~$1)
  *   GET    /api/jarvis/knowledge      { meKnowledge, rulesHeadings } — read-only
  *                                     view of what Jarvis knows (files on disk)
- *   GET    /api/jarvis/trackrecord    { version, history, benchmarks, generatedCount }
+ *   GET    /api/jarvis/trackrecord    { version, history, benchmarks, generatedCount,
+ *                                       firstPass: { eligible, shipped, rate, avgRoundsToShip } }
+ *                                     — firstPass is Jarvis's HEADLINE number
+ *                                     (first-pass ship rate; UI should headline it)
  *                                     — jarvisVersion.js HISTORY + benchmarks/*.report.json
  *
  *   GET    /api/jarvis/generations    review-grid rows: { builds, orphans } —
  *                                     every buildScores.json record + orphan
  *                                     generated/*.L5X files with no record
+ *   POST   /api/jarvis/builds/:id/continue  resume a HELD generation (Dan's
+ *                                     escalation model): optional inline
+ *                                     { answers:[{questionId,answer,answeredBy}] }
+ *                                     (recorded like the answer route), then
+ *                                     re-enters the fix loop from the persisted
+ *                                     resume state with the answers in context
+ *                                     and completes through THE CHECK. Held
+ *                                     builds carry build.help = { questions:
+ *                                     [{id,question,proposedSolution,addressee}],
+ *                                     status:'waiting'|'resumed'|'resolved' }.
+ *   POST   /api/jarvis/builds/:id/approve-changes  { indexes?, approvedBy? } —
+ *                                     approve the build's declared structural
+ *                                     changes (build.structuralChanges:
+ *                                     [{text,approved}]); all when indexes
+ *                                     omitted. Unapproved changes never block
+ *                                     the file — they persist visibly.
  *   GET    /api/jarvis/builds/:id/file[?which=corrected]  download a saved L5X
+ *   POST   /api/jarvis/builds/:id/verify  { verifiedBy, note? } — mark a build
+ *                                     engineer-verified-correct: copies its L5X
+ *                                     into plc-reference/verified/ (the library
+ *                                     preWriteStudy ranks above corrected and
+ *                                     delivered exemplars), stamps the build
+ *                                     record, registers sources + curriculum,
+ *                                     appends the station changelog entry.
  *   POST   /api/jarvis/builds/:id/corrected  { base64, uploadedBy, replace? } —
  *                                     store the engineer's corrected L5X next to
  *                                     the original and learn from the diff in the
@@ -218,7 +250,29 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     if (!safe) return sendJson(res, 400, { error: 'Invalid filename' });
     try {
       const body = await readBody(req);
-      JSON.parse(body); // validate JSON
+      const parsed = JSON.parse(body); // validate JSON
+
+      // PROJECT-IDENTITY GUARD (Aug 2026 data-eater fix, server-side belt &
+      // braces): refuse to write a payload whose project name maps to a
+      // DIFFERENT filename than the one being saved. This is the server half
+      // of the client-side autosave identity check — a debounced save that
+      // fires after a project switch must never land the previous project's
+      // content under the new project's filename. Every legitimate save path
+      // (saveCurrentProject, switchProject, createNewProject, renameProject,
+      // importProject, tab snapshots) derives the filename from project.name
+      // via the same sanitize rule, so a mismatch is always a bug, never a
+      // valid save.
+      if (parsed && typeof parsed.name === 'string' && parsed.name.trim()) {
+        const derived = (parsed.name.replace(/[^a-zA-Z0-9_\- ]/g, '')
+          .replace(/\s+/g, '_').replace(/_+/g, '_').trim() || 'project') + '.json';
+        if (derived.toLowerCase() !== safe.toLowerCase()) {
+          console.warn(`[projects] REFUSED save: payload name "${parsed.name}" (→ ${derived}) does not match target file ${safe}`);
+          return sendJson(res, 409, {
+            error: `Project identity mismatch: payload is "${parsed.name}" (→ ${derived}) but target file is ${safe}. Save refused to prevent overwriting one project with another's content.`,
+            code: 'PROJECT_IDENTITY_MISMATCH',
+          });
+        }
+      }
 
       const filePath = path.join(DATA_DIR_, safe);
 
@@ -264,6 +318,97 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     catch (e) { sendJson(res, 500, { error: e.message }); }
   }
 
+  // ── Spec-sheet images — pictures the ME attaches are SPEC and persist ──────
+  // forever (Dan, Aug 23: a pasted picture vanished; Aug 24: SECOND loss —
+  // the old whole-set PUT let any client whose state was missing images
+  // clobber the server copy). The server copy is AUTHORITATIVE and merges are
+  // ADDITIVE: a PUT unions the incoming images with what the file already
+  // holds (keyed by a content hash); an image only ever leaves the set via
+  // the explicit `removed` hash list (the user's ✕). The merged set is
+  // returned so the client can adopt anything it was missing.
+  // Keyed by the sheet's draftId: projects/_sheet-images/<draftId>.json.
+  const SHEET_IMAGES_DIR_ = path.join(DATA_DIR_, '_sheet-images');
+  function sheetImagesPath(draftId) {
+    const safe = /^[a-zA-Z0-9_-]{1,80}$/.test(String(draftId || '')) ? String(draftId) : null;
+    return safe ? path.join(SHEET_IMAGES_DIR_, `${safe}.json`) : null;
+  }
+  /** FNV-1a over the base64 payload — same function as the client's
+   *  (createStationDrafts.imgHash). Content identity for union-by-hash. */
+  function sheetImgHash(b64) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < b64.length; i++) {
+      h ^= b64.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return (h >>> 0).toString(36) + '_' + b64.length.toString(36);
+  }
+  function readSheetImages(fp) {
+    if (!fp || !fs.existsSync(fp)) return [];
+    try {
+      const data = JSON.parse(fs.readFileSync(fp, 'utf8'));
+      return Array.isArray(data.images) ? data.images.filter(i => i && typeof i.base64 === 'string' && i.base64) : [];
+    } catch { return []; }
+  }
+  async function handleSheetImagesPut(req, res) {
+    try {
+      const body = JSON.parse((await readBody(req)) || '{}');
+      const fp = sheetImagesPath(body.draftId);
+      if (!fp) return sendJson(res, 400, { error: 'Invalid draftId' });
+      const incoming = (Array.isArray(body.images) ? body.images : [])
+        .filter(i => i && typeof i.base64 === 'string' && i.base64)
+        .map(i => ({
+          name: String(i.name || ''),
+          mediaType: String(i.mediaType || 'image/png'),
+          base64: i.base64,
+        }));
+      const removed = new Set(
+        (Array.isArray(body.removed) ? body.removed : []).map(String).filter(Boolean)
+      );
+      // Additive union: existing (server-authoritative order) + new incoming.
+      // ONLY the explicit `removed` hashes ever drop an image.
+      const byHash = new Map();
+      for (const img of readSheetImages(fp)) {
+        const h = sheetImgHash(img.base64);
+        if (!removed.has(h)) byHash.set(h, img);
+      }
+      for (const img of incoming) {
+        const h = sheetImgHash(img.base64);
+        if (!removed.has(h) && !byHash.has(h)) byHash.set(h, img);
+      }
+      // The store now holds ANY reference material (Dan, Aug 24): pictures,
+      // .L5X code, PDFs/docs — same shape ({name, mediaType, base64}).
+      const images = [...byHash.values()];
+      const totalB64 = images.reduce((n, i) => n + i.base64.length, 0);
+      if (totalB64 > 100 * 1024 * 1024) return sendJson(res, 413, { error: 'Reference material exceeds the 100MB total cap' });
+      fs.mkdirSync(SHEET_IMAGES_DIR_, { recursive: true });
+      fs.writeFileSync(fp, JSON.stringify({ draftId: body.draftId, savedAt: Date.now(), images }));
+      sendJson(res, 200, {
+        ok: true,
+        count: images.length,
+        hashes: [...byHash.keys()],
+        removedAck: [...removed],
+        images,
+      });
+    } catch (e) { sendJson(res, 500, { error: e.message }); }
+  }
+  function handleSheetImagesGet(res, query) {
+    const fp = sheetImagesPath(query.draftId);
+    if (!fp) return sendJson(res, 400, { error: 'Invalid draftId' });
+    if (!fs.existsSync(fp)) return sendJson(res, 200, { ok: true, images: [] });
+    try {
+      const data = JSON.parse(fs.readFileSync(fp, 'utf8'));
+      sendJson(res, 200, { ok: true, images: Array.isArray(data.images) ? data.images : [] });
+    } catch (e) { sendJson(res, 500, { error: e.message }); }
+  }
+  function handleSheetImagesDelete(res, query) {
+    const fp = sheetImagesPath(query.draftId);
+    if (!fp) return sendJson(res, 400, { error: 'Invalid draftId' });
+    try {
+      if (fs.existsSync(fp)) fs.unlinkSync(fp);
+      sendJson(res, 200, { ok: true });
+    } catch (e) { sendJson(res, 500, { error: e.message }); }
+  }
+
   // ── AI L5X Generation (agentGenerator) ─────────────────────────────────────
 
   /** POST /api/generate — body: { filename | projectJson, smId, options? }.
@@ -297,8 +442,11 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       const sm = findSm_(projectJson, body.smId);
       if (!sm) return sendJson(res, 404, { error: 'State machine not found: ' + (body.smId || '(first)') });
 
-      const result = await gen.generateL5X(projectJson, sm.id, body.options || {});
-      sendJson(res, 200, result);
+      const releaseAi = beginAiWork_('generation', projectJson.name || null, sm.name);
+      try {
+        const result = await gen.generateL5X(projectJson, sm.id, body.options || {});
+        sendJson(res, 200, result);
+      } finally { releaseAi(); }
     } catch (e) {
       if (e && e.code === 'AI_NOT_CONFIGURED') {
         return sendJson(res, 503, { error: e.message });
@@ -330,6 +478,155 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
   }
   function releaseActiveWork_(id) { activeWork_.delete(id); }
 
+  // Restart-safety clock — the last time ANY model-calling route started or
+  // finished work, exposed at GET /api/health as {lastAiRequestAt}.
+  // DISCIPLINE (2026-08-24, after a pm2 restart killed Dan's in-flight
+  // spec-sheet Build): agents/tooling must NOT restart this server unless
+  // activeGenerations === 0 AND lastAiRequestAt is null or more than 60s old.
+  let lastAiRequestAt = null;
+  const touchAi_ = () => { lastAiRequestAt = new Date().toISOString(); };
+
+  /** Count one in-flight AI request (ANY model-calling route — generation,
+   *  compile, diagram build, spec, summarize, correction analysis, continue).
+   *  Returns an idempotent release fn for a finally block. register: false
+   *  keeps light calls (spec/summarize) out of the Generations grid's live
+   *  rows while still gating restarts via activeGenerations. */
+  function beginAiWork_(type, project, sm, { register = true } = {}) {
+    activeGenerations++;
+    touchAi_();
+    const workId = register ? registerActiveWork_(type, project, sm) : null;
+    let done = false;
+    return () => {
+      if (done) return;
+      done = true;
+      touchAi_();
+      activeGenerations = Math.max(0, activeGenerations - 1);
+      if (workId) releaseActiveWork_(workId);
+    };
+  }
+
+  // ── Escalation-model persistence helpers (shared by the generate stream
+  //    and the held-build continue endpoint) ─────────────────────────────────
+
+  const cleanPathPart_ = (s) => String(s || 'unnamed').replace(/[^a-zA-Z0-9_\-]/g, '_');
+
+  /** Auto-save a generation result's L5X + structured IR to generated/<project>/.
+   *  @returns {{ savedPath, savedIrPath }} (both null-able; failures logged) */
+  function saveGeneratedResult_(result, projectJson, safe) {
+    let savedPath = null;
+    let savedIrPath = null;
+    if (!result.l5x) return { savedPath, savedIrPath };
+    try {
+      const ver = result.meta?.jarvisVersion || '0';
+      const date = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '');
+      const dir = path.join(__dirname, 'generated', cleanPathPart_(projectJson.name || safe.replace('.json', '')));
+      fs.mkdirSync(dir, { recursive: true });
+      savedPath = path.join(dir, `${cleanPathPart_(result.meta?.smName)}__jarvis_v${ver}__${date}.L5X`);
+      fs.writeFileSync(savedPath, result.l5x, 'utf8');
+    } catch (e) {
+      console.warn('[generate] auto-save failed:', e.message);
+    }
+    if (savedPath && result.ir && result.ir.irVersion) {
+      try {
+        savedIrPath = savedPath.replace(/\.L5X$/i, '.ir.json');
+        fs.writeFileSync(savedIrPath, JSON.stringify({
+          ...result.ir,
+          generatedAt: new Date().toISOString(),
+          jarvisVersion: result.meta?.jarvisVersion ?? null,
+          l5xFile: path.basename(savedPath),
+          validationOk: result.ok === true,
+        }, null, 2), 'utf8');
+      } catch (e) {
+        savedIrPath = null;
+        console.warn('[generate] IR auto-save failed:', e.message);
+      }
+    }
+    return { savedPath, savedIrPath };
+  }
+
+  /** HOLD-FOR-HELP persistence: file the held generation's questions (each
+   *  with Jarvis's proposed solution + addressee) into the leads' queue, and
+   *  save the resume state as a sidecar next to the generated files.
+   *  @returns {{ helpRecord, resumePath }} — helpRecord matches the UI
+   *  contract { questions:[{id, question, proposedSolution, addressee}],
+   *  status:'waiting' }; both null on failure (logged, never thrown). */
+  function persistHold_(result, projectJson, safe, smName) {
+    if (!result.held || !Array.isArray(result.held.questions) || !result.held.questions.length) {
+      return { helpRecord: null, resumePath: null };
+    }
+    try {
+      const qr = require('./src/lib/agentGenerator/questionRouter.js');
+      const arr = readQuestions();
+      const buildRef = `${projectJson.name || safe.replace('.json', '')} / ${smName}`;
+      const helpQuestions = result.held.questions.map(q => {
+        const domain = qr.resolveQuestionDomain(q.domain, q.question);
+        const entry = {
+          id: 'q_help_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8),
+          question: String(q.question).trim(),
+          // Solutions, not explanations: Jarvis's best answer rides along.
+          proposedSolution: q.proposedSolution != null ? String(q.proposedSolution) : null,
+          addressee: qr.resolveAddressee(q.addressee, domain),
+          kind: qr.resolveQuestionKind(q.kind),
+          ...(q.derived ? { proposedSolutionDerived: true } : {}),
+          context: `Hold-for-help — generation of ${buildRef} stopped: ${result.held.reason}`,
+          source: 'generation',
+          buildRef,
+          domain,
+          askedAt: new Date().toISOString(),
+          status: 'open',
+          priority: 1,
+        };
+        arr.push(entry);
+        return { id: entry.id, question: entry.question, proposedSolution: entry.proposedSolution, addressee: entry.addressee };
+      });
+      writeQuestions(arr);
+
+      const dir = path.join(__dirname, 'generated', cleanPathPart_(projectJson.name || safe.replace('.json', '')));
+      fs.mkdirSync(dir, { recursive: true });
+      const resumePath = path.join(dir, `${cleanPathPart_(smName)}__held__${Date.now().toString(36)}.resume.json`);
+      // RESUME REPRESENTATION (documented decision): the generation prompt is
+      // deterministic from project + template, so the resume file persists
+      // only the session-unique state — the last edit plan, the last merged
+      // L5X draft, the findings that forced the hold, and the question ids
+      // whose answers unlock the resume. client.js re-seeds the conversation
+      // from this on continue.
+      fs.writeFileSync(resumePath, JSON.stringify({
+        ...result.held.resume,
+        projectFilename: safe,
+        heldAt: new Date().toISOString(),
+        reason: result.held.reason,
+        questions: helpQuestions,
+      }, null, 2), 'utf8');
+
+      console.log(`[generate] build HELD for help: ${buildRef} — ${helpQuestions.length} question(s) filed, resume state at ${path.basename(resumePath)}`);
+      return { helpRecord: { questions: helpQuestions, status: 'waiting' }, resumePath };
+    } catch (e) {
+      console.warn('[generate] hold-for-help persistence failed:', e.message);
+      return { helpRecord: null, resumePath: null };
+    }
+  }
+
+  /** STRUCTURAL-DELTA persistence: the winning plan declared deliberate
+   *  changes vs the approved compiled sequence — write the PATCHED IR back
+   *  onto sm.compiledSequence so the flowchart stays truthful (never silent
+   *  divergence). The changes themselves ride on the build record
+   *  ({text, approved:false}) for Dan's quick approve. */
+  function persistStructuralChanges_(result, projectJson, safe, sm) {
+    if (!(result.ok === true && Array.isArray(result.structuralChanges) && result.structuralChanges.length
+          && result.patchedCompiledIr && sm.compiledSequence)) return;
+    try {
+      sm.compiledSequence.ir = result.patchedCompiledIr;
+      sm.compiledSequence.structuralChanges = [
+        ...(Array.isArray(sm.compiledSequence.structuralChanges) ? sm.compiledSequence.structuralChanges : []),
+        ...result.structuralChanges.map(c => ({ text: c.text, approved: false, at: new Date().toISOString() })),
+      ];
+      saveProjectWithBackup_(safe, projectJson);
+      console.log(`[generate] ${result.structuralChanges.length} declared structural change(s) applied to ${sm.name}'s compiled sequence (flagged for approval)`);
+    } catch (e) {
+      console.warn('[generate] structural-change IR persistence failed:', e.message);
+    }
+  }
+
   /** GET /api/generate/stream?filename=&smId= — SSE live-progress generation.
    *  One connection runs the whole pipeline: progress events stream as the
    *  model works, the final `done` event carries the full result payload
@@ -338,10 +635,11 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
    *  generated/<project>/<sm>__jarvis_v<version>__<date>.L5X. */
   async function handleGenerateStream(req, res, query) {
     activeGenerations++;
+    touchAi_();
     const workId = registerActiveWork_('generation'); // names filled in once the SM is resolved
     let counted = true;
     const releaseGeneration = () => {
-      if (counted) { counted = false; activeGenerations = Math.max(0, activeGenerations - 1); releaseActiveWork_(workId); }
+      if (counted) { counted = false; touchAi_(); activeGenerations = Math.max(0, activeGenerations - 1); releaseActiveWork_(workId); }
     };
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -402,6 +700,47 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         const { rec, fresh } = pretransStatus_(projectJson, safe, sm);
         if (fresh) {
           const l5x = fs.readFileSync(rec.savedPath, 'utf8');
+
+          // IMPORT-SIM GATE runs on EVERY serve (Aug 2026, Jason's second
+          // import failure — AlarmList L5K array literal lost its closing
+          // bracket): a cached file that would die at Studio 5000 import
+          // NEVER leaves the pipeline. On failure the cached build is marked
+          // not-ok and the full (self-repairing, gated) generation runs.
+          const gate = require('./src/lib/agentGenerator/validator.js').validateL5X(l5x);
+          if (!gate.ok) {
+            console.warn('[generate] pretranslated file FAILED the import-sim gate — not serving it:',
+              gate.errors.slice(0, 3).join(' | '));
+            send('progress', { pct: 3, stage: 'gate',
+              detail: `Cached pretranslated build failed the import-simulation gate (${gate.errors.length} error(s)) — running a fresh generation instead` });
+            try {
+              rec.ok = false;
+              rec.validation = { ok: false, errors: gate.errors, warnings: gate.warnings };
+              rec.note = ((rec.note || '') + ' [import-sim gate failed at serve time — superseded by fresh generation]').trim();
+              fs.writeFileSync(pretransFileFor_(projectJson, safe, sm), JSON.stringify(rec, null, 2), 'utf8');
+            } catch (e2) { console.warn('[generate] gate-failure persist failed:', e2.message); }
+            throw new Error('pretranslated build failed the import-sim gate — full run proceeds');
+          }
+
+          // THE CHECK runs on EVERY path (Dan's doctrine): a pretranslated
+          // file whose stored review never completed (verdict null/missing)
+          // must not ship unreviewed. Run a review-only pass on the cached
+          // file — far cheaper than re-generating — and persist the verdict.
+          const reviewOn_ = String(process.env.JARVIS_INTERNAL_REVIEW || 'on').toLowerCase() !== 'off';
+          const hasVerdict_ = ['ship', 'fix', 'unsure'].includes(rec.internalReview?.verdict);
+          if (reviewOn_ && !hasVerdict_) {
+            send('progress', { pct: 40, stage: 'review', detail: 'Pretranslated build found unreviewed — running the standards check (Is this in line with SDC standards?)' });
+            try {
+              const { reviewGenerated } = require('./src/lib/agentGenerator/internalReviewer.js');
+              rec.internalReview = await reviewGenerated({ l5x, projectJson, smId: sm.id, buildId: rec.buildId || null });
+            } catch (e2) {
+              // Honest failure record — verdict null shows "review failed", never "clean".
+              rec.internalReview = { verdict: null, error: e2.message || String(e2), findings: [], standardsQuestions: [], missingVsTemplate: [], summary: '' };
+            }
+            try {
+              fs.writeFileSync(pretransFileFor_(projectJson, safe, sm), JSON.stringify(rec, null, 2), 'utf8');
+            } catch (e2) { console.warn('[generate] pretranslation review persist failed:', e2.message); }
+          }
+
           let ir = null;
           try { if (rec.savedIrPath) ir = JSON.parse(fs.readFileSync(rec.savedIrPath, 'utf8')); } catch (_) {}
           let reviewNotes = [];
@@ -438,41 +777,22 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         onProgress, signal: abort.signal,
       });
 
-      // Auto-save the generated program so the user always knows where it is.
-      let savedPath = null;
-      let savedIrPath = null;
-      if (result.l5x) {
-        try {
-          const clean = (s) => String(s || 'unnamed').replace(/[^a-zA-Z0-9_\-]/g, '_');
-          const ver = result.meta?.jarvisVersion || '0';
-          const date = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '');
-          const dir = path.join(__dirname, 'generated', clean(projectJson.name || safe.replace('.json', '')));
-          fs.mkdirSync(dir, { recursive: true });
-          savedPath = path.join(dir, `${clean(result.meta?.smName)}__jarvis_v${ver}__${date}.L5X`);
-          fs.writeFileSync(savedPath, result.l5x, 'utf8');
-        } catch (e) {
-          console.warn('[generate] auto-save failed:', e.message);
-        }
-        // Persist the structured IR next to the L5X so the UI can render the
-        // compiled "Full Controls" view later (GET /api/jarvis/ir).
-        if (savedPath && result.ir && result.ir.irVersion) {
-          try {
-            savedIrPath = savedPath.replace(/\.L5X$/i, '.ir.json');
-            fs.writeFileSync(savedIrPath, JSON.stringify({
-              ...result.ir,
-              generatedAt: new Date().toISOString(),
-              jarvisVersion: result.meta?.jarvisVersion ?? null,
-              l5xFile: path.basename(savedPath),
-              validationOk: result.ok === true,
-            }, null, 2), 'utf8');
-          } catch (e) {
-            savedIrPath = null;
-            console.warn('[generate] IR auto-save failed:', e.message);
-          }
-        }
-      }
+      // Auto-save the generated program (+ structured IR) so the user always
+      // knows where it is.
+      const { savedPath, savedIrPath } = saveGeneratedResult_(result, projectJson, safe);
 
-      send('progress', { pct: 100, stage: 'done', detail: result.ok ? 'Generation complete' : 'Finished with validation errors' });
+      // HOLD-FOR-HELP (Dan's escalation model): the fix loop stopped on the
+      // round budget — file the questions (with proposed solutions), save the
+      // resume state, and record the build as held (help.status 'waiting').
+      const { helpRecord, resumePath } = persistHold_(result, projectJson, safe, result.meta?.smName || sm.name);
+
+      // STRUCTURAL-DELTA: declared deviations update the approved compiled
+      // sequence so diagram and code never silently diverge.
+      persistStructuralChanges_(result, projectJson, safe, sm);
+
+      send('progress', { pct: 100, stage: 'done', detail: result.held
+        ? `Held for help — ${helpRecord ? helpRecord.questions.length : 0} question(s) filed (with proposed solutions)`
+        : result.ok ? 'Generation complete' : 'Finished with validation errors' });
       // Record the build for ME scoring (jarvis-knowledge/buildScores.json) —
       // buildId rides in the done payload so the client can POST a score.
       let buildId = null;
@@ -486,15 +806,38 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
             durationS: Math.round((Date.now() - startedAt) / 1000),
             attempts: result.meta?.attempts?.length ?? null,
             validationOk: result.ok === true,
+            // THE METRIC (first-pass doctrine): one write, zero fix rounds,
+            // single review said ship. Aggregated by /api/jarvis/trackrecord.
+            firstPassShip: result.firstPassShip ?? null,
+            roundsToShip: result.roundsToShip ?? null,
             filePath: savedPath,
             mode: result.meta?.mode ?? null,
+            // Pre-write study provenance — which exemplar was studied and why
+            // (the dossier's "studied: <name> (<kind>, <family> family match)").
+            study: result.meta?.study ?? null,
             // Pre-delivery internal review — Jarvis's own adversarial pass
             // against the template (client.js last stage). 'fix' = not ready
             // for external delivery until a human decides.
             internalReview: result.internalReview ?? null,
+            // Escalation model (Dan, 2026-08) — exact UI contract shapes:
+            writingNotes: result.writingNotes ?? [],
+            structuralChanges: result.structuralChanges ?? [],
+            help: helpRecord,
+            resumePath,
           }).id;
+        // 'unsure' filed standards questions before the build id existed —
+        // stamp it on them now so the queue links back to this build.
+        // Hold-for-help questions get the same back-link.
+        const idsToStamp = [
+          ...(result.internalReview?.questionIds || []),
+          ...(helpRecord ? helpRecord.questions.map(q => q.id) : []),
+        ];
+        if (buildId && idsToStamp.length) {
+          require('./src/lib/agentGenerator/internalReviewer.js')
+            .attachBuildIdToQuestions(idsToStamp, buildId);
+        }
       } catch (e) { console.warn('[generate] build record failed:', e.message); }
-      send('done', { ...result, savedPath, savedIrPath, buildId });
+      send('done', { ...result, savedPath, savedIrPath, buildId, help: helpRecord });
     } catch (e) {
       if (clientGone || (e && (e.name === 'AbortError' || e.name === 'APIUserAbortError'))) {
         // Client cancelled — nothing to report.
@@ -619,6 +962,229 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     fs.writeFileSync(filePath, JSON.stringify(projectJson, null, 2), 'utf8');
   }
 
+  // ── Per-station build/change log (THE SPEED ARCHITECTURE, Dan 2026-08-25) ──
+  // Every applied change — value patch, section patch, scoped recompile, full
+  // compile, generate — appends one entry to machineSpec.changeLog so the ME
+  // can see what ran, at what cost, and why ("value patch — no recompile" /
+  // "re-planned Magnet Pick Head only"). The UI renders it; this is the record.
+  // Entry: { when, what (one sentence), class, scope, cost, buildRef }.
+  function appendChangeLog_(sm, entry) {
+    if (!sm) return;
+    sm.machineSpec = sm.machineSpec || {};
+    if (!Array.isArray(sm.machineSpec.changeLog)) sm.machineSpec.changeLog = [];
+    sm.machineSpec.changeLog.push({
+      when: new Date().toISOString(),
+      what: String(entry.what || '').trim(),
+      class: entry.class || null,        // value | section | structural-sm | decomposition | compile | generate
+      scope: entry.scope || null,        // what ran, human-readable
+      cost: Number.isFinite(entry.cost) ? Number(entry.cost.toFixed ? entry.cost.toFixed(4) : entry.cost) : 0,
+      buildRef: entry.buildRef || null,
+    });
+    // Cap: keep the last 300 entries (a station's whole life fits comfortably).
+    if (sm.machineSpec.changeLog.length > 300) {
+      sm.machineSpec.changeLog.splice(0, sm.machineSpec.changeLog.length - 300);
+    }
+  }
+
+  /** Resolve the project FILE that carries a state machine by name — used by
+   *  the summarize corrections path, whose body carries only sm.name. Newest
+   *  file wins on ambiguity; null when nothing matches (changelog then skips —
+   *  honest, never guessed). */
+  function findProjectFileBySmName_(smName) {
+    if (!smName) return null;
+    const lc = String(smName).toLowerCase();
+    let best = null;
+    for (const f of fs.readdirSync(DATA_DIR_).filter(x => x.endsWith('.json'))) {
+      try {
+        const fp = path.join(DATA_DIR_, f);
+        const pj = JSON.parse(fs.readFileSync(fp, 'utf8'));
+        const sm = (pj.stateMachines || []).find(s =>
+          (s.name || '').toLowerCase() === lc || (s.displayName || '').toLowerCase() === lc);
+        if (sm) {
+          const mtime = fs.statSync(fp).mtimeMs;
+          if (!best || mtime > best.mtime) best = { file: f, projectJson: pj, sm, mtime };
+        }
+      } catch (_) { /* unreadable project — skip */ }
+    }
+    return best;
+  }
+
+  /** Newest generated L5X for an SM (by mtime), or null. */
+  function latestGeneratedL5xFor_(projectJson, safe, sm) {
+    try {
+      const dir = generatedDirFor_(projectJson, safe);
+      if (!fs.existsSync(dir)) return null;
+      const prefix = cleanGenName_(sm.name) + '__';
+      let best = null;
+      for (const f of fs.readdirSync(dir)) {
+        if (!f.startsWith(prefix) || !/\.L5X$/i.test(f) || /__corrected_by_/i.test(f)) continue;
+        const fp = path.join(dir, f);
+        const mtime = fs.statSync(fp).mtimeMs;
+        if (!best || mtime > best.mtime) best = { fp, mtime };
+      }
+      return best ? best.fp : null;
+    } catch (_) { return null; }
+  }
+
+  // ── EDIT CLASSIFICATION (THE SPEED ARCHITECTURE — Dan, 2026-08-25) ─────────
+  //
+  // "I can't iterate — every change takes 10 minutes and redoes everything.
+  // It should only change what it needs to." Every corrections round through
+  // the spec-sheet chat is CLASSIFIED before any expensive pipeline runs, and
+  // the Send/Apply routes by class — the ME never chooses:
+  //   value          → deterministic patch (sheet + generated L5X tag values),
+  //                    NO planning model call. Seconds, $0.
+  //   section        → scoped cheap-model sheet round (sonnet tier, scope
+  //                    lock: only that section may change). Target <20 s.
+  //   structural-sm  → normal sheet round + routing tells the client to
+  //                    re-plan ONLY the affected machine (~2-4 min).
+  //   decomposition  → normal sheet round + routing says full compile
+  //                    (the only case that redoes everything).
+  // Every applied round appends a machineSpec.changeLog entry stating the
+  // class and what ran.
+  const SECTION_MODEL_ = process.env.JARVIS_SECTION_MODEL || 'claude-sonnet-5';
+
+  async function routeCorrectionRound_(author, body, { signal = null, onProgress = null } = {}) {
+    const baseArgs = {
+      description: body.description,
+      images: Array.isArray(body.images) ? body.images : [],
+      checklist: body.checklist && typeof body.checklist === 'object' ? body.checklist : null,
+      sm: body.sm && typeof body.sm === 'object' ? body.sm : {},
+      otherSms: Array.isArray(body.otherSms) ? body.otherSms : [],
+      priorSummary: typeof body.priorSummary === 'string' ? body.priorSummary : '',
+      corrections: typeof body.corrections === 'string' ? body.corrections : '',
+      round: Number(body.round) || 0,
+      qaHistory: Array.isArray(body.qaHistory) ? body.qaHistory : [],
+      priorCoverage: body.priorCoverage && typeof body.priorCoverage === 'object' ? body.priorCoverage : null,
+      sheetState: body.sheetState && typeof body.sheetState === 'object' ? body.sheetState : null,
+      signal, onProgress,
+    };
+    const corrections = baseArgs.corrections.trim();
+    // Only classify real corrections rounds against a structured sheet — the
+    // first summary and prose-only rounds keep the existing path byte-for-byte.
+    if (!corrections || !baseArgs.sheetState) {
+      return await author.summarizeDescription(baseArgs);
+    }
+
+    let cls = null;
+    let located = null;
+    try {
+      const classifier = require('./src/lib/agentGenerator/editClassifier.js');
+      located = findProjectFileBySmName_(body.sm && body.sm.name);
+      const smSplit = located && located.sm.machineSpec ? located.sm.machineSpec.smSplit : null;
+      cls = classifier.classifyEdit({ text: corrections, sheet: baseArgs.sheetState, smSplit });
+      if (cls.confidence !== 'deterministic') {
+        cls = await classifier.classifyEditWithModel({
+          text: corrections, sheet: baseArgs.sheetState, smSplit, deterministic: cls, signal,
+        });
+      }
+
+      // ── class a: VALUE — deterministic patch, no planning model call ──────
+      if (cls.class === 'value' && cls.targets.length) {
+        if (onProgress) { try { onProgress(30, 'writing'); } catch (_) {} }
+        const { sheet, changesMade, unapplied } = classifier.applyValueTargetsToSheet(baseArgs.sheetState, cls.targets);
+        if (!unapplied.length && changesMade.length) {
+          let codeNote = null;
+          // Generated code exists → patch the L5X tag values in place (merge
+          // engine setTagData ops; no re-translate, THE CHECK not needed for
+          // a pure preset/position value change — validation is structural).
+          if (located) {
+            try {
+              const l5xPath = latestGeneratedL5xFor_(located.projectJson, located.file, located.sm);
+              if (l5xPath) {
+                const { patchValues } = require('./src/lib/agentGenerator/codePatcher.js');
+                const l5x = fs.readFileSync(l5xPath, 'utf8');
+                const patched = patchValues({ l5x, targets: cls.targets });
+                const notes = [];
+                if (patched.xml && patched.applied.length) {
+                  fs.writeFileSync(l5xPath, patched.xml, 'utf8');
+                  notes.push(`generated code patched in place (${patched.applied.map(a => a.via).join(', ')})`);
+                }
+                if (patched.hmiParams && patched.hmiParams.length) {
+                  notes.push(`HMI parameter(s) — code carries no copy, no patch needed (${patched.hmiParams.map(a => a.via.split(' ')[0]).join(', ')})`);
+                }
+                if (patched.unresolved.length) {
+                  notes.push(`NOT patched into code: ${patched.unresolved.map(u => `${u.name} (${u.why})`).join('; ')} — re-generate to pick these up`);
+                }
+                codeNote = notes.join('; ') || null;
+              }
+            } catch (e) { codeNote = 'generated code NOT patched — ' + e.message; }
+            appendChangeLog_(located.sm, {
+              what: changesMade.map(c => c.text).join('; '),
+              class: 'value',
+              scope: 'value patch — no recompile' + (codeNote ? `; ${codeNote}` : ''),
+              cost: 0,
+            });
+            try { saveProjectWithBackup_(located.file, located.projectJson); } catch (_) {}
+          }
+          if (onProgress) { try { onProgress(100, 'done'); } catch (_) {} }
+          return {
+            summary: sheet,
+            ...(baseArgs.priorCoverage ? { coverage: baseArgs.priorCoverage } : {}),
+            questions: [],
+            learnedFacts: [],
+            nonStandardFlags: [],
+            changesMade,
+            chatReply: 'Done — ' + changesMade.map(c => c.text).join('; ') + '.',
+            routing: {
+              class: 'value', reason: cls.reason,
+              ran: 'value patch — no recompile' + (codeNote ? `; ${codeNote}` : ''),
+            },
+            meta: { model: 'deterministic-value-patch', usage: null, costUSD: cls.classifierCostUSD || 0 },
+          };
+        }
+        // Value-shaped but not fully resolvable → fall through to a scoped
+        // section round (never land half a patch).
+        cls = { ...cls, class: 'section', section: cls.section || 'devices', reason: cls.reason + ' (partial resolution — routed to a scoped model round)' };
+      }
+
+      // ── class b: SECTION — scoped cheap-model round ────────────────────────
+      if (cls.class === 'section') {
+        const result = await author.summarizeDescription({
+          ...baseArgs,
+          modelOverride: SECTION_MODEL_,
+          sectionScope: cls.section || null,
+        });
+        if (located) {
+          appendChangeLog_(located.sm, {
+            what: (result.changesMade || []).map(c => c.text).join('; ') || corrections.slice(0, 140),
+            class: 'section',
+            scope: `section patch (${cls.section || 'auto'}) — ${SECTION_MODEL_}, no recompile`,
+            cost: result.meta && result.meta.costUSD || 0,
+          });
+          try { saveProjectWithBackup_(located.file, located.projectJson); } catch (_) {}
+        }
+        return { ...result, routing: { class: 'section', section: cls.section, reason: cls.reason, ran: `scoped ${SECTION_MODEL_} round — no recompile` } };
+      }
+
+      // ── class c/d: STRUCTURAL — normal sheet round + recompile routing ─────
+      const result = await author.summarizeDescription(baseArgs);
+      const routing = cls.class === 'structural-sm'
+        ? { class: 'structural-sm', machine: cls.machine, reason: cls.reason,
+            ran: 'sheet updated', recompile: { scope: 'machine', machine: cls.machine } }
+        : { class: 'decomposition', reason: cls.reason,
+            ran: 'sheet updated', recompile: { scope: 'full' } };
+      if (located) {
+        appendChangeLog_(located.sm, {
+          what: (result.changesMade || []).map(c => c.text).join('; ') || corrections.slice(0, 140),
+          class: cls.class,
+          scope: cls.class === 'structural-sm'
+            ? `sheet updated — re-plan ${cls.machine || 'the affected machine'} pending`
+            : 'sheet updated — full compile pending (SM boundaries changed)',
+          cost: result.meta && result.meta.costUSD || 0,
+        });
+        try { saveProjectWithBackup_(located.file, located.projectJson); } catch (_) {}
+      }
+      return { ...result, routing };
+    } catch (e) {
+      // Classification must never break the corrections chat — on any routing
+      // failure, fall back to the existing full path (honest note attached).
+      console.warn('[jarvis-edit-classifier] routing failed, falling back to full round:', e.message);
+      const result = await author.summarizeDescription(baseArgs);
+      return { ...result, routing: { class: cls ? cls.class : null, error: e.message, ran: 'full round (classifier fallback)' } };
+    }
+  }
+
   /** POST /api/jarvis/compile — body: { filename, smId }. Runs the ONE
    *  Build-time reasoning call (coordinationAuthor.compileSequence), saves
    *  sm.compiledSequence = { ir, compiledAt, jarvisVersion, approved:false,
@@ -634,10 +1200,11 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     // health check protects them from restarts (a compile was killed mid-run
     // on 2026-08-20 because only generations were counted).
     activeGenerations++;
+    touchAi_();
     const compileWorkId = registerActiveWork_('compile');
     let compileCounted = true;
     const releaseCompile = () => {
-      if (compileCounted) { compileCounted = false; activeGenerations = Math.max(0, activeGenerations - 1); releaseActiveWork_(compileWorkId); }
+      if (compileCounted) { compileCounted = false; touchAi_(); activeGenerations = Math.max(0, activeGenerations - 1); releaseActiveWork_(compileWorkId); }
     };
     try {
       const body = JSON.parse(await readBody(req) || '{}');
@@ -650,7 +1217,71 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       if (!sm) return sendJson(res, 404, { error: 'State machine not found: ' + (body.smId || '(first)') });
       updateActiveWork_(compileWorkId, projectJson.name || safe.replace('.json', ''), sm.name);
 
-      const result = await author.compileSequence({ projectJson, smId: sm.id });
+      // Change notes ride into the compile (fixing the silent drop the modal
+      // warned about — "compiler didn't confirm it used your change notes").
+      const corrections = String(body.corrections || '').trim();
+      let result = await author.compileSequence({ projectJson, smId: sm.id, corrections });
+
+      // SELF-CONSISTENCY GUARD (Dan's three-truths screenshot, 2026-08-25:
+      // reasoning said "four programs", stateMachines[] carried 2): a compile
+      // whose own reasoning disagrees with its machine list is rejected and
+      // retried ONCE with a corrective note. A persistent mismatch ships with
+      // an explicit inconsistency flag so the client renders the error state
+      // instead of ever mixing the contradiction.
+      const decompositionMismatch_ = (ir) => {
+        try {
+          const flags = (ir && ir.reviewFlags ? ir.reviewFlags : []).map(String);
+          const machines = ir && ir.multiSm && Array.isArray(ir.stateMachines) ? ir.stateMachines.length : 0;
+          if (machines < 2) return null;
+          const WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+          for (const f of flags) {
+            const m = f.match(/\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:state\s*machines?|programs?|machines?)\b/i);
+            if (!m) continue;
+            const claimed = Number(m[1]) || WORDS[m[1].toLowerCase()] || 0;
+            if (claimed >= 2 && claimed !== machines) return { claimed, actual: machines, flag: f.slice(0, 160) };
+          }
+          return null;
+        } catch (_) { return null; }
+      };
+      let mismatch = decompositionMismatch_(result.ir);
+      if (mismatch) {
+        console.warn(`[jarvis-compile] inconsistent decomposition (reasoning says ${mismatch.claimed}, list has ${mismatch.actual}) — one retry`);
+        const fix = (corrections ? corrections + '\n' : '')
+          + `CONSISTENCY REJECTION: your previous output was internally inconsistent — the reasoning claimed ${mismatch.claimed} `
+          + `state machines but stateMachines[] contained ${mismatch.actual}. Re-propose so the machine list, the count and the `
+          + `reasoning all agree (and actually emit every machine you reason about).`;
+        result = await author.compileSequence({ projectJson, smId: sm.id, corrections: fix });
+        mismatch = decompositionMismatch_(result.ir);
+        if (mismatch) {
+          result.ir = result.ir || {};
+          result.ir.inconsistentDecomposition = mismatch; // client renders the error state, never the mix
+        }
+      }
+
+      // Compile questions arrive domain-tagged ({ question, domain }) from
+      // coordinationAuthor; older shapes (plain strings) are normalized here.
+      // compiledSequence + the response keep the plain string list (existing
+      // consumers render strings); the queue filing below keeps the domain.
+      const compileQuestionList = (result.questions || [])
+        .map(q => (q && typeof q === 'object')
+          ? { question: String(q.question || '').trim(), domain: q.domain,
+              proposedSolution: q.proposedSolution != null ? String(q.proposedSolution).trim() || null : null,
+              addressee: q.addressee }
+          : { question: String(q || '').trim(), domain: undefined, proposedSolution: null, addressee: undefined })
+        .filter(q => q.question)
+        .map(q => {
+          const qr = require('./src/lib/agentGenerator/questionRouter.js');
+          const domain = qr.resolveQuestionDomain(q.domain, q.question, sm.displayName || sm.name);
+          return {
+            question: q.question,
+            // Solutions, not explanations (Dan, 2026-08-22): the compile
+            // prompt REQUIRES a proposed solution with every question.
+            proposedSolution: q.proposedSolution,
+            addressee: qr.resolveAddressee(q.addressee, domain),
+            domain,
+          };
+        });
+      const compileQuestionStrings = compileQuestionList.map(q => q.question);
 
       sm.compiledSequence = {
         ir: result.ir,
@@ -658,37 +1289,62 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         jarvisVersion: result.meta.compilerVersion,
         approved: false,   // engineer must review + approve before Generate translates
         cost: result.cost,
-        questions: result.questions,
+        questions: compileQuestionStrings,
+        ...(result.consumedNotes && result.consumedNotes.length ? { consumedNotes: result.consumedNotes } : {}),
       };
+      appendChangeLog_(sm, {
+        what: corrections
+          ? `Full compile with change notes: ${corrections.slice(0, 140)}`
+          : 'Full station compile',
+        class: corrections ? 'decomposition' : 'compile',
+        scope: result.ir && result.ir.multiSm
+          ? `full compile — all ${(result.ir.stateMachines || []).length} machines re-planned`
+          : 'full compile',
+        cost: result.cost,
+        buildRef: sm.compiledSequence.compiledAt,
+      });
       saveProjectWithBackup_(safe, projectJson);
 
-      // Compile questions also land in the Jarvis question queue (source
-      // 'generation') so the controls team sees them without opening the
-      // station — answers flow into meKnowledge.md via the existing route.
+      // Compile questions also land in the Jarvis question queue — every one
+      // domain-tagged (mechanical questions never belong here; the classifier
+      // is a backstop for prompt drift). Answers flow into meKnowledge.md via
+      // the existing route. Before filing anything new: stale-question
+      // hygiene — close this station's open questions whose premise is gone
+      // (e.g. "values are placeholders" after the position tables got real
+      // values). Closed entries stay in the queue as history.
       try {
-        const qs = (result.questions || []).map(q => String(q).trim()).filter(Boolean);
-        if (qs.length) {
-          const arr = readQuestions();
-          for (const question of qs) {
-            arr.push({
-              id: 'q_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8),
-              question,
-              context: `Station ${sm.displayName || sm.name} — compile of ${projectJson.name || safe}`,
-              source: 'generation',
-              askedAt: new Date().toISOString(),
-              status: 'open',
-            });
-          }
-          writeQuestions(arr);
+        const qr = require('./src/lib/agentGenerator/questionRouter.js');
+        const arr = readQuestions();
+        const swept = qr.closeStaleQuestionsForStation(arr, sm);
+        if (swept.length) {
+          console.log(`[jarvis-compile] stale-question sweep closed ${swept.length} question(s) for ${sm.displayName || sm.name}: ${swept.map(q => q.id).join(', ')}`);
         }
+        const qs = compileQuestionList.filter(Boolean);
+        for (const { question, domain, proposedSolution, addressee } of qs) {
+          arr.push({
+            id: 'q_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8),
+            question,
+            proposedSolution: proposedSolution ?? null,
+            addressee,
+            context: `Station ${sm.displayName || sm.name} — compile of ${projectJson.name || safe}`,
+            source: 'generation',
+            domain,
+            askedAt: new Date().toISOString(),
+            status: 'open',
+          });
+        }
+        if (qs.length || swept.length) writeQuestions(arr);
       } catch (e) { console.warn('[jarvis-compile] question queue push failed:', e.message); }
 
       sendJson(res, 200, {
         ok: result.validation.ok,
         ir: result.ir,
-        questions: result.questions,
+        questions: compileQuestionStrings,
         cost: result.cost,
         validation: result.validation,
+        // Change-notes acknowledgment (the modal checks correctionsApplied /
+        // meta.correctionsApplied and warns when absent).
+        ...(corrections ? { correctionsApplied: result.meta.correctionsApplied === true, consumedNotes: result.consumedNotes || [] } : {}),
         meta: result.meta,
       });
     } catch (e) {
@@ -699,6 +1355,165 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       sendJson(res, 500, { error: e.message });
     } finally {
       releaseCompile();
+    }
+  }
+
+  /** POST /api/jarvis/recompile-machine — body: { filename, smId, machine,
+   *  correction }. THE SPEED ARCHITECTURE class c handler: re-plans ONLY the
+   *  named machine of a multi-SM compiled sequence (~2-4 min, effort medium);
+   *  every other machine is carried forward byte-identical and the handshake
+   *  contract is re-validated cheaply. Persists like a compile (approved:false
+   *  — the ME re-approves the changed decomposition). */
+  async function handleJarvisRecompileMachine(req, res) {
+    let author;
+    try {
+      author = require('./src/lib/agentGenerator/coordinationAuthor.js');
+    } catch (e) {
+      return sendJson(res, 503, { error: 'Coordination compiler not available: ' + e.message });
+    }
+    activeGenerations++;
+    touchAi_();
+    const workId = registerActiveWork_('compile');
+    let counted = true;
+    const release = () => {
+      if (counted) { counted = false; touchAi_(); activeGenerations = Math.max(0, activeGenerations - 1); releaseActiveWork_(workId); }
+    };
+    try {
+      const body = JSON.parse(await readBody(req) || '{}');
+      const safe = safeFilename(body.filename || '');
+      if (!safe) return sendJson(res, 400, { error: 'Invalid or missing filename' });
+      const fp = path.join(DATA_DIR_, safe);
+      if (!fs.existsSync(fp)) return sendJson(res, 404, { error: 'Project not found: ' + safe });
+      const projectJson = JSON.parse(fs.readFileSync(fp, 'utf8'));
+      const sm = findSm_(projectJson, body.smId);
+      if (!sm) return sendJson(res, 404, { error: 'State machine not found: ' + (body.smId || '(first)') });
+      if (!body.machine) return sendJson(res, 400, { error: 'machine is required (a planned machine name from the compiled decomposition)' });
+      if (!String(body.correction || '').trim()) return sendJson(res, 400, { error: 'correction is required' });
+      updateActiveWork_(workId, projectJson.name || safe.replace('.json', ''), `${sm.name} / ${body.machine}`);
+
+      const result = await author.recompileMachine({
+        projectJson, smId: sm.id,
+        machineName: String(body.machine),
+        correction: String(body.correction).trim(),
+      });
+
+      sm.compiledSequence = {
+        ...(sm.compiledSequence || {}),
+        ir: result.ir,
+        compiledAt: new Date().toISOString(),
+        jarvisVersion: result.meta.compilerVersion,
+        approved: false, // scoped change still needs the ME's re-approve
+        cost: result.cost,
+        ...(result.consumedNotes.length ? { consumedNotes: result.consumedNotes } : {}),
+      };
+      appendChangeLog_(sm, {
+        what: `Re-planned ${result.machine} only: ${String(body.correction).trim().slice(0, 120)}`,
+        class: 'structural-sm',
+        scope: result.meta.scope,
+        cost: result.cost,
+        buildRef: sm.compiledSequence.compiledAt,
+      });
+      saveProjectWithBackup_(safe, projectJson);
+
+      sendJson(res, 200, {
+        ok: result.validation.ok,
+        ir: result.ir,
+        machine: result.machine,
+        validation: result.validation,
+        correctionsApplied: result.meta.correctionsApplied === true,
+        consumedNotes: result.consumedNotes,
+        cost: result.cost,
+        meta: result.meta,
+      });
+    } catch (e) {
+      if (e && e.code === 'AI_NOT_CONFIGURED') { release(); return sendJson(res, 503, { error: e.message }); }
+      console.error('[jarvis-recompile-machine] FAILED:', e && e.stack ? e.stack : e);
+      sendJson(res, 500, { error: e.message });
+    } finally {
+      release();
+    }
+  }
+
+  /** POST /api/jarvis/patch-code — body: { filename, smId, correction }.
+   *  Generation incrementality for VALUE/SECTION changes when code already
+   *  exists: ONE scoped model call authors a small edit plan against the
+   *  CURRENT generated L5X (never the template), merged deterministically,
+   *  validated, then re-reviewed DELTA-SCOPED (THE CHECK runs only on the
+   *  changed rungs). Full re-translate stays reserved for structural changes. */
+  async function handleJarvisPatchCode(req, res) {
+    activeGenerations++;
+    touchAi_();
+    const workId = registerActiveWork_('generation');
+    let counted = true;
+    const release = () => {
+      if (counted) { counted = false; touchAi_(); activeGenerations = Math.max(0, activeGenerations - 1); releaseActiveWork_(workId); }
+    };
+    try {
+      const body = JSON.parse(await readBody(req) || '{}');
+      const safe = safeFilename(body.filename || '');
+      if (!safe) return sendJson(res, 400, { error: 'Invalid or missing filename' });
+      const fp = path.join(DATA_DIR_, safe);
+      if (!fs.existsSync(fp)) return sendJson(res, 404, { error: 'Project not found: ' + safe });
+      const projectJson = JSON.parse(fs.readFileSync(fp, 'utf8'));
+      const sm = findSm_(projectJson, body.smId);
+      if (!sm) return sendJson(res, 404, { error: 'State machine not found: ' + (body.smId || '(first)') });
+      if (!String(body.correction || '').trim()) return sendJson(res, 400, { error: 'correction is required' });
+      const l5xPath = latestGeneratedL5xFor_(projectJson, safe, sm);
+      if (!l5xPath) return sendJson(res, 404, { error: 'No generated L5X for this station — generate first (nothing to patch)' });
+      updateActiveWork_(workId, projectJson.name || safe.replace('.json', ''), sm.name);
+
+      const { patchSection } = require('./src/lib/agentGenerator/codePatcher.js');
+      const l5x = fs.readFileSync(l5xPath, 'utf8');
+      const result = await patchSection({
+        l5x,
+        correction: String(body.correction).trim(),
+        compiledIr: (sm.compiledSequence && sm.compiledSequence.ir) || null,
+        projectJson, smId: sm.id,
+      });
+      if (result.ok && result.xml) {
+        fs.writeFileSync(l5xPath, result.xml, 'utf8');
+        appendChangeLog_(sm, {
+          what: `Code patch: ${String(body.correction).trim().slice(0, 120)}`,
+          class: 'section',
+          scope: `scoped edit plan on ${path.basename(l5xPath)} (${(result.editPlan.operations || []).length} op(s)); delta-scoped review: ${result.review ? result.review.verdict || 'did not run' : 'did not run'}`,
+          cost: result.costUSD,
+          buildRef: path.basename(l5xPath),
+        });
+        saveProjectWithBackup_(safe, projectJson);
+      }
+      sendJson(res, result.ok ? 200 : 422, {
+        ok: result.ok,
+        file: path.basename(l5xPath),
+        validation: result.validation,
+        review: result.review,
+        editPlanOps: result.editPlan ? (result.editPlan.operations || []).length : 0,
+        cost: result.costUSD,
+        ...(result.error ? { error: result.error } : {}),
+      });
+    } catch (e) {
+      if (e && e.code === 'AI_NOT_CONFIGURED') { release(); return sendJson(res, 503, { error: e.message }); }
+      console.error('[jarvis-patch-code] FAILED:', e && e.stack ? e.stack : e);
+      sendJson(res, 500, { error: e.message });
+    } finally {
+      release();
+    }
+  }
+
+  /** GET /api/jarvis/changelog?filename=&smId= — the per-station build/change
+   *  log (machineSpec.changeLog), newest first. The UI renders it. */
+  function handleJarvisChangelog(req, res, query) {
+    try {
+      const safe = safeFilename(query.filename || '');
+      if (!safe) return sendJson(res, 400, { error: 'Invalid or missing filename' });
+      const fp = path.join(DATA_DIR_, safe);
+      if (!fs.existsSync(fp)) return sendJson(res, 404, { error: 'Project not found: ' + safe });
+      const projectJson = JSON.parse(fs.readFileSync(fp, 'utf8'));
+      const sm = findSm_(projectJson, query.smId);
+      if (!sm) return sendJson(res, 404, { error: 'State machine not found: ' + (query.smId || '(first)') });
+      const log = (sm.machineSpec && Array.isArray(sm.machineSpec.changeLog)) ? sm.machineSpec.changeLog : [];
+      sendJson(res, 200, { ok: true, sm: sm.name, entries: [...log].reverse() });
+    } catch (e) {
+      sendJson(res, 500, { error: e.message });
     }
   }
 
@@ -800,6 +1615,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
 
     pretransInFlight_.add(key);
     activeGenerations++;
+    touchAi_();
     const pretransWorkId = registerActiveWork_('pretranslation', projectJson.name || safe.replace('.json', ''), sm.name);
     const startedAt = Date.now();
     const compiledAt = sm.compiledSequence?.compiledAt || null;
@@ -841,11 +1657,21 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
               durationS,
               attempts: result.meta?.attempts?.length ?? null,
               validationOk: result.ok === true,
+              firstPassShip: result.firstPassShip ?? null,
+              roundsToShip: result.roundsToShip ?? null,
               filePath: savedPath,
               mode: 'translation',
               pretranslated: true,
+              // Pre-write study provenance — the recorded exemplar pick + why.
+              study: result.meta?.study ?? null,
               internalReview: result.internalReview ?? null,
             }).id;
+          // An 'unsure' verdict filed standards questions before the build id
+          // existed — stamp it on them now so the queue links back to the build.
+          if (buildId && result.internalReview?.questionIds?.length) {
+            require('./src/lib/agentGenerator/internalReviewer.js')
+              .attachBuildIdToQuestions(result.internalReview.questionIds, buildId);
+          }
         } catch (e) { console.warn('[pretranslate] build record failed:', e.message); }
       }
 
@@ -885,6 +1711,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         }, null, 2), 'utf8');
       } catch (e2) { console.warn('[pretranslate] sidecar write failed:', e2.message); }
     } finally {
+      touchAi_();
       activeGenerations = Math.max(0, activeGenerations - 1);
       releaseActiveWork_(pretransWorkId);
       pretransInFlight_.delete(key);
@@ -930,6 +1757,57 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
 
   // ── JARVIS describe-your-station -> diagram draft ──────────────────────────
 
+  /** SM-split guard (SUPREME LAW extends to diagrams, Dan 2026-08-25): when a
+   *  station's compile decomposed it into multiple state machines (recorded as
+   *  machineSpec.smSplit and/or compiledSequence.ir.multiSm on its SMs), a
+   *  single-SM re-author of THAT STATION is an architecture-standard violation
+   *  ("each program must have no more than one state machine") — the braid is
+   *  never emitted; the request is HELD with the standard-violation message.
+   *  Rebuilding ONE MEMBER of the split (e.g. MagnetLoad of S01_MagnetLoad +
+   *  S02_MagnetPickHead) stays allowed — that IS one state machine.
+   *  Returns null (no conflict) or { message, splitNames, file }. */
+  function findSmSplitConflict_(station) {
+    const norm = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const keys = [norm(station?.name), norm(station?.displayName)].filter(Boolean);
+    if (!keys.length) return null;
+    let files = [];
+    try {
+      files = fs.readdirSync(DATA_DIR_).filter(f => f.endsWith('.json'));
+    } catch (_) { return null; }
+    for (const f of files) {
+      let proj;
+      try { proj = JSON.parse(fs.readFileSync(path.join(DATA_DIR_, f), 'utf8')); } catch (_) { continue; }
+      for (const sm of proj?.stateMachines ?? []) {
+        const split = (Array.isArray(sm?.machineSpec?.smSplit) && sm.machineSpec.smSplit.length >= 2)
+          ? sm.machineSpec.smSplit
+          : (sm?.compiledSequence?.ir?.multiSm && (sm.compiledSequence.ir.stateMachines ?? []).length >= 2)
+            ? sm.compiledSequence.ir.stateMachines
+            : null;
+        if (!split) continue;
+        const splitNames = split
+          .map(e => norm(e?.name ?? e?.programName ?? e?.smName)).filter(Boolean);
+        // Rebuilding one member of the split as one SM is legitimate.
+        const isMember = keys.some(k => splitNames.some(n => n === k || n.includes(k) || k.includes(n)));
+        if (isMember) continue;
+        // Names the PARENT (pre-split combined station) is known by.
+        const from = sm?.compiledSequence?.ir?.splitFrom ?? {};
+        const parents = [sm.name, sm.displayName, from.smName, from.displayName]
+          .map(norm).filter(Boolean);
+        if (keys.some(k => parents.some(pn => pn === k))) {
+          const names = split.map(e => String(e?.name ?? e?.programName ?? e?.smName ?? '?'));
+          return {
+            file: f,
+            splitNames: names,
+            message: `HELD — architecture standard: this station decomposes into ${names.length} state machines (${names.join(' + ')}). ` +
+              `Rebuilding it as ONE state machine violates "each program must have no more than one state machine". ` +
+              `Rebuild each state machine from its own sheet instead (or remove the recorded split first if the decomposition is genuinely wrong).`,
+          };
+        }
+      }
+    }
+    return null;
+  }
+
   /** POST /api/jarvis/diagram — body: { description, images: [{name, base64,
    *  mediaType}] }. Authors a State Logic Builder project draft via Claude,
    *  validates it, saves it to projects/<name>_draft.json, and returns
@@ -946,11 +1824,55 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       if (!body.description || !String(body.description).trim()) {
         return sendJson(res, 400, { error: 'description is required' });
       }
-      const result = await author.authorDiagram({
-        description: body.description,
-        images: Array.isArray(body.images) ? body.images : [],
-        station: body.station && typeof body.station === 'object' ? body.station : null,
-      });
+      // SM-split guard: never re-author a decomposed station as one SM.
+      if (body.station && body.station.name) {
+        const conflict = findSmSplitConflict_(body.station);
+        if (conflict) {
+          return sendJson(res, 409, {
+            error: conflict.message,
+            held: true,
+            reason: 'sm-split-violation',
+            splitNames: conflict.splitNames,
+          });
+        }
+      }
+      // Diagram builds are paid model runs — count them so restart gates see
+      // them (a pm2 restart killed one mid-flight on 2026-08-24).
+      const releaseAi = beginAiWork_('diagram', null, body.station?.name || null);
+      let result;
+      let diagramCheck = null;
+      try {
+        result = await author.authorDiagram({
+          description: body.description,
+          images: Array.isArray(body.images) ? body.images : [],
+          station: body.station && typeof body.station === 'object' ? body.station : null,
+        });
+        // DIAGRAM CHECK (Dan, 2026-08-25): agentic review of the drawn diagram
+        // after every build — granularity, branching, connectivity, SM
+        // decomposition, naming. 'fix' loops through the diagram author
+        // (capped); a diagram still violating known standards is returned
+        // flagged needsFix and never presented as final (zero-authority law).
+        // Layout stays deterministic (branchLayout) — the review judges
+        // authoring, and the fix pass re-runs validate/servo-split/layout.
+        try {
+          const reviewer = require('./src/lib/agentGenerator/diagramReviewer.js');
+          for (const sm of result.project.stateMachines) {
+            const r = await reviewer.reviewAndFixDiagram({
+              project: result.project,
+              smId: sm.id,
+              buildRef: body.station?.name || result.project.name || null,
+            });
+            diagramCheck = diagramCheck || { reviews: [], costUSD: 0, needsFix: false };
+            diagramCheck.reviews.push({ sm: sm.name, ...r });
+            diagramCheck.costUSD = Number((diagramCheck.costUSD + (r.costUSD || 0)).toFixed(4));
+            diagramCheck.needsFix = diagramCheck.needsFix || r.needsFix;
+          }
+        } catch (e) {
+          // Review infrastructure failure must not eat the build — surface it.
+          diagramCheck = { error: e.message, needsFix: false };
+          console.warn('[jarvis/diagram] diagram check failed:', e.message);
+        }
+      } finally { releaseAi(); }
 
       // Single-SM mode (Create Station flow): no draft file — the client
       // inserts the SM into its CURRENT project via store actions.
@@ -961,6 +1883,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
           summary: result.summary,
           openQuestions: result.openQuestions,
           fixups: result.fixups,
+          diagramCheck,
           meta: result.meta,
         });
       }
@@ -983,6 +1906,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         summary: result.summary,
         openQuestions: result.openQuestions,
         fixups: result.fixups,
+        diagramCheck,
         meta: result.meta,
       });
     } catch (e) {
@@ -1007,16 +1931,20 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       if (!body.description || !String(body.description).trim()) {
         return sendJson(res, 400, { error: 'description is required' });
       }
-      const result = await author.authorSpec({
-        description: body.description,
-        images: Array.isArray(body.images) ? body.images : [],
-        sm: body.sm && typeof body.sm === 'object' ? body.sm : {},
-        otherSms: Array.isArray(body.otherSms) ? body.otherSms : [],
-        existingSpec: body.existingSpec || null,
-        corrections: typeof body.corrections === 'string' ? body.corrections : '',
-        round: Number(body.round) || 0,
-        qaHistory: Array.isArray(body.qaHistory) ? body.qaHistory : [],
-      });
+      const releaseAi = beginAiWork_('spec', null, body.sm?.name || null, { register: false });
+      let result;
+      try {
+        result = await author.authorSpec({
+          description: body.description,
+          images: Array.isArray(body.images) ? body.images : [],
+          sm: body.sm && typeof body.sm === 'object' ? body.sm : {},
+          otherSms: Array.isArray(body.otherSms) ? body.otherSms : [],
+          existingSpec: body.existingSpec || null,
+          corrections: typeof body.corrections === 'string' ? body.corrections : '',
+          round: Number(body.round) || 0,
+          qaHistory: Array.isArray(body.qaHistory) ? body.qaHistory : [],
+        });
+      } finally { releaseAi(); }
       sendJson(res, 200, { ok: true, ...result });
     } catch (e) {
       if (e && e.code === 'AI_NOT_CONFIGURED') return sendJson(res, 503, { error: e.message });
@@ -1044,6 +1972,39 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     return result;
   }
 
+  /** POST /api/jarvis/decompose — STEP 1 of the create cascade (Dan,
+   *  2026-08-26): explanation (+ refs + the ME's expectation) -> ONLY the
+   *  state-machine breakup proposal. No diagram build, no compile — those
+   *  run at the Generate step after every approval. Cheap tier, ~30s. */
+  async function handleJarvisDecompose(req, res) {
+    let decomposer;
+    try {
+      decomposer = require('./src/lib/agentGenerator/smDecomposer.js');
+    } catch (e) {
+      return sendJson(res, 503, { error: 'Decomposer not available: ' + e.message });
+    }
+    try {
+      const body = JSON.parse(await readBody(req) || '{}');
+      if (!body.description || !String(body.description).trim()) {
+        return sendJson(res, 400, { error: 'description is required' });
+      }
+      const releaseAi = beginAiWork_('decompose', null, body.smName || null, { register: false });
+      let result;
+      try {
+        result = await decomposer.decompose({
+          description: String(body.description),
+          images: Array.isArray(body.images) ? body.images : [],
+          expectedStateMachines: typeof body.expectedStateMachines === 'string' ? body.expectedStateMachines : '',
+          otherSms: Array.isArray(body.otherSms) ? body.otherSms : [],
+        });
+      } finally { releaseAi(); }
+      sendJson(res, 200, { ok: true, ...result });
+    } catch (e) {
+      if (e && e.code === 'AI_NOT_CONFIGURED') return sendJson(res, 503, { error: e.message });
+      sendJson(res, 500, { error: e.message });
+    }
+  }
+
   /** POST /api/jarvis/summarize — body: { description, images, checklist,
    *  sm, otherSms, priorSummary, corrections }. Cheap "Done explaining"
    *  call: cleaned restatement + per-checklist coverage verdict + 0-3
@@ -1060,18 +2021,14 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       if (!body.description || !String(body.description).trim()) {
         return sendJson(res, 400, { error: 'description is required' });
       }
-      const result = await author.summarizeDescription({
-        description: body.description,
-        images: Array.isArray(body.images) ? body.images : [],
-        checklist: body.checklist && typeof body.checklist === 'object' ? body.checklist : null,
-        sm: body.sm && typeof body.sm === 'object' ? body.sm : {},
-        otherSms: Array.isArray(body.otherSms) ? body.otherSms : [],
-        priorSummary: typeof body.priorSummary === 'string' ? body.priorSummary : '',
-        corrections: typeof body.corrections === 'string' ? body.corrections : '',
-        round: Number(body.round) || 0,
-        qaHistory: Array.isArray(body.qaHistory) ? body.qaHistory : [],
-        priorCoverage: body.priorCoverage && typeof body.priorCoverage === 'object' ? body.priorCoverage : null,
-      });
+      const releaseAi = beginAiWork_('summarize', null, body.sm?.name || null, { register: false });
+      let result;
+      try {
+        // Edit classification routes corrections rounds by class (value /
+        // section / structural-sm / decomposition); first summaries and
+        // prose-only rounds run the existing path unchanged.
+        result = await routeCorrectionRound_(author, body, {});
+      } finally { releaseAi(); }
       persistLearnedFacts(result);
       sendJson(res, 200, { ok: true, ...result });
     } catch (e) {
@@ -1127,21 +2084,12 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       send('progress', { pct: p, stage });
     };
 
+    const releaseAi = beginAiWork_('summarize', null, body.sm?.name || null, { register: false });
     try {
-      const result = await author.summarizeDescription({
-        description: body.description,
-        images: Array.isArray(body.images) ? body.images : [],
-        checklist: body.checklist && typeof body.checklist === 'object' ? body.checklist : null,
-        sm: body.sm && typeof body.sm === 'object' ? body.sm : {},
-        otherSms: Array.isArray(body.otherSms) ? body.otherSms : [],
-        priorSummary: typeof body.priorSummary === 'string' ? body.priorSummary : '',
-        corrections: typeof body.corrections === 'string' ? body.corrections : '',
-        round: Number(body.round) || 0,
-        qaHistory: Array.isArray(body.qaHistory) ? body.qaHistory : [],
-        priorCoverage: body.priorCoverage && typeof body.priorCoverage === 'object' ? body.priorCoverage : null,
-        signal: abort.signal,
-        onProgress,
-      });
+      // Edit classification routes corrections rounds by class (value /
+      // section / structural-sm / decomposition); first summaries and
+      // prose-only rounds run the existing path unchanged.
+      const result = await routeCorrectionRound_(author, body, { signal: abort.signal, onProgress });
       persistLearnedFacts(result);
       send('done', { ok: true, ...result });
     } catch (e) {
@@ -1150,6 +2098,8 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       } else {
         send('error', { error: e.message || String(e) });
       }
+    } finally {
+      releaseAi();
     }
     res.end();
   }
@@ -1226,20 +2176,36 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     sendJson(res, 200, readQuestions());
   }
 
-  /** POST /api/jarvis/questions — { question, context?, source? }. Used by
-   *  future integrations (create-station, generation, training) to queue a
-   *  question for the controls team. */
+  /** POST /api/jarvis/questions — { question, context?, source?, domain? }.
+   *  Used by integrations (create-station, generation, training) to queue a
+   *  question. Every entry gets a domain ('mechanical'|'controls'|'jarvis') —
+   *  caller-supplied when valid, else classified by questionRouter. Domain
+   *  routes the SURFACE: mechanical → the station's spec sheet (ME),
+   *  controls → the leads' queue on the Jarvis page (never per-station —
+   *  Jarvis IS the controls engineer, Dan 2026-08-22), jarvis → Dan. */
   async function handleJarvisQuestionAdd(req, res) {
     try {
       const body = JSON.parse(await readBody(req) || '{}');
       const question = String(body.question || '').trim();
       if (!question) return sendJson(res, 400, { error: 'question is required' });
       const VALID_SOURCES = ['create-station', 'generation', 'training', 'manual'];
+      const qr = require('./src/lib/agentGenerator/questionRouter.js');
+      const domain = qr.resolveQuestionDomain(body.domain, question, body.context);
       const entry = {
         id: 'q_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8),
         question,
+        // Solutions, not explanations (Dan, 2026-08-22): callers pass Jarvis's
+        // proposed answer with the question; addressee tags who answers (help
+        // is ONE lane). Both tolerated absent for manual/human-filed entries.
+        proposedSolution: body.proposedSolution != null ? String(body.proposedSolution).trim() || null : null,
+        addressee: qr.resolveAddressee(body.addressee, domain),
+        // 'example-request' = ask-for-examples doctrine (Dan, 2026-08-23):
+        // Jarvis lacks an SDC example for a pattern; the team answers by
+        // uploading one to POST /api/jarvis/examples with requestId = this id.
+        kind: qr.resolveQuestionKind(body.kind),
         context: String(body.context || '').trim(),
         source: VALID_SOURCES.includes(body.source) ? body.source : 'manual',
+        domain,
         askedAt: new Date().toISOString(),
         status: 'open',
       };
@@ -1284,6 +2250,26 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     } catch (e) { sendJson(res, 500, { error: e.message }); }
   }
 
+  /** POST /api/jarvis/questions/close-stale — body { sm } ({ name,
+   *  displayName, devices:[{type, positions}] }). VIEW-SIDE stale hygiene
+   *  (Dan, Aug 24: the spec sheet showed a placeholder-values question whose
+   *  premise died when the tables got real numbers): a filled sheet must
+   *  never DISPLAY a mechanical question it already answers. Same rule as
+   *  the compile-time pass — closeStaleQuestionsForStation; closed entries
+   *  stay in the queue as history. */
+  async function handleJarvisQuestionsCloseStale(req, res) {
+    try {
+      const body = JSON.parse(await readBody(req) || '{}');
+      const sm = body.sm && typeof body.sm === 'object' ? body.sm : null;
+      if (!sm) return sendJson(res, 400, { error: 'sm is required' });
+      const qr = require('./src/lib/agentGenerator/questionRouter.js');
+      const arr = readQuestions();
+      const closed = qr.closeStaleQuestionsForStation(arr, sm);
+      if (closed.length) writeQuestions(arr);
+      sendJson(res, 200, { ok: true, closed: closed.length, ids: closed.map(q => q.id) });
+    } catch (e) { sendJson(res, 500, { error: e.message }); }
+  }
+
   /** POST /api/jarvis/questions/:id/dismiss */
   async function handleJarvisQuestionDismiss(res, id) {
     try {
@@ -1293,6 +2279,98 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       q.status = 'dismissed';
       writeQuestions(arr);
       sendJson(res, 200, { ok: true, question: q });
+    } catch (e) { sendJson(res, 500, { error: e.message }); }
+  }
+
+  /** POST /api/jarvis/examples — example intake (ask-for-examples doctrine,
+   *  Dan 2026-08-23). The team answers an 'example-request' question by
+   *  uploading a real SDC example; Jarvis trains on it immediately.
+   *
+   *  Body (JSON): { filename, base64 | content, topic?, requestId?, uploadedBy? }
+   *    filename   original file name (.L5X/.l5x/.docx/.md/.txt/.png/.jpg)
+   *    base64     file bytes (or `content` as plain utf8 text)
+   *    topic      curriculum topic hint (e.g. 'laser-marker', 'vision')
+   *    requestId  id of the originating example-request question — it gets
+   *               resolved (status 'answered') so the UI's blocker poll clears
+   *
+   *  Effect: saves to plc-reference/training-queue/, registers it in
+   *  jarvis-knowledge/curriculum.json as highest-priority unstudied, and
+   *  (unless JARVIS_EXAMPLE_STUDY=0) spawns a detached study pass (~$1) via
+   *  scripts/jarvisDailyTraining.cjs --intake, which deepens the concept
+   *  file(s), logs to TRAINING_LOG.md, and resolves requestId. */
+  async function handleJarvisExampleUpload(req, res) {
+    try {
+      const body = JSON.parse(await readBody(req) || '{}');
+      const rawName = String(body.filename || '').trim();
+      if (!rawName) return sendJson(res, 400, { error: 'filename is required' });
+      const safeName = rawName.replace(/[^A-Za-z0-9._ -]/g, '_').replace(/^\.+/, '_');
+      const ALLOWED_EXT = /\.(l5x|docx|md|txt|csv|png|jpg|jpeg|pdf)$/i;
+      if (!ALLOWED_EXT.test(safeName)) return sendJson(res, 400, { error: 'unsupported file type: ' + safeName });
+
+      let buf;
+      if (body.base64) buf = Buffer.from(String(body.base64), 'base64');
+      else if (body.content != null) buf = Buffer.from(String(body.content), 'utf8');
+      else return sendJson(res, 400, { error: 'base64 or content is required' });
+      if (!buf.length) return sendJson(res, 400, { error: 'empty file' });
+      if (buf.length > 50 * 1024 * 1024) return sendJson(res, 400, { error: 'file too large (50MB max)' });
+
+      const queueDir = path.join(__dirname, 'plc-reference', 'training-queue');
+      fs.mkdirSync(queueDir, { recursive: true });
+      let savedPath = path.join(queueDir, safeName);
+      for (let n = 2; fs.existsSync(savedPath); n++) {
+        savedPath = path.join(queueDir, safeName.replace(/(\.[^.]+)$/, `-${n}$1`));
+      }
+      fs.writeFileSync(savedPath, buf);
+
+      const topic = String(body.topic || '').trim() || null;
+      const requestId = String(body.requestId || '').trim() || null;
+
+      // Resolve the originating example-request NOW (the blocker poll clears
+      // immediately); the study pass appends its own learning independently.
+      let resolvedQuestion = null;
+      if (requestId) {
+        const arr = readQuestions();
+        const q = arr.find(x => x && x.id === requestId);
+        if (q && q.status === 'open') {
+          q.status = 'answered';
+          q.answer = `Example provided: ${path.basename(savedPath)} (queued for immediate study)`;
+          q.answeredBy = String(body.uploadedBy || '').trim() || 'Controls';
+          q.answeredAt = new Date().toISOString();
+          writeQuestions(arr);
+          resolvedQuestion = q.id;
+        }
+      }
+
+      // Studyable text formats get the immediate deep pass; images/pdf/docx
+      // sit in the queue for the next scheduled session (which can read them).
+      const studyable = /\.(l5x|md|txt|csv)$/i.test(savedPath);
+      let studyStarted = false;
+      if (studyable && process.env.JARVIS_EXAMPLE_STUDY !== '0' && process.env.ANTHROPIC_API_KEY) {
+        const { spawn } = require('child_process');
+        const args = [path.join(__dirname, 'scripts', 'jarvisDailyTraining.cjs'),
+          '--intake', savedPath, '--budget', '1'];
+        if (topic) args.push('--topic', topic);
+        if (requestId) args.push('--resolve', requestId); // idempotent — adds the study note
+        const child = spawn(process.execPath, args, { detached: true, stdio: 'ignore', cwd: __dirname });
+        child.unref();
+        studyStarted = true;
+      } else if (studyable) {
+        // register in the curriculum as highest-priority even without a study pass
+        try {
+          const { registerIntake, buildManifest } = require('./scripts/jarvisDailyTraining.cjs');
+          registerIntake(savedPath, topic, buildManifest());
+        } catch (e) { console.warn('[jarvis-examples] manifest register failed:', e.message); }
+      }
+
+      sendJson(res, 200, {
+        ok: true,
+        savedTo: path.relative(__dirname, savedPath).replace(/\\/g, '/'),
+        topic, resolvedQuestion, studyStarted,
+        note: studyStarted
+          ? 'study pass running in the background — TRAINING_LOG.md and the concept files will show the result'
+          : (studyable ? 'registered in the curriculum for the next training run'
+                       : 'saved to the training queue; non-text formats are studied by the next scheduled training session'),
+      });
     } catch (e) { sendJson(res, 500, { error: e.message }); }
   }
 
@@ -1370,7 +2448,28 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       walk(path.join(__dirname, 'generated'));
     } catch (_) {}
 
-    sendJson(res, 200, { version, history, benchmarks, generatedCount });
+    // FIRST-PASS SHIP RATE (Dan's headline number, 2026-08-25 — "can you
+    // create a correct file with no prior version?"): aggregated from
+    // buildScores.json. eligible = builds where the metric could be judged
+    // (the internal review ran → firstPassShip is boolean); rate = shipped
+    // first-pass / eligible. Note for the UI: the Jarvis page should headline
+    // this number.
+    const firstPass = { eligible: 0, shipped: 0, rate: null, avgRoundsToShip: null };
+    try {
+      const builds = require('./src/lib/agentGenerator/buildScores.js')
+        .readBuilds(path.join(__dirname, 'jarvis-knowledge', 'buildScores.json'));
+      const rounds = [];
+      for (const b of builds) {
+        if (!b || typeof b.firstPassShip !== 'boolean') continue;
+        firstPass.eligible++;
+        if (b.firstPassShip === true) firstPass.shipped++;
+        if (Number.isFinite(Number(b.roundsToShip)) && b.roundsToShip != null) rounds.push(Number(b.roundsToShip));
+      }
+      if (firstPass.eligible) firstPass.rate = Number((firstPass.shipped / firstPass.eligible).toFixed(3));
+      if (rounds.length) firstPass.avgRoundsToShip = Number((rounds.reduce((a, x) => a + x, 0) / rounds.length).toFixed(2));
+    } catch (e) { console.warn('[jarvis-trackrecord] first-pass aggregation failed:', e.message); }
+
+    sendJson(res, 200, { version, history, benchmarks, generatedCount, firstPass });
   }
 
   // ── JARVIS v2.1.2: review grid + correction-learning loop ──────────────────
@@ -1566,6 +2665,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       return;
     }
     activeGenerations++;
+    touchAi_();
     const startedAt = Date.now();
     const build = scores.getBuild(BUILD_SCORES_FILE_, buildId);
     console.log(`[correction] analysis started: ${build?.project} / ${build?.sm} (build ${buildId}, corrected by ${uploadedBy})`);
@@ -1580,12 +2680,19 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         reviewer: uploadedBy,
         buildId,
         buildLabel: `${build.project} / ${build.sm}`,
-        addQuestion: ({ question, context, source }) => {
+        addQuestion: ({ question, context, source, domain, proposedSolution }) => {
           try {
+            const qr = require('./src/lib/agentGenerator/questionRouter.js');
+            const resolvedDomain = qr.resolveQuestionDomain(domain, question, context);
             const arr = readQuestions();
             arr.push({
               id: 'q_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8),
               question, context, source: source || 'generation',
+              // A low-confidence lesson IS Jarvis's proposed solution — the
+              // question asks whether it's right (solutions, not explanations).
+              proposedSolution: proposedSolution != null ? String(proposedSolution).trim() || null : null,
+              addressee: qr.resolveAddressee(undefined, resolvedDomain),
+              domain: resolvedDomain,
               askedAt: new Date().toISOString(), status: 'open',
             });
             writeQuestions(arr);
@@ -1624,6 +2731,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         });
       } catch (e2) { console.warn('[correction] failure record failed too:', e2.message); }
     } finally {
+      touchAi_();
       activeGenerations = Math.max(0, activeGenerations - 1);
     }
   }
@@ -1679,6 +2787,275 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       setImmediate(() => runCorrectionAnalysis_(id, uploadedBy)
         .catch(e => console.warn('[correction] unhandled analysis failure:', e.message)));
       sendJson(res, 200, { ok: true, build: updated });
+    } catch (e) { sendJson(res, e.status || 500, { error: e.message }); }
+  }
+
+  /** POST /api/jarvis/builds/:id/corrected/reanalyze — retry a failed (or
+   *  finished) correction analysis on the ALREADY-UPLOADED corrected file.
+   *  No re-upload needed: the file was persisted at upload time; a failed
+   *  analysis must never cost the reviewer their red pen. */
+  async function handleJarvisBuildReanalyze(req, res, id) {
+    try {
+      const scores = require('./src/lib/agentGenerator/buildScores.js');
+      const build = scores.getBuild(BUILD_SCORES_FILE_, id);
+      if (!build) return sendJson(res, 404, { error: 'Build not found' });
+      if (!build.correction?.filePath || !fs.existsSync(build.correction.filePath)) {
+        return sendJson(res, 409, { error: 'No corrected file is stored for this build — upload one first' });
+      }
+      if (!build.filePath || !fs.existsSync(build.filePath)) {
+        return sendJson(res, 409, { error: 'The original generated file is no longer on disk — nothing to diff against' });
+      }
+      if (build.correction.status === 'analyzing') {
+        return sendJson(res, 409, { error: 'An analysis is already running for this build' });
+      }
+      const updated = scores.updateBuild(BUILD_SCORES_FILE_, id, {
+        correction: { ...build.correction, status: 'analyzing', error: null },
+      });
+      setImmediate(() => runCorrectionAnalysis_(id, build.correction.uploadedBy || 'Unknown')
+        .catch(e => console.warn('[correction] unhandled reanalysis failure:', e.message)));
+      sendJson(res, 200, { ok: true, build: updated });
+    } catch (e) { sendJson(res, e.status || 500, { error: e.message }); }
+  }
+
+  /** POST /api/jarvis/builds/:id/verify — { verifiedBy, note? }. Marks a
+   *  delivered build ENGINEER-VERIFIED-CORRECT (Dan, 2026-08-26: "when you
+   *  produce good code, save that — a library to lean on, like a good
+   *  controls engineer"). Standing mechanism, any build/any family:
+   *    1. copies the build's L5X into plc-reference/verified/ (the verified
+   *       library — preWriteStudy ranks it above corrected/delivered),
+   *    2. stamps the build record { engineerVerified, verifiedBy, verifiedAt },
+   *    3. registers the file in sources.json (verified-exemplars source) and
+   *       curriculum.json at the top exemplar rank,
+   *    4. appends a station changelog entry when the station resolves. */
+  async function handleJarvisBuildVerify(req, res, id) {
+    try {
+      const scores = require('./src/lib/agentGenerator/buildScores.js');
+      const body = JSON.parse(await readBody(req) || '{}');
+      const verifiedBy = String(body.verifiedBy || '').trim();
+      if (!verifiedBy) return sendJson(res, 400, { error: 'verifiedBy is required — verification is a named engineer\'s signature' });
+      const build = scores.getBuild(BUILD_SCORES_FILE_, id);
+      if (!build) return sendJson(res, 404, { error: 'Build not found' });
+      // The file the engineer actually read: delivered copy first, then the
+      // engineer-corrected file, then the generated file.
+      const deliveredPath = build.shippedAs ? path.join(__dirname, 'JARVIS Deliveries', build.shippedAs) : null;
+      const srcPath = (deliveredPath && fs.existsSync(deliveredPath)) ? deliveredPath
+        : (build.correction?.filePath && fs.existsSync(build.correction.filePath)) ? build.correction.filePath
+        : (build.filePath && fs.existsSync(build.filePath)) ? build.filePath : null;
+      if (!srcPath) return sendJson(res, 409, { error: 'No file on disk for this build — nothing to enshrine' });
+
+      const verifiedDir = path.join(__dirname, 'plc-reference', 'verified');
+      fs.mkdirSync(verifiedDir, { recursive: true });
+      const base = path.basename(srcPath).replace(/\.L5X$/i, '');
+      const libName = `${base}__verified_by_${cleanName_(verifiedBy)}.L5X`;
+      const libPath = path.join(verifiedDir, libName);
+      fs.copyFileSync(srcPath, libPath);
+
+      const at = new Date().toISOString();
+      const note = String(body.note || '').trim() || null;
+      const updated = scores.updateBuild(BUILD_SCORES_FILE_, id, {
+        engineerVerified: true, verifiedBy, verifiedAt: at,
+        ...(note ? { verifiedNote: note } : {}),
+        verifiedLibraryPath: libPath,
+      });
+
+      // Register in sources.json under the standing verified-exemplars source.
+      try {
+        const srcFile = path.join(__dirname, 'jarvis-knowledge', 'sources.json');
+        const sources = JSON.parse(fs.readFileSync(srcFile, 'utf8'));
+        let entry = sources.find(s => s && s.id === 'verified-exemplars');
+        if (!entry) {
+          entry = { id: 'verified-exemplars', name: 'Engineer-verified-correct builds (the gold rank)',
+            location: 'plc-reference/verified/', accessStatus: 'full', lastIngested: at.slice(0, 10), takeaways: [] };
+          sources.push(entry);
+        }
+        entry.lastIngested = at.slice(0, 10);
+        const line = `${libName} confirmed CORRECT by ${verifiedBy} (${at.slice(0, 10)})${note ? ' - ' + note : ''}`;
+        if (!entry.takeaways.some(t => String(t).includes(libName))) entry.takeaways.push(line);
+        fs.writeFileSync(srcFile, JSON.stringify(sources, null, 2) + '\n');
+      } catch (e) { console.warn('[verify] sources.json registration failed:', e.message); }
+
+      // Register in the curriculum at top exemplar rank.
+      try {
+        const curFile = path.join(__dirname, 'jarvis-knowledge', 'curriculum.json');
+        const cur = JSON.parse(fs.readFileSync(curFile, 'utf8'));
+        const relPath = 'plc-reference/verified/' + libName;
+        if (!cur.items.some(i => i && i.path === relPath)) {
+          cur.items.unshift({
+            id: 'ci_verified_' + String(id).replace(/[^a-zA-Z0-9]/g, '').slice(-12),
+            path: relPath, kind: 'engineer-verified-correct',
+            topics: [], antiPattern: false, conceptFiles: [],
+            status: 'studied', studiedAt: at.slice(0, 10),
+            studiedNote: `Confirmed CORRECT by ${verifiedBy} (${at.slice(0, 10)}). Gold exemplar - top rank in preWriteStudy ordering.${note ? ' ' + note : ''}`,
+            sizeBytes: fs.statSync(libPath).size, hash: null, priority: 0,
+          });
+          cur.counts = cur.counts || {}; cur.counts.total = cur.items.length;
+          cur.updatedAt = at;
+          fs.writeFileSync(curFile, JSON.stringify(cur, null, 2) + '\n');
+        }
+      } catch (e) { console.warn('[verify] curriculum registration failed:', e.message); }
+
+      // Station changelog entry (best effort — skipped when unresolvable).
+      try {
+        const located = findProjectFileBySmName_(build.sm);
+        if (located) {
+          appendChangeLog_(located.sm, {
+            what: `Build ${build.label || id} verified CORRECT by ${verifiedBy} — saved to the verified library (${libName})`,
+            class: 'verify', scope: 'engineer verification', cost: 0, buildRef: id,
+          });
+          try { saveProjectWithBackup_(located.file, located.projectJson); } catch (_) {}
+        }
+      } catch (e) { console.warn('[verify] changelog append failed:', e.message); }
+
+      sendJson(res, 200, { ok: true, build: updated, libraryPath: libPath });
+    } catch (e) { sendJson(res, e.status || 500, { error: e.message }); }
+  }
+
+  /** POST /api/jarvis/builds/:id/continue — resume a HELD generation (Dan's
+   *  escalation model). Body (all optional):
+   *    { answers: [{ questionId, answer, answeredBy }] } — inline answers,
+   *  recorded exactly like POST /api/jarvis/questions/:id/answer (marked
+   *  answered + folded into meKnowledge.md). Answers already recorded via
+   *  that route count too. Requires at least one of the build's help
+   *  questions answered. Re-enters the fix loop from the persisted resume
+   *  state with the answers in context and completes through THE CHECK
+   *  (internal review) as normal. Long-running (minutes) — plain JSON
+   *  response, counted in activeGenerations. */
+  async function handleJarvisBuildContinue(req, res, id) {
+    let gen;
+    try { gen = require('./src/lib/agentGenerator/client.js'); }
+    catch (e) { return sendJson(res, 503, { error: 'AI generation not available — run npm install: ' + e.message }); }
+    const scores = require('./src/lib/agentGenerator/buildScores.js');
+    let body = {};
+    try { body = JSON.parse(await readBody(req) || '{}'); } catch (_) {}
+    try {
+      const build = scores.getBuild(BUILD_SCORES_FILE_, id);
+      if (!build) return sendJson(res, 404, { error: 'Build not found' });
+      if (!build.help || !Array.isArray(build.help.questions) || !build.help.questions.length) {
+        return sendJson(res, 400, { error: 'This build is not held for help — nothing to continue' });
+      }
+      if (build.help.status === 'resolved') {
+        return sendJson(res, 409, { error: 'This held build was already resumed and resolved' });
+      }
+      if (!build.resumePath || !fs.existsSync(build.resumePath)) {
+        return sendJson(res, 409, { error: 'Held build has no resume state on disk — run a fresh generation instead' });
+      }
+
+      // (1) Inline answers: same effect as the answer route — the question is
+      // marked answered AND the answer becomes standing knowledge, so the
+      // resumed run (and every future prompt) carries it.
+      const inline = Array.isArray(body.answers) ? body.answers : [];
+      if (inline.length) {
+        const arr = readQuestions();
+        let changed = false;
+        for (const a of inline) {
+          const q = arr.find(x => x && x.id === String(a.questionId || ''));
+          const answer = String(a.answer || '').trim();
+          if (!q || !answer || q.status === 'answered') continue;
+          const answeredBy = String(a.answeredBy || '').trim() || 'ME';
+          try {
+            appendLearnedLine({ answer, answeredBy, question: q.question });
+            q.learnedFactId = 'learned_' + Date.now().toString(36);
+          } catch (e) { console.warn('[continue] meKnowledge append failed:', e.message); }
+          q.status = 'answered';
+          q.answer = answer;
+          q.answeredBy = answeredBy;
+          q.answeredAt = new Date().toISOString();
+          changed = true;
+        }
+        if (changed) writeQuestions(arr);
+      }
+
+      // (2) Collect this build's answered help questions from the queue.
+      const helpIds = build.help.questions.map(q => q.id);
+      const answered = readQuestions().filter(q =>
+        q && helpIds.includes(q.id) && q.status === 'answered' && String(q.answer || '').trim());
+      if (!answered.length) {
+        return sendJson(res, 409, {
+          error: 'None of this build\'s help questions are answered yet — answer them (via the answer route or inline in this request) first',
+          questions: build.help.questions,
+        });
+      }
+
+      // (3) Load resume state + the CURRENT project, re-enter the fix loop.
+      let resume;
+      try { resume = JSON.parse(fs.readFileSync(build.resumePath, 'utf8')); }
+      catch (e) { return sendJson(res, 500, { error: 'Resume state unreadable: ' + e.message }); }
+      const safe = safeFilename(resume.projectFilename || '');
+      if (!safe || !fs.existsSync(path.join(DATA_DIR_, safe))) {
+        return sendJson(res, 409, { error: 'The held build\'s project file is gone: ' + (resume.projectFilename || '(unknown)') });
+      }
+      const projectJson = JSON.parse(fs.readFileSync(path.join(DATA_DIR_, safe), 'utf8'));
+      const sm = findSm_(projectJson, resume.smId || build.sm);
+      if (!sm) return sendJson(res, 409, { error: 'State machine not found in project: ' + (resume.smId || build.sm) });
+
+      activeGenerations++;
+      touchAi_();
+      const workId = registerActiveWork_('generation', projectJson.name || safe.replace('.json', ''), sm.name);
+      const startedAt = Date.now();
+      try {
+        scores.updateBuild(BUILD_SCORES_FILE_, id, { help: { ...build.help, status: 'resumed' } });
+        console.log(`[continue] resuming held build ${id} (${build.project} / ${build.sm}) with ${answered.length} answer(s)`);
+
+        const result = await gen.generateL5X(projectJson, sm.id, {
+          resume: {
+            lastEditPlan: resume.lastEditPlan,
+            persistentFindings: resume.persistentFindings,
+            attemptCount: resume.attemptCount,
+            answers: answered.map(q => ({
+              question: q.question,
+              proposedSolution: q.proposedSolution ?? null,
+              answer: q.answer,
+              answeredBy: q.answeredBy,
+            })),
+          },
+        });
+
+        const { savedPath, savedIrPath } = saveGeneratedResult_(result, projectJson, safe);
+        // Held AGAIN (rare): new questions filed, new resume state, back to
+        // waiting with the fresh question set appended.
+        const { helpRecord, resumePath } = persistHold_(result, projectJson, safe, result.meta?.smName || sm.name);
+        persistStructuralChanges_(result, projectJson, safe, sm);
+
+        const patch = {
+          validationOk: result.ok === true,
+          attempts: (Number(build.attempts) || 0) + (result.meta?.attempts?.length ?? 0),
+          costUSD: Number(((Number(build.costUSD) || 0) + (result.meta?.costEstimate?.totalUSD || 0)).toFixed(4)),
+          durationS: (Number(build.durationS) || 0) + Math.round((Date.now() - startedAt) / 1000),
+          internalReview: result.internalReview ?? null,
+          writingNotes: scores.normalizeWritingNotes([...(build.writingNotes || []), ...(result.writingNotes || [])]),
+          structuralChanges: scores.normalizeStructuralChanges([...(build.structuralChanges || []), ...(result.structuralChanges || [])]),
+          resumedAt: new Date().toISOString(),
+          ...(savedPath ? { filePath: savedPath } : {}),
+          help: helpRecord
+            ? scores.normalizeHelp({ questions: [...build.help.questions, ...helpRecord.questions], status: 'waiting' })
+            : scores.normalizeHelp({ questions: build.help.questions, status: 'resolved' }),
+          ...(resumePath ? { resumePath } : {}),
+        };
+        const updated = scores.updateBuild(BUILD_SCORES_FILE_, id, patch);
+        if (helpRecord) {
+          require('./src/lib/agentGenerator/internalReviewer.js')
+            .attachBuildIdToQuestions(helpRecord.questions.map(q => q.id), id);
+        }
+        console.log(`[continue] build ${id} ${result.held ? 'HELD AGAIN' : result.ok ? 'completed' : 'finished with validation errors'} ($${result.meta?.costEstimate?.totalUSD ?? '?'})`);
+        sendJson(res, 200, {
+          ok: result.ok === true,
+          build: updated,
+          validation: result.validation,
+          internalReview: result.internalReview ?? null,
+          savedPath, savedIrPath,
+          held: result.held ? { reason: result.held.reason, questions: helpRecord ? helpRecord.questions : [] } : null,
+        });
+      } catch (e) {
+        // Honest failure: back to waiting so the build stays resumable.
+        try { scores.updateBuild(BUILD_SCORES_FILE_, id, { help: { ...build.help, status: 'waiting' } }); } catch (_) {}
+        if (e && e.code === 'AI_NOT_CONFIGURED') return sendJson(res, 503, { error: e.message });
+        console.error('[continue] FAILED:', e && e.stack ? e.stack : e);
+        sendJson(res, 500, { error: e.message });
+      } finally {
+        touchAi_();
+        activeGenerations = Math.max(0, activeGenerations - 1);
+        releaseActiveWork_(workId);
+      }
     } catch (e) { sendJson(res, e.status || 500, { error: e.message }); }
   }
 
@@ -1904,10 +3281,15 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       return sendJson(res, 405, { error: 'Method not allowed' });
     }
 
-    // Health/liveness — check activeGenerations BEFORE restarting this server:
-    // a restart mid-generation kills the SSE and loses a paid model run.
+    // Health/liveness — check BEFORE restarting this server: a restart
+    // mid-request kills the SSE/HTTP call and loses a paid model run.
+    // RESTART DISCIPLINE: only restart when activeGenerations === 0 AND
+    // lastAiRequestAt is null or more than 60 seconds old. activeGenerations
+    // counts EVERY model-calling route (generate, generate/stream, compile,
+    // diagram, spec, summarize, summarize/stream, correction analysis,
+    // held-build continue, pretranslation).
     if (pathname === '/api/health') {
-      if (method === 'GET') return sendJson(res, 200, { ok: true, activeGenerations, uptimeS: Math.round(process.uptime()) });
+      if (method === 'GET') return sendJson(res, 200, { ok: true, activeGenerations, lastAiRequestAt, uptimeS: Math.round(process.uptime()) });
       return sendJson(res, 405, { error: 'Method not allowed' });
     }
 
@@ -1936,6 +3318,23 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       return sendJson(res, 405, { error: 'Method not allowed' });
     }
 
+    // THE SPEED ARCHITECTURE: scoped re-plan of ONE machine (class c) and the
+    // per-station build/change log the classification routes write to.
+    if (pathname === '/api/jarvis/recompile-machine') {
+      if (method === 'POST') return handleJarvisRecompileMachine(req, res);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    if (pathname === '/api/jarvis/changelog') {
+      if (method === 'GET') return handleJarvisChangelog(req, res, query);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    if (pathname === '/api/jarvis/patch-code') {
+      if (method === 'POST') return handleJarvisPatchCode(req, res);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
     if (pathname === '/api/jarvis/pretranslated') {
       if (method === 'GET') return handleJarvisPretranslated(res, query);
       return sendJson(res, 405, { error: 'Method not allowed' });
@@ -1953,6 +3352,19 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
 
     if (pathname === '/api/jarvis/summarize') {
       if (method === 'POST') return handleJarvisSummarize(req, res);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    if (pathname === '/api/jarvis/decompose') {
+      if (method === 'POST') return handleJarvisDecompose(req, res);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    // Spec-sheet images — the ME's attached pictures persist server-side.
+    if (pathname === '/api/jarvis/sheet-images') {
+      if (method === 'POST' || method === 'PUT') return handleSheetImagesPut(req, res);
+      if (method === 'GET') return handleSheetImagesGet(res, query);
+      if (method === 'DELETE') return handleSheetImagesDelete(res, query);
       return sendJson(res, 405, { error: 'Method not allowed' });
     }
 
@@ -1974,6 +3386,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       if (method === 'GET') {
         return sendJson(res, 200, {
           activeGenerations,
+          lastAiRequestAt,
           active: [...activeWork_.entries()].map(([id, w]) => ({ id, ...w })),
         });
       }
@@ -2005,6 +3418,29 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         if (method === 'POST') return handleJarvisBuildCorrected(req, res, decodeURIComponent(mCorr[1]));
         return sendJson(res, 405, { error: 'Method not allowed' });
       }
+      // Retry a correction analysis on the already-stored corrected file —
+      // a failed analysis must never require re-uploading Jason's red pen.
+      const mRean = pathname.match(/^\/api\/jarvis\/builds\/([^/]+)\/corrected\/reanalyze$/);
+      if (mRean) {
+        if (method === 'POST') return handleJarvisBuildReanalyze(req, res, decodeURIComponent(mRean[1]));
+        return sendJson(res, 405, { error: 'Method not allowed' });
+      }
+      // Resume a held generation (hold-for-help) — needs server context
+      // (project files, question queue, generation), so it lives here rather
+      // than in the buildScores module (which owns approve-changes).
+      const mCont = pathname.match(/^\/api\/jarvis\/builds\/([^/]+)\/continue$/);
+      if (mCont) {
+        if (method === 'POST') return handleJarvisBuildContinue(req, res, decodeURIComponent(mCont[1]));
+        return sendJson(res, 405, { error: 'Method not allowed' });
+      }
+      // Mark a build engineer-verified-correct and enshrine its file in the
+      // verified library (Dan 2026-08-26: "save the good code — a library to
+      // lean on"). UI: a "verified correct" affordance on delivered rows.
+      const mVerify = pathname.match(/^\/api\/jarvis\/builds\/([^/]+)\/verify$/);
+      if (mVerify) {
+        if (method === 'POST') return handleJarvisBuildVerify(req, res, decodeURIComponent(mVerify[1]));
+        return sendJson(res, 405, { error: 'Method not allowed' });
+      }
     }
 
     if (pathname.startsWith('/api/jarvis/builds')) {
@@ -2021,12 +3457,20 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         if (method === 'POST') return handleJarvisQuestionAdd(req, res);
         return sendJson(res, 405, { error: 'Method not allowed' });
       }
+      if (rest === '/close-stale' && method === 'POST') {
+        return handleJarvisQuestionsCloseStale(req, res);
+      }
       const m = rest.match(/^\/([^/]+)\/(answer|dismiss)$/);
       if (m && method === 'POST') {
         const id = decodeURIComponent(m[1]);
         if (m[2] === 'answer')  return handleJarvisQuestionAnswer(req, res, id);
         if (m[2] === 'dismiss') return handleJarvisQuestionDismiss(res, id);
       }
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    if (pathname === '/api/jarvis/examples') {
+      if (method === 'POST') return handleJarvisExampleUpload(req, res);
       return sendJson(res, 405, { error: 'Method not allowed' });
     }
 
@@ -2038,6 +3482,72 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     if (pathname === '/api/jarvis/trackrecord') {
       if (method === 'GET') return handleJarvisTrackRecord(res);
       return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    // ── Guide rails (Dan, Aug 23): the concept files are browsable AND
+    // editable on the Jarvis page's Knowledge tab — "these are my guide rails
+    // for this, for that; we can edit and tweak and teach."
+    //   GET /api/jarvis/concepts           → { concepts: [{name, md, mtime}] }
+    //   PUT /api/jarvis/concepts/:name     { md, editedBy? } → save the file
+    //     (file-level attribution line appended/updated at the bottom)
+    if (pathname === '/api/jarvis/concepts' || pathname.startsWith('/api/jarvis/concepts/')) {
+      const conceptsDir = path.join(__dirname, 'jarvis-knowledge', 'concepts');
+      if (pathname === '/api/jarvis/concepts') {
+        if (method !== 'GET') return sendJson(res, 405, { error: 'Method not allowed' });
+        try {
+          const concepts = fs.readdirSync(conceptsDir)
+            .filter(f => f.endsWith('.md'))
+            .map(f => {
+              const fp = path.join(conceptsDir, f);
+              let mtime = null;
+              try { mtime = fs.statSync(fp).mtime.toISOString(); } catch (_) {}
+              return { name: f.replace(/\.md$/, ''), md: fs.readFileSync(fp, 'utf8'), mtime };
+            });
+          return sendJson(res, 200, { concepts });
+        } catch (e) {
+          return sendJson(res, 200, { concepts: [], error: e.message });
+        }
+      }
+      // PUT /api/jarvis/concepts/:name
+      const name = decodeURIComponent(pathname.slice('/api/jarvis/concepts/'.length));
+      if (method !== 'PUT') return sendJson(res, 405, { error: 'Method not allowed' });
+      if (!/^[a-zA-Z0-9_-]+$/.test(name)) return sendJson(res, 400, { error: 'Bad concept name' });
+      const fp = path.join(conceptsDir, name + '.md');
+      if (!fs.existsSync(fp)) return sendJson(res, 404, { error: 'Concept not found' });
+      return readBody(req).then(raw => {
+        let body;
+        try { body = JSON.parse(raw || '{}'); } catch (_) { return sendJson(res, 400, { error: 'Bad JSON' }); }
+        let md = String(body.md ?? '');
+        if (!md.trim()) return sendJson(res, 400, { error: 'Empty content refused — delete lines, not the file' });
+        // File-level attribution (cheap and honest): one line at the bottom.
+        const who = String(body.editedBy || 'the team').slice(0, 40);
+        const stamp = `_Last edited by ${who} on ${new Date().toISOString().slice(0, 10)} (Knowledge tab)._`;
+        const attrRe = /\n?_Last edited by .* \(Knowledge tab\)\._\s*$/;
+        md = md.replace(attrRe, '').trimEnd() + '\n\n' + stamp + '\n';
+        try {
+          fs.writeFileSync(fp, md, 'utf8');
+          return sendJson(res, 200, { ok: true, name, md });
+        } catch (e) { return sendJson(res, 500, { error: e.message }); }
+      }).catch(e => sendJson(res, 500, { error: e.message }));
+    }
+
+    /** GET /api/jarvis/sources — the knowledge-source manifest ("what Jarvis
+     *  knows and where it came from"), written by the ingestion pipeline to
+     *  jarvis-knowledge/sources.json:
+     *    [{ name, location, accessStatus, lastIngested, takeaways: [string] }]
+     *  Missing file → { ok:true, sources: null } (the UI shows "no manifest
+     *  yet" rather than an error). */
+    if (pathname === '/api/jarvis/sources') {
+      if (method !== 'GET') return sendJson(res, 405, { error: 'Method not allowed' });
+      const srcFile = path.join(__dirname, 'jarvis-knowledge', 'sources.json');
+      try {
+        if (!fs.existsSync(srcFile)) return sendJson(res, 200, { ok: true, sources: null });
+        const parsed = JSON.parse(fs.readFileSync(srcFile, 'utf8'));
+        const sources = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.sources) ? parsed.sources : []);
+        return sendJson(res, 200, { ok: true, sources });
+      } catch (e) {
+        return sendJson(res, 200, { ok: true, sources: null, error: `sources.json unreadable: ${e.message}` });
+      }
     }
 
     if (pathname.startsWith('/api/standards')) {
@@ -2075,7 +3585,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     if (fs.existsSync(DIST_DIR_)) return serveStatic(res, pathname);
 
     res.writeHead(503, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end('<html><body style="font-family:sans-serif;padding:40px;background:#111;color:#eee"><h2 style="color:#f59e0b">App not built yet</h2><p>Run <b>BUILD_AND_RUN.bat</b> to build and start the server.</p></body></html>');
+    res.end('<html><body style="font-family:sans-serif;padding:40px;background:#111;color:#eee"><h2 style="color:#f59e0b">App not built yet</h2><p>Run <b>npm run build</b> (or use START_APP.bat for the dev server).</p></body></html>');
   });
 
   server.on('error', err => {

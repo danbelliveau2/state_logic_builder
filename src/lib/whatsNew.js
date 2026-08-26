@@ -10,12 +10,23 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.19';
+export const UI_BUILD = 'v2.6.20';
 
 export const BUILT_AT = '2026-08-26';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.20',
+    date: '2026-08-26',
+    items: [
+      'NOTHING IS DRAWN BEFORE YOU AGREE — step 1 is now a DECOMPOSE-ONLY call (new /api/jarvis/decompose, cheap/fast tier, ~30s): your explanation goes in, ONLY the state-machine proposal comes back — names, one-liners, owned devices, per-machine sequences, and the asynchrony reasoning against your expectation. No diagram build, no compile. The drawn sequence and the code are THE LAST TWO steps, after every approval',
+      'THE LEGACY BUILD-FIRST PATH IS DELETED — not disabled: the auto build+compile kick, the "Build — get the proposal" flow, and "Build without summary" are gone; retry, resume, and fresh submits ALL go decompose-only. One flow, one door (recorded as standing law in Jarvis\'s knowledge)',
+      'NO MORE FROZEN BARS — the proposal call shows real elapsed time ("Proposing the state machines… 12s · typically ~30s"), warns past 60s, and hard-stops at 2 minutes with the reason and one Retry. Never a stuck 0%',
+      'ARGUE WITH THE PROPOSAL IN THE CHAT — on a fresh draft, a chat message while step 1 is up re-proposes with your correction folded in ("his correction wins"); the reply lands in the thread with the new machine list',
+      'APPROVING THE DRAFT SPLIT DRIVES THE WHOLE CASCADE — the per-machine devices → sequence steps derive from the proposal itself; the SM toggle shows the approved machines; and at Generate the approved split rides into the station (smSplit + approval + your cascade ✓s), so nothing you agreed is re-asked after the build',
+    ],
+  },
   {
     version: 'v2.6.19',
     date: '2026-08-26',

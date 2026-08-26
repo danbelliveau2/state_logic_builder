@@ -60,7 +60,8 @@ export function cascadeStepsOf({ decomp = null, approvedEntries = null, summary 
   // proposal it's the approve-the-split step; without one (fresh draft /
   // never-compiled single) it's the "get the proposal" step — Build/compile
   // produces it, or the ME agrees the station runs as one machine.
-  steps.push({ key: 'smSplit', kind: 'smSplit', smKey: null, smName: '', label: 'State machines', hasProposal: multi });
+  // A proposal of ONE is still a proposal (draft decompose can return one).
+  steps.push({ key: 'smSplit', kind: 'smSplit', smKey: null, smName: '', label: 'State machines', hasProposal: (decomp?.length ?? 0) >= 1 });
   const entries = (approvedEntries?.length ?? 0) >= 2
     ? approvedEntries
     : multi
@@ -87,7 +88,7 @@ export function cascadeStepsOf({ decomp = null, approvedEntries = null, summary 
  * The active step is the FIRST not-effectively-approved step (a reconfirm
  * step re-enters the queue at its own position).
  */
-export function deriveCascade(steps, { state = null, smApprovalApproved = false, legacyReviews = null } = {}) {
+export function deriveCascade(steps, { state = null, smApprovalApproved = false, legacyReviews = null, smSplitFromRecs = false } = {}) {
   const recs = state?.steps ?? {};
   const hasAnyState = Object.keys(recs).length > 0;
   const legacy = (kind) => {
@@ -97,9 +98,11 @@ export function deriveCascade(steps, { state = null, smApprovalApproved = false,
   };
   const annotated = steps.map((s) => {
     if (s.kind === 'smSplit') {
-      // The artifact wins when a proposal exists; a generic recorded agree
-      // ("runs as one machine") covers the no-proposal case.
-      const ok = smApprovalApproved || (!s.hasProposal && recs[s.key]?.approved === true);
+      // The artifact wins when a station exists; fresh DRAFTS (no artifact
+      // possible yet) record the approval in the cascade state itself —
+      // smSplitFromRecs says the caller allows that (Dan, 2026-08-26).
+      const ok = smApprovalApproved
+        || ((smSplitFromRecs || !s.hasProposal) && recs[s.key]?.approved === true);
       return { ...s, wasApproved: ok, reconfirm: false, effApproved: ok };
     }
     const rec = recs[s.key];

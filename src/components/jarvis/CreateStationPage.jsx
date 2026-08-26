@@ -48,7 +48,6 @@ import { StationViewToggle } from './StationViewToggle.jsx';
 import { SpecQuestionsSection, BlockingShell, ExtraBlockerRow } from './SpecQuestionsSection.jsx';
 import { GenerationScopeNote } from './GenerationScopeNote.jsx';
 import { useV2Shell } from '../../v2/useV2Shell.js';
-import { runCompile } from '../../v2/CompileSequenceModal.jsx';
 import { DeviceIcon, DEVICE_ICON_COLORS } from '../DeviceIcons.jsx';
 import { DEVICE_TYPES, classifyDeviceRole } from '../../lib/deviceTypes.js';
 import { getDeviceTags } from '../../lib/tagNaming.js';
@@ -3860,7 +3859,7 @@ function CascadeProposalCard({ step, stepNo, stepCount, lines, deviceNames, busy
 
 /** "Jarvis is proposing the state machines…" — live elapsed-based progress
  *  while the auto-kicked compile runs (Dan, 2026-08-26: send → GO). */
-function SmProposalWait({ startedAt, typicalS = 240 }) {
+function SmProposalWait({ startedAt, typicalS = 45 }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -3873,10 +3872,12 @@ function SmProposalWait({ startedAt, typicalS = 240 }) {
       <ProgressRing pct={pct} size={44} subLabel="" />
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>
-          Jarvis is proposing the state machines…
+          Proposing the state machines… {Math.floor(elapsed)}s
         </div>
         <div style={{ fontSize: 11, color: C.muted }}>
-          he reads your explanation, splits the station by what must run asynchronously, and comes back with the breakup — typically a few minutes
+          {elapsed > 60
+            ? 'taking longer than usual — it hard-stops with a Retry at 2 minutes, never a frozen bar'
+            : 'he reads your explanation and splits the station by what must run asynchronously — typically ~30s'}
         </div>
       </div>
     </div>
@@ -4177,7 +4178,12 @@ export function CreateStationPage({ embedded = false }) {
   // auto-kicks the SM proposal (build + compile). This tracks the run so the
   // step-1 card shows live progress / a retry with the reason.
   const [proposeRun, setProposeRun] = useState(null); // {stage:'compile',startedAt} | {stage:'error',msg}
-  const autoKickRef = useRef(false); // set by Done explaining; consumed once
+  const autoKickRef = useRef(false); // one auto-run per mount
+  // THE DECOMPOSE-ONLY PROPOSAL (Dan, 2026-08-26): step 1's result lives on
+  // the DRAFT — no station/diagram exists until the Generate step.
+  // { stateMachines:[{name,oneLiner,ownedDeviceNames,why,sequence}], reasoning, at }
+  const [smProposal, setSmProposal] = useState(draft?.smProposal ?? null);
+  const splitCounterRef = useRef(''); // a chat counter to the draft proposal rides the re-decompose
   // ONE collapsible chat (Dan, 2026-08-26): the thread tucks away on demand.
   const [chatCollapsed, setChatCollapsed] = useState(false);
 
@@ -4223,6 +4229,7 @@ export function CreateStationPage({ embedded = false }) {
     // conversation survives reopen without bloating localStorage.
     chatThread: chatThread.slice(-40),
     ...(localCascade ? { cascadeLocal: localCascade } : {}),
+    ...(smProposal ? { smProposal } : {}),
     ...(absorbedIdsRef.current.length ? { absorbedDraftIds: absorbedIdsRef.current } : {}),
     ...(linkedSmId ? { smId: linkedSmId } : {}),
   });
@@ -4257,7 +4264,7 @@ export function CreateStationPage({ embedded = false }) {
     }, 1000);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, station, description, images, phase, summary, jarvisCoverage, questions, nonStandardFlags, summarizeCost, purpose, genLevel, expectedSms, referenceText, agreedNeeds, sheetAhead, chatThread, localCascade, draftKey, linkedSmId]);
+  }, [name, station, description, images, phase, summary, jarvisCoverage, questions, nonStandardFlags, summarizeCost, purpose, genLevel, expectedSms, referenceText, agreedNeeds, sheetAhead, chatThread, localCascade, smProposal, draftKey, linkedSmId]);
 
   // ── Pictures persist FOREVER — hardened after the Aug 24 SECOND loss ─────
   // The server copy is authoritative and its merge is ADDITIVE (union by
@@ -4438,6 +4445,7 @@ export function CreateStationPage({ embedded = false }) {
     setNonStandardFlags([]); setDirty(false); baselineRef.current = null;
     setPurpose(''); setExpectedSms(''); setAgreedNeeds(new Set());
     setSheetAhead(false); setApplyReceipt(null); setLocalCascade(null);
+    setSmProposal(null); setProposeRun(null);
     setQaRounds(0); setQaHistory([]); setLearnedNotes([]);
     setSummarizeCost(0); setError(null); setDraftImagesDropped(0);
     setOtherDrafts(loadDrafts(draftKey).filter(d => d.draftId !== draftIdRef.current && (!d.smId || !smExists(d.smId))));
@@ -4449,6 +4457,9 @@ export function CreateStationPage({ embedded = false }) {
     draftIdRef.current = d.draftId;
     setLinkedSmId(smExists(d.smId) ? d.smId : null);
     setLocalCascade(d.cascadeLocal ?? null);
+    setSmProposal(d.smProposal ?? null);
+    setProposeRun(null);
+    autoKickRef.current = false; // a resumed draft auto-runs too (Dan)
     const s = isStructuredSummary(d.summary)
       ? withSheetPrefill(hydrateSummaryFromSm(d.summary, d.smId ? sms.find(x => x.id === d.smId) : null))
       : null;
@@ -5527,9 +5538,7 @@ export function CreateStationPage({ embedded = false }) {
     try {
       await callSummarize();
       // EXPLANATION → SEND → GO (Dan, 2026-08-26): the SM proposal kicks off
-      // automatically — no manual "get the proposal" click. The auto-kick
-      // effect below runs it once the summary state has landed.
-      if (!linkedSmId) autoKickRef.current = true;
+      // automatically — the auto-run effect fires once the summary lands.
       setPhase('summary');
     } catch (e) {
       setError(e.message);
@@ -5537,51 +5546,75 @@ export function CreateStationPage({ embedded = false }) {
     }
   }
 
-  /** THE SM-PROPOSAL RUN (Dan, 2026-08-26): compile the freshly built station
-   *  so Jarvis's decomposition proposal lands on the step-1 card. Saves the
-   *  project first — the compile route reads the server file. */
-  async function autoProposeSms(smIdArg = null) {
-    const st = useDiagramStore.getState();
-    const id = smIdArg ?? linkedSmId;
-    const filename = st.currentFilename;
-    if (!id) { setProposeRun({ stage: 'error', msg: 'The station is not built yet' }); return; }
-    if (!filename) { setProposeRun({ stage: 'error', msg: 'No saved project file — save the project, then Retry' }); return; }
-    setProposeRun({ stage: 'compile', startedAt: Date.now() });
-    try {
-      try { await st.saveCurrentProject?.(); } catch { /* autosave will have it */ }
-      await runCompile({ filename, smId: id });
-      setProposeRun(null); // panelModel picks the fresh proposal up
-    } catch (e) {
-      setProposeRun({ stage: 'error', msg: e.message });
-    }
-  }
-
-  /** One clear entry for "get me the proposal": builds the station first when
-   *  it doesn't exist yet (blockers focus their field — never a dead end),
-   *  then compiles. Fired automatically after Done explaining. */
-  function kickProposal() {
+  /** THE SM-PROPOSAL RUN — DECOMPOSE-ONLY (Dan, 2026-08-26: "just explain the
+   *  state machines it thinks and let me edit and chat"). One cheap, fast
+   *  call: explanation (+ refs + his expectation) → the breakup proposal.
+   *  NOTHING is drawn, built, or compiled here — that is the Generate step,
+   *  the LAST step, after every approval. A stall can never freeze: the
+   *  request hard-aborts at 120s and surfaces Retry with the reason. */
+  async function kickProposal() {
     if (busy || applying || proposeRun?.stage === 'compile') return;
-    setProposeRun(null);
-    if (!linkedSmId) {
-      const blocker = buildBlocker();
-      if (blocker) {
-        setProposeRun({ stage: 'error', msg: blocker.message });
-        if (blocker.field === 'name') { setNameAttention(true); nameRef.current?.focus(); }
-        return;
-      }
-      handleBuild({ stayOnSheet: true }); // build → save → auto-compile
+    if (!description.trim()) {
+      setProposeRun({ stage: 'error', msg: 'There is no explanation yet — describe the station first' });
       return;
     }
-    autoProposeSms();
+    setProposeRun({ stage: 'compile', startedAt: Date.now() });
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 120000);
+    try {
+      const r = await fetch('/api/jarvis/decompose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: ctrl.signal,
+        body: JSON.stringify({
+          description: description.trim(),
+          images: images.filter(i => String(i.mediaType || '').startsWith('image/'))
+            .map(i => ({ name: i.name, base64: i.base64, mediaType: i.mediaType })),
+          expectedStateMachines:
+            ((summary?.expectedStateMachines ?? []).map(p => p?.name).filter(Boolean).join(', ')
+              || expectedSms.trim())
+            + (splitCounterRef.current
+              ? `\n\nENGINEER'S CORRECTION to your previous proposal${(smProposal?.stateMachines?.length ?? 0) ? ` (${smProposal.stateMachines.map(m => m.name).join(', ')})` : ''}: ${splitCounterRef.current}\nRe-propose accordingly — his correction wins.`
+              : ''),
+          otherSms: peerSms.map(s => ({ name: s.name, displayName: s.displayName ?? s.name })),
+          smName: name.trim() || null,
+        }),
+      });
+      clearTimeout(timer);
+      const d = await r.json().catch(() => null);
+      if (!r.ok || !d?.ok) throw new Error(d?.error ?? `Decompose failed (${r.status})`);
+      setSmProposal({
+        stateMachines: d.stateMachines,
+        reasoning: d.reasoning ?? '',
+        at: Date.now(),
+        costUSD: d.meta?.costUSD ?? null,
+      });
+      setProposeRun(null);
+      if (splitCounterRef.current) {
+        splitCounterRef.current = '';
+        setChatThread(th => [...th, {
+          role: 'jarvis',
+          text: `Re-proposed — ${d.stateMachines.length} state machine${d.stateMachines.length === 1 ? '' : 's'}: ${d.stateMachines.map(m => m.name).join(', ')}. ${d.reasoning ?? ''}`.trim(),
+          at: Date.now(),
+        }]);
+      }
+      if (linkedSmId) appendChangeLog(linkedSmId, {
+        what: `State-machine proposal — ${d.stateMachines.length} machine${d.stateMachines.length === 1 ? '' : 's'}`,
+        class: 'section', costUSD: d.meta?.costUSD ?? null,
+      });
+    } catch (e) {
+      clearTimeout(timer);
+      setProposeRun({
+        stage: 'error',
+        msg: e?.name === 'AbortError'
+          ? 'Timed out after 2 minutes — the model took too long'
+          : e.message,
+      });
+    }
   }
 
-  // AUTO-KICK after Done explaining — runs once the summary state landed.
-  useEffect(() => {
-    if (!autoKickRef.current || phase !== 'summary') return;
-    autoKickRef.current = false;
-    kickProposal();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase]);
+  // (The auto-run-everywhere effect lives BELOW the cascade derivation — its
+  //  dependency list needs `cascade` initialized. Dan, 2026-08-26 round 2.)
 
   /** The ONE Corrections box, framed so Jarvis routes it: the ME's wording
    *  names its target section implicitly — apply it there, touch nothing else. */
@@ -5611,6 +5644,19 @@ export function CreateStationPage({ embedded = false }) {
 
   async function handleApplyChanges() {
     if (applying) return;
+    // DRAFT SPLIT COUNTER (Dan, 2026-08-26): while step 1's decompose-only
+    // proposal is up on a FRESH draft, a chat message about it RE-DECOMPOSES
+    // (there is no station for the summarize pipeline to re-plan yet).
+    if (!linkedSmId && smProposal && cascadeLive
+      && cascade.activeStep?.kind === 'smSplit' && changes.trim()) {
+      const t = changes.trim();
+      splitCounterRef.current = t;
+      setChatThread(th => [...th, { role: 'me', text: t, at: Date.now() }]);
+      setChanges('');
+      setSmProposal(null); // the re-proposal replaces it
+      kickProposal();
+      return;
+    }
     const corrections = combinedCorrections();
     if (!corrections) {
       // Never a silent no-op — say what's needed and put the cursor there.
@@ -5767,17 +5813,33 @@ export function CreateStationPage({ embedded = false }) {
   // the sheet already holds, overlay the recorded approvals, get ONE active
   // step. Approvals persist on machineSpec.cascadeState (sibling of smSplit);
   // the SM-breakup step keys off the EXISTING smSplitApproval — never copied.
+  // THE DRAFT'S DECOMPOSE-ONLY PROPOSAL as decomposition entries — same
+  // shape smGrouping produces, so the whole cascade machinery reads it.
+  const draftProposalEntries = useMemo(() => {
+    const list = smProposal?.stateMachines ?? [];
+    if (!list.length) return null;
+    return list.map(m => ({
+      key: normKey(m.name), smId: null,
+      name: m.name, oneLiner: m.oneLiner ?? '', why: m.why ?? '',
+      deviceNames: m.ownedDeviceNames ?? [], sequence: m.sequence ?? [],
+      faultRecovery: [], handshakes: [],
+    }));
+  }, [smProposal]);
+  // Fresh drafts record the breakup approval in the cascade state itself
+  // (no station exists to carry the artifact until Generate).
+  const draftSplitApproved = !linkedSmId && localCascade?.steps?.smSplit?.approved === true;
   const cascadeSteps = useMemo(() => cascadeStepsOf({
-    decomp: panelModel.decomp ?? smDecomp,
+    decomp: panelModel.decomp ?? smDecomp ?? draftProposalEntries,
     // A NEWER proposal awaiting approval previews ITS machines as the
     // pending per-SM steps (Dan's Magnet Dial round: the fresh 4-SM proposal
     // is what he's approving — the rail must show those four, not the two
     // older records). Outputs still group by the APPROVED authority.
-    approvedEntries: panelModel.awaitingApproval ? null : approvedSmDecomp,
+    approvedEntries: panelModel.awaitingApproval ? null
+      : (approvedSmDecomp ?? (draftSplitApproved ? draftProposalEntries : null)),
     summary,
     hasPeers,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [panelModel, smDecomp, approvedSmDecomp, summary, hasPeers]);
+  }), [panelModel, smDecomp, approvedSmDecomp, draftProposalEntries, draftSplitApproved, summary, hasPeers]);
   const cascade = useMemo(() => deriveCascade(cascadeSteps, {
     state: linkedSmId ? (linkedSm?.machineSpec?.cascadeState ?? null) : localCascade,
     // Real station SM records are FACT — the breakup step is approved by
@@ -5787,8 +5849,27 @@ export function CreateStationPage({ embedded = false }) {
     smApprovalApproved: !panelModel.awaitingApproval
       && (stationDecomp ? true : smApproval?.approved === true),
     legacyReviews: sectionReviews,
+    smSplitFromRecs: !linkedSmId, // drafts approve the split in cascade state
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [cascadeSteps, linkedSmId, linkedSm, localCascade, smApproval, stationDecomp, sectionReviews, panelModel]);
+
+  /** Approve / rename the DRAFT's proposed split (no station yet — the
+   *  approval records in cascade state and rides into Generate's machineSpec). */
+  function approveDraftSplit() {
+    writeCascade(c => ({
+      ...c,
+      steps: { ...c.steps, smSplit: { approved: true, by: 'ME', at: new Date().toISOString() } },
+    }));
+  }
+  function renameDraftSplitEntry(entry, newName) {
+    const t = String(newName ?? '').trim().replace(/\s+/g, '');
+    if (!t) return;
+    setSmProposal(p => (p ? {
+      ...p,
+      stateMachines: p.stateMachines.map(m => (normKey(m.name) === entry.key ? { ...m, name: t } : m)),
+    } : p));
+    writeCascade(c => ({ ...c, steps: { ...c.steps, smSplit: { approved: false } } }));
+  }
 
   function writeCascade(mut) {
     if (!linkedSmId) { setLocalCascade(c => mut({ ...(c ?? {}), steps: { ...(c?.steps ?? {}) } })); return; }
@@ -5869,7 +5950,7 @@ export function CreateStationPage({ embedded = false }) {
   // ── SM TOGGLE (Dan, 2026-08-26): the sheet's outputs show the SELECTED
   // machine; selection syncs BOTH WAYS with the banner chips + the diagram
   // (store.activeSmId) whenever the machines exist as records.
-  const smChipEntries = approvedSmDecomp ?? null;
+  const smChipEntries = approvedSmDecomp ?? (draftSplitApproved ? draftProposalEntries : null);
   function selectSheetSm(key) {
     setSheetSmKey(key);
     const e = (smChipEntries ?? []).find(x => x.key === key);
@@ -5884,6 +5965,22 @@ export function CreateStationPage({ embedded = false }) {
     if (hit && sheetSmKey !== hit.key) setSheetSmKey(hit.key);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.activeSmId]);
+
+  // AUTO-RUN EVERYWHERE (Dan, 2026-08-26 round 2: "Get the proposal" died —
+  // an explanation without a proposal has unambiguous intent, resume
+  // included). Fires once per mount when the summary is up and step 1 has no
+  // proposal yet; never re-runs when a proposal (any size) already exists;
+  // a failure parks on the Retry-with-reason state, never a loop.
+  useEffect(() => {
+    if (autoKickRef.current || phase !== 'summary' || applying || proposeRun) return;
+    const step = cascade.activeStep;
+    if (!step || step.kind !== 'smSplit' || step.hasProposal) return;
+    if (linkedSm?.compiledSequence?.ir) return; // a one-machine proposal exists
+    if (!description.trim()) return;
+    autoKickRef.current = true;
+    kickProposal();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, cascade, proposeRun, applying]);
 
   // ── STRICT REVEAL (Dan, 2026-08-26): steps below the current one are
   // HIDDEN entirely — not previews. Jarvis keeps the full extraction
@@ -6228,7 +6325,10 @@ export function CreateStationPage({ embedded = false }) {
     handleDoneExplaining();
   }
 
-  async function handleBuild({ stayOnSheet = false } = {}) {
+  // GENERATE — THE LAST STEP (Dan, 2026-08-26): this is the ONLY place a
+  // diagram is ever drawn, and it is reachable ONLY after every cascade step
+  // is agreed (the legacy build-first create path is DELETED, not disabled).
+  async function handleBuild() {
     if (!hasBuildInput) return;
     const returnPhase = usingJarvisVerdicts ? 'summary' : 'input';
     setPhase('building');
@@ -6301,6 +6401,17 @@ export function CreateStationPage({ embedded = false }) {
         // (Tabular-data questions are excluded: the data sheet answered them.)
         machineSpec: {
           version: 1, sourceDescription: desc,
+          // The cascade's APPROVED breakup + approvals ride into the station
+          // (Dan, 2026-08-26: the split was agreed BEFORE anything was drawn).
+          ...(draftSplitApproved && draftProposalEntries?.length ? {
+            smSplit: draftProposalEntries.map(e => ({
+              name: e.name, oneLiner: e.oneLiner, deviceNames: e.deviceNames,
+              sequence: e.sequence, ...(e.why ? { why: e.why } : {}),
+            })),
+            smSplitAppliedAt: new Date().toISOString(),
+            smSplitApproval: { approved: true, by: 'ME', at: new Date().toISOString() },
+          } : {}),
+          ...(localCascade ? { cascadeState: localCascade } : {}),
           ...(purpose.trim() ? { purpose: purpose.trim() } : {}),
           ...(expectedSms.trim() ? { expectedStateMachines: expectedSms.trim() } : {}),
           ...(summary?.expectedStateMachines?.length ? { expectedSmPills: summary.expectedStateMachines } : {}),
@@ -6385,6 +6496,15 @@ export function CreateStationPage({ embedded = false }) {
       store.updateStateMachine(smId, {
         machineSpec: {
           ...sData.spec, sourceDescription: desc,
+          ...(draftSplitApproved && draftProposalEntries?.length ? {
+            smSplit: draftProposalEntries.map(e => ({
+              name: e.name, oneLiner: e.oneLiner, deviceNames: e.deviceNames,
+              sequence: e.sequence, ...(e.why ? { why: e.why } : {}),
+            })),
+            smSplitAppliedAt: new Date().toISOString(),
+            smSplitApproval: { approved: true, by: 'ME', at: new Date().toISOString() },
+          } : {}),
+          ...(localCascade ? { cascadeState: localCascade } : {}),
           // The ME's own build-purpose line wins over the extraction's guess.
           ...(purpose.trim() ? { purpose: purpose.trim() } : {}),
           ...(expectedSms.trim() ? { expectedStateMachines: expectedSms.trim() } : {}),
@@ -6424,14 +6544,6 @@ export function CreateStationPage({ embedded = false }) {
           ? `Station built — spec saved. ${nQuestions} open question${nQuestions === 1 ? '' : 's'} went to the question queue.`
           : 'Station built — spec saved.'
       );
-      // AUTO-PROPOSE FLOW (Dan, 2026-08-26): the build was step one of the
-      // SM proposal — stay ON the sheet and kick the compile so the step-1
-      // card goes straight from "building" to "proposing" to the proposal.
-      if (stayOnSheet) {
-        setPhase('summary');
-        autoProposeSms(smId);
-        return;
-      }
       clearActiveFreshDraft(); // explicit exit — never auto-resume after Build
       store.closeNewSmModal();
       return;
@@ -6439,7 +6551,6 @@ export function CreateStationPage({ embedded = false }) {
       prog.stop();
       setError(e.message);
       setPhase(returnPhase);
-      if (stayOnSheet) setProposeRun({ stage: 'error', msg: e.message });
     }
   }
 
@@ -7002,20 +7113,9 @@ export function CreateStationPage({ embedded = false }) {
                       {buildHint}
                     </span>
                   )}
-                  <button
-                    className="btn btn--secondary"
-                    data-testid="build-without-summary-btn"
-                    onClick={handleBuildClick}
-                    onMouseEnter={handleBuildHover}
-                    disabled={busy}
-                    title={hasBuildInput
-                      ? (allCovered
-                        ? 'Build straight from the raw explanation (skips the summary review)'
-                        : 'Build straight from the raw explanation — uncovered sections are decided per SDC standards and noted for review')
-                      : (buildBlocker()?.message ?? '')}
-                  >
-                    Build without summary
-                  </button>
+                  {/* ("Build without summary" is DELETED — Dan's one-door law,
+                      2026-08-26: nothing draws before the cascade approvals;
+                      Generate is the last step.) */}
                   <button
                     className="btn btn--primary"
                     data-testid="done-explaining-btn"
@@ -7165,31 +7265,57 @@ export function CreateStationPage({ embedded = false }) {
                               </span>
                             </div>
                             {step.hasProposal ? (
-                              <SmDecompositionSection
-                                decomp={panelModel.decomp ?? smDecomp}
-                                approval={smApproval}
-                                expectedPills={expectedSmPills}
-                                expectationRaw={expectedSms.trim()}
-                                expectedCount={expectedSmCount}
-                                reasoning={panelModel.reasoning}
-                                onApprove={approveSmSplit}
-                                onRename={renameSmSplitEntry}
-                                onEditViaChat={focusChat}
-                                onCounter={sendSmSplitCounter}
-                                busy={applying}
-                                versionLabel={panelModel.versionLabel}
-                                awaitingApproval={panelModel.awaitingApproval}
-                                approvedStamp={panelModel.approvedStamp}
-                                supersededNote={panelModel.supersededNote}
-                                inconsistent={panelModel.inconsistent}
-                                onRepropose={() => reproposeSmSplit()}
-                                chatMode
-                              />
+                              (panelModel.decomp ?? smDecomp) ? (
+                                <SmDecompositionSection
+                                  decomp={panelModel.decomp ?? smDecomp}
+                                  approval={smApproval}
+                                  expectedPills={expectedSmPills}
+                                  expectationRaw={expectedSms.trim()}
+                                  expectedCount={expectedSmCount}
+                                  reasoning={panelModel.reasoning}
+                                  onApprove={approveSmSplit}
+                                  onRename={renameSmSplitEntry}
+                                  onEditViaChat={focusChat}
+                                  onCounter={sendSmSplitCounter}
+                                  busy={applying}
+                                  versionLabel={panelModel.versionLabel}
+                                  awaitingApproval={panelModel.awaitingApproval}
+                                  approvedStamp={panelModel.approvedStamp}
+                                  supersededNote={panelModel.supersededNote}
+                                  inconsistent={panelModel.inconsistent}
+                                  onRepropose={() => reproposeSmSplit()}
+                                  chatMode
+                                />
+                              ) : (
+                                // THE DRAFT'S DECOMPOSE-ONLY PROPOSAL — the
+                                // same panel, fed from the draft (no station
+                                // exists yet; approval records in the cascade).
+                                <SmDecompositionSection
+                                  decomp={draftProposalEntries}
+                                  approval={draftSplitApproved ? { approved: true, by: 'ME', at: localCascade?.steps?.smSplit?.at ?? '' } : null}
+                                  expectedPills={expectedSmPills}
+                                  expectationRaw={expectedSms.trim()}
+                                  expectedCount={expectedSmCount}
+                                  reasoning={smProposal?.reasoning || null}
+                                  onApprove={approveDraftSplit}
+                                  onRename={renameDraftSplitEntry}
+                                  onEditViaChat={focusChat}
+                                  onCounter={null}
+                                  busy={applying}
+                                  versionLabel={draftSplitApproved ? null : 'Proposal'}
+                                  awaitingApproval={!draftSplitApproved}
+                                  approvedStamp={draftSplitApproved}
+                                  supersededNote={null}
+                                  inconsistent={null}
+                                  onRepropose={() => { setSmProposal(null); kickProposal(); }}
+                                  chatMode
+                                />
+                              )
                             ) : proposeRun?.stage === 'compile' ? (
                               <>
                                 {(expectedSmPills?.length ?? 0) > 0 && (
                                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 5 }}>
-                                    <span style={{ fontSize: 11, color: C.muted }}>you expected:</span>
+                                    <span style={{ fontSize: 11, color: C.muted }}>from your explanation:</span>
                                     {expectedSmPills.map((p, i) => <SmPill key={i} label={p.name} note={p.note} />)}
                                   </div>
                                 )}
@@ -7216,7 +7342,7 @@ export function CreateStationPage({ embedded = false }) {
                               <>
                                 {(expectedSmPills?.length ?? 0) > 0 && (
                                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 5 }}>
-                                    <span style={{ fontSize: 11, color: C.muted }}>you expected:</span>
+                                    <span style={{ fontSize: 11, color: C.muted }}>from your explanation:</span>
                                     {expectedSmPills.map((p, i) => <SmPill key={i} label={p.name} note={p.note} />)}
                                   </div>
                                 )}
@@ -7236,27 +7362,22 @@ export function CreateStationPage({ embedded = false }) {
                                 >Approve</button>
                               </>
                             ) : (
+                              // NO BUTTON, EVER (Dan, 2026-08-26 round 2): an
+                              // explanation without a proposal auto-runs — this
+                              // state exists only for the instant before the
+                              // auto-run effect fires (or with no explanation).
                               <>
                                 {(expectedSmPills?.length ?? 0) > 0 && (
                                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 5 }}>
-                                    <span style={{ fontSize: 11, color: C.muted }}>you expected:</span>
+                                    <span style={{ fontSize: 11, color: C.muted }}>from your explanation:</span>
                                     {expectedSmPills.map((p, i) => <SmPill key={i} label={p.name} note={p.note} />)}
                                   </div>
                                 )}
-                                <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, marginBottom: 6 }}>
-                                  Jarvis proposes how this station breaks into state machines — normally this
-                                  starts by itself right after your explanation.
+                                <div data-testid="sm-propose-starting" style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>
+                                  {description.trim()
+                                    ? 'Starting — Jarvis proposes how this station breaks into state machines…'
+                                    : 'Explain the station first — the proposal starts by itself when you\'re done.'}
                                 </div>
-                                <button
-                                  type="button"
-                                  data-testid="sm-propose-start"
-                                  onClick={kickProposal}
-                                  disabled={applying || busy}
-                                  style={{
-                                    background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 6,
-                                    fontSize: 12, fontWeight: 700, padding: '5px 16px', cursor: (applying || busy) ? 'not-allowed' : 'pointer',
-                                  }}
-                                >Get the proposal</button>
                               </>
                             )}
                           </div>
@@ -8155,9 +8276,9 @@ export function CreateStationPage({ embedded = false }) {
                 }} />
               </div>
               <div style={{ fontSize: 11, color: C.light, marginTop: 10, lineHeight: 1.5 }}>
-                Two extractions run from your explanation: the drawn station
-                sequence (devices, states, branches) and the station spec
-                (purpose, failure handling, relationships).
+                Generating the station from everything you agreed — the drawn
+                sequence and the saved spec. This only ever runs after the
+                cascade approvals.
               </div>
             </div>
           )}
