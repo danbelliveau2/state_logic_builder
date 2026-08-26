@@ -44,6 +44,7 @@ import {
   draftsKeyFor, loadDrafts, deleteDraft, onDraftsChanged,
   requestResumeDraft, draftLabel, timeAgo,
 } from '../components/jarvis/createStationDrafts.js';
+import { draftCascadeStepNote } from '../components/jarvis/cascadeModel.js';
 
 /** Fixed tree width — the canvas needs the larger share in State Logic
  *  (the estimate builder uses 460; its center pane is cards, ours is a
@@ -607,12 +608,12 @@ export function FeatureTreeV2() {
                         role="button" tabIndex={0}
                         onClick={() => resumeDraft(d.draftId)}
                         onKeyDown={(e) => { if (e.key === 'Enter') resumeDraft(d.draftId); }}
-                        title="Resume this unfinished station draft"
+                        title={`Continue this station draft — ${draftCascadeStepNote(d)} in the cascade`}
                       >
                         <span className="v2-tree__dot">✎</span>
                         <span className="v2-tree__name-small v2-tree__name-small--strong">{draftLabel(d)}</span>
                         <Leader />
-                        <Value small>{timeAgo(d.savedAt)}</Value>
+                        <Value small>{draftCascadeStepNote(d)} · Continue</Value>
                         <button
                           className="v2-tree__discard"
                           data-testid={`stations-draft-discard-${d.draftId}`}

@@ -25,8 +25,11 @@ import { buildVerifyLabel } from '../lib/conditionBuilder.js';
 import { saveStandard, updateStandard } from '../lib/standardsLibrary.js';
 import { computeStateNumbers } from '../lib/computeStateNumbers.js';
 import { computeExitLabels, computeAutoRoute } from '../lib/edgeRouting.js';
+import { layoutBranchDiagram, applyBranchLayout, estimateNodeWidth } from '../lib/branchLayout.mjs';
+import { LayoutAssertOverlay } from './dev/LayoutAssertOverlay.jsx';
 import { OUTCOME_COLORS } from '../lib/outcomeColors.js';
 import { computePresetWaypoints } from './ConnectMenu.jsx';
+import { filterMechanicalView } from '../lib/mechanicalFilter.js';
 
 const nodeTypes = { stateNode: StateNode, decisionNode: DecisionNode };
 const edgeTypes = { routableEdge: RoutableEdge };
@@ -164,11 +167,18 @@ function getSourceHandlePos(fromNode, handleId) {
 // (manual-draw helpers removed — every edge auto-routes)
 // Local call sites resolve handle positions via getSourceHandlePos() first.
 
-export function Canvas({ headerExtra = null }) {
+export function Canvas({ headerExtra = null, hideHeader = false, recoveryState = null, mechanicalView = false }) {
+  // mechanicalView: v2 Mechanical Diagram — controls-domain nodes (waits,
+  // decisions) are hidden at RENDER time and their edges spliced so the
+  // ME-described sequence reads continuously. Store data untouched; the
+  // classic shell never passes this. See lib/mechanicalFilter.js.
   // headerExtra: optional node rendered inside the SM title pill (after the
-  // Normal/Recovery toggle). Used by the v2 shell to dock its Mechanical /
-  // Full-Controls view switcher into the pill so the two never overlap.
-  // Classic shell passes nothing — behavior unchanged.
+  // Normal/Recovery toggle). Classic shell passes nothing — behavior unchanged.
+  // hideHeader: v2 shell hides the floating pill entirely — the persistent
+  // StationBanner (AppV2) owns badge/name/toggles/star instead.
+  // recoveryState: optional CONTROLLED Normal|Recovery + active-recovery-seq
+  // state ({ recoveryMode, setRecoveryMode, activeRecoverySeqId,
+  // setActiveRecoverySeqId }) — lifted to the v2 banner; classic stays local.
   const store = useDiagramStore();
   const sm = store.getActiveSm();
   const project = store.project;
@@ -178,8 +188,23 @@ export function Canvas({ headerExtra = null }) {
   const reactFlowWrapper = useRef(null);
   const { screenToFlowPosition, setCenter, getViewport, setViewport, fitView, getNodes } = useReactFlow();
   const [selectMode, setSelectMode] = useState(false);
-  const [recoveryMode, setRecoveryMode] = useState(false);
-  const [activeRecoverySeqId, setActiveRecoverySeqId] = useState(null);
+  // QA overlay — asserts the layout law against the LIVE rendered canvas and
+  // draws red marks at every violation. The user's own screen is the harness.
+  const [qaOverlay, setQaOverlay] = useState(
+    () => { try { return localStorage.getItem('sdc-qa-overlay') === '1'; } catch { return false; } }
+  );
+  const toggleQaOverlay = useCallback(() => {
+    setQaOverlay(v => {
+      try { localStorage.setItem('sdc-qa-overlay', v ? '0' : '1'); } catch { /* ignore */ }
+      return !v;
+    });
+  }, []);
+  const [recoveryModeLocal, setRecoveryModeLocal] = useState(false);
+  const [activeRecoverySeqIdLocal, setActiveRecoverySeqIdLocal] = useState(null);
+  const recoveryMode = recoveryState ? recoveryState.recoveryMode : recoveryModeLocal;
+  const setRecoveryMode = recoveryState ? recoveryState.setRecoveryMode : setRecoveryModeLocal;
+  const activeRecoverySeqId = recoveryState ? recoveryState.activeRecoverySeqId : activeRecoverySeqIdLocal;
+  const setActiveRecoverySeqId = recoveryState ? recoveryState.setActiveRecoverySeqId : setActiveRecoverySeqIdLocal;
   const [starFormOpen, setStarFormOpen] = useState(false);
   const [starName, setStarName] = useState('');
   const [starDesc, setStarDesc] = useState('');
@@ -328,6 +353,92 @@ export function Canvas({ headerExtra = null }) {
       store.onNodesChange(sm.id, changes);
     }
   }, [sm, store, getNodes]);
+
+  // ── One-shot measured-height auto-layout for Jarvis-generated diagrams ────
+  // The diagram author lays generated nodes out from ESTIMATED heights and
+  // flags every node `data._autoLayout`. Real render heights differ (Home
+  // Conditions pills, multi-line servo rows), which caused generated nodes to
+  // overlap. Once React Flow has measured every flagged node, re-space the
+  // whole diagram from ACTUAL heights (respaceVertically — 50px min gap),
+  // then clear the flags so user layout is never touched again.
+  const hasAutoLayoutNodes = (sm?.nodes ?? []).some(n => n.data?._autoLayout === true);
+  useEffect(() => {
+    if (!hasAutoLayoutNodes || !sm) return;
+    if (useDiagramStore.getState()._activeRecoverySeqId) return;
+    let cancelled = false;
+    let tries = 0;
+    const attempt = () => {
+      if (cancelled) return;
+      const state = useDiagramStore.getState();
+      const smNow = state.project?.stateMachines?.find(s => s.id === sm.id);
+      if (!smNow) return;
+      const flagged = (smNow.nodes ?? []).filter(n => n.data?._autoLayout === true);
+      if (flagged.length === 0) return;
+      const rfById = new Map(getNodes().map(n => [n.id, n]));
+      const allMeasured = flagged.every(n => (rfById.get(n.id)?.measured?.height ?? 0) > 0
+        && (rfById.get(n.id)?.measured?.width ?? 0) > 0);
+      if (!allMeasured) {
+        if (++tries < 30) setTimeout(attempt, 100); // wait for first layout
+        return;
+      }
+      // Column-aware re-layout from REAL measured heights: main spine +
+      // branch lanes, constant gap, merge clearance, staggered loop rails
+      // (branchLayout.mjs — same algorithm the generator ran with estimates).
+      const getH = (n) => rfById.get(n.id)?.measured?.height ?? n.measured?.height ?? 80;
+      // Real measured WIDTHS matter as much as heights: columns are
+      // center-aligned, so a node laid out at an estimated 240px when it
+      // actually renders 312px would sit half the difference off the column
+      // centerline — and every edge into/out of it would jog at the node face.
+      const getW = (n) => rfById.get(n.id)?.measured?.width ?? n.measured?.width ?? estimateNodeWidth(n);
+      const layout = layoutBranchDiagram(smNow.nodes ?? [], smNow.edges ?? [], {
+        getHeight: getH,
+        getWidth: getW,
+      });
+      const applied = layout.changed
+        ? applyBranchLayout(smNow.nodes ?? [], smNow.edges ?? [], layout)
+        : { nodes: smNow.nodes ?? [], edges: smNow.edges ?? [] };
+      // Strip the flags and persist positions + refreshed loop params.
+      const cleaned = applied.nodes.map(n => {
+        if (!n.data?._autoLayout) return n;
+        const { _autoLayout, ...rest } = n.data;
+        return { ...n, data: rest };
+      });
+      state.updateStateMachine(sm.id, { nodes: cleaned, edges: applied.edges });
+    };
+    // Defer past the first paint so React Flow can measure.
+    const t = setTimeout(attempt, 50);
+    return () => { cancelled = true; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasAutoLayoutNodes, sm?.id]);
+
+  // ── Full column re-layout of the active SM (measured widths + heights) ──────
+  // Same algorithm as the one-shot post-generation pass, but user-triggered so
+  // an OLD stored diagram (laid out before columns were center-aligned) can be
+  // brought onto the current law: every column shares a CENTER line, so the
+  // spine is one straight vertical with no jog at any node face.
+  const relayoutColumns = useCallback(() => {
+    if (!sm) return;
+    const state = useDiagramStore.getState();
+    const smNow = state.project?.stateMachines?.find(s => s.id === sm.id);
+    if (!smNow) return;
+    const rfById = new Map(getNodes().map(n => [n.id, n]));
+    const getH = (n) => rfById.get(n.id)?.measured?.height ?? n.measured?.height ?? 80;
+    const getW = (n) => rfById.get(n.id)?.measured?.width ?? n.measured?.width ?? estimateNodeWidth(n);
+    const layout = layoutBranchDiagram(smNow.nodes ?? [], smNow.edges ?? [], {
+      getHeight: getH, getWidth: getW,
+    });
+    if (!layout.changed) return;
+    const applied = applyBranchLayout(smNow.nodes ?? [], smNow.edges ?? [], layout);
+    store._pushHistory();
+    state.updateStateMachine(sm.id, { nodes: applied.nodes, edges: applied.edges });
+  }, [sm, store, getNodes]);
+
+  // Expose for the layout-acceptance harness (dev only — no UI dependency).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.__sdcRelayoutColumns = relayoutColumns;
+    return () => { delete window.__sdcRelayoutColumns; };
+  }, [relayoutColumns]);
 
   // ── Straighten selected nodes (align centers to median center X) ─────────────
   const straightenSelected = useCallback(() => {
@@ -1177,8 +1288,32 @@ export function Canvas({ headerExtra = null }) {
     });
   }, [sm, smEdges, smNodes]);
 
+  // ── Mechanical Diagram (v2) — hide controls-domain nodes, splice edges ──
+  // Pure render-time view transform; the store and every other view keep the
+  // full graph. Returns the same references when nothing is hidden.
+  const { nodes: viewNodes, edges: viewEdges } = useMemo(
+    () => (mechanicalView ? filterMechanicalView(nodes, edges) : { nodes, edges }),
+    [mechanicalView, nodes, edges]
+  );
+
   // ── Empty state ────────────────────────────────────────────────────────────
   if (!sm) {
+    // v2 (hideHeader): this state is unreachable-by-design — the shell lands
+    // on Project Home whenever nothing is selected (Dan, 2026-08-26). If it
+    // ever flashes, it speaks v2: "station", never "state machine".
+    if (hideHeader) {
+      return (
+        <div className="canvas-empty" data-testid="canvas-empty-v2">
+          <div className="canvas-empty__content">
+            <h2>No station selected</h2>
+            <p>Pick a station on the left — or describe a new one to Jarvis.</p>
+            <button className="btn btn--primary btn--lg" onClick={store.openNewSmModal}>
+              + New Station
+            </button>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="canvas-empty">
         <div className="canvas-empty__content">
@@ -1199,8 +1334,8 @@ export function Canvas({ headerExtra = null }) {
       ref={reactFlowWrapper}
       data-connect-source-id={connectPreset?.sourceNodeId ?? ''}
     >
-      {/* SM title header on canvas */}
-      {sm && (
+      {/* SM title header on canvas (hidden in v2 — StationBanner owns it) */}
+      {sm && !hideHeader && (
         <div className={`canvas-sm-title${recoveryMode ? ' canvas-sm-title--recovery' : ''}`}>
           <span className="canvas-sm-title__number">S{String(sm.stationNumber ?? 0).padStart(2, '0')}</span>
           <span className="canvas-sm-title__name">{sm.name || 'Untitled'}</span>
@@ -1262,7 +1397,7 @@ export function Canvas({ headerExtra = null }) {
         </div>
       )}
       {/* Star save form — floats below the header */}
-      {starFormOpen && sm && (
+      {starFormOpen && sm && !hideHeader && (
         <div className="canvas-star-form">
           <div className="canvas-star-form__title">Save to Standards Library</div>
           <input
@@ -1307,8 +1442,8 @@ export function Canvas({ headerExtra = null }) {
         </div>
       )}
       <ReactFlow
-        nodes={nodes}
-        edges={edges}
+        nodes={viewNodes}
+        edges={viewEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
@@ -1369,6 +1504,9 @@ export function Canvas({ headerExtra = null }) {
             </button>
           </div>
         )}
+
+        {/* QA assertion overlay — red marks at every layout-law violation */}
+        {qaOverlay && <LayoutAssertOverlay />}
 
       </ReactFlow>
       {/* Machine watermark — sits on top of React Flow pane, pointer-events: none so you can still click through */}
@@ -1453,6 +1591,31 @@ export function Canvas({ headerExtra = null }) {
               <polyline points="6,9 8,11 10,9" />
             </svg>
             <span>Re-space</span>
+          </button>
+          <button
+            className="btn btn--sm canvas-select-btn"
+            onClick={relayoutColumns}
+            title="Re-layout the whole sequence into center-aligned columns — main spine straight down, branch lanes in their own columns, loop rails re-tracked."
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="5.5" y="1.5" width="5" height="3.5" rx="0.5" />
+              <rect x="5.5" y="11" width="5" height="3.5" rx="0.5" />
+              <rect x="11.5" y="6.5" width="4" height="3" rx="0.5" />
+              <line x1="8" y1="5" x2="8" y2="11" />
+              <path d="M8 8H11.5" />
+            </svg>
+            <span>Re-layout</span>
+          </button>
+          <button
+            className={`btn btn--sm canvas-select-btn${qaOverlay ? ' canvas-select-btn--active' : ''}`}
+            onClick={toggleQaOverlay}
+            title="QA overlay: assert the layout law against the LIVE canvas — red marks at every edge/containment violation, green badge when clean."
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="8" cy="8" r="6.5" />
+              <path d="M5.5 8l2 2 3.5-4" />
+            </svg>
+            <span>{qaOverlay ? 'QA ON' : 'QA'}</span>
           </button>
         </div>
       </div>

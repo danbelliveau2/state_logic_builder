@@ -43,6 +43,15 @@ export const KIND_NOUN = {
   interactions: 'interactions / handshakes',
 };
 
+/** Home/tree label for an unfinished draft: where its cascade sits (Dan,
+ *  2026-08-26: "MidBaseLoad — draft · at step 1 · Continue"). */
+export function draftCascadeStepNote(draft) {
+  if (!draft || draft.phase !== 'summary' || !draft.summary) return 'still explaining';
+  const recs = draft.cascadeLocal?.steps ?? {};
+  const n = Object.values(recs).filter((r) => r?.approved === true && r?.reconfirm !== true).length;
+  return `at step ${n + 1}`;
+}
+
 /**
  * The ordered step list.
  * @param decomp          the DISPLAYED decomposition (proposal or approved) —
