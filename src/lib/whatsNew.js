@@ -10,12 +10,22 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.18';
+export const UI_BUILD = 'v2.6.19';
 
 export const BUILT_AT = '2026-08-26';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.19',
+    date: '2026-08-26',
+    items: [
+      'EXPLANATION → SEND → GO — "Done explaining" now auto-kicks the state-machine proposal: the step-1 card shows the build progress, then "Jarvis is proposing the state machines…" with a live ring, then the proposal with Approve. The manual "Build — get the proposal" button is gone, and Approve NEVER shows before a proposal exists; a failed run shows the reason with one Retry button',
+      'STEP 1 IS ONE CARD — the state-machines proposal, your "you expected: …" pills, the reasoning, rename, and Approve all live inside the cascade\'s step-1 card; the separate STATE MACHINES section above the sheet is gone in the guided flow',
+      '"LEVEL OF CODE GENERATION" LEFT THE SHEET — the scope is now asked at the moment of generation: when every step is agreed, the Generate card offers "Full station — standard" / "Just the sequence & recovery — quick check" plus an optional one-line specifics box, right above the build button. The default stays the standard full station',
+      'The chat\'s "applies to State machines by default" hint appears only once a proposal actually exists',
+    ],
+  },
   {
     version: 'v2.6.18',
     date: '2026-08-26',

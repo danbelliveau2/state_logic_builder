@@ -48,6 +48,7 @@ import { StationViewToggle } from './StationViewToggle.jsx';
 import { SpecQuestionsSection, BlockingShell, ExtraBlockerRow } from './SpecQuestionsSection.jsx';
 import { GenerationScopeNote } from './GenerationScopeNote.jsx';
 import { useV2Shell } from '../../v2/useV2Shell.js';
+import { runCompile } from '../../v2/CompileSequenceModal.jsx';
 import { DeviceIcon, DEVICE_ICON_COLORS } from '../DeviceIcons.jsx';
 import { DEVICE_TYPES, classifyDeviceRole } from '../../lib/deviceTypes.js';
 import { getDeviceTags } from '../../lib/tagNaming.js';
@@ -3857,6 +3858,31 @@ function CascadeProposalCard({ step, stepNo, stepCount, lines, deviceNames, busy
   );
 }
 
+/** "Jarvis is proposing the state machines…" — live elapsed-based progress
+ *  while the auto-kicked compile runs (Dan, 2026-08-26: send → GO). */
+function SmProposalWait({ startedAt, typicalS = 240 }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const elapsed = Math.max(0, (now - (startedAt ?? now)) / 1000);
+  const pct = Math.min(95, (elapsed / typicalS) * 100);
+  return (
+    <div data-testid="sm-propose-progress" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '4px 0 2px' }}>
+      <ProgressRing pct={pct} size={44} subLabel="" />
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>
+          Jarvis is proposing the state machines…
+        </div>
+        <div style={{ fontSize: 11, color: C.muted }}>
+          he reads your explanation, splits the station by what must run asynchronously, and comes back with the breakup — typically a few minutes
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** The SM toggle on the sheet: flip which state machine's outputs show
  *  (devices / sequence / recovery). Syncs with the banner's SM chips and the
  *  diagram via store.setActiveSm when the machines exist as records. */
@@ -4147,6 +4173,11 @@ export function CreateStationPage({ embedded = false }) {
   // machineSpec.cascadeState; fresh drafts keep them locally.
   const [sheetSmKey, setSheetSmKey] = useState('all');
   const [localCascade, setLocalCascade] = useState(draft?.cascadeLocal ?? null);
+  // EXPLANATION → SEND → GO (Dan, 2026-08-26): submitting the explanation
+  // auto-kicks the SM proposal (build + compile). This tracks the run so the
+  // step-1 card shows live progress / a retry with the reason.
+  const [proposeRun, setProposeRun] = useState(null); // {stage:'compile',startedAt} | {stage:'error',msg}
+  const autoKickRef = useRef(false); // set by Done explaining; consumed once
   // ONE collapsible chat (Dan, 2026-08-26): the thread tucks away on demand.
   const [chatCollapsed, setChatCollapsed] = useState(false);
 
@@ -5495,12 +5526,62 @@ export function CreateStationPage({ embedded = false }) {
     setPhase('summarizing');
     try {
       await callSummarize();
+      // EXPLANATION → SEND → GO (Dan, 2026-08-26): the SM proposal kicks off
+      // automatically — no manual "get the proposal" click. The auto-kick
+      // effect below runs it once the summary state has landed.
+      if (!linkedSmId) autoKickRef.current = true;
       setPhase('summary');
     } catch (e) {
       setError(e.message);
       setPhase('input');
     }
   }
+
+  /** THE SM-PROPOSAL RUN (Dan, 2026-08-26): compile the freshly built station
+   *  so Jarvis's decomposition proposal lands on the step-1 card. Saves the
+   *  project first — the compile route reads the server file. */
+  async function autoProposeSms(smIdArg = null) {
+    const st = useDiagramStore.getState();
+    const id = smIdArg ?? linkedSmId;
+    const filename = st.currentFilename;
+    if (!id) { setProposeRun({ stage: 'error', msg: 'The station is not built yet' }); return; }
+    if (!filename) { setProposeRun({ stage: 'error', msg: 'No saved project file — save the project, then Retry' }); return; }
+    setProposeRun({ stage: 'compile', startedAt: Date.now() });
+    try {
+      try { await st.saveCurrentProject?.(); } catch { /* autosave will have it */ }
+      await runCompile({ filename, smId: id });
+      setProposeRun(null); // panelModel picks the fresh proposal up
+    } catch (e) {
+      setProposeRun({ stage: 'error', msg: e.message });
+    }
+  }
+
+  /** One clear entry for "get me the proposal": builds the station first when
+   *  it doesn't exist yet (blockers focus their field — never a dead end),
+   *  then compiles. Fired automatically after Done explaining. */
+  function kickProposal() {
+    if (busy || applying || proposeRun?.stage === 'compile') return;
+    setProposeRun(null);
+    if (!linkedSmId) {
+      const blocker = buildBlocker();
+      if (blocker) {
+        setProposeRun({ stage: 'error', msg: blocker.message });
+        if (blocker.field === 'name') { setNameAttention(true); nameRef.current?.focus(); }
+        return;
+      }
+      handleBuild({ stayOnSheet: true }); // build → save → auto-compile
+      return;
+    }
+    autoProposeSms();
+  }
+
+  // AUTO-KICK after Done explaining — runs once the summary state landed.
+  useEffect(() => {
+    if (!autoKickRef.current || phase !== 'summary') return;
+    autoKickRef.current = false;
+    kickProposal();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
 
   /** The ONE Corrections box, framed so Jarvis routes it: the ME's wording
    *  names its target section implicitly — apply it there, touch nothing else. */
@@ -5509,7 +5590,8 @@ export function CreateStationPage({ embedded = false }) {
     // STEP-AWARE CHAT (Dan, 2026-08-26): the ONE chat is the conversation
     // channel — a message while a cascade step is active applies to that
     // step by default (routing by content still wins when he names another).
-    const step = cascadeLive ? cascade.activeStep : null;
+    const step = cascadeLive && !(cascade.activeStep?.kind === 'smSplit' && !cascade.activeStep?.hasProposal)
+      ? cascade.activeStep : null;
     const stepFrame = step
       ? (step.kind === 'smSplit'
         ? `The engineer is currently reviewing the STATE MACHINE decomposition proposal${(smDecomp?.length ?? 0) ? ` (Jarvis proposed ${smDecomp.length}: ${(smDecomp ?? []).map(e => e.name).join(', ')})` : ''} — a correction about the split re-proposes it. `
@@ -6146,7 +6228,7 @@ export function CreateStationPage({ embedded = false }) {
     handleDoneExplaining();
   }
 
-  async function handleBuild() {
+  async function handleBuild({ stayOnSheet = false } = {}) {
     if (!hasBuildInput) return;
     const returnPhase = usingJarvisVerdicts ? 'summary' : 'input';
     setPhase('building');
@@ -6342,6 +6424,14 @@ export function CreateStationPage({ embedded = false }) {
           ? `Station built — spec saved. ${nQuestions} open question${nQuestions === 1 ? '' : 's'} went to the question queue.`
           : 'Station built — spec saved.'
       );
+      // AUTO-PROPOSE FLOW (Dan, 2026-08-26): the build was step one of the
+      // SM proposal — stay ON the sheet and kick the compile so the step-1
+      // card goes straight from "building" to "proposing" to the proposal.
+      if (stayOnSheet) {
+        setPhase('summary');
+        autoProposeSms(smId);
+        return;
+      }
       clearActiveFreshDraft(); // explicit exit — never auto-resume after Build
       store.closeNewSmModal();
       return;
@@ -6349,6 +6439,7 @@ export function CreateStationPage({ embedded = false }) {
       prog.stop();
       setError(e.message);
       setPhase(returnPhase);
+      if (stayOnSheet) setProposeRun({ stage: 'error', msg: e.message });
     }
   }
 
@@ -6462,6 +6553,7 @@ export function CreateStationPage({ embedded = false }) {
         )}
         <span style={{ flex: 1, fontSize: 10.5, color: C.light }}>
           {cascadeLive && cascade.activeStep
+            && !(cascade.activeStep.kind === 'smSplit' && !cascade.activeStep.hasProposal)
             ? `A message now applies to “${cascade.activeStep.label}” by default — name another section to change it instead.`
             : 'Untouched sections stay exactly as they are. For a direct fix, click any line to edit it.'}
         </span>
@@ -6834,23 +6926,10 @@ export function CreateStationPage({ embedded = false }) {
               </div>
             </div>
           )}
-          {/* Level of code generation (Dan, Aug 24): the build-level intent —
-              preset chips wired to machineSpec.generationScope + the free
-              specifics line (machineSpec.purpose). In the summary phase it
-              renders inside the INPUTS band instead. */}
-          {(phase === 'input' || phase === 'summarizing') && (
-            <>
-              <GenerationLevelField
-                level={genLevel} onLevel={setGenLevel}
-                purpose={purpose} onPurpose={setPurpose}
-                disabled={busy} savedTick={purposeTick}
-              />
-              {/* (The "State machines you're expecting" input is GONE — Dan,
-                  2026-08-25: "that can go away". Jarvis proposes the machines
-                  from the overall description; the PROPOSAL section is the only
-                  SM surface, and it carries the counter box.) */}
-            </>
-          )}
+          {/* (The "Level of code generation" form is GONE from the sheet —
+              Dan, 2026-08-26: "it just gets lost in here". The scope choice
+              moved to the GENERATE step's card, asked at the moment of
+              generation. Internal default stays the standard full station.) */}
 
           {/* ══ INPUT phase — raw explanation, full width (the "What's
               needed" strip above replaces the old right rail) ══ */}
@@ -7012,25 +7091,27 @@ export function CreateStationPage({ embedded = false }) {
                   </div>
                 )}
 
-                {/* Level of code generation — preset chips (wired to
-                    machineSpec.generationScope) + the free specifics line. */}
-                <GenerationLevelField
-                  level={genLevel} onLevel={setGenLevel}
-                  purpose={purpose} onPurpose={setPurpose}
-                  disabled={busy} savedTick={purposeTick}
-                />
+                {/* (Level of code generation moved to the GENERATE step —
+                    Dan, 2026-08-26. The chooser renders with the Generate
+                    card once every step is agreed.) */}
+                {!cascadeLive && (
+                  <GenerationLevelField
+                    level={genLevel} onLevel={setGenLevel}
+                    purpose={purpose} onPurpose={setPurpose}
+                    disabled={busy} savedTick={purposeTick}
+                  />
+                )}
 
                 {/* THE ONE CHAT — right below the inputs (Dan, 2026-08-26):
                     the conversation channel; a message applies to the active
                     step by default. Collapsible. */}
                 {cascadeLive && chatBlock}
 
-                {/* STATE MACHINES — at the TOP with the inputs (Dan,
-                    2026-08-25: review artifacts he acts on live up top).
-                    ONE truth: cards, count, prose and stamp all from the ONE
-                    displayed source (panelModel); an inconsistent proposal
-                    renders as an error state and auto re-proposes. */}
-                <SmDecompositionSection
+                {/* STATE MACHINES — folded INTO the cascade's step-1 card
+                    (Dan, 2026-08-26); the standalone section renders only in
+                    legacy (no-cascade) mode. ONE truth: cards, count, prose
+                    and stamp all from the ONE displayed source (panelModel). */}
+                {!cascadeLive && <SmDecompositionSection
                   decomp={panelModel.decomp ?? smDecomp}
                   approval={smApproval}
                   expectedPills={expectedSmPills}
@@ -7049,7 +7130,7 @@ export function CreateStationPage({ embedded = false }) {
                   inconsistent={panelModel.inconsistent}
                   onRepropose={() => reproposeSmSplit()}
                   chatMode={cascadeLive}
-                />
+                />}
 
                 {/* THE CASCADE'S CURRENT STEP (Dan, 2026-08-26): everything
                     below follows the conversation order; steps not reached
@@ -7061,39 +7142,124 @@ export function CreateStationPage({ embedded = false }) {
                       const step = cascade.activeStep;
                       if (!step) return null; // all approved — the green card below closes it
                       if (step.kind === 'smSplit') {
-                        if (step.hasProposal) {
-                          return (
-                            <div
-                              data-testid="cascade-smsplit-pointer"
-                              style={{
-                                margin: '0 0 12px', maxWidth: 900, fontSize: 12, color: C.text,
-                                background: C.primaryBg, border: `1px solid ${C.primaryBorder}`,
-                                borderRadius: 8, padding: '8px 12px',
-                              }}
-                            >
-                              First: the <b>state-machine breakup</b> — Jarvis's proposal is right above.
-                              Approve it, or tell him how you'd split it in the chat. The per-machine
-                              steps unlock once it's agreed.
-                            </div>
-                          );
-                        }
-                        // No proposal yet (fresh draft / never-compiled):
-                        // Build produces it — or agree it runs as ONE machine.
+                        // STEP 1 — the SM breakup, everything IN this card
+                        // (Dan, 2026-08-26): the proposal folds in here with
+                        // his expectation; NO Approve before a proposal
+                        // exists; the auto-kicked run shows live progress or
+                        // a retry with the reason.
                         return (
-                          <CascadeProposalCard
-                            key="smSplit-pending"
-                            step={step}
-                            stepNo={cascade.steps.findIndex(s => s.key === step.key) + 1}
-                            stepCount={cascade.steps.length}
-                            lines={[linkedSmId
-                              ? 'No breakup proposed yet — this station currently runs as ONE state machine.'
-                              : 'Jarvis proposes the state-machine breakup when the station is built from your explanation.']}
-                            busy={applying || busy}
-                            onApprove={() => approveCascadeStep(step)}
-                            onFocusChat={focusChat}
-                            actionLabel={linkedSmId ? null : 'Build — get the proposal'}
-                            onAction={linkedSmId ? null : handleBuildClick}
-                          />
+                          <div
+                            data-testid="cascade-smsplit-step"
+                            style={{
+                              border: `1px solid ${C.primaryBorder}`, borderLeft: `4px solid ${C.primary}`,
+                              background: '#fff', borderRadius: 8, padding: '10px 14px 12px',
+                              margin: '0 0 12px', maxWidth: 900,
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 5 }}>
+                              <span style={{ fontSize: 10.5, fontWeight: 800, color: C.primary, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                                Step 1 — state machines
+                              </span>
+                              <span style={{ fontSize: 10.5, color: C.light }}>
+                                step {cascade.steps.findIndex(s => s.key === step.key) + 1} of {cascade.steps.length}
+                              </span>
+                            </div>
+                            {step.hasProposal ? (
+                              <SmDecompositionSection
+                                decomp={panelModel.decomp ?? smDecomp}
+                                approval={smApproval}
+                                expectedPills={expectedSmPills}
+                                expectationRaw={expectedSms.trim()}
+                                expectedCount={expectedSmCount}
+                                reasoning={panelModel.reasoning}
+                                onApprove={approveSmSplit}
+                                onRename={renameSmSplitEntry}
+                                onEditViaChat={focusChat}
+                                onCounter={sendSmSplitCounter}
+                                busy={applying}
+                                versionLabel={panelModel.versionLabel}
+                                awaitingApproval={panelModel.awaitingApproval}
+                                approvedStamp={panelModel.approvedStamp}
+                                supersededNote={panelModel.supersededNote}
+                                inconsistent={panelModel.inconsistent}
+                                onRepropose={() => reproposeSmSplit()}
+                                chatMode
+                              />
+                            ) : proposeRun?.stage === 'compile' ? (
+                              <>
+                                {(expectedSmPills?.length ?? 0) > 0 && (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 5 }}>
+                                    <span style={{ fontSize: 11, color: C.muted }}>you expected:</span>
+                                    {expectedSmPills.map((p, i) => <SmPill key={i} label={p.name} note={p.note} />)}
+                                  </div>
+                                )}
+                                <SmProposalWait startedAt={proposeRun.startedAt} />
+                              </>
+                            ) : proposeRun?.stage === 'error' ? (
+                              <>
+                                <div data-testid="sm-propose-error" style={{ fontSize: 12, color: C.danger, lineHeight: 1.5, marginBottom: 6 }}>
+                                  The proposal run didn't go through — {proposeRun.msg}
+                                </div>
+                                <button
+                                  type="button"
+                                  data-testid="sm-propose-retry"
+                                  onClick={kickProposal}
+                                  style={{
+                                    background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 6,
+                                    fontSize: 12, fontWeight: 700, padding: '5px 16px', cursor: 'pointer',
+                                  }}
+                                >Retry</button>
+                              </>
+                            ) : linkedSm?.compiledSequence?.ir ? (
+                              // The compile came back with ONE machine — that
+                              // IS a proposal (of one); Approve is legitimate.
+                              <>
+                                {(expectedSmPills?.length ?? 0) > 0 && (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 5 }}>
+                                    <span style={{ fontSize: 11, color: C.muted }}>you expected:</span>
+                                    {expectedSmPills.map((p, i) => <SmPill key={i} label={p.name} note={p.note} />)}
+                                  </div>
+                                )}
+                                <div data-testid="sm-propose-single" style={{ fontSize: 12, color: C.text, lineHeight: 1.5, marginBottom: 6 }}>
+                                  Jarvis proposes <b>ONE state machine</b> — the whole station runs as a single
+                                  sequence. Not what you meant? Say it in the chat and he re-proposes.
+                                </div>
+                                <button
+                                  type="button"
+                                  data-testid="cascade-approve-smSplit"
+                                  onClick={() => approveCascadeStep(step)}
+                                  disabled={applying}
+                                  style={{
+                                    background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 6,
+                                    fontSize: 12, fontWeight: 700, padding: '5px 18px', cursor: 'pointer',
+                                  }}
+                                >Approve</button>
+                              </>
+                            ) : (
+                              <>
+                                {(expectedSmPills?.length ?? 0) > 0 && (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 5 }}>
+                                    <span style={{ fontSize: 11, color: C.muted }}>you expected:</span>
+                                    {expectedSmPills.map((p, i) => <SmPill key={i} label={p.name} note={p.note} />)}
+                                  </div>
+                                )}
+                                <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, marginBottom: 6 }}>
+                                  Jarvis proposes how this station breaks into state machines — normally this
+                                  starts by itself right after your explanation.
+                                </div>
+                                <button
+                                  type="button"
+                                  data-testid="sm-propose-start"
+                                  onClick={kickProposal}
+                                  disabled={applying || busy}
+                                  style={{
+                                    background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 6,
+                                    fontSize: 12, fontWeight: 700, padding: '5px 16px', cursor: (applying || busy) ? 'not-allowed' : 'pointer',
+                                  }}
+                                >Get the proposal</button>
+                              </>
+                            )}
+                          </div>
                         );
                       }
                       const entry = step.smKey && step.smKey !== 'station'
@@ -7748,6 +7914,60 @@ export function CreateStationPage({ embedded = false }) {
                     borderRadius: 6, padding: '10px 14px', fontSize: 12, color: C.danger,
                   }}>
                     <strong>Request failed:</strong> {error}
+                  </div>
+                )}
+
+                {/* GENERATE STEP — the scope is a moment-of-generation choice
+                    (Dan, 2026-08-26: never a standing form on the sheet).
+                    Renders only when the cascade is fully agreed, right above
+                    the spend button. */}
+                {cascadeLive && cascade.allApproved && (
+                  <div
+                    data-testid="generate-scope-card"
+                    style={{
+                      marginTop: 14, maxWidth: 900,
+                      border: `1px solid ${C.primaryBorder}`, borderLeft: `4px solid ${C.primary}`,
+                      background: '#fff', borderRadius: 8, padding: '10px 14px 12px',
+                    }}
+                  >
+                    <div style={{ fontSize: 10.5, fontWeight: 800, color: C.primary, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 5 }}>
+                      Generate — diagram &amp; code
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+                      {[
+                        { id: 'standard', label: 'Full station — standard' },
+                        { id: 'proving', label: 'Just the sequence & recovery — quick check' },
+                      ].map(o => {
+                        const on = (genLevel === o.id) || (o.id === 'standard' && genLevel !== 'proving');
+                        return (
+                          <button
+                            key={o.id}
+                            type="button"
+                            data-testid={`generate-scope-${o.id}`}
+                            onClick={() => setGenLevel(o.id)}
+                            style={{
+                              ...chipBase, fontSize: 11.5, padding: '4px 12px', cursor: 'pointer',
+                              color: on ? '#fff' : C.muted,
+                              background: on ? 'var(--color-primary)' : 'var(--color-sidebar)',
+                              border: `1px solid ${on ? 'var(--color-primary)' : C.border}`,
+                            }}
+                          >{o.label}</button>
+                        );
+                      })}
+                    </div>
+                    <DictatedTextarea
+                      value={purpose}
+                      onChange={v => setPurpose(v.replace(/\n/g, ' '))}
+                      rows={1}
+                      data-testid="generate-scope-specifics"
+                      micTestId="generate-scope-specifics-mic"
+                      placeholder="anything specific about this build (optional)"
+                      className="form-input"
+                      style={{ width: '100%', boxSizing: 'border-box', fontSize: 12, resize: 'none', lineHeight: 1.5, paddingTop: 6, paddingBottom: 6, paddingLeft: 10 }}
+                    />
+                    <div style={{ fontSize: 10.5, color: C.light, marginTop: 4 }}>
+                      Then hit {linkedSmId ? '“Rebuild station”' : '“Build Station”'} below — the scope rides into the build.
+                    </div>
                   </div>
                 )}
 

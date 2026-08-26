@@ -8,7 +8,7 @@
  * progress (the endpoint is ONE POST with no stream, so the ring advances on
  * elapsed-vs-typical time, holds at 94% rather than faking completion, and
  * the labels say exactly that) → done card (cost, validation, questions) and
- * the shell lands on Full Controls.
+ * the shell lands on the Diagram page's Controls detail.
  *
  * Store-consistency: on success the server has written sm.compiledSequence
  * into the project FILE; we mirror the canonical record (refetched via
@@ -26,12 +26,16 @@ import {
   mirrorCompiledSequence,
   noteCorrectionsAck,
 } from './compiledSequence.js';
+import { ensureStationSheetDraft, requestResumeDraft } from '../components/jarvis/createStationDrafts.js';
+import { stationOfSm, primarySmOf } from '../lib/stationModel.js';
 
 const TYPICAL_S = 240; // ~4 min typical compile — the honest baseline
 
 /** Kicks the compile POST and ALWAYS lands the result in the store, whether
- *  or not the modal is still mounted. Returns the run's result object. */
-async function runCompile({ filename, smId, corrections }) {
+ *  or not the modal is still mounted. Returns the run's result object.
+ *  EXPORTED (Dan, 2026-08-26): the spec sheet's cascade auto-kicks the SM
+ *  proposal right after the explanation is submitted — same engine, no modal. */
+export async function runCompile({ filename, smId, corrections }) {
   const body = { filename, smId };
   if (corrections && corrections.trim()) body.corrections = corrections.trim();
   const r = await fetch('/api/jarvis/compile', {
@@ -46,6 +50,14 @@ async function runCompile({ filename, smId, corrections }) {
   // Corrections acknowledgment — only meaningful when we sent some.
   const correctionsAcked = body.corrections ? noteCorrectionsAck(data) : null;
 
+  // SELF-CHECK FINDINGS PERSIST (Dan, 2026-08-25: "Compiled — flagged 3
+  // issues" vanished with the modal). They ride on compiledSequence.selfCheck
+  // and pin at the top of the spec sheet until approval / the next compile.
+  const selfCheck = {
+    ok: data?.ok === true || data?.validation?.ok === true,
+    errors: (data?.validation?.errors ?? []).map(String),
+  };
+
   // Mirror the CANONICAL record (server-side compiledAt, approved:false)
   // into the in-memory store so auto-save can't clobber the server's write.
   const canon = await fetchCompiledIr(filename, smId);
@@ -57,6 +69,7 @@ async function runCompile({ filename, smId, corrections }) {
       approved: canon.data.approved === true, // fresh compile → false
       cost: canon.data.cost,
       questions: canon.data.questions ?? [],
+      selfCheck,
     });
   } else {
     // Fallback mirror from the compile response itself.
@@ -67,6 +80,7 @@ async function runCompile({ filename, smId, corrections }) {
       approved: false,
       cost: data.cost ?? null,
       questions: data.questions ?? [],
+      selfCheck,
     });
   }
   useV2Shell.getState().bumpCompiled();
@@ -109,6 +123,18 @@ export function CompileSequenceModal() {
     return () => clearInterval(t);
   }, [phase]);
 
+  // Publish live progress to the shell so the banner's pipeline button can
+  // say "Compiling… n%" (cleared when not running / on unmount).
+  useEffect(() => {
+    const shell = useV2Shell.getState();
+    if (phase === 'running') {
+      shell.setCompilePct(Math.min(94, (elapsed / TYPICAL_S) * 94));
+    } else {
+      shell.setCompilePct(null);
+    }
+    return () => useV2Shell.getState().setCompilePct(null);
+  }, [phase, elapsed]);
+
   if (!compileFor || !sm) return null;
 
   const stationLabel = sm.displayName ?? sm.name;
@@ -127,7 +153,7 @@ export function CompileSequenceModal() {
       if (!mountedRef.current) return; // result already mirrored + bumped
       setResult(out);
       setPhase('done');
-      setView('controls'); // land on the compiled sequence
+      setView('mech'); // land on the Sequence view (Dan, Aug 23: never auto-land on controls detail)
     } catch (e) {
       if (!mountedRef.current) return;
       setError(e.message);
@@ -138,7 +164,7 @@ export function CompileSequenceModal() {
   function handleClose() {
     if (phase === 'running') {
       const ok = window.confirm(
-        'Jarvis is still compiling. Closing this window hides the progress, but the compile keeps running on the server and the result will appear in Full Controls when it finishes. Close anyway?'
+        'Jarvis is still compiling. Closing this window hides the progress, but the compile keeps running on the server and the result will appear on the Diagram page when it finishes. Close anyway?'
       );
       if (!ok) return;
     }
@@ -264,7 +290,7 @@ export function CompileSequenceModal() {
               )}
               {questions.length > 0 && (
                 <div style={{ marginTop: 8, fontSize: 11, color: '#7a6220' }}>
-                  {questions.length} open question{questions.length === 1 ? '' : 's'} for the controls team — shown in Full Controls.
+                  {questions.length} open question{questions.length === 1 ? '' : 's'} for the leads' queue — on the Jarvis page.
                 </div>
               )}
               {result?.correctionsAcked === false && (
@@ -278,8 +304,11 @@ export function CompileSequenceModal() {
                 </div>
               )}
               <div style={{ marginTop: 10, fontSize: 12, color: '#475569' }}>
-                Review it in Full Controls, then <b>Approve</b> when you agree —
-                approval is what lets Generate run as a fast translation.
+                Next: <b>Review &amp; approve</b> takes you to the spec sheet —
+                any flagged issues stay pinned at the top there, each section
+                has its Edit / ✓, and &ldquo;Looks good — build the code&rdquo;
+                closes it out. (These findings don&rsquo;t vanish with this
+                window.)
               </div>
             </div>
           )}
@@ -297,9 +326,38 @@ export function CompileSequenceModal() {
           {phase === 'running' && (
             <button className="btn btn--secondary" onClick={handleClose}>Hide (keeps running)</button>
           )}
+          {phase === 'done' && (
+            <button
+              className="btn btn--secondary"
+              data-testid="compile-view-sequence"
+              onClick={() => { closeCompile(); setView('mech'); }}
+            >
+              View compiled sequence
+            </button>
+          )}
           {(phase === 'done' || phase === 'failed') && (
-            <button className="btn btn--primary" data-testid="compile-close" onClick={closeCompile}>
-              {phase === 'done' ? 'View compiled sequence' : 'Close'}
+            <button
+              className="btn btn--primary"
+              data-testid="compile-close"
+              onClick={() => {
+                if (phase !== 'done') { closeCompile(); return; }
+                // LAND, DON'T STRAND (Dan, 2026-08-25: the modal closed and he
+                // didn't know what to do): done → the Review & Edit surface —
+                // the spec sheet — with the self-check findings pinned at the
+                // top and the next step explicit (review → approve).
+                closeCompile();
+                const st = useDiagramStore.getState();
+                const station = stationOfSm(st.project, smId);
+                const sheetSm = primarySmOf(station)
+                  ?? st.project?.stateMachines?.find((m) => m.id === smId);
+                if (!sheetSm) return;
+                const draft = ensureStationSheetDraft(st, sheetSm);
+                requestResumeDraft(draft.draftId);
+                useV2Shell.getState().setSheetLinkedSmId(sheetSm.id);
+                st.openNewSmModal();
+              }}
+            >
+              {phase === 'done' ? 'Review & approve →' : 'Close'}
             </button>
           )}
         </div>
