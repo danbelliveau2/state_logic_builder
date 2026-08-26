@@ -16,9 +16,12 @@ require('dotenv').config({ path: path.join(__dirname, '..', '..', '..', '.env'),
 
 const { AiNotConfiguredError } = require('./client');
 const { loadMeKnowledge } = require('./meKnowledge');
+const { precedentsBlock } = require('./precedents');
 
 const MODEL = process.env.JARVIS_DECOMPOSE_MODEL || 'claude-sonnet-5';
-const MAX_TOKENS = parseInt(process.env.JARVIS_DECOMPOSE_MAX_TOKENS, 10) || 3000;
+// 16K floor — 3000 truncated real proposals (a multi-SM station with per-machine
+// sequences overruns it easily; same truncation class as the reviewer's 16K bug).
+const MAX_TOKENS = parseInt(process.env.JARVIS_DECOMPOSE_MAX_TOKENS, 10) || 16000;
 
 // Pricing per M tokens (mirrors client.js PRICING for the tiers we use here).
 const PRICING = { 'claude-sonnet-5': [3, 15], 'claude-opus-5': [5, 25], 'claude-haiku-4-5': [1, 5] };
@@ -35,6 +38,17 @@ function getClient() {
     _client = new Anthropic();
   }
   return _client;
+}
+
+// The decomposer thinks WITH the standards, not from the prompt alone: the
+// CE-authored decomposition doctrine (asynchrony test, dial-station patterns,
+// one-SM-per-program) rides in the system prompt on every call.
+function loadDecompositionConcept() {
+  try {
+    const fs = require('fs');
+    const p = path.join(__dirname, '..', '..', '..', 'jarvis-knowledge', 'concepts', 'multi-state-machine.md');
+    return '\n# SDC decomposition doctrine (CE standard)\n' + fs.readFileSync(p, 'utf8');
+  } catch { return ''; }
 }
 
 function extractJson(text) {
@@ -66,22 +80,35 @@ async function decompose({ description, images = [], expectedStateMachines = '',
     'THE ASYNCHRONY TEST: two mechanisms get separate state machines ONLY when they must run',
     'asynchronously — overlapping cycles, independent rates, or a handshake between them.',
     'A purely sequential station is ONE state machine. Never split for organization alone.',
-    'State machine names are PascalCase (MagnetShuttle, DialIndex, RobotInterface).',
+    '',
+    'NAMES (Dan, 2026-08-26): name each machine the way an SDC engineer would SAY it, with',
+    'spaces — "Pick And Place", "Mid Base Escapement", "Dial Index" — SPECIFIC to what it',
+    'handles, never a generic mechanism word alone ("Escapement" is not a name; many',
+    'escapements exist — say what it escapes). No PascalCase here: the PLC program name is',
+    'derived later.',
+    '',
+    'VOICE (Dan, 2026-08-26): the reasoning speaks directly TO the engineer — second person',
+    '("Your description shows…"), NEVER about him ("the ME…", "the engineer\'s description…").',
+    'ONE to TWO short sentences, no more.',
     "Weigh the engineer's stated expectation seriously — agree or counter WITH the reasoning",
     'shown; never silently ignore it, never blindly obey it.',
     '',
     'Respond with ONLY one JSON object (no markdown fences, no prose):',
     '{',
     '  "stateMachines": [',
-    '    { "name": "PascalCaseName",',
+    '    { "name": "<Natural Name With Spaces>",',
     '      "oneLiner": "<one sentence: what this machine owns and does>",',
     '      "ownedDeviceNames": ["<device name as the engineer said it>", ...],',
     '      "why": "<one line: why it must run asynchronously from the others (omit or empty for a single machine)>",',
     '      "sequence": ["<short step, one line>", ...] }',
     '  ],',
-    '  "reasoning": "<2-3 sentences: the asynchrony reasoning behind this count>"',
+    '  "reasoning": "<1-2 short sentences, spoken TO the engineer: the asynchrony reasoning behind this count>"',
     '}',
     me ? '\n# Standing SDC knowledge\n' + me : '',
+    loadDecompositionConcept(),
+    // PRECEDENT PACK (Dan, 2026-08-26): past work is the baseline — names
+    // come from what SDC has actually shipped, never from an invented style.
+    precedentsBlock(),
   ].join('\n');
 
   const content = [];
@@ -110,7 +137,9 @@ async function decompose({ description, images = [], expectedStateMachines = '',
   const parsed = extractJson(text);
   const stateMachines = (Array.isArray(parsed.stateMachines) ? parsed.stateMachines : [])
     .map((m) => ({
-      name: String(m?.name ?? '').trim().replace(/\s+/g, ''),
+      // Natural display name, spaces kept ("Mid Base Escapement") — the
+      // PascalCase PLC program name is derived at Generate, not here.
+      name: String(m?.name ?? '').trim().replace(/\s+/g, ' '),
       oneLiner: String(m?.oneLiner ?? '').trim(),
       ownedDeviceNames: (Array.isArray(m?.ownedDeviceNames) ? m.ownedDeviceNames : [])
         .map((x) => String(x).trim()).filter(Boolean),

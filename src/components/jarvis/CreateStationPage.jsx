@@ -3250,8 +3250,10 @@ function SmDecompositionSection({ decomp, approval, expectedPills, expectationRa
           {reasoning}
         </div>
       )}
-      {/* Proposal side: one card per machine — name (inline rename), oneLiner,
-          owned devices. NARROW CARDS law: they flow, never stretch. */}
+      {/* RADICAL CARD BREVITY (Dan's format verbatim, 2026-08-26): a card is
+          the NAME (click it to rename — ✎ says so) + ONE line of devices.
+          Nothing else — the why/reasoning lives in the ONE shared sentence
+          above; a tiny muted step count rides the header for free. */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '6px 14px', alignItems: 'start' }}>
         {decomp.map((e) => (
           <div key={e.key} data-testid={`sm-split-card-${e.key}`} style={{
@@ -3269,30 +3271,30 @@ function SmDecompositionSection({ decomp, approval, expectedPills, expectationRa
               />
             ) : (
               <div
-                title="Click to rename — renaming re-opens approval"
+                title="Click the name to rename it — renaming re-opens approval"
                 onClick={() => setRenaming(e.key)}
-                style={{ fontSize: 12.5, fontWeight: 700, color: C.text, cursor: 'text' }}
-              >{e.name}</div>
-            )}
-            {e.oneLiner && <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.45 }}>{e.oneLiner}</div>}
-            {/* WHY IT'S ITS OWN MACHINE — the asynchrony reasoning, one line. */}
-            {e.why && (
-              <div data-testid={`sm-split-why-${e.key}`} style={{ fontSize: 10.5, color: '#6b5513', lineHeight: 1.45, marginTop: 2 }}>
-                why separate: {e.why}
+                onMouseEnter={ev => { ev.currentTarget.style.background = '#f2f6fb'; }}
+                onMouseLeave={ev => { ev.currentTarget.style.background = 'transparent'; }}
+                style={{
+                  fontSize: 12.5, fontWeight: 700, color: C.text, cursor: 'text',
+                  display: 'flex', alignItems: 'baseline', gap: 6,
+                  borderRadius: 4, margin: '0 -4px', padding: '0 4px',
+                }}
+              >
+                <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{e.name}</span>
+                <span aria-hidden style={{ fontSize: 10, color: C.light, flexShrink: 0 }}>✎</span>
+                {(e.sequence?.length ?? 0) > 0 && (
+                  <span
+                    data-testid={`sm-split-seq-${e.key}`}
+                    title={e.sequence.join('\n')}
+                    style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 400, color: C.light, whiteSpace: 'nowrap', flexShrink: 0 }}
+                  >{e.sequence.length} steps</span>
+                )}
               </div>
             )}
             {(e.deviceNames?.length ?? 0) > 0 && (
-              <div style={{ fontSize: 10.5, color: C.light, lineHeight: 1.5, marginTop: 2, overflowWrap: 'anywhere' }}>
-                owns: {e.deviceNames.join(', ')}
-              </div>
-            )}
-            {(e.sequence?.length ?? 0) > 0 && (
-              <div
-                data-testid={`sm-split-seq-${e.key}`}
-                title={e.sequence.join('\n')}
-                style={{ fontSize: 10.5, color: C.light, lineHeight: 1.5, marginTop: 2, overflowWrap: 'anywhere' }}
-              >
-                sequence: {e.sequence.length} steps — {e.sequence[0]} → {e.sequence[e.sequence.length - 1]}
+              <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5, marginTop: 2, overflowWrap: 'anywhere' }}>
+                {e.deviceNames.join(', ')}
               </div>
             )}
           </div>
@@ -5862,7 +5864,9 @@ export function CreateStationPage({ embedded = false }) {
     }));
   }
   function renameDraftSplitEntry(entry, newName) {
-    const t = String(newName ?? '').trim().replace(/\s+/g, '');
+    // Natural names, spaces kept ("Mid Base Escapement") — PascalCase is the
+    // PLC program name, derived at Generate (Dan, 2026-08-26).
+    const t = String(newName ?? '').trim().replace(/\s+/g, ' ');
     if (!t) return;
     setSmProposal(p => (p ? {
       ...p,
