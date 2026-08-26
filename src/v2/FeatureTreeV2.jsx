@@ -39,6 +39,7 @@ import { SpecEditorModal } from '../components/modals/SpecEditorModal.jsx';
 import { DocumentsDrawer } from './DocumentsDrawer.jsx';
 import { hasServoAxes, servoGaps } from './servoValues.js';
 import { useV2Shell } from './useV2Shell.js';
+import { stationsOf, smLabelOf, stationKeyOf } from '../lib/stationModel.js';
 import {
   draftsKeyFor, loadDrafts, deleteDraft, onDraftsChanged,
   requestResumeDraft, draftLabel, timeAgo,
@@ -152,16 +153,19 @@ function stationStatus(sm, buildFailed) {
 
 // ── Nodes ────────────────────────────────────────────────────────────────────
 
-function StationTreeNode({ sm, open, active, buildFailed, onRowClick, onCaretClick, onOpenSpec, onOpenDevice }) {
+/** ONE STATE MACHINE row (Dan, 2026-08-25: a station can hold several).
+ *  `snum` is rendered only for a single-SM station, where the row IS the
+ *  station; inside a multi-SM station the S## lives on the station row. */
+function SmTreeNode({ sm, label, snum, open, active, buildFailed, onRowClick, onCaretClick, onOpenSpec, onOpenDevice }) {
   const nodeCount = (sm.nodes ?? []).length;
   const devices = sm.devices ?? [];
   const status = stationStatus(sm, buildFailed);
-  const name = sm.displayName ?? sm.name ?? '(unnamed)';
+  const name = label ?? smLabelOf(sm);
   return (
     <div>
       <div
         className={`v2-tree__row${active ? ' v2-tree__row--active' : ''}`}
-        data-testid={`tree-station-${sm.name}`}
+        data-testid={`tree-sm-${sm.name}`}
         role="button" tabIndex={0}
         onClick={onRowClick}
         onKeyDown={(e) => { if (e.key === 'Enter') onRowClick(); }}
@@ -176,13 +180,15 @@ function StationTreeNode({ sm, open, active, buildFailed, onRowClick, onCaretCli
           <Caret open={open} />
         </button>
         <Square color={status.color} check={status.check} />
-        <span className="v2-tree__snum">S{String(sm.stationNumber ?? 0).padStart(2, '0')}</span>
+        {snum != null && (
+          <span className="v2-tree__snum">S{String(snum).padStart(2, '0')}</span>
+        )}
         <span className={`v2-tree__name${status.color === RED ? ' v2-tree__name--problem' : ''}`}>{name}</span>
         <Leader />
         <Value>{nodeCount}</Value>
       </div>
       {open && (
-        <div className="v2-tree__children" data-testid={`tree-station-children-${sm.name}`}>
+        <div className="v2-tree__children" data-testid={`tree-sm-children-${sm.name}`}>
           {/* Spec line — ✓ / — , opens SpecEditorModal for THIS station */}
           <div
             className="v2-tree__row v2-tree__row--small"
@@ -259,6 +265,48 @@ function StationTreeNode({ sm, open, active, buildFailed, onRowClick, onCaretCli
   );
 }
 
+/** ONE STATION holding SEVERAL state machines — the station row, then one
+ *  child row per SM (each expands to its own Spec / Servo values / devices).
+ *  A single-SM station never renders this wrapper: its SM row IS the station. */
+function StationGroupNode({ station, open, activeSmId, onCaretClick, onRowClick, renderSm }) {
+  const smCount = station.sms.length;
+  const anyFailed = station.sms.some(s => s._buildFailed);
+  const noSpec = station.sms.some(s => !s.machineSpec);
+  const color = anyFailed ? RED : noSpec ? AMBER_BORDER : BLUE;
+  const holdsActive = station.sms.some(s => s.id === activeSmId);
+  return (
+    <div>
+      <div
+        className={`v2-tree__row${holdsActive ? ' v2-tree__row--active' : ''}`}
+        data-testid={`tree-station-${station.key}`}
+        role="button" tabIndex={0}
+        onClick={onRowClick}
+        onKeyDown={(e) => { if (e.key === 'Enter') onRowClick(); }}
+        title={`${station.stationName} — one station, ${smCount} state machines`}
+      >
+        <button
+          className="v2-tree__caret-btn"
+          onClick={(e) => { e.stopPropagation(); onCaretClick(); }}
+          title={open ? 'Collapse' : 'Expand'}
+          tabIndex={-1}
+        >
+          <Caret open={open} />
+        </button>
+        <Square color={color} />
+        <span className="v2-tree__snum">S{String(station.stationNumber ?? 0).padStart(2, '0')}</span>
+        <span className="v2-tree__name v2-tree__name--bold">{station.stationName}</span>
+        <Leader />
+        <Value>{smCount} SMs</Value>
+      </div>
+      {open && (
+        <div className="v2-tree__children" data-testid={`tree-station-sms-${station.key}`}>
+          {station.sms.map(renderSm)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── The tree ─────────────────────────────────────────────────────────────────
 
 export function FeatureTreeV2() {
@@ -285,7 +333,10 @@ export function FeatureTreeV2() {
   // MIRROR: selecting a station ANYWHERE (canvas pill, tree, elsewhere)
   // ensure-opens its node — never toggle-closes.
   useEffect(() => {
-    if (activeSmId) ensureOpen('stations', `station:${activeSmId}`);
+    if (!activeSmId) return;
+    const sm = (project?.stateMachines ?? []).find(s => s.id === activeSmId);
+    const groupKey = sm ? `stationgroup:${stationKeyOf(sm)}` : null;
+    ensureOpen('stations', `station:${activeSmId}`, ...(groupKey ? [groupKey] : []));
   }, [activeSmId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Overlays owned by the tree.
@@ -295,10 +346,17 @@ export function FeatureTreeV2() {
   // Unfinished Create-Station drafts for THIS project (localStorage isn't
   // reactive — refresh on the drafts module's change event + project swap).
   const draftsKey = draftsKeyFor(store);
-  const [drafts, setDrafts] = useState(() => loadDrafts(draftsKey));
+  // Drafts linked to a built station (smId) are that station's living data
+  // sheet — reached via "Station Specs" on the canvas, not listed here.
+  // SELF-HEAL (Dan's restart flow, 2026-08-26): a draft whose station was
+  // DELETED from the project is an unfinished draft again — list it.
+  const unfinishedOnly = (list) => list.filter(d =>
+    !d.smId || !(project?.stateMachines ?? []).some(s => s.id === d.smId));
+  const [drafts, setDrafts] = useState(() => unfinishedOnly(loadDrafts(draftsKey)));
   useEffect(() => {
-    setDrafts(loadDrafts(draftsKey));
-    return onDraftsChanged(() => setDrafts(loadDrafts(draftsKey)));
+    setDrafts(unfinishedOnly(loadDrafts(draftsKey)));
+    return onDraftsChanged(() => setDrafts(unfinishedOnly(loadDrafts(draftsKey))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftsKey]);
 
   const buildFailures = useBuildFailures(project?.name);
@@ -306,6 +364,9 @@ export function FeatureTreeV2() {
 
   const sms = [...(project?.stateMachines ?? [])]
     .sort((a, b) => (a.stationNumber ?? 999) - (b.stationNumber ?? 999));
+  // PROJECT → STATION → STATE MACHINES (Dan, 2026-08-25). One station can
+  // hold several SMs; legacy records with no stationId are their own station.
+  const stations = stationsOf(project);
   const totals = computeMachineTotals(project);
   const noSpecCount = sms.filter(sm => !sm.machineSpec).length;
 
@@ -376,7 +437,7 @@ export function FeatureTreeV2() {
           </span>
         )}
         <Leader />
-        <Value>{sms.length}</Value>
+        <Value>{stations.length}</Value>
       </div>
 
       <div className="v2-tree__indent">
@@ -474,7 +535,7 @@ export function FeatureTreeV2() {
             + New
           </button>
           <Leader />
-          <Value>{sms.length}</Value>
+          <Value>{stations.length}</Value>
         </div>
         {isOpen('stations') && (
           <div className="v2-tree__children v2-tree__children--stations">
@@ -483,19 +544,43 @@ export function FeatureTreeV2() {
                 No stations yet — click “+ New” to describe the first one.
               </div>
             )}
-            {sms.map(sm => (
-              <StationTreeNode
-                key={sm.id}
-                sm={sm}
-                open={isOpen(`station:${sm.id}`)}
-                active={sm.id === activeSmId}
-                buildFailed={buildFailures.has(sm.name)}
-                onRowClick={() => clickStation(sm)}
-                onCaretClick={() => toggle(`station:${sm.id}`)}
-                onOpenSpec={() => openSpecFor(sm)}
-                onOpenDevice={(deviceId) => openDevice(sm, deviceId)}
-              />
-            ))}
+            {stations.map(st => {
+              const smRow = (sm, snum) => (
+                <SmTreeNode
+                  key={sm.id}
+                  sm={sm}
+                  label={st.sms.length > 1 ? smLabelOf(sm) : st.stationName}
+                  snum={snum}
+                  open={isOpen(`station:${sm.id}`)}
+                  active={sm.id === activeSmId}
+                  buildFailed={buildFailures.has(sm.name)}
+                  onRowClick={() => clickStation(sm)}
+                  onCaretClick={() => toggle(`station:${sm.id}`)}
+                  onOpenSpec={() => openSpecFor(sm)}
+                  onOpenDevice={(deviceId) => openDevice(sm, deviceId)}
+                />
+              );
+              // ONE state machine → its row IS the station (as before).
+              if (st.sms.length === 1) return smRow(st.sms[0], st.stationNumber);
+              return (
+                <StationGroupNode
+                  key={st.key}
+                  station={{
+                    ...st,
+                    sms: st.sms.map(s => ({ ...s, _buildFailed: buildFailures.has(s.name) })),
+                  }}
+                  open={isOpen(`stationgroup:${st.key}`)}
+                  activeSmId={activeSmId}
+                  onCaretClick={() => toggle(`stationgroup:${st.key}`)}
+                  onRowClick={() => {
+                    ensureOpen('stations', `stationgroup:${st.key}`);
+                    const first = st.sms[0];
+                    if (first && first.id !== activeSmId) store.setActiveSm(first.id);
+                  }}
+                  renderSm={(sm) => smRow(st.sms.find(s => s.id === sm.id) ?? sm, null)}
+                />
+              );
+            })}
             {/* Drafts — unfinished stations belong in the Stations section */}
             {drafts.length > 0 && (
               <div data-testid="stations-drafts-row">

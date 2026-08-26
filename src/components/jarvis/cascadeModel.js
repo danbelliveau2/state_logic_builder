@@ -56,9 +56,11 @@ export const KIND_NOUN = {
 export function cascadeStepsOf({ decomp = null, approvedEntries = null, summary = null, hasPeers = false } = {}) {
   const steps = [];
   const multi = (decomp?.length ?? 0) >= 2;
-  if (multi) {
-    steps.push({ key: 'smSplit', kind: 'smSplit', smKey: null, smName: '', label: 'SM breakup' });
-  }
+  // The breakup step ALWAYS exists (Dan's strict order, 2026-08-26): with a
+  // proposal it's the approve-the-split step; without one (fresh draft /
+  // never-compiled single) it's the "get the proposal" step — Build/compile
+  // produces it, or the ME agrees the station runs as one machine.
+  steps.push({ key: 'smSplit', kind: 'smSplit', smKey: null, smName: '', label: 'State machines', hasProposal: multi });
   const entries = (approvedEntries?.length ?? 0) >= 2
     ? approvedEntries
     : multi
@@ -95,7 +97,10 @@ export function deriveCascade(steps, { state = null, smApprovalApproved = false,
   };
   const annotated = steps.map((s) => {
     if (s.kind === 'smSplit') {
-      return { ...s, wasApproved: smApprovalApproved, reconfirm: false, effApproved: smApprovalApproved };
+      // The artifact wins when a proposal exists; a generic recorded agree
+      // ("runs as one machine") covers the no-proposal case.
+      const ok = smApprovalApproved || (!s.hasProposal && recs[s.key]?.approved === true);
+      return { ...s, wasApproved: ok, reconfirm: false, effApproved: ok };
     }
     const rec = recs[s.key];
     const wasApproved = rec ? rec.approved === true : legacy(s.kind);

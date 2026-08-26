@@ -10,12 +10,25 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.17';
+export const UI_BUILD = 'v2.6.18';
 
 export const BUILT_AT = '2026-08-26';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.18',
+    date: '2026-08-26',
+    items: [
+      'STRICT PROGRESSIVE DISCLOSURE — the sheet is now the conversation, top to bottom: your inputs (pictures + your explanation, permanently visible, read-only once submitted) → the ONE chat → the state-machine proposal → each machine\'s devices → sequence → recovery in turn → interactions → generate. Steps you haven\'t reached are HIDDEN entirely — nothing you said is lost (Jarvis keeps the full extraction; only the reveal is gated)',
+      'THE STEP-BY-STEP GUIDE — a sticky side panel says how this is going to go and, per step, what information Jarvis needs to continue; ✓ / ● / ⟳ marks track progress and Generate closes the plan',
+      'ONE CHAT, LIKE A PERSON — a single collapsible chat right below your inputs is THE conversation channel: the per-step response boxes are gone; a message while a step is active applies to that step by default (naming another section still routes there); "hide history" tucks the thread away',
+      'QUESTIONS SURFACE WITH THEIR STEP — each step\'s card carries its own asks ("To agree on this, Jarvis needs: …") with proposed answers and one-click ✓ Agree; servo-value and geometry asks appear on that machine\'s devices step and jump to their table. No "Blocking code generation" strip before generation is the stage',
+      'FRESH DRAFTS RUN THE CASCADE TOO — after "Done explaining" you see only your inputs, the chat, and the state-machines step (Build fetches Jarvis\'s proposal); devices and sequence reveal step by step after it',
+      'A DRAFT WHOSE STATION WAS DELETED HEALS ITSELF — it returns to the unfinished-drafts list with your words and pictures intact; Build recreates the station',
+      'Explanation hints match the cascade: cover how the station breaks down · the devices · the sequence · fault recovery · the challenges',
+    ],
+  },
   {
     version: 'v2.6.17',
     date: '2026-08-26',
