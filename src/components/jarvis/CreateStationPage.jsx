@@ -3711,6 +3711,10 @@ function CascadeGuide({ steps, hasExplanation, allApproved, onJump }) {
 // Tolerant name matching (module scope — grouping AND attribution use it):
 // camelCase/space/underscore/digit token decomposition + normalized substring.
 const wordsOf = (s) => String(s ?? '')
+  // Full camel split, leading caps included: 'ZSlide' → 'Z Slide',
+  // 'PnPGripper' → 'PnP Gripper' (the 'ZSlide' one-token miss re-orphaned
+  // VerticalSlide — 2026-08-27).
+  .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
   .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
   .toLowerCase().split(/[^a-z0-9]+/)
   .filter(t => t.length >= 3 || /^\d+$/.test(t));
@@ -4187,7 +4191,6 @@ export function CreateStationPage({ embedded = false }) {
   // a refresh keeps them, and fallback guesses ask a numbered question on
   // their machine's own devices step.
   const [deviceAssignments, setDeviceAssignments] = useState(draft?.deviceAssignments ?? {});
-  const [assignmentAsks, setAssignmentAsks] = useState(draft?.assignmentAsks ?? []);
   // ONE collapsible chat (Dan, 2026-08-26): the thread tucks away on demand.
   const [chatCollapsed, setChatCollapsed] = useState(false);
 
@@ -4235,13 +4238,23 @@ export function CreateStationPage({ embedded = false }) {
     ...(localCascade ? { cascadeLocal: localCascade } : {}),
     ...(smProposal ? { smProposal } : {}),
     ...(Object.keys(deviceAssignments ?? {}).length ? { deviceAssignments } : {}),
-    ...(assignmentAsks?.length ? { assignmentAsks } : {}),
     ...(absorbedIdsRef.current.length ? { absorbedDraftIds: absorbedIdsRef.current } : {}),
     ...(linkedSmId ? { smId: linkedSmId } : {}),
   });
   const persistDraftNow = (extra = {}) => {
     const { payload, droppedImages } = buildDraftPayload();
     const merged = { ...payload, ...extra };
+    // SERVER MIRROR (Dan's second-vanish, 2026-08-27): the draft (sans
+    // images — those have their own store) rides to the server on every
+    // save so a live incident is diagnosable from REAL data. Best-effort.
+    try {
+      const { images: _mirrorImgs, ...mirror } = merged;
+      fetch('/api/jarvis/sheet-draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ draftId: draftIdRef.current, draft: mirror }),
+      }).catch(() => {});
+    } catch { /* mirror is never load-bearing */ }
     if (saveDraft(draftKey, merged)) {
       setDraftImagesDropped(droppedImages);
       return true;
@@ -4270,7 +4283,7 @@ export function CreateStationPage({ embedded = false }) {
     }, 1000);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, station, description, images, phase, summary, jarvisCoverage, questions, nonStandardFlags, summarizeCost, purpose, genLevel, expectedSms, referenceText, agreedNeeds, sheetAhead, chatThread, localCascade, smProposal, deviceAssignments, assignmentAsks, draftKey, linkedSmId]);
+  }, [name, station, description, images, phase, summary, jarvisCoverage, questions, nonStandardFlags, summarizeCost, purpose, genLevel, expectedSms, referenceText, agreedNeeds, sheetAhead, chatThread, localCascade, smProposal, deviceAssignments, draftKey, linkedSmId]);
 
   // ── Pictures persist FOREVER — hardened after the Aug 24 SECOND loss ─────
   // The server copy is authoritative and its merge is ADDITIVE (union by
@@ -4452,7 +4465,7 @@ export function CreateStationPage({ embedded = false }) {
     setPurpose(''); setExpectedSms(''); setAgreedNeeds(new Set());
     setSheetAhead(false); setApplyReceipt(null); setLocalCascade(null);
     setSmProposal(null); setProposeRun(null);
-    setDeviceAssignments({}); setAssignmentAsks([]);
+    setDeviceAssignments({});
     setQaRounds(0); setQaHistory([]); setLearnedNotes([]);
     setSummarizeCost(0); setError(null); setDraftImagesDropped(0);
     setOtherDrafts(loadDrafts(draftKey).filter(d => d.draftId !== draftIdRef.current && (!d.smId || !smExists(d.smId))));
@@ -4466,7 +4479,6 @@ export function CreateStationPage({ embedded = false }) {
     setLocalCascade(d.cascadeLocal ?? null);
     setSmProposal(d.smProposal ?? null);
     setDeviceAssignments(d.deviceAssignments ?? {});
-    setAssignmentAsks(d.assignmentAsks ?? []);
     setProposeRun(null);
     autoKickRef.current = false; // a resumed draft auto-runs too (Dan)
     const s = isStructuredSummary(d.summary)
@@ -4835,8 +4847,6 @@ export function CreateStationPage({ embedded = false }) {
       delete next[oldK];
       return next;
     });
-    setAssignmentAsks(list => (list ?? []).map(a =>
-      normKey(a.device) === normKey(oldName) ? { ...a, device: newName } : a));
     // 1b. OWNERSHIP SURVIVES RENAMES (Dan's live bug, 2026-08-27: renaming
     // ZSlide made the card vanish — the machine filter matched the OLD name).
     // The draft proposal's ownedDeviceNames update atomically with the rename.
@@ -5503,6 +5513,16 @@ export function CreateStationPage({ embedded = false }) {
     const mergedNext = agentic ? data.summary : mergeSheetValues(summary, data.summary);
     const prefilled = withSheetPrefill(hydrateSummaryFromSm(mergedNext, smNow));
     setSummary(prefilled);
+    // CHAT EDITS FOLLOW THE RENAME LAW (Dan, 2026-08-27): an agentic round
+    // may rename/replace devices — assignments keyed to names that left the
+    // sheet are PRUNED; new names re-resolve by signal and re-persist. Stale
+    // keys were the second-vanish's accomplice.
+    setDeviceAssignments(prev => {
+      if (!prev || !Object.keys(prev).length) return prev;
+      const live = new Set((prefilled.devices ?? []).map(x => normKey(x?.name)));
+      const next = Object.fromEntries(Object.entries(prev).filter(([k]) => live.has(k)));
+      return Object.keys(next).length === Object.keys(prev).length ? prev : next;
+    });
     baselineRef.current = prefilled;
     setDirty(false);
     setJarvisCoverage(normCoverage(data.coverage));
@@ -5680,8 +5700,50 @@ export function CreateStationPage({ embedded = false }) {
   }
   const hasAnyChanges = !!changes.trim();
 
+  /** "FeederBowl belongs to the Escapement" — detect an explicit device→
+   *  machine reassignment in a chat message. Fires only when EXACTLY one
+   *  device and one machine match unambiguously; anything fuzzier flows down
+   *  the normal corrections path. */
+  function parseReassignmentIntent(text) {
+    const entries = smChipEntries ?? [];
+    if (entries.length < 2) return null;
+    if (!/\bbelongs?\b|\bmove\b|\bgoes\b|\bshould (be|go|live)\b|\bis part of\b|\bput\b/i.test(text)) return null;
+    const devs = summary?.devices ?? [];
+    const devHits = devs.filter(d => nameMatchesText(d?.name ?? '', text));
+    if (devHits.length !== 1) return null;
+    const deviceName = String(devHits[0].name);
+    const dTok = new Set(wordsOf(deviceName));
+    const tTok = wordsOf(text);
+    const scoreOf = (e) => wordsOf(e.name).filter(w => w.length >= 4 && !dTok.has(w) && tTok.includes(w)).length;
+    let best = null;
+    for (const e of entries) {
+      const s = scoreOf(e);
+      if (s > 0 && (!best || s > best.s)) best = { e, s };
+    }
+    if (!best) return null;
+    if (entries.some(e => e !== best.e && scoreOf(e) === best.s)) return null; // ambiguous
+    return { deviceName, machineKey: best.e.key, machineName: best.e.name };
+  }
+
   async function handleApplyChanges() {
     if (applying) return;
+    // EXPLICIT REASSIGNMENT (Dan, 2026-08-27: "how would I say it shouldn't
+    // be here?" — like this): atomic, instant, free. The ME's word lands as
+    // an explicit assignment that outranks every signal, the device moves
+    // machines, and the receipt says so.
+    if (cascadeLive && changes.trim()) {
+      const move = parseReassignmentIntent(changes.trim());
+      if (move) {
+        const raw = changes.trim();
+        setDeviceAssignments(prev => ({ ...(prev ?? {}), [normKey(move.deviceName)]: { key: move.machineKey, by: 'ME' } }));
+        setChatThread(t => [...t,
+          { role: 'me', text: raw, at: Date.now() },
+          { role: 'jarvis', text: `Moved ${move.deviceName} to ${move.machineName} — it renders on that machine's devices step now.`, at: Date.now() }]);
+        if (linkedSmId) appendChangeLog(linkedSmId, { what: `moved ${move.deviceName} → ${move.machineName}`, class: 'value' });
+        setChanges('');
+        return;
+      }
+    }
     // DRAFT SPLIT COUNTER (Dan, 2026-08-26): while step 1's decompose-only
     // proposal is up on a FRESH draft, a chat message about it RE-DECOMPOSES
     // (there is no station for the summarize pipeline to re-plan yet).
@@ -6148,38 +6210,78 @@ export function CreateStationPage({ embedded = false }) {
     const entries = smChipEntries ?? panelModel.decomp ?? smDecomp ?? null;
     const map = new Map();
     const guessedFallback = new Set();
+    // LOW-CONFIDENCE = the assignment came from persistence or fallback, not
+    // a live signal — those wear the "I guessed" question WHEREVER they sit
+    // (Dan, 2026-08-27: FeederBowl guessed silently). ME-explicit moves are
+    // top priority and never questioned.
+    const lowConfidence = new Set();
+    const asgnOf = (nm) => {
+      const a = deviceAssignments?.[normKey(nm)];
+      if (!a) return null;
+      if (typeof a === 'string') return { key: a, explicit: false };
+      return { key: a.key, explicit: a.by === 'ME' };
+    };
     const groups = groupDevicesBySm(entries, summary?.devices ?? []);
     for (const g of groups) for (const { i } of g.devices) map.set(i, g.sm?.key ?? null);
-    if (!entries || entries.length < 2) return { map, guessedFallback };
+    if (!entries || entries.length < 2) return { map, guessedFallback, lowConfidence };
     (summary?.devices ?? []).forEach((d, i) => {
-      if (map.get(i)) return;
       const nm = String(d?.displayName ?? d?.name ?? '');
-      // 2. persisted assignment (survives refresh — his live-draft migration)
-      const ov = deviceAssignments?.[normKey(nm)];
-      if (ov && entries.some(e => e.key === ov)) { map.set(i, ov); return; }
-      // 3. machine-name token semantics — most shared meaningful tokens wins
-      const dw = wordsOf(nm);
-      let best = null;
-      for (const e of entries) {
-        const shared = wordsOf(e.name).filter(w => w.length >= 4 && dw.includes(w)).length;
-        if (shared > 0 && (!best || shared > best.shared)) best = { key: e.key, shared };
+      // 0. THE ME SAID SO — an explicit move outranks every signal.
+      const asgn = asgnOf(nm);
+      if (asgn?.explicit && entries.some(e => e.key === asgn.key)) { map.set(i, asgn.key); return; }
+      if (map.get(i)) return;
+      // Meaningful tokens of the device — name AND purpose (the purpose often
+      // carries the original spec wording: "pneumatic Z (MXS) slide 150mm",
+      // "sensorless end gripper" — the bridge across renames).
+      const dw = new Set([...wordsOf(nm), ...wordsOf(d?.purpose ?? '')].filter(w => w.length >= 4));
+      const bestOf = (textOf) => {
+        let best = null;
+        for (const e of entries) {
+          const tw = wordsOf(textOf(e)).filter(w => w.length >= 4);
+          const shared = tw.filter(w => dw.has(w)).length;
+          if (shared > 0 && (!best || shared > best.shared)) best = { key: e.key, shared };
+        }
+        return best?.key ?? null;
+      };
+      // 2. owned-NAME token overlap — 'ZSlide'/'end gripper' still pull the
+      //    renamed VerticalSlide/PnPGripper home ('slide'/'gripper' tokens).
+      //    SIGNALS OUTRANK the persisted layer (Dan's second-vanish, 2026-08-27:
+      //    stale fallback-era assignments must self-heal, never stick).
+      const byOwned = bestOf(e => (e.deviceNames ?? []).join(' '));
+      if (byOwned) { map.set(i, byOwned); return; }
+      // 3. machine-name token semantics (EscapementFinger → Mid Base Escapement)
+      const byName = bestOf(e => e.name ?? '');
+      if (byName) { map.set(i, byName); return; }
+      // 4. sequence semantics ("vertical slide extends" owns VerticalSlide)
+      const bySeq = bestOf(e => (e.sequence ?? []).join(' '));
+      if (bySeq) { map.set(i, bySeq); return; }
+      // 5. persisted AUTO assignment — refresh stability for signal-less
+      //    devices; still a GUESS, so it keeps its question (low confidence).
+      if (asgn && entries.some(e => e.key === asgn.key)) {
+        map.set(i, asgn.key);
+        lowConfidence.add(i);
+        return;
       }
-      if (best) { map.set(i, best.key); return; }
-      // 3b. sequence semantics — the machine whose sequence lines talk about
-      //     this device ("vertical slide extends" owns VerticalSlide even
-      //     when a pre-sync rename broke the name link).
-      let bySeq = null;
-      for (const e of entries) {
-        const sw = new Set(wordsOf((e.sequence ?? []).join(' ')));
-        const shared = dw.filter(w => w.length >= 4 && sw.has(w)).length;
-        if (shared > 0 && (!bySeq || shared > bySeq.shared)) bySeq = { key: e.key, shared };
-      }
-      if (bySeq) { map.set(i, bySeq.key); return; }
-      // 4. fallback — last machine of the walk, wearing a numbered question
+      // 6. fallback — last machine of the walk, wearing a numbered question
       map.set(i, entries[entries.length - 1].key);
       guessedFallback.add(i);
+      lowConfidence.add(i);
     });
-    return { map, guessedFallback };
+    // HARD INVARIANT (Dan, 2026-08-27 — second silent disappearance): every
+    // sheet device resolves to exactly ONE machine. A miss is a defect, never
+    // a silent drop — scream and self-report.
+    const missing = (summary?.devices ?? []).map((d, i) => (map.get(i) ? null : (d?.name ?? `#${i}`))).filter(Boolean);
+    if (missing.length) {
+      console.error('[cascade] DEVICE ASSIGNMENT INVARIANT VIOLATED — no machine for:', missing);
+      fetch('/api/jarvis/questions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: `BUG auto-report: device assignment produced no machine for: ${missing.join(', ')}`, context: 'cascade devAssign invariant', source: 'auto-invariant' }),
+      }).catch(() => {});
+      for (const [idx] of (summary?.devices ?? []).entries()) {
+        if (!map.get(idx)) { map.set(idx, entries[entries.length - 1].key); guessedFallback.add(idx); lowConfidence.add(idx); }
+      }
+    }
+    return { map, guessedFallback, lowConfidence };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [approvedSmDecomp, panelModel, smDecomp, summary, smProposal, localCascade, deviceAssignments]);
   const devSmKeyByIdx = devAssign.map;
@@ -6194,13 +6296,15 @@ export function CreateStationPage({ embedded = false }) {
     const nextAssign = { ...(deviceAssignments ?? {}) };
     for (const [i, key] of devAssign.map) {
       const nm = normKey(devs[i]?.name);
-      if (nm && key && nextAssign[nm] !== key) { nextAssign[nm] = key; aChanged = true; }
+      const cur = nextAssign[nm];
+      if (cur && typeof cur === 'object' && cur.by === 'ME') continue; // explicit stays
+      const curKey = typeof cur === 'string' ? cur : cur?.key;
+      if (nm && key && curKey !== key) { nextAssign[nm] = key; aChanged = true; }
     }
     if (aChanged) setDeviceAssignments(nextAssign);
-    const newAsks = [...devAssign.guessedFallback]
-      .map(i => ({ device: String(devs[i]?.name ?? ''), machineKey: devAssign.map.get(i) }))
-      .filter(a => a.device && !(assignmentAsks ?? []).some(x => normKey(x.device) === normKey(a.device)));
-    if (newAsks.length) setAssignmentAsks(list => [...(list ?? []), ...newAsks]);
+    // (The old assignmentAsks store is gone — 2026-08-27: the "I guessed"
+    // question DERIVES from where a low-confidence device actually sits, so
+    // it can never drift from the render again.)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [devAssign, phase]);
   // ── ROBUST MACHINE ATTRIBUTION (Dan's live MidBaseLoad round, 2026-08-27:
@@ -6263,15 +6367,18 @@ export function CreateStationPage({ embedded = false }) {
       .map(n => ({ ...n, _owner: needOwnerKey(n, entries) }))
       .filter(n => n._owner === step.smKey || (n._owner === null && isLastOfKind))
       .map(({ _owner, ...n }) => (_owner === null ? { ...n, unattributed: true } : n));
-    // "I GUESSED" ASKS (Dan, 2026-08-27): a fallback-assigned device carries
-    // one numbered question on ITS machine's devices step — never a visible
-    // unassigned pile on someone else's.
+    // "I GUESSED" ASKS derive from WHERE THE DEVICE ACTUALLY SITS (Dan,
+    // 2026-08-27: FeederBowl was guessed onto Pick And Place silently —
+    // a guess ALWAYS asks, on the step it landed on; confident matches
+    // stay quiet; ME-explicit moves never ask).
     if (step.kind === 'devices') {
-      for (const a of (assignmentAsks ?? [])) {
-        if (a.machineKey !== step.smKey) continue;
-        const q = `I guessed ${a.device} belongs to ${step.smName} — is that right?`;
+      for (const i of devAssign.lowConfidence) {
+        if (devAssign.map.get(i) !== step.smKey) continue;
+        const dn = String((summary?.devices ?? [])[i]?.name ?? '');
+        if (!dn) continue;
+        const q = `I guessed ${dn} belongs to ${step.smName} — is that right?`;
         if (agreedNeeds.has(`devices:${q}`)) continue;
-        routed.push({ question: q, proposedSolution: 'Keep it here — or name the right machine in the chat and I move it', blocking: false, covKey: 'devices' });
+        routed.push({ question: q, proposedSolution: `Keep it on ${step.smName} — or name the right machine in the chat ("${dn} belongs to …") and I move it`, blocking: false, covKey: 'devices' });
       }
     }
     return routed;
@@ -7724,6 +7831,12 @@ export function CreateStationPage({ embedded = false }) {
                                     const k = devSmKeyByIdx.get(i);
                                     (groups.find(g => g.sm.key === k) ?? groups[groups.length - 1]).devices.push({ d, i });
                                   });
+                                  // RENDER INVARIANT (Dan, 2026-08-27): every
+                                  // device has exactly ONE render home.
+                                  const total = groups.reduce((n, g) => n + g.devices.length, 0);
+                                  if (total !== (summary.devices ?? []).length) {
+                                    console.error('[cascade] RENDER INVARIANT VIOLATED — grouped', total, 'of', (summary.devices ?? []).length, 'devices');
+                                  }
                                   return groups;
                                 })();
                                 const multiSm = smGroups.some(sg => sg.sm != null);

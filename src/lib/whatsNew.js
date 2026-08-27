@@ -10,7 +10,7 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.21';
+export const UI_BUILD = 'v2.6.22';
 
 export const BUILT_AT = '2026-08-26';
 

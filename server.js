@@ -332,6 +332,35 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     const safe = /^[a-zA-Z0-9_-]{1,80}$/.test(String(draftId || '')) ? String(draftId) : null;
     return safe ? path.join(SHEET_IMAGES_DIR_, `${safe}.json`) : null;
   }
+
+  // ── Sheet-draft MIRROR (Dan's second-vanish incident, 2026-08-27) ─────────
+  // The client pushes the serialized draft (sans images) on every autosave so
+  // a live incident is diagnosable from the SERVER copy — drafts no longer
+  // live only in one browser's localStorage. Best-effort, last-write-wins.
+  const SHEET_DRAFTS_DIR_ = path.join(DATA_DIR_, '_sheet-drafts');
+  function sheetDraftPath(draftId) {
+    const safe = /^[a-zA-Z0-9_-]{1,80}$/.test(String(draftId || '')) ? String(draftId) : null;
+    return safe ? path.join(SHEET_DRAFTS_DIR_, `${safe}.json`) : null;
+  }
+  async function handleSheetDraftPut(req, res) {
+    try {
+      const body = JSON.parse(await readBody(req) || '{}');
+      const fp = sheetDraftPath(body.draftId);
+      if (!fp) return sendJson(res, 400, { error: 'Invalid draftId' });
+      if (!body.draft || typeof body.draft !== 'object') return sendJson(res, 400, { error: 'draft object required' });
+      fs.mkdirSync(SHEET_DRAFTS_DIR_, { recursive: true });
+      fs.writeFileSync(fp, JSON.stringify({ draftId: body.draftId, mirroredAt: Date.now(), draft: body.draft }));
+      sendJson(res, 200, { ok: true });
+    } catch (e) { sendJson(res, 500, { error: e.message }); }
+  }
+  function handleSheetDraftGet(res, query) {
+    const fp = sheetDraftPath(query.draftId);
+    if (!fp) return sendJson(res, 400, { error: 'Invalid draftId' });
+    try {
+      if (!fs.existsSync(fp)) return sendJson(res, 200, { ok: true, draft: null });
+      sendJson(res, 200, { ok: true, ...JSON.parse(fs.readFileSync(fp, 'utf8')) });
+    } catch (e) { sendJson(res, 500, { error: e.message }); }
+  }
   /** FNV-1a over the base64 payload — same function as the client's
    *  (createStationDrafts.imgHash). Content identity for union-by-hash. */
   function sheetImgHash(b64) {
@@ -3357,6 +3386,14 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
 
     if (pathname === '/api/jarvis/decompose') {
       if (method === 'POST') return handleJarvisDecompose(req, res);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    // Sheet-draft mirror — the serialized draft persists server-side so live
+    // incidents are diagnosable from real data (2026-08-27).
+    if (pathname === '/api/jarvis/sheet-draft') {
+      if (method === 'POST' || method === 'PUT') return handleSheetDraftPut(req, res);
+      if (method === 'GET') return handleSheetDraftGet(res, query);
       return sendJson(res, 405, { error: 'Method not allowed' });
     }
 
