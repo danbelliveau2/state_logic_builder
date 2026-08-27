@@ -76,17 +76,19 @@ export function cascadeStepsOf({ decomp = null, approvedEntries = null, summary 
     : multi
       ? decomp
       : [{ key: 'station', name: '', deviceNames: null, sequence: null, faultRecovery: null }];
+  // PER-MACHINE WALK, ALL THE WAY THROUGH (Dan, 2026-08-27): one machine
+  // completely — devices → sequence → interactions → fault recovery — then
+  // the next. Exactly these 4 per machine + SM-breakup + Generate; never a
+  // million steps.
   for (const e of entries) {
     const single = e.key === 'station';
     const hasDevices = single ? (summary?.devices?.length ?? 0) > 0 : (e.deviceNames?.length ?? 0) > 0;
     const hasSeq = single ? (summary?.sequence?.length ?? 0) > 0 : (e.sequence?.length ?? 0) > 0;
-    const hasRec = single ? (summary?.failureHandling?.length ?? 0) > 0 : (e.faultRecovery?.length ?? 0) > 0;
+    const hasRec = single ? (summary?.failureHandling?.length ?? 0) > 0 : (e.faultRecovery?.length ?? 0) > 0 || (summary?.failureHandling?.length ?? 0) > 0;
     if (hasDevices) steps.push({ key: `devices:${e.key}`, kind: 'devices', smKey: e.key, smName: e.name ?? '', label: single ? 'Devices' : `${e.name} devices` });
     if (hasSeq) steps.push({ key: `sequence:${e.key}`, kind: 'sequence', smKey: e.key, smName: e.name ?? '', label: single ? 'Sequence' : `${e.name} sequence` });
+    steps.push({ key: `interactions:${e.key}`, kind: 'interactions', smKey: e.key, smName: e.name ?? '', label: single ? 'Interactions' : `${e.name} interactions` });
     if (hasRec) steps.push({ key: `recovery:${e.key}`, kind: 'recovery', smKey: e.key, smName: e.name ?? '', label: single ? 'Fault recovery' : `${e.name} recovery` });
-  }
-  if (hasPeers || (summary?.interactions?.length ?? 0) > 0) {
-    steps.push({ key: 'interactions', kind: 'interactions', smKey: null, smName: '', label: 'Interactions' });
   }
   return steps;
 }

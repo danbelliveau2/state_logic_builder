@@ -10,12 +10,22 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.20';
+export const UI_BUILD = 'v2.6.21';
 
 export const BUILT_AT = '2026-08-26';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.21',
+    date: '2026-08-27',
+    items: [
+      'THE STEP IS THE SECTION — the duplicate step card is gone: the active section\'s own header carries "Step N of M · what\'s needed · Approve" (Devices, Sequence, Interactions, Fault recovery in turn). One surface, one home',
+      'NUMBERED QUESTIONS — Q1/Q2/… sit at the top of the active section with Jarvis\'s proposal and ✓ Agree; they never appear twice. Answer by number in the chat ("1 — yes; 2 — actually there\'s a track-full sensor"): pure agrees record free, corrections route to their question in one round',
+      'PER-MACHINE WALK — one machine all the way through (devices → sequence → interactions → fault recovery), then the next; the sheet auto-filters to the machine being walked and the filter chips follow (and are square now, per the app law). Questions about another machine\'s devices wait for THAT machine\'s step',
+      'APPROVE AUTO-ADVANCES — the next step\'s section opens and scrolls into view immediately; the side guide still jumps back (re-opening marks downstream for re-confirm). Value asks stay red rows in the cards, counted in the header ("2 to answer · 1 value needed")',
+    ],
+  },
   {
     version: 'v2.6.20',
     date: '2026-08-26',

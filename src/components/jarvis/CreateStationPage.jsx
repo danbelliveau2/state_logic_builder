@@ -3703,158 +3703,128 @@ function CascadeGuide({ steps, hasExplanation, allApproved, onJump }) {
   );
 }
 
-/** THE active step's card: the proposal, the step's questions/notes (with
- *  proposals + Agree) and value-asks, and Approve. Talking happens in the ONE
- *  chat above — a message while this step is active applies to it by default
- *  (Dan, 2026-08-26: one conversation channel, like a person would). */
-function CascadeProposalCard({ step, stepNo, stepCount, lines, deviceNames, busy, onApprove, onRenameDevice, needs = [], valueAsks = [], onAgreeNeed, onFocusChat, actionLabel = null, onAction = null }) {
-  const [renaming, setRenaming] = useState(null); // device name being renamed
+/** NUMBERED-ANSWER PARSER (Dan, 2026-08-27): "1 — yes; 2 — actually there's
+ *  a track-full sensor" → [{n, q, answer}] against the active step's
+ *  numbered questions. Null when the text isn't numbered-answer shaped
+ *  (the message then flows down the normal corrections path). */
+function parseNumberedAnswers(text, questions) {
+  const re = /(?:^|[;\n])\s*(?:q\s*)?(\d{1,2})\s*[-—–:.)]\s*/gi;
+  const hits = [];
+  let m;
+  while ((m = re.exec(text))) hits.push({ n: Number(m[1]), start: m.index + m[0].length, matchStart: m.index });
+  if (!hits.length) return null;
+  // Must START as a numbered answer — "retry 3 times" mid-sentence is prose.
+  if (text.slice(0, hits[0].matchStart).trim()) return null;
+  const out = [];
+  for (let i = 0; i < hits.length; i++) {
+    const answer = text.slice(hits[i].start, i + 1 < hits.length ? hits[i + 1].matchStart : undefined).trim();
+    const q = questions[hits[i].n - 1];
+    if (q && answer) out.push({ n: hits[i].n, q, answer });
+  }
+  return out.length ? out : null;
+}
+
+/** THE STEP IS THE SECTION (Dan, 2026-08-27): the active section's header
+ *  carries the step — "Step N of M · Approve" — one surface, no duplicate
+ *  card. Renders inside the section's dark header (SummarySection reviewBar
+ *  slot). */
+function CascadeStepBar({ step, stepNo, stepCount, needsCount = 0, valuesCount = 0, busy, onApprove }) {
   const reconfirm = step.reconfirm === true;
   return (
-    <div
-      data-testid={`cascade-proposal-${step.key}`}
-      style={{
-        border: `1px solid ${C.primaryBorder}`, borderLeft: `4px solid ${C.primary}`,
-        background: '#fff', borderRadius: 8, padding: '10px 14px 12px',
-        margin: '0 0 12px', maxWidth: 900,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 5 }}>
-        <span style={{ fontSize: 10.5, fontWeight: 800, color: C.primary, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-          Jarvis proposes
+    <span data-testid={`cascade-stepbar-${step.key}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+      <span style={{
+        ...chipBase, color: '#fff', background: 'rgba(255,255,255,0.16)',
+        border: '1px solid rgba(255,255,255,0.5)',
+      }}>
+        Step {stepNo} of {stepCount}
+      </span>
+      {(needsCount > 0 || valuesCount > 0) && (
+        <span data-testid={`cascade-stepbar-needs-${step.key}`} style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.85)', whiteSpace: 'nowrap' }}>
+          {[needsCount > 0 ? `${needsCount} to answer` : null, valuesCount > 0 ? `${valuesCount} value${valuesCount === 1 ? '' : 's'} needed` : null]
+            .filter(Boolean).join(' · ')}
         </span>
-        <span style={{ fontSize: 13, fontWeight: 800, color: C.text }}>{step.label}</span>
-        <span style={{ fontSize: 10.5, color: C.light }}>step {stepNo} of {stepCount}</span>
-        <span style={{ flex: 1 }} />
-        {onAction && actionLabel && (
-          <button
-            type="button"
-            data-testid={`cascade-action-${step.key}`}
-            onClick={onAction}
-            disabled={busy}
-            style={{
-              background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 6,
-              fontSize: 12, fontWeight: 700, padding: '4px 18px', cursor: busy ? 'not-allowed' : 'pointer',
-            }}
-          >{actionLabel}</button>
-        )}
-        {onApprove && (
-          <button
-            type="button"
-            data-testid={`cascade-approve-${step.key}`}
-            onClick={onApprove}
-            disabled={busy}
-            style={{
-              background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 6,
-              fontSize: 12, fontWeight: 700, padding: '4px 18px', cursor: busy ? 'not-allowed' : 'pointer',
-            }}
-          >{reconfirm ? 'Re-confirm' : 'Approve'}</button>
-        )}
-      </div>
-      {reconfirm && (
-        <div data-testid={`cascade-reconfirm-note-${step.key}`} style={{ fontSize: 11, color: '#92400e', marginBottom: 5 }}>
-          An upstream step changed since you approved this — re-confirm it, or say what should change.
-        </div>
       )}
-      {(deviceNames?.length ?? 0) > 0 ? (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
-          {/* NAMING IS PART OF THIS STEP (Dan, 2026-08-26): Jarvis proposes
-              straightforward names; click one to adjust — the rename cascades
-              (sequence, diagram, tags) exactly like the card rename. */}
-          {deviceNames.map((n, i) => (
-            renaming === n && onRenameDevice ? (
-              <span key={i} style={{ minWidth: 160 }}>
-                <LineInput
-                  initial={n}
-                  testId={`cascade-rename-${step.key}-${i}`}
-                  onDone={v => {
-                    setRenaming(null);
-                    const t = String(v ?? '').trim();
-                    if (v !== null && t && t !== n) onRenameDevice(n, t);
-                  }}
-                />
-              </span>
-            ) : (
-              <span
-                key={i}
-                data-testid={`cascade-device-chip-${step.key}-${i}`}
-                title={onRenameDevice ? 'Click to rename — the sequence, diagram and tags follow' : undefined}
-                onClick={onRenameDevice ? () => setRenaming(n) : undefined}
-                style={{
-                  ...chipBase, fontSize: 11, padding: '2px 10px', color: C.text,
-                  background: 'var(--color-sidebar)', border: `1px solid ${C.border}`,
-                  cursor: onRenameDevice ? 'text' : 'default',
-                }}
-              >{n}</span>
-            )
-          ))}
-        </div>
-      ) : (lines?.length ?? 0) > 0 ? (
-        <ol style={{ margin: '0 0 6px', paddingLeft: 20, fontSize: 12, lineHeight: 1.55, color: C.text }}>
-          {lines.map((l, i) => <li key={i}>{l}</li>)}
-        </ol>
-      ) : (
-        <div style={{ fontSize: 12, color: C.muted, fontStyle: 'italic', marginBottom: 6 }}>
-          Nothing proposed here yet — approve to move on, or tell Jarvis what belongs here.
-        </div>
-      )}
-      {/* THE STEP'S OWN ASKS (Dan, 2026-08-26): "To agree on X, I need: …" —
-          questions with Jarvis's proposals + Agree, and value-asks that jump
-          to their table. Nothing about any later step appears here. */}
-      {(needs.length > 0 || valueAsks.length > 0) && (
-        <div data-testid={`cascade-step-needs-${step.key}`} style={{ margin: '2px 0 6px' }}>
-          <div style={{ fontSize: 10.5, fontWeight: 800, color: '#6b5513', letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 2 }}>
-            To agree on this, Jarvis needs
-          </div>
-          {valueAsks.map((v, i) => (
-            <div key={`v${i}`} style={{ fontSize: 11.5, lineHeight: 1.5, marginBottom: 2 }}>
-              •{' '}
-              <button
-                type="button"
-                data-testid={`cascade-valueask-${step.key}-${i}`}
-                onClick={v.onClick}
-                title="Take me to the table"
-                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit', color: '#92400e', textDecoration: 'underline', textAlign: 'left' }}
-              >{v.label}</button>
-            </div>
-          ))}
-          {needs.map((n, i) => (
-            <div key={`n${i}`} style={{
-              display: 'flex', alignItems: 'flex-start', gap: 8, margin: '2px 0',
-              background: '#fdf6e3', border: '1px solid #e6d9a8', borderRadius: 4, padding: '5px 9px',
-            }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 11.5, color: '#6b5513', lineHeight: 1.45 }}>{n.question}</div>
-                {n.proposedSolution && (
-                  <div style={{ fontSize: 11, fontStyle: 'italic', color: C.muted, lineHeight: 1.4 }}>
-                    Jarvis proposes: {n.proposedSolution}
-                  </div>
-                )}
+      <button
+        type="button"
+        data-testid={`cascade-approve-${step.key}`}
+        onClick={onApprove}
+        disabled={busy}
+        title={reconfirm
+          ? 'An upstream step changed since you approved this — re-confirm it'
+          : 'Approve this step — it locks in and the next proposal opens'}
+        style={{
+          background: '#fff', color: 'var(--color-primary)', border: 'none', borderRadius: 4,
+          fontSize: 12, fontWeight: 800, padding: '3px 16px', cursor: busy ? 'not-allowed' : 'pointer',
+        }}
+      >{reconfirm ? 'Re-confirm' : 'Approve'}</button>
+    </span>
+  );
+}
+
+/** NUMBERED QUESTIONS (Dan, 2026-08-27): Q1/Q2/… at the TOP of the active
+ *  section — their ONE home. Each carries Jarvis's proposal + Agree; the chat
+ *  understands numbered answers ("1 — yes; 2 — actually …"). Value-asks ride
+ *  as jump links, counted in the header's needs line. */
+function StepQuestionsPanel({ step, needs = [], valueAsks = [], onAgreeNeed, onFocusChat }) {
+  if (!needs.length && !valueAsks.length) return null;
+  return (
+    <div data-testid={`cascade-step-needs-${step.key}`} style={{ margin: '0 0 8px' }}>
+      {needs.map((n, i) => (
+        <div key={`n${i}`} style={{
+          display: 'flex', alignItems: 'flex-start', gap: 8, margin: '2px 0',
+          background: '#fdf6e3', border: '1px solid #e6d9a8', borderRadius: 4, padding: '5px 9px',
+        }}>
+          <span
+            data-testid={`cascade-qnum-${step.key}-${i + 1}`}
+            style={{
+              flexShrink: 0, fontSize: 10, fontWeight: 800, color: '#fff',
+              background: '#b45309', borderRadius: 4, padding: '1px 6px', marginTop: 1,
+            }}
+          >Q{i + 1}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 11.5, color: '#6b5513', lineHeight: 1.45 }}>{n.question}</div>
+            {n.proposedSolution && (
+              <div style={{ fontSize: 11, fontStyle: 'italic', color: C.muted, lineHeight: 1.4 }}>
+                Jarvis proposes: {n.proposedSolution}
               </div>
-              <button
-                type="button"
-                data-testid={`cascade-need-agree-${step.key}-${i}`}
-                onClick={() => onAgreeNeed?.(n)}
-                title="Go with Jarvis's proposal — recorded, never re-asked"
-                style={{
-                  ...chipBase, cursor: 'pointer', color: '#2f6b3c', background: '#e9f5ec',
-                  border: '1px solid #bfe0c8', flexShrink: 0,
-                }}
-              >✓ Agree</button>
-            </div>
-          ))}
+            )}
+          </div>
+          <button
+            type="button"
+            data-testid={`cascade-need-agree-${step.key}-${i}`}
+            onClick={() => onAgreeNeed?.(n)}
+            title="Go with Jarvis's proposal — recorded, never re-asked"
+            style={{
+              ...chipBase, cursor: 'pointer', color: '#2f6b3c', background: '#e9f5ec',
+              border: '1px solid #bfe0c8', flexShrink: 0,
+            }}
+          >✓ Agree</button>
+        </div>
+      ))}
+      {valueAsks.map((v, i) => (
+        <div key={`v${i}`} style={{ fontSize: 11.5, lineHeight: 1.5, margin: '2px 0' }}>
+          •{' '}
+          <button
+            type="button"
+            data-testid={`cascade-valueask-${step.key}-${i}`}
+            onClick={v.onClick}
+            title="Take me to the table"
+            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit', color: '#92400e', textDecoration: 'underline', textAlign: 'left' }}
+          >{v.label}</button>
+        </div>
+      ))}
+      {needs.length > 0 && (
+        <div style={{ fontSize: 10.5, color: C.light, marginTop: 3 }}>
+          Answer by number in the{' '}
+          <button
+            type="button"
+            data-testid={`cascade-chat-link-${step.key}`}
+            onClick={onFocusChat}
+            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10.5, color: C.primary, textDecoration: 'underline' }}
+          >chat</button>
+          {' '}— e.g. “1 — yes; 2 — actually there's a track-full sensor” — or ✓ Agree each.
         </div>
       )}
-      <div style={{ fontSize: 10.5, color: C.light }}>
-        {onApprove ? 'Approve locks it in below (values stay editable there) — ' : ''}
-        anything to change or answer differently,{' '}
-        <button
-          type="button"
-          data-testid={`cascade-chat-link-${step.key}`}
-          onClick={onFocusChat}
-          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10.5, color: C.primary, textDecoration: 'underline' }}
-        >say it in the chat</button> — it applies to this step.
-      </div>
     </div>
   );
 }
@@ -3901,8 +3871,9 @@ function SmOutputToggle({ entries, selected, onSelect }) {
         onClick={() => onSelect(key)}
         title={title}
         style={{
+          // SQUARE LAW (Dan, 2026-08-27): app chips are square, never pills.
           fontSize: 11, fontWeight: on ? 700 : 500, padding: '2px 10px',
-          borderRadius: 999, cursor: on ? 'default' : 'pointer',
+          borderRadius: 4, cursor: on ? 'default' : 'pointer',
           color: on ? '#fff' : '#33506e',
           background: on ? 'var(--color-primary)' : '#fff',
           border: `1px solid ${on ? 'var(--color-primary)' : '#c6d4e4'}`,
@@ -5659,6 +5630,45 @@ export function CreateStationPage({ embedded = false }) {
       kickProposal();
       return;
     }
+    // NUMBERED ANSWERS (Dan, 2026-08-27): "1 — yes; 2 — actually there's a
+    // track-full sensor" routes each answer to its Q-number on the active
+    // step, in ONE corrections round. Agree-ish answers just record.
+    if (cascadeLive && activeStep && activeStepNeeds.length && changes.trim()) {
+      const parsed = parseNumberedAnswers(changes.trim(), activeStepNeeds);
+      if (parsed) {
+        const raw = changes.trim();
+        const agreeish = /^(yes|yep|yeah|ok(ay)?|agreed?|correct|go (with (that|it)|ahead)|sounds good|fine)\.?$/i;
+        const corrections = [];
+        for (const { n, q, answer } of parsed) {
+          setAgreedNeeds(s => new Set([...s, needKey(q.covKey, q)]));
+          if (agreeish.test(answer)) {
+            setQaHistory(h => [...h, { questions: [q.question], answer: 'Go with your proposed solution.' }]);
+          } else {
+            corrections.push(`Q${n} "${q.question}" — the engineer answers: ${answer}`);
+            setQaHistory(h => [...h, { questions: [q.question], answer }]);
+          }
+        }
+        if (!corrections.length) {
+          // Pure agrees — free, recorded, no round.
+          setChatThread(t => [...t,
+            { role: 'me', text: raw, at: Date.now() },
+            { role: 'jarvis', text: 'Recorded — going with the proposed answers.', at: Date.now() }]);
+          setChanges('');
+          return;
+        }
+        const scope = activeStep.smKey && activeStep.smKey !== 'station'
+          ? `the ${activeStep.smName} state machine's ${KIND_NOUN[activeStep.kind] ?? activeStep.kind}`
+          : `the station's ${KIND_NOUN[activeStep.kind] ?? activeStep.kind}`;
+        await sendCorrections(
+          `Answers to your numbered questions on ${scope}:\n${corrections.join('\n')}\n`
+          + 'Fold each answer into the sheet where it applies and leave everything else exactly as it was.',
+          raw,
+          parsed.map(p => p.q.question),
+          () => setChanges('')
+        );
+        return;
+      }
+    }
     const corrections = combinedCorrections();
     if (!corrections) {
       // Never a silent no-op — say what's needed and put the cursor there.
@@ -5891,6 +5901,7 @@ export function CreateStationPage({ embedded = false }) {
    *  approveSmSplit path (one approval artifact, never two). */
   function approveCascadeStep(step) {
     if (!step) return;
+    advanceRef.current = true; // auto-advance: the next step opens immediately
     if (step.kind === 'smSplit' && step.hasProposal) { approveSmSplit(); return; }
     writeCascade(c => ({
       ...c,
@@ -5970,6 +5981,32 @@ export function CreateStationPage({ embedded = false }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.activeSmId]);
 
+  // WALK FOLLOWS THE STEP (Dan, 2026-08-27): the sheet auto-filters to the
+  // active step's machine, and an Approve scrolls the next step's section
+  // into view — the cascade advances immediately, one surface at a time.
+  const advanceRef = useRef(false);
+  const prevStepKeyRef = useRef(null);
+  useEffect(() => {
+    // (phase-based live check — `cascadeLive` is declared further down.)
+    const step = phase === 'summary' && cascade.steps.length ? cascade.activeStep : null;
+    const key = step?.key ?? null;
+    if (key === prevStepKeyRef.current) return;
+    prevStepKeyRef.current = key;
+    if (!step) return;
+    // Auto-filter the outputs to the machine being walked.
+    if (step.smKey && step.smKey !== 'station' && sheetSmKey !== step.smKey) {
+      selectSheetSm(step.smKey);
+    }
+    // After an Approve, land on the next step's section.
+    if (advanceRef.current) {
+      advanceRef.current = false;
+      const host = hostSectionOf(step.kind);
+      const target = step.kind === 'smSplit' ? 'cascade-smsplit-step' : (host ? `summary-section-${host}` : null);
+      if (target) requestAnimationFrame(() => goToBlocker({ target }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, cascade]);
+
   // AUTO-RUN EVERYWHERE (Dan, 2026-08-26 round 2: "Get the proposal" died —
   // an explanation without a proposal has unambiguous intent, resume
   // included). Fires once per mount when the summary is up and step 1 has no
@@ -6020,10 +6057,10 @@ export function CreateStationPage({ embedded = false }) {
       return hosted.length ? hosted.some(s => s.status !== 'pending') : cascade.allApproved;
     }
     if (sectionKey === 'sequence') {
+      // THE STEP IS THE SECTION (Dan, 2026-08-27): the active sequence /
+      // recovery step renders AS the section — reveal on active too.
       const hosted = cascade.steps.filter(s => s.kind === 'sequence' || s.kind === 'recovery');
-      return hosted.length
-        ? hosted.some(s => s.status === 'approved' || s.status === 'reconfirm')
-        : cascade.allApproved;
+      return hosted.length ? hosted.some(s => s.status !== 'pending') : cascade.allApproved;
     }
     if (sectionKey === 'interactions') {
       const hosted = cascade.steps.filter(s => s.kind === 'interactions');
@@ -6037,7 +6074,7 @@ export function CreateStationPage({ embedded = false }) {
   /** Which SM (decomp key) owns each sheet device row — for attributing
    *  questions and value-asks to the right SM's step. */
   const devSmKeyByIdx = useMemo(() => {
-    const groups = groupDevicesBySm(approvedSmDecomp ?? panelModel.decomp ?? smDecomp, summary?.devices ?? []);
+    const groups = groupDevicesBySm(smChipEntries ?? panelModel.decomp ?? smDecomp, summary?.devices ?? []);
     const map = new Map();
     for (const g of groups) for (const { i } of g.devices) map.set(i, g.sm?.key ?? null);
     return map;
@@ -6052,7 +6089,7 @@ export function CreateStationPage({ embedded = false }) {
       .filter(n => !agreedNeeds.has(`${covKey}:${n.question}`))
       .map(n => ({ ...n, covKey }));
     if (!step.smKey || step.smKey === 'station') return open;
-    const entries = approvedSmDecomp ?? panelModel.decomp ?? smDecomp ?? [];
+    const entries = smChipEntries ?? panelModel.decomp ?? smDecomp ?? [];
     const mine = (entries.find(e => e.key === step.smKey)?.deviceNames ?? []).map(normKey).filter(k => k.length >= 4);
     const others = entries.filter(e => e.key !== step.smKey)
       .flatMap(e => e.deviceNames ?? []).map(normKey).filter(k => k.length >= 4);
@@ -6218,9 +6255,36 @@ export function CreateStationPage({ embedded = false }) {
     : reviewSections.length > 0 && reviewedCount === reviewSections.length;
 
   /** The per-section header cluster + the open edit surface, wired. */
+  // THE STEP IS THE SECTION (Dan, 2026-08-27): which SECTION hosts a step
+  // kind — recovery renders inside the sequence section's recovery column.
+  const hostSectionOf = (kind) =>
+    kind === 'devices' ? 'devices'
+      : kind === 'sequence' || kind === 'recovery' ? 'sequence'
+        : kind === 'interactions' ? 'interactions'
+          : null;
+  const activeStep = cascadeLive ? cascade.activeStep : null;
+  const activeHostSection = activeStep ? hostSectionOf(activeStep.kind) : null;
+  const activeStepNeeds = activeStep && activeStep.kind !== 'smSplit' ? needsForStep(activeStep) : [];
+  const activeStepValues = activeStep && activeStep.kind !== 'smSplit' ? valueAsksForStep(activeStep) : [];
+
   const reviewBarFor = (key, title, onDark = false) => {
+    // The ACTIVE step's section header carries the step itself — number,
+    // needs count, Approve. One surface, no duplicate card (Dan, 2026-08-27).
+    if (activeHostSection === key && activeStep) {
+      return (
+        <CascadeStepBar
+          step={activeStep}
+          stepNo={cascade.steps.findIndex(s => s.key === activeStep.key) + 1}
+          stepCount={cascade.steps.length}
+          needsCount={activeStepNeeds.length}
+          valuesCount={activeStepValues.length}
+          busy={applying}
+          onApprove={() => approveCascadeStep(activeStep)}
+        />
+      );
+    }
     if (!reviewEnabled || !reviewSections.some(s => s.key === key)) return null;
-    // Cascade sections approve in ONE place — the active proposal card — so
+    // Cascade sections approve in ONE place — the active section header — so
     // the per-section ✓ hides (Edit stays: the scoped-edit loop is law).
     const hostedByCascade = cascadeLive && cascade.steps.some(s => KIND_SECTION[s.kind] === key);
     return (
@@ -6233,6 +6297,21 @@ export function CreateStationPage({ embedded = false }) {
         onDark={onDark}
         stampLabel={hostedByCascade ? '✓ approved' : '✓ reviewed'}
         queued={sectionQueued(key)}
+      />
+    );
+  };
+
+  /** The active step's numbered questions — rendered at the TOP of the
+   *  hosting section (their ONE home; never duplicated anywhere else). */
+  const stepPanelFor = (key) => {
+    if (activeHostSection !== key || !activeStep) return null;
+    return (
+      <StepQuestionsPanel
+        step={activeStep}
+        needs={activeStepNeeds}
+        valueAsks={activeStepValues}
+        onAgreeNeed={(n) => agreeNeed({ covKey: n.covKey }, n)}
+        onFocusChat={focusChat}
       />
     );
   };
@@ -7387,34 +7466,10 @@ export function CreateStationPage({ embedded = false }) {
                           </div>
                         );
                       }
-                      const entry = step.smKey && step.smKey !== 'station'
-                        ? (approvedSmDecomp ?? panelModel.decomp ?? smDecomp ?? []).find(e => e.key === step.smKey)
-                        : null;
-                      const lines = step.kind === 'sequence'
-                        ? (entry?.sequence ?? sectionToLines('sequence', summary?.sequence ?? []))
-                        : step.kind === 'recovery'
-                          ? (entry?.faultRecovery ?? sectionToLines('failureHandling', summary?.failureHandling ?? []))
-                          : null; // interactions edits happen in its section below
-                      const deviceNames = step.kind === 'devices'
-                        ? (entry?.deviceNames ?? (summary?.devices ?? []).map(d => d.name).filter(Boolean))
-                        : null;
-                      return (
-                        <CascadeProposalCard
-                          key={step.key}
-                          step={step}
-                          stepNo={cascade.steps.findIndex(s => s.key === step.key) + 1}
-                          stepCount={cascade.steps.length}
-                          lines={lines}
-                          deviceNames={deviceNames}
-                          busy={applying}
-                          onApprove={() => approveCascadeStep(step)}
-                          onRenameDevice={step.kind === 'devices' ? renameDeviceByName : null}
-                          needs={needsForStep(step)}
-                          valueAsks={valueAsksForStep(step)}
-                          onAgreeNeed={(n) => agreeNeed({ covKey: n.covKey }, n)}
-                          onFocusChat={focusChat}
-                        />
-                      );
+                      // THE STEP IS THE SECTION (Dan, 2026-08-27): non-smSplit
+                      // steps render nothing here — the hosting section below
+                      // carries the step bar, questions, and Approve.
+                      return null;
                     })()}
                     {/* SM TOGGLE — flip which machine's outputs show; banner
                         chips + diagram follow (setActiveSm). */}
@@ -7438,13 +7493,16 @@ export function CreateStationPage({ embedded = false }) {
                     {sectionRevealed(section.key) && <SummarySection
                       section={section}
                       items={summary[section.key]}
-                      cov={jarvisCoverage ? jarvisCoverage[section.covKey] : null}
+                      // ONE HOME for questions (Dan, 2026-08-27): while this
+                      // section hosts the active step, its needs render ONLY
+                      // in the numbered panel — never twice.
+                      cov={activeHostSection === section.key ? null : (jarvisCoverage ? jarvisCoverage[section.covKey] : null)}
                       optional={section.key === 'interactions' && !hasPeers}
                       agreedNeeds={agreedNeeds}
                       onAgreeNeed={agreeNeed}
                       savedTick={section.key === 'interactions' ? interactionsTick : undefined}
                       reviewBar={reviewBarFor(section.key, section.title, true)}
-                      topPanel={editPanelFor(section.key, section.title)}
+                      topPanel={<>{stepPanelFor(section.key)}{editPanelFor(section.key, section.title)}</>}
                       dimmed={sectionQueued(section.key)}
                       onChange={items => {
                         // withSheetPrefill keeps the device line, the device
@@ -7480,16 +7538,16 @@ export function CreateStationPage({ embedded = false }) {
                                 // decomposition), device cards group under SM
                                 // sub-headers with an unassigned bucket;
                                 // single-SM stations render exactly as today.
-                                const rawGroups = groupDevicesBySm(approvedSmDecomp, summary.devices);
+                                const rawGroups = groupDevicesBySm(smChipEntries, summary.devices);
                                 // ONE SHEET PER STATION: every machine of the
                                 // station gets its header even when the sheet
                                 // lists none of its devices yet — the missing
                                 // ones are named under the header so no SM is
                                 // invisible (Dan, 2026-08-25).
                                 const smGroups = (() => {
-                                  if (!approvedSmDecomp?.length) return rawGroups;
+                                  if (!smChipEntries?.length) return rawGroups;
                                   const byKey = new Map(rawGroups.filter(g => g.sm).map(g => [g.sm.key, g]));
-                                  const out = approvedSmDecomp.map(e => byKey.get(e.key) ?? { sm: e, devices: [] });
+                                  const out = smChipEntries.map(e => byKey.get(e.key) ?? { sm: e, devices: [] });
                                   const unassigned = rawGroups.find(g => !g.sm);
                                   if (unassigned) out.push(unassigned);
                                   return out;
@@ -7720,10 +7778,11 @@ export function CreateStationPage({ embedded = false }) {
                           // per-SM when the data provides it, shared (and
                           // still editable) otherwise. Handshake signals get
                           // one small shared strip. Single-SM: exactly today.
-                          const perSmAll = (approvedSmDecomp ?? []).filter(e => (e.sequence?.length ?? 0) > 0)
-                            // STRICT REVEAL: only SETTLED sequence steps show
-                            // here — the active one lives in its step card.
-                            .filter(e => stepSettled('sequence', e.key));
+                          const perSmAll = (smChipEntries ?? []).filter(e => (e.sequence?.length ?? 0) > 0)
+                            // ONE SURFACE (Dan, 2026-08-27): the ACTIVE
+                            // machine's column renders here too — the step
+                            // IS the section; only unreached ones hide.
+                            .filter(e => stepRevealed('sequence', e.key));
                           // SM TOGGLE (Dan, 2026-08-26): the selected machine's
                           // sequence/recovery column only; overview = all.
                           const perSm = sheetSmKey !== 'all' && perSmAll.some(e => e.key === sheetSmKey)
@@ -7740,7 +7799,7 @@ export function CreateStationPage({ embedded = false }) {
                                 {reviewBarFor('failureHandling', 'Fault recovery')}
                               </div>
                               {editPanelFor('failureHandling', 'Fault recovery')}
-                              {failNeeds.map((n, i) => (
+                              {(activeHostSection === 'sequence' ? [] : failNeeds).map((n, i) => (
                                 <NeedRow
                                   key={i}
                                   need={n}
@@ -7761,7 +7820,7 @@ export function CreateStationPage({ embedded = false }) {
                               />
                             </div>
                           );
-                          if ((approvedSmDecomp?.length ?? 0) >= 2) {
+                          if ((smChipEntries?.length ?? 0) >= 2) {
                             return (
                               <>
                                 <div style={{
@@ -7775,7 +7834,7 @@ export function CreateStationPage({ embedded = false }) {
                                       <ol style={{ margin: 0, paddingLeft: 20, fontSize: 12, lineHeight: 1.55, color: C.text }}>
                                         {e.sequence.map((l, li) => <li key={li}>{l}</li>)}
                                       </ol>
-                                      {(e.faultRecovery?.length ?? 0) > 0 && stepSettled('recovery', e.key) && (
+                                      {(e.faultRecovery?.length ?? 0) > 0 && stepRevealed('recovery', e.key) && (
                                         <>
                                           <SubHead color="#b45309">Fault recovery</SubHead>
                                           <ol style={{ margin: 0, paddingLeft: 20, fontSize: 12, lineHeight: 1.55, color: C.text }}>
@@ -7785,8 +7844,11 @@ export function CreateStationPage({ embedded = false }) {
                                       )}
                                     </div>
                                   ))}
-                                  {/* Shared recovery only when no machine carries its own. */}
-                                  {!anyPerSmRecovery && recoveryCol}
+                                  {/* Shared recovery only when no machine carries its own —
+                                      revealed once any recovery step is reached. */}
+                                  {!anyPerSmRecovery
+                                    && cascade.steps.some(s => s.kind === 'recovery' && s.status !== 'pending')
+                                    && recoveryCol}
                                 </div>
                               </>
                             );
@@ -7798,7 +7860,7 @@ export function CreateStationPage({ embedded = false }) {
                               gridTemplateColumns: 'repeat(auto-fit, minmax(330px, 620px))',
                               gap: '6px 20px', alignItems: 'start',
                             }}>
-                              {stepSettled('sequence', 'station') && (
+                              {stepRevealed('sequence', 'station') && (
                               <div style={{ minWidth: 0 }} data-testid="sequence-main">
                                 <SubHead color="#1574C4">Main sequence</SubHead>
                                 {/* READ-ONLY projection (Dan's ruling): the
@@ -7813,7 +7875,7 @@ export function CreateStationPage({ embedded = false }) {
                                 />
                               </div>
                               )}
-                              {stepSettled('recovery', 'station') && recoveryCol}
+                              {stepRevealed('recovery', 'station') && recoveryCol}
                             </div>
                             </>
                           );
