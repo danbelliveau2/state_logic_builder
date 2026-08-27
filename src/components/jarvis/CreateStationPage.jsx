@@ -1416,13 +1416,15 @@ const SUMMARY_SECTIONS = [
 // signals, and counters is wrong) — groups key off the ONE shared model
 // (deviceTypes classifyDeviceRole) so sheet/diagram/compile/codegen agree on
 // what's a signal vs a device vs a counter.
+// Count-aware labels (Dan, 2026-08-27): "SERVO AXIS (1)" singular, "SERVO
+// AXES (2)" plural — category words (Pneumatics) stay as they are.
 const SHEET_DEVICE_GROUPS = [
-  { key: 'servos', label: 'Servo axes', color: DEVICE_ICON_COLORS.ServoAxis, match: r => r === 'servo' },
+  { key: 'servos', label: 'Servo axes', singular: 'Servo axis', color: DEVICE_ICON_COLORS.ServoAxis, match: r => r === 'servo' },
   { key: 'pneumatics', label: 'Pneumatics', color: DEVICE_ICON_COLORS.PneumaticGripper, match: r => r === 'pneumatic' },
-  { key: 'sensors', label: 'Sensors', color: DEVICE_ICON_COLORS.DigitalSensor, match: r => r === 'sensor' },
-  { key: 'signals', label: 'Signals', color: DEVICE_ICON_COLORS.Signal, match: r => r === 'signal' },
+  { key: 'sensors', label: 'Sensors', singular: 'Sensor', color: DEVICE_ICON_COLORS.DigitalSensor, match: r => r === 'sensor' },
+  { key: 'signals', label: 'Signals', singular: 'Signal', color: DEVICE_ICON_COLORS.Signal, match: r => r === 'signal' },
   { key: 'counters', label: 'Counters & values', color: '#0f766e', match: r => r === 'counter' },
-  { key: 'other', label: 'Other devices', color: DEVICE_ICON_COLORS.Custom, match: () => true },
+  { key: 'other', label: 'Other devices', singular: 'Other device', color: DEVICE_ICON_COLORS.Custom, match: () => true },
 ];
 /** The role the taxonomy assigns a SHEET row (guessed type applied first). */
 function sheetRoleOf(d) {
@@ -2165,11 +2167,11 @@ function SheetDeviceCard({ type, name, purpose, onHeaderCommit, onRemove, chips,
   // Accent = the DeviceIcons palette (servo orange, gripper purple, …) so the
   // card, its icon, and its group header all agree (Dan, Aug 24).
   const accent = DEVICE_ICON_COLORS[type] ?? tdef?.color ?? '#9ca3af';
-  const headerLine = `${name ?? ''}${purpose ? ` — ${purpose}` : ''}`;
-  // No description on the card (Dan, Aug 24: "I don't think we need a
-  // description for the device") — the purpose text stays STORED (it feeds
-  // the prompts) and reachable as a tooltip on the name; editing the header
-  // still shows/edits the full "Name — purpose" line.
+  // RENAME = JUST THE NAME (Dan, 2026-08-27: clicking the name surfaced a
+  // description field — gone). The edit box carries ONLY the name; the
+  // purpose text stays stored (it feeds the prompts) and lives in the
+  // tooltip, untouched by a rename.
+  const headerLine = String(name ?? '');
   // ZERO OVERLAP at any name length (Dan's screenshot, 2026-08-25): the name
   // ellipsizes inside its own flex cell (full name in the tooltip), chips
   // never shrink, and the card clips — nothing paints over anything.
@@ -4747,6 +4749,9 @@ export function CreateStationPage({ embedded = false }) {
         // SDC name style on commit (Dan, Aug 24): XAxis, PartGripper —
         // applies to the edited entry only, never renames untouched devices.
         parsed.name = capDeviceName(parsed.name);
+        // RENAME = JUST THE NAME (Dan, 2026-08-27): the header edit carries
+        // only the name — a rename must never wipe the stored purpose.
+        if (!String(parsed.purpose ?? '').trim()) delete parsed.purpose;
         devices[idx] = { ...devices[idx], ...parsed };
         newName = parsed.name;
       }
@@ -4779,7 +4784,8 @@ export function CreateStationPage({ embedded = false }) {
    *  and the persisted split's deviceNames. One change-log line records it. */
   function renameDeviceEverywhere(oldName, newName) {
     const spacedOld = oldName.replace(/_/g, ' ');
-    const patterns = [oldName, spacedOld].filter((v, i, a) => v && a.indexOf(v) === i);
+    const camelSpacedOld = oldName.replace(/([a-z0-9])([A-Z])/g, '$1 $2'); // ZSlide → Z Slide
+    const patterns = [oldName, spacedOld, camelSpacedOld].filter((v, i, a) => v && a.indexOf(v) === i);
     const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const replaceIn = (line) => {
       let out = String(line ?? '');
@@ -4794,6 +4800,20 @@ export function CreateStationPage({ embedded = false }) {
       sequence: (s.sequence ?? []).map(l => (typeof l === 'string' ? replaceIn(l) : { ...l, text: replaceIn(l?.text) })),
       failureHandling: (s.failureHandling ?? []).map(l => (typeof l === 'string' ? replaceIn(l) : { ...l, text: replaceIn(l?.text) })),
     }));
+    // 1b. OWNERSHIP SURVIVES RENAMES (Dan's live bug, 2026-08-27: renaming
+    // ZSlide made the card vanish — the machine filter matched the OLD name).
+    // The draft proposal's ownedDeviceNames update atomically with the rename.
+    setSmProposal(p => {
+      if (!p?.stateMachines?.length) return p;
+      return {
+        ...p,
+        stateMachines: p.stateMachines.map(m => ({
+          ...m,
+          ownedDeviceNames: (m.ownedDeviceNames ?? []).map(replaceIn),
+          sequence: (m.sequence ?? []).map(replaceIn),
+        })),
+      };
+    });
     if (!linkedSmId) return;
     const smNow = useDiagramStore.getState().project?.stateMachines?.find(x => x.id === linkedSmId);
     if (!smNow) return;
@@ -7618,13 +7638,18 @@ export function CreateStationPage({ embedded = false }) {
                                 // overview shows everything. A stale key
                                 // falls back to the overview.
                                 const visibleSmGroups = (sheetSmKey !== 'all' && smGroups.some(g => g.sm?.key === sheetSmKey)
-                                  ? smGroups.filter(g => g.sm?.key === sheetSmKey)
+                                  // ORPHANS STAY VISIBLE (Dan's vanished-card
+                                  // bug, 2026-08-27): a device no machine
+                                  // claims (e.g. mid-rename drift) rides the
+                                  // Unassigned group THROUGH the filter —
+                                  // nothing the ME typed ever hides.
+                                  ? smGroups.filter(g => g.sm?.key === sheetSmKey || g.sm == null)
                                   : smGroups)
                                   // STRICT REVEAL: an SM whose devices step
                                   // hasn't come up yet stays hidden entirely.
                                   .filter(g => stepRevealed('devices', g.sm?.key ?? 'station'));
-                                const shownNames = new Set(
-                                  (summary.devices ?? []).map(x => normKey(x.displayName ?? x.name)));
+                                // (shownNames / "also owns" removed — Dan,
+                                // 2026-08-27: one identifier per header.)
                                 // Handshakes with NO sheet row render as
                                 // read-only SIGNALS entries (the strip merged
                                 // into the group — one concept; Dan).
@@ -7642,21 +7667,15 @@ export function CreateStationPage({ embedded = false }) {
                                       margin: sgi === 0 ? '0' : '12px 0 0',
                                     }}
                                   >
+                                    {/* ONE IDENTIFIER, no duplicated prose
+                                        (Dan, 2026-08-27): the machine header
+                                        is the NAME — the oneLiner and the
+                                        "also owns" list are gone (ownership
+                                        is rename-safe now; the description
+                                        already lives on the proposal). */}
                                     <span style={{ fontSize: 11, fontWeight: 800, color: C.primary, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                                       {sg.sm ? sg.sm.name : 'Unassigned'}
                                     </span>
-                                    {sg.sm?.oneLiner ? <span style={{ fontSize: 10.5, color: C.light }}>{sg.sm.oneLiner}</span> : null}
-                                    {(() => {
-                                      const missing = (sg.sm?.deviceNames ?? [])
-                                        .filter(n => !shownNames.has(normKey(n)));
-                                      if (!missing.length) return null;
-                                      return (
-                                        <span
-                                          data-testid={`sheet-sm-group-missing-${sg.sm.key}`}
-                                          style={{ fontSize: 10.5, color: C.light }}
-                                        >also owns: {missing.join(', ')}</span>
-                                      );
-                                    })()}
                                   </div>
                                 ) : null;
                                 const cards = groupSheetDeviceRows(sg.devices).map(g => (
@@ -7672,7 +7691,7 @@ export function CreateStationPage({ embedded = false }) {
                                     <span style={{
                                       fontSize: 10, fontWeight: 800, color: g.color,
                                       letterSpacing: '0.05em', textTransform: 'uppercase',
-                                    }}>{g.label}</span>
+                                    }}>{g.items.length === 1 && g.singular ? g.singular : g.label}</span>
                                     <span style={{ fontSize: 10, color: C.light }}>({g.items.length})</span>
                                   </div>
                                   <div style={{
