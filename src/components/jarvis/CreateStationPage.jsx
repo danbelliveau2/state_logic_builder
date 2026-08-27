@@ -3708,6 +3708,20 @@ function CascadeGuide({ steps, hasExplanation, allApproved, onJump }) {
   );
 }
 
+// Tolerant name matching (module scope — grouping AND attribution use it):
+// camelCase/space/underscore/digit token decomposition + normalized substring.
+const wordsOf = (s) => String(s ?? '')
+  .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+  .toLowerCase().split(/[^a-z0-9]+/)
+  .filter(t => t.length >= 3 || /^\d+$/.test(t));
+const nameMatchesText = (name, text) => {
+  const nk = normKey(name);
+  if (nk.length >= 4 && normKey(text).includes(nk)) return true;
+  const nw = wordsOf(name);
+  const tw = new Set(wordsOf(text));
+  return nw.length > 0 && nw.every(w => tw.has(w));
+};
+
 /** NUMBERED-ANSWER PARSER (Dan, 2026-08-27): "1 — yes; 2 — actually there's
  *  a track-full sensor" → [{n, q, answer}] against the active step's
  *  numbered questions. Null when the text isn't numbered-answer shaped
@@ -4167,6 +4181,13 @@ export function CreateStationPage({ embedded = false }) {
   // { stateMachines:[{name,oneLiner,ownedDeviceNames,why,sequence}], reasoning, at }
   const [smProposal, setSmProposal] = useState(draft?.smProposal ?? null);
   const splitCounterRef = useRef(''); // a chat counter to the draft proposal rides the re-decompose
+  // NO UNASSIGNED, EVER (Dan, 2026-08-27: "you know what goes to what —
+  // assign them and I'll tell you if it's right or wrong"). Jarvis COMMITS a
+  // machine for every device; committed guesses persist here (name-keyed) so
+  // a refresh keeps them, and fallback guesses ask a numbered question on
+  // their machine's own devices step.
+  const [deviceAssignments, setDeviceAssignments] = useState(draft?.deviceAssignments ?? {});
+  const [assignmentAsks, setAssignmentAsks] = useState(draft?.assignmentAsks ?? []);
   // ONE collapsible chat (Dan, 2026-08-26): the thread tucks away on demand.
   const [chatCollapsed, setChatCollapsed] = useState(false);
 
@@ -4213,6 +4234,8 @@ export function CreateStationPage({ embedded = false }) {
     chatThread: chatThread.slice(-40),
     ...(localCascade ? { cascadeLocal: localCascade } : {}),
     ...(smProposal ? { smProposal } : {}),
+    ...(Object.keys(deviceAssignments ?? {}).length ? { deviceAssignments } : {}),
+    ...(assignmentAsks?.length ? { assignmentAsks } : {}),
     ...(absorbedIdsRef.current.length ? { absorbedDraftIds: absorbedIdsRef.current } : {}),
     ...(linkedSmId ? { smId: linkedSmId } : {}),
   });
@@ -4247,7 +4270,7 @@ export function CreateStationPage({ embedded = false }) {
     }, 1000);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, station, description, images, phase, summary, jarvisCoverage, questions, nonStandardFlags, summarizeCost, purpose, genLevel, expectedSms, referenceText, agreedNeeds, sheetAhead, chatThread, localCascade, smProposal, draftKey, linkedSmId]);
+  }, [name, station, description, images, phase, summary, jarvisCoverage, questions, nonStandardFlags, summarizeCost, purpose, genLevel, expectedSms, referenceText, agreedNeeds, sheetAhead, chatThread, localCascade, smProposal, deviceAssignments, assignmentAsks, draftKey, linkedSmId]);
 
   // ── Pictures persist FOREVER — hardened after the Aug 24 SECOND loss ─────
   // The server copy is authoritative and its merge is ADDITIVE (union by
@@ -4429,6 +4452,7 @@ export function CreateStationPage({ embedded = false }) {
     setPurpose(''); setExpectedSms(''); setAgreedNeeds(new Set());
     setSheetAhead(false); setApplyReceipt(null); setLocalCascade(null);
     setSmProposal(null); setProposeRun(null);
+    setDeviceAssignments({}); setAssignmentAsks([]);
     setQaRounds(0); setQaHistory([]); setLearnedNotes([]);
     setSummarizeCost(0); setError(null); setDraftImagesDropped(0);
     setOtherDrafts(loadDrafts(draftKey).filter(d => d.draftId !== draftIdRef.current && (!d.smId || !smExists(d.smId))));
@@ -4441,6 +4465,8 @@ export function CreateStationPage({ embedded = false }) {
     setLinkedSmId(smExists(d.smId) ? d.smId : null);
     setLocalCascade(d.cascadeLocal ?? null);
     setSmProposal(d.smProposal ?? null);
+    setDeviceAssignments(d.deviceAssignments ?? {});
+    setAssignmentAsks(d.assignmentAsks ?? []);
     setProposeRun(null);
     autoKickRef.current = false; // a resumed draft auto-runs too (Dan)
     const s = isStructuredSummary(d.summary)
@@ -4800,6 +4826,17 @@ export function CreateStationPage({ embedded = false }) {
       sequence: (s.sequence ?? []).map(l => (typeof l === 'string' ? replaceIn(l) : { ...l, text: replaceIn(l?.text) })),
       failureHandling: (s.failureHandling ?? []).map(l => (typeof l === 'string' ? replaceIn(l) : { ...l, text: replaceIn(l?.text) })),
     }));
+    // 1a. Persisted assignments follow the rename (key = normalized name).
+    setDeviceAssignments(prev => {
+      const oldK = normKey(oldName);
+      if (!prev || !(oldK in prev)) return prev;
+      const next = { ...prev };
+      next[normKey(newName)] = next[oldK];
+      delete next[oldK];
+      return next;
+    });
+    setAssignmentAsks(list => (list ?? []).map(a =>
+      normKey(a.device) === normKey(oldName) ? { ...a, device: newName } : a));
     // 1b. OWNERSHIP SURVIVES RENAMES (Dan's live bug, 2026-08-27: renaming
     // ZSlide made the card vanish — the machine filter matched the OLD name).
     // The draft proposal's ownedDeviceNames update atomically with the rename.
@@ -6099,15 +6136,73 @@ export function CreateStationPage({ embedded = false }) {
   // ── STEP-SCOPED QUESTIONS (Dan, 2026-08-26: "questions surface WITH their
   // step" — nothing about a later step appears early). ─────────────────────
   const covOfKind = { devices: 'devices', sequence: 'sequence', recovery: 'failures', interactions: 'interactions' };
-  /** Which SM (decomp key) owns each sheet device row — for attributing
-   *  questions and value-asks to the right SM's step. */
-  const devSmKeyByIdx = useMemo(() => {
-    const groups = groupDevicesBySm(smChipEntries ?? panelModel.decomp ?? smDecomp, summary?.devices ?? []);
+  /** EVERY DEVICE HAS A MACHINE (Dan, 2026-08-27: no unassigned pile, ever —
+   *  Jarvis commits, the ME corrects). Priority per device row:
+   *    1. the machine that claims it by ownedDeviceNames (rename-safe),
+   *    2. the ME's / Jarvis's persisted assignment (deviceAssignments),
+   *    3. machine-NAME token semantics (EscapementFinger → Mid Base Escapement),
+   *    4. best-guess fallback: the LAST machine in the walk — its own devices
+   *       step carries a numbered "I guessed" question (guessedFallback set).
+   *  Returns { map: idx→machineKey, guessedFallback: Set<idx> }. */
+  const devAssign = useMemo(() => {
+    const entries = smChipEntries ?? panelModel.decomp ?? smDecomp ?? null;
     const map = new Map();
+    const guessedFallback = new Set();
+    const groups = groupDevicesBySm(entries, summary?.devices ?? []);
     for (const g of groups) for (const { i } of g.devices) map.set(i, g.sm?.key ?? null);
-    return map;
+    if (!entries || entries.length < 2) return { map, guessedFallback };
+    (summary?.devices ?? []).forEach((d, i) => {
+      if (map.get(i)) return;
+      const nm = String(d?.displayName ?? d?.name ?? '');
+      // 2. persisted assignment (survives refresh — his live-draft migration)
+      const ov = deviceAssignments?.[normKey(nm)];
+      if (ov && entries.some(e => e.key === ov)) { map.set(i, ov); return; }
+      // 3. machine-name token semantics — most shared meaningful tokens wins
+      const dw = wordsOf(nm);
+      let best = null;
+      for (const e of entries) {
+        const shared = wordsOf(e.name).filter(w => w.length >= 4 && dw.includes(w)).length;
+        if (shared > 0 && (!best || shared > best.shared)) best = { key: e.key, shared };
+      }
+      if (best) { map.set(i, best.key); return; }
+      // 3b. sequence semantics — the machine whose sequence lines talk about
+      //     this device ("vertical slide extends" owns VerticalSlide even
+      //     when a pre-sync rename broke the name link).
+      let bySeq = null;
+      for (const e of entries) {
+        const sw = new Set(wordsOf((e.sequence ?? []).join(' ')));
+        const shared = dw.filter(w => w.length >= 4 && sw.has(w)).length;
+        if (shared > 0 && (!bySeq || shared > bySeq.shared)) bySeq = { key: e.key, shared };
+      }
+      if (bySeq) { map.set(i, bySeq.key); return; }
+      // 4. fallback — last machine of the walk, wearing a numbered question
+      map.set(i, entries[entries.length - 1].key);
+      guessedFallback.add(i);
+    });
+    return { map, guessedFallback };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [approvedSmDecomp, panelModel, smDecomp, summary]);
+  }, [approvedSmDecomp, panelModel, smDecomp, summary, smProposal, localCascade, deviceAssignments]);
+  const devSmKeyByIdx = devAssign.map;
+
+  // COMMIT the guesses (Dan: Jarvis assigns, he corrects): persist every
+  // computed assignment by name so a refresh reproduces it, and file ONE
+  // "I guessed" ask per fallback device on its machine's devices step.
+  useEffect(() => {
+    if (!(cascade.steps.length && phase === 'summary')) return;
+    const devs = summary?.devices ?? [];
+    let aChanged = false;
+    const nextAssign = { ...(deviceAssignments ?? {}) };
+    for (const [i, key] of devAssign.map) {
+      const nm = normKey(devs[i]?.name);
+      if (nm && key && nextAssign[nm] !== key) { nextAssign[nm] = key; aChanged = true; }
+    }
+    if (aChanged) setDeviceAssignments(nextAssign);
+    const newAsks = [...devAssign.guessedFallback]
+      .map(i => ({ device: String(devs[i]?.name ?? ''), machineKey: devAssign.map.get(i) }))
+      .filter(a => a.device && !(assignmentAsks ?? []).some(x => normKey(x.device) === normKey(a.device)));
+    if (newAsks.length) setAssignmentAsks(list => [...(list ?? []), ...newAsks]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [devAssign, phase]);
   // ── ROBUST MACHINE ATTRIBUTION (Dan's live MidBaseLoad round, 2026-08-27:
   // every escapement question rendered on the Pick And Place step; the old
   // rule leaked every UNMATCHED question onto the CURRENT step). Rules now:
@@ -6119,17 +6214,6 @@ export function CreateStationPage({ embedded = false }) {
   //   3. unmatched → the FURTHEST-FUTURE step of the kind — NEVER the current
   //      step unless matched (an alias like "Belco bowl" for FeederBowl can't
   //      be guessed; it waits on the last machine wearing "which machine?").
-  const wordsOf = (s) => String(s ?? '')
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .toLowerCase().split(/[^a-z0-9]+/)
-    .filter(t => t.length >= 3 || /^\d+$/.test(t));
-  const nameMatchesText = (name, text) => {
-    const nk = normKey(name);
-    if (nk.length >= 4 && normKey(text).includes(nk)) return true;
-    const nw = wordsOf(name);
-    const tw = new Set(wordsOf(text));
-    return nw.length > 0 && nw.every(w => tw.has(w));
-  };
   /** The machine (entry key) a need belongs to, or null when unattributable. */
   function needOwnerKey(n, entries) {
     const claimOf = (devName) => {
@@ -6175,10 +6259,22 @@ export function CreateStationPage({ embedded = false }) {
     if (entries.length < 2) return open;
     const kindSteps = cascade.steps.filter(s => s.kind === step.kind);
     const isLastOfKind = kindSteps.length > 0 && kindSteps[kindSteps.length - 1].key === step.key;
-    return open
+    const routed = open
       .map(n => ({ ...n, _owner: needOwnerKey(n, entries) }))
       .filter(n => n._owner === step.smKey || (n._owner === null && isLastOfKind))
       .map(({ _owner, ...n }) => (_owner === null ? { ...n, unattributed: true } : n));
+    // "I GUESSED" ASKS (Dan, 2026-08-27): a fallback-assigned device carries
+    // one numbered question on ITS machine's devices step — never a visible
+    // unassigned pile on someone else's.
+    if (step.kind === 'devices') {
+      for (const a of (assignmentAsks ?? [])) {
+        if (a.machineKey !== step.smKey) continue;
+        const q = `I guessed ${a.device} belongs to ${step.smName} — is that right?`;
+        if (agreedNeeds.has(`devices:${q}`)) continue;
+        routed.push({ question: q, proposedSolution: 'Keep it here — or name the right machine in the chat and I move it', blocking: false, covKey: 'devices' });
+      }
+    }
+    return routed;
   }
   /** The active devices step's value-asks (servo tables, geometry) — only
    *  the step's own SM's devices. */
@@ -7613,37 +7709,29 @@ export function CreateStationPage({ embedded = false }) {
                               }}
                             >
                               {(() => {
-                                // SM-AWARE GROUPING (Dan, 2026-08-25): once the
-                                // machines are known (applied split / compiled
-                                // decomposition), device cards group under SM
-                                // sub-headers with an unassigned bucket;
-                                // single-SM stations render exactly as today.
-                                const rawGroups = groupDevicesBySm(smChipEntries, summary.devices);
-                                // ONE SHEET PER STATION: every machine of the
-                                // station gets its header even when the sheet
-                                // lists none of its devices yet — the missing
-                                // ones are named under the header so no SM is
-                                // invisible (Dan, 2026-08-25).
+                                // NO UNASSIGNED, EVER (Dan, 2026-08-27):
+                                // every device row renders under the machine
+                                // Jarvis COMMITTED for it (devAssign — claims
+                                // → persisted assignment → name semantics →
+                                // fallback with a numbered question). Single-
+                                // SM stations render exactly as today.
                                 const smGroups = (() => {
-                                  if (!smChipEntries?.length) return rawGroups;
-                                  const byKey = new Map(rawGroups.filter(g => g.sm).map(g => [g.sm.key, g]));
-                                  const out = smChipEntries.map(e => byKey.get(e.key) ?? { sm: e, devices: [] });
-                                  const unassigned = rawGroups.find(g => !g.sm);
-                                  if (unassigned) out.push(unassigned);
-                                  return out;
+                                  if (!smChipEntries?.length) {
+                                    return groupDevicesBySm(null, summary.devices);
+                                  }
+                                  const groups = smChipEntries.map(e => ({ sm: e, devices: [] }));
+                                  (summary.devices ?? []).forEach((d, i) => {
+                                    const k = devSmKeyByIdx.get(i);
+                                    (groups.find(g => g.sm.key === k) ?? groups[groups.length - 1]).devices.push({ d, i });
+                                  });
+                                  return groups;
                                 })();
                                 const multiSm = smGroups.some(sg => sg.sm != null);
                                 // SM TOGGLE (Dan, 2026-08-26): a selected
-                                // machine shows ONLY its device group; the
-                                // overview shows everything. A stale key
-                                // falls back to the overview.
+                                // machine shows ONLY its own devices — the
+                                // overview shows everything.
                                 const visibleSmGroups = (sheetSmKey !== 'all' && smGroups.some(g => g.sm?.key === sheetSmKey)
-                                  // ORPHANS STAY VISIBLE (Dan's vanished-card
-                                  // bug, 2026-08-27): a device no machine
-                                  // claims (e.g. mid-rename drift) rides the
-                                  // Unassigned group THROUGH the filter —
-                                  // nothing the ME typed ever hides.
-                                  ? smGroups.filter(g => g.sm?.key === sheetSmKey || g.sm == null)
+                                  ? smGroups.filter(g => g.sm?.key === sheetSmKey)
                                   : smGroups)
                                   // STRICT REVEAL: an SM whose devices step
                                   // hasn't come up yet stays hidden entirely.
