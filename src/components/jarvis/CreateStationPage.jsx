@@ -1457,6 +1457,9 @@ function normVerdict(c) {
         question: String(n?.question ?? '').trim(),
         proposedSolution: String(n?.proposedSolution ?? '').trim(),
         blocking: n?.blocking === true,
+        // Device attribution (Dan, 2026-08-27): route the question to the
+        // named device's machine — by ref, never by string luck.
+        ...(n?.device ? { device: String(n.device).trim() } : {}),
       }))
       .filter(n => n.question);
     return { covered: needs.length === 0 && c.covered !== false, needs };
@@ -3788,6 +3791,11 @@ function StepQuestionsPanel({ step, needs = [], valueAsks = [], onAgreeNeed, onF
                 Jarvis proposes: {n.proposedSolution}
               </div>
             )}
+            {n.unattributed && (
+              <div data-testid={`cascade-q-unattributed-${step.key}-${i + 1}`} style={{ fontSize: 10, color: C.light, lineHeight: 1.4 }}>
+                which machine? — couldn't tell, so it waits here on the last one; answer names it
+              </div>
+            )}
           </div>
           <button
             type="button"
@@ -6080,8 +6088,62 @@ export function CreateStationPage({ embedded = false }) {
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [approvedSmDecomp, panelModel, smDecomp, summary]);
-  /** The active step's open questions/notes from the coverage verdicts —
-   *  a need naming another SM's device waits for THAT SM's step. */
+  // ── ROBUST MACHINE ATTRIBUTION (Dan's live MidBaseLoad round, 2026-08-27:
+  // every escapement question rendered on the Pick And Place step; the old
+  // rule leaked every UNMATCHED question onto the CURRENT step). Rules now:
+  //   1. by REF: the need's `device` field (specAuthor names the device a
+  //      question is about) → that device's machine.
+  //   2. by tolerant text: normalized substring both directions + camelCase/
+  //      space/underscore token containment ("escapement finger 2" ↔
+  //      "EscapementFinger2"). Longest matching device name wins.
+  //   3. unmatched → the FURTHEST-FUTURE step of the kind — NEVER the current
+  //      step unless matched (an alias like "Belco bowl" for FeederBowl can't
+  //      be guessed; it waits on the last machine wearing "which machine?").
+  const wordsOf = (s) => String(s ?? '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase().split(/[^a-z0-9]+/)
+    .filter(t => t.length >= 3 || /^\d+$/.test(t));
+  const nameMatchesText = (name, text) => {
+    const nk = normKey(name);
+    if (nk.length >= 4 && normKey(text).includes(nk)) return true;
+    const nw = wordsOf(name);
+    const tw = new Set(wordsOf(text));
+    return nw.length > 0 && nw.every(w => tw.has(w));
+  };
+  /** The machine (entry key) a need belongs to, or null when unattributable. */
+  function needOwnerKey(n, entries) {
+    const claimOf = (devName) => {
+      if (!String(devName ?? '').trim()) return null;
+      for (const e of entries) {
+        for (const dn of (e.deviceNames ?? [])) {
+          if (normKey(dn) === normKey(devName) || nameMatchesText(dn, devName) || nameMatchesText(devName, dn)) return e.key;
+        }
+      }
+      // Sheet-device fallback — the grouped sheet knows every row's machine.
+      const idx = (summary?.devices ?? []).findIndex(d =>
+        normKey(d?.name) === normKey(devName) || nameMatchesText(d?.name ?? '', devName) || nameMatchesText(devName, d?.name ?? ''));
+      return idx !== -1 ? (devSmKeyByIdx.get(idx) ?? null) : null;
+    };
+    // 1. Explicit device ref wins.
+    if (n.device) {
+      const k = claimOf(n.device);
+      if (k) return k;
+    }
+    // 2. Tolerant text scan — longest matching device name wins.
+    let best = null;
+    const consider = (devName, key) => {
+      if (!devName || !key) return;
+      if (nameMatchesText(devName, n.question) && (!best || String(devName).length > best.len)) {
+        best = { key, len: String(devName).length };
+      }
+    };
+    for (const e of entries) for (const dn of (e.deviceNames ?? [])) consider(dn, e.key);
+    (summary?.devices ?? []).forEach((d, i) => consider(d?.displayName ?? d?.name, devSmKeyByIdx.get(i)));
+    return best?.key ?? null;
+  }
+  /** The active step's open questions — a need belonging to another machine
+   *  waits for THAT machine's step; unattributable needs ride the LAST step
+   *  of the kind (never an earlier one). */
   function needsForStep(step) {
     const covKey = covOfKind[step.kind];
     if (!covKey || !jarvisCoverage) return [];
@@ -6090,15 +6152,13 @@ export function CreateStationPage({ embedded = false }) {
       .map(n => ({ ...n, covKey }));
     if (!step.smKey || step.smKey === 'station') return open;
     const entries = smChipEntries ?? panelModel.decomp ?? smDecomp ?? [];
-    const mine = (entries.find(e => e.key === step.smKey)?.deviceNames ?? []).map(normKey).filter(k => k.length >= 4);
-    const others = entries.filter(e => e.key !== step.smKey)
-      .flatMap(e => e.deviceNames ?? []).map(normKey).filter(k => k.length >= 4);
-    return open.filter(n => {
-      const qn = normKey(n.question);
-      const hitsMine = mine.some(k => qn.includes(k));
-      const hitsOther = others.some(k => qn.includes(k));
-      return hitsMine || !hitsOther;
-    });
+    if (entries.length < 2) return open;
+    const kindSteps = cascade.steps.filter(s => s.kind === step.kind);
+    const isLastOfKind = kindSteps.length > 0 && kindSteps[kindSteps.length - 1].key === step.key;
+    return open
+      .map(n => ({ ...n, _owner: needOwnerKey(n, entries) }))
+      .filter(n => n._owner === step.smKey || (n._owner === null && isLastOfKind))
+      .map(({ _owner, ...n }) => (_owner === null ? { ...n, unattributed: true } : n));
   }
   /** The active devices step's value-asks (servo tables, geometry) — only
    *  the step's own SM's devices. */

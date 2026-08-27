@@ -997,6 +997,9 @@ async function summarizeDescription({
           question: String((n && n.question) || '').trim(),
           proposedSolution: String((n && n.proposedSolution) || '').trim(),
           blocking: (n && n.blocking) === true,
+          // Device attribution (Dan, 2026-08-27): a question born from a
+          // device names it — the sheet routes it to that device's machine.
+          ...((n && n.device) ? { device: String(n.device).trim() } : {}),
         }))
         .filter(n => n.question)
         .slice(0, 8);
