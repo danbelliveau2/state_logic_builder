@@ -43,3 +43,6 @@ test_output*.L5X
 JARVIS Deliveries/
 JARVIS Inbox/*
 !JARVIS Inbox/README.txt
+
+# Librarian runtime state (per-machine bookkeeping, not knowledge)
+jarvis-knowledge/librarian-state.json

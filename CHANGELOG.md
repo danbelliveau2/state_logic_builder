@@ -5,6 +5,7 @@ All notable changes to this project. Most recent first.
 ---
 
 ## Unreleased
+- JARVIS Inbox librarian: local drops + network watch folders (X:\Electrical Dept via UNC, read in place) classified and distilled into the one knowledge store; daily run, on-start scan, and "Learn now" on the Jarvis Knowledge tab; every read ledgered in `JARVIS Inbox\_learned\LEDGER.md`; conflicts filed as questions
 - Docs folder created: architecture, decisions, known-issues, roadmap
 - CLAUDE.md restructured to reference docs/ sub-files
 

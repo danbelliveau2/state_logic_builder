@@ -1,0 +1,13 @@
+{
+  "networkRoot": "\\\\stevendouglas.local\\dfs\\Company\\Engineering\\Electrical Dept",
+  "networkDropFolder": "JARVIS Inbox",
+  "watch": [
+    "JARVIS Inbox",
+    "SDC Knowledgebase",
+    "Standards - Software",
+    "Standards - Elect Design",
+    "Standards - Pneumatics",
+    "EE Process and Standards Documents"
+  ],
+  "batchPerRun": 10
+}

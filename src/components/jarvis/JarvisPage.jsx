@@ -448,6 +448,125 @@ function LearnedLine({ raw, onReload }) {
   );
 }
 
+// ── The JARVIS Inbox — librarian status + "Learn now" (Dan, 2026-08-28) ─────
+// Drop anything in JARVIS Inbox\ (or the team's network drop folder); the
+// librarian classifies, distills into the ONE knowledge store, and ledgers
+// every read. This panel shows what's waiting, what was learned, and the
+// network watch folders — with a button to run the librarian right now.
+
+function InboxLibrarianPanel() {
+  const [status, setStatus] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  const reload = () => getJson('/api/jarvis/librarian/status').then(setStatus).catch(e => setError(e.message));
+  useEffect(() => { reload(); }, []);
+
+  const learnNow = async () => {
+    setBusy(true); setError(null);
+    try {
+      const r = await fetch('/api/jarvis/librarian/run', { method: 'POST' });
+      const d = await r.json();
+      if (!r.ok || d.error) throw new Error(d.error || `HTTP ${r.status}`);
+      if (d.errors?.length) setError(d.errors.join(' · '));
+    } catch (e) { setError(e.message); }
+    finally { setBusy(false); reload(); }
+  };
+
+  const net = status?.network;
+  return (
+    <div data-testid="inbox-librarian" style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: '14px 18px', marginBottom: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: C.primary }}>The JARVIS Inbox</h3>
+        {status && (
+          <span data-testid="inbox-unread" style={{
+            background: status.unreadCount > 0 ? C.warning : C.border, color: '#fff',
+            borderRadius: 999, fontSize: 10.5, fontWeight: 700, padding: '1px 8px',
+          }}>
+            {status.unreadCount > 0 ? `${status.unreadCount} unread` : 'all read'}
+          </span>
+        )}
+        <span style={{ flex: 1 }} />
+        {status?.lastRun && (
+          <span style={{ fontSize: 11, color: C.light }}>
+            last read {fmtETFull(status.lastRun)} ({status.lastTrigger})
+          </span>
+        )}
+        <button
+          data-testid="inbox-learn-now"
+          disabled={busy || status?.running}
+          onClick={learnNow}
+          style={{
+            background: busy || status?.running ? C.border : C.primary, color: '#fff', border: 'none',
+            borderRadius: 6, fontSize: 12, fontWeight: 700, padding: '6px 16px',
+            cursor: busy || status?.running ? 'default' : 'pointer',
+          }}
+        >{busy || status?.running ? 'Reading…' : 'Learn now'}</button>
+      </div>
+      <p style={{ fontSize: 12, color: C.muted, margin: '4px 0 8px', lineHeight: 1.5 }}>
+        Drop anything into <code>JARVIS Inbox\</code> (engineer-verified L5X goes in <code>verified\</code>) —
+        Jarvis reads new files daily, files what he learns into his one knowledge store, and
+        ledgers every read in <code>_learned\LEDGER.md</code>. Conflicts become questions, never silent overrides.
+      </p>
+      {error && (
+        <div style={{ background: '#fdecec', border: `1px solid ${C.danger}`, color: C.danger, borderRadius: 6, padding: '6px 10px', fontSize: 11.5, marginBottom: 8 }}>
+          {error}
+        </div>
+      )}
+      {status?.unreadCount > 0 && (
+        <div style={{ fontSize: 11.5, color: C.text, marginBottom: 8 }}>
+          Waiting: {status.unreadFiles.map(f => (
+            <code key={f} style={{ background: C.primaryBg, borderRadius: 3, padding: '0 5px', marginRight: 6, fontFamily: 'Consolas, monospace' }}>{f}</code>
+          ))}
+        </div>
+      )}
+
+      {/* Network watch folders — the team's side of the inbox */}
+      {net && (
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: C.text, marginBottom: 3 }}>
+            Network watch folders
+            <span style={{ fontWeight: 400, color: C.light, marginLeft: 8, fontFamily: 'Consolas, monospace', fontSize: 10 }}>{net.root}</span>
+            {net.reachable === false && (
+              <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, color: '#6b5513', background: '#fdf6e3', border: '1px solid #e6d9a8', borderRadius: 999, padding: '1px 8px' }}>
+                ⚠ unreachable last run — will retry
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {net.watched.map(w => (
+              <span key={w.folder} title={w.lastScanned ? `scanned ${fmtETFull(w.lastScanned)}` : 'not scanned yet'} style={{
+                fontSize: 10.5, border: `1px solid ${C.border}`, borderRadius: 999, padding: '2px 10px',
+                background: C.sidebar, color: C.text,
+              }}>
+                {w.folder}
+                {w.known != null && <span style={{ color: C.light }}> · {w.known} known{w.pending ? `, ${w.pending} new` : ''}</span>}
+              </span>
+            ))}
+          </div>
+          {net.backlog > 0 && (
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
+              {net.backlog} network file(s) queued — the librarian reads {net.batchPerRun} per run, standards and code first.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Recent ledger — what was learned, where it was filed */}
+      {(status?.recentLedger || []).length > 0 && (
+        <div>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: C.text, marginBottom: 3 }}>Recently read</div>
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            {status.recentLedger.map((l, i) => (
+              <li key={i} style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.55 }}><MdInline text={l} /></li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── "What Jarvis knows and where it came from" — the source manifest ────────
 // Dan: "make sure you have access to all the right things and looking at the
 // right places... then we'll see what's missing and what we need to fill you
@@ -2728,6 +2847,7 @@ export function JarvisPage({ onClose, focusSmName = null }) {
           )}
           {tab === 'knowledge' && (
             <>
+              <InboxLibrarianPanel />
               <KnowledgeSourcesPanel />
               <KnowledgeTab
                 knowledge={knowledge}

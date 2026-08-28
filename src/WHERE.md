@@ -9,6 +9,12 @@ If your task isn't listed here, use the **Explore sub-agent** — don't probe.
 
 ## Common tasks (most-frequent first)
 
+### JARVIS Inbox librarian (learning from dropped/network files)
+- Classify/distill/file logic → `lib/agentGenerator/librarian.js` (local inbox + network watch folders)
+- Server routes + daily timer → `server.js` (search `librarian`)
+- "Learn now" panel (Knowledge tab) → `components/jarvis/JarvisPage.jsx` (search `InboxLibrarianPanel`)
+- Watch-list / batch config   → `jarvis-knowledge/inbox-sources.json`
+
 ### Adding / editing an operation (Extend, ServoMove, etc.)
 - Operation list + colors    → `components/nodes/StateNode.jsx` (search `OPERATION_COLORS`)
 - Action UI row              → `components/nodes/StateNode.jsx` (search `function ActionRow`)
@@ -58,7 +64,7 @@ If your task isn't listed here, use the **Explore sub-agent** — don't probe.
 
 ### Project / state-machine actions
 - All store actions          → `store/useDiagramStore.js` (see ToC at top of file)
-- Save/load JSON             → `lib/projectApi.js` + `lib/l5xExporter.js` (`exportProjectJSON`)
+- Save/load JSON             → `lib/projectApi.js` (server REST + `exportProjectJSON` Ctrl+S save — both shells)
 
 ### Standards library
 - Local cache + sync         → `lib/standardsLibrary.js`
@@ -81,7 +87,7 @@ All under `components/modals/`:
 - `AddDeviceModal.jsx`, `CustomDeviceConfigurator.jsx`, `DeviceLibraryPicker.jsx`
 - `ActionModal.jsx`, `NewStateMachineModal.jsx`
 - `ProjectManagerModal.jsx`, `RecipeManagerModal.jsx`
-- `ReferencePositionModal.jsx`, `SmOutputModal.jsx`, `SignalModal.jsx`
+- `SignalModal.jsx` (unified signals — replaced ReferencePositionModal + SmOutputModal, both deleted)
 
 ### Undo / redo / history
 - All actions                → `store/useDiagramStore.js` (search `_pushHistory`, `undo`, `redo`)

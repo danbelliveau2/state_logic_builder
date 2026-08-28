@@ -107,6 +107,10 @@
  *                                     immediate curriculum study pass (~$1)
  *   GET    /api/jarvis/knowledge      { meKnowledge, rulesHeadings } — read-only
  *                                     view of what Jarvis knows (files on disk)
+ *   GET    /api/jarvis/librarian/status  inbox librarian: unread count, last run,
+ *                                     recent ledger lines, network watch state
+ *   POST   /api/jarvis/librarian/run  process the JARVIS Inbox now ("Learn now");
+ *                                     also runs on server start + daily timer
  *   GET    /api/jarvis/trackrecord    { version, history, benchmarks, generatedCount,
  *                                       firstPass: { eligible, shipped, rate, avgRoundsToShip } }
  *                                     — firstPass is Jarvis's HEADLINE number
@@ -3737,6 +3741,30 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       }
     }
 
+    /** The JARVIS Inbox librarian (Dan, 2026-08-28) — classify + distill
+     *  everything dropped in JARVIS Inbox\ (and the network watch folders)
+     *  into the ONE knowledge store.
+     *    GET  /api/jarvis/librarian/status → unread count, last run, recent
+     *         ledger lines, network watch-folder state
+     *    POST /api/jarvis/librarian/run    → process now ("Learn now") */
+    if (pathname === '/api/jarvis/librarian/status') {
+      if (method !== 'GET') return sendJson(res, 405, { error: 'Method not allowed' });
+      try {
+        return sendJson(res, 200, require('./src/lib/agentGenerator/librarian.js').getStatus());
+      } catch (e) { return sendJson(res, 500, { error: e.message }); }
+    }
+    if (pathname === '/api/jarvis/librarian/run') {
+      if (method !== 'POST') return sendJson(res, 405, { error: 'Method not allowed' });
+      // Counts as in-flight AI work (distill calls) so restart discipline holds,
+      // but stays out of the Generations grid — it's not a build.
+      const release = beginAiWork_('librarian', null, null, { register: false });
+      return require('./src/lib/agentGenerator/librarian.js')
+        .runLibrarian({ trigger: 'learn-now' })
+        .then(r => sendJson(res, 200, r))
+        .catch(e => sendJson(res, 500, { error: e.message }))
+        .finally(release);
+    }
+
     if (pathname.startsWith('/api/standards')) {
       const rest = pathname.slice('/api/standards'.length);
       // /api/standards/_debug → diagnostic view of what the server is reading.
@@ -3799,6 +3827,31 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     console.log('  Standards: ' + STANDARDS_DIR_);
     console.log('='.repeat(56) + '\n  Press Ctrl+C to stop.\n');
   });
+
+  // ── JARVIS Inbox librarian — on-start scan + daily run (Dan, 2026-08-28:
+  //    "Jarvis reads new files daily"). Both fire the same run the "Learn
+  //    now" button uses; the single-flight lock inside runLibrarian makes
+  //    overlap harmless. Timers are unref'd so they never hold the process.
+  const runLibrarian_ = (trigger) => {
+    let release = () => {};
+    try {
+      const librarian = require('./src/lib/agentGenerator/librarian.js');
+      release = beginAiWork_('librarian', null, null, { register: false });
+      librarian.runLibrarian({ trigger })
+        .then(r => {
+          if (r.processed?.length || r.errors?.length) {
+            console.log(`[librarian] ${trigger}: ${r.processed.length} processed, ${r.errors.length} error(s)`);
+          }
+        })
+        .catch(e => console.warn('[librarian] run failed:', e.message))
+        .finally(release);
+    } catch (e) {
+      release();
+      console.warn('[librarian] unavailable:', e.message);
+    }
+  };
+  setTimeout(() => runLibrarian_('startup'), 20 * 1000).unref();
+  setInterval(() => runLibrarian_('daily'), 24 * 60 * 60 * 1000).unref();
 
   return server;
 }
