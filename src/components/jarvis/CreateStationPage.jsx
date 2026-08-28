@@ -3731,6 +3731,12 @@ const nameMatchesText = (name, text) => {
 const stripParens = (l) => String(typeof l === 'string' ? l : l?.text ?? '')
   .replace(/\s*\([^)]*\)/g, '').replace(/\s{2,}/g, ' ').trim();
 const stripSeqItem = (x) => (typeof x === 'string' ? stripParens(x) : { ...x, text: stripParens(x) });
+// DEVICE-IDENTITY KEY (Dan's Finger-2 P0, 2026-08-28): the sheet says
+// "EscapementFinger2", the proposal says "Escapement Finger Two" — same
+// device. normKey + digits spelled out makes them one key.
+const NUM_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+const devKey = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  .replace(/[0-9]/g, (ch) => NUM_WORDS[+ch]);
 // ONE WORD (Dan, 2026-08-28): stored lines from before the terminology
 // ruling render normalized — "handshake" never reaches the screen. The
 // engine rewrites the stored text properly at the next gate.
@@ -4565,6 +4571,11 @@ export function CreateStationPage({ embedded = false }) {
     hydrateImages(d.draftId);
     setQaRounds(0); setQaHistory([]); setChanges(''); setError(null);
     setLearnedNotes([]); setDraftImagesDropped(0);
+    // THE CONVERSATION SURVIVES RESUME (Finger-2 P0 follow-on, 2026-08-28):
+    // this setter was missing — the persist effect then saved [] over the
+    // stored thread, silently WIPING the draft's chat history on resume.
+    setChatThread(Array.isArray(d.chatThread) ? d.chatThread : []);
+    reconciledDraftRef.current = null; // re-run the load reconcile for this draft
     setOtherDrafts(loadDrafts(draftKey).filter(x => x.draftId !== d.draftId && (!x.smId || !smExists(x.smId))));
     setPhase(d.phase === 'summary' && s ? 'summary' : 'input');
   }
@@ -5751,21 +5762,105 @@ export function CreateStationPage({ embedded = false }) {
           }
         }
         setSeqDiff(Object.keys(diffByKey).length ? { byKey: diffByKey, at: Date.now() } : null);
+        // ATOMIC DEVICE REMOVAL (Dan's Finger-2 P0, 2026-08-28): the engine
+        // dropping a device from the proposal edits ONLY the proposal — the
+        // device CARDS render from sheet devices[], and open questions live
+        // in coverage. One apply, ALL artifacts: a device owned by the OLD
+        // proposal, owned nowhere in the NEW one, and mentioned in no new
+        // sequence line is REMOVED — sheet row deleted, its questions
+        // auto-closed (standing stale-questions rule), assignment record
+        // pruned. Anything still mentioned in a sequence is NOT removed.
+        const oldOwnedKeys = new Set((smProposal?.stateMachines ?? []).flatMap(m => m.ownedDeviceNames ?? []).map(devKey));
+        const newOwnedKeys = new Set((d.stateMachines ?? []).flatMap(m => m.ownedDeviceNames ?? []).map(devKey));
+        const newProse = (d.stateMachines ?? [])
+          .flatMap(m => [...(m.sequence ?? []), ...(m.faultRecovery ?? [])]).map(devKey).join('|');
+        const droppedKeys = [...oldOwnedKeys].filter(k => k && !newOwnedKeys.has(k) && !newProse.includes(k));
+        const matchesDropped = (nm) => {
+          const k = devKey(nm);
+          return !!k && droppedKeys.some(g => k === g || k.includes(g) || g.includes(k));
+        };
+        const removedDevNames = (summary?.devices ?? [])
+          .map(dv => String(dv?.displayName ?? dv?.name ?? ''))
+          .filter(matchesDropped);
+        if (removedDevNames.length) {
+          setSummary(s => withSheetPrefill({
+            ...s,
+            devices: (s.devices ?? []).filter(dv => !matchesDropped(dv?.displayName ?? dv?.name ?? '')),
+          }));
+          setDirty(true);
+          // Auto-close the removed device's open questions — a question
+          // whose subject no longer exists is stale by definition.
+          const qMatchesRemoved = (n) => {
+            if (n?.device && matchesDropped(n.device)) return true;
+            const qk = devKey(n?.question ?? '');
+            return removedDevNames.some(nm => {
+              const k = devKey(nm);
+              // full key, or the name's distinctive tail ("fingertwo")
+              return qk.includes(k) || (k.length > 8 && qk.includes(k.slice(-8)));
+            });
+          };
+          setAgreedNeeds(prev => {
+            const next = new Set(prev);
+            for (const covKey of Object.keys(jarvisCoverage ?? {})) {
+              for (const n of (jarvisCoverage?.[covKey]?.needs ?? [])) {
+                if (qMatchesRemoved(n)) next.add(`${covKey}:${n.question}`);
+              }
+            }
+            return next;
+          });
+          setDeviceAssignments(prev => {
+            const next = { ...(prev ?? {}) };
+            for (const nm of Object.keys(next)) { if (matchesDropped(nm)) delete next[nm]; }
+            return next;
+          });
+        }
         const cur = focusKey ? diffByKey[focusKey] : null;
         const curCount = cur ? cur.removed.length + cur.added.length + cur.changed.length : 0;
+        // RECEIPTS ARE COMPUTED FROM THE ACTUAL DIFF ONLY (Dan, 2026-08-28):
+        // every clause below comes from a comparison this client just made —
+        // never from the model's narration of what it meant to do.
+        const removedClause = removedDevNames.length
+          ? ` Removed ${removedDevNames.join(' and ')} from the devices — its open questions closed.`
+          : '';
         setChatThread(th => [...th, {
           role: 'jarvis',
           text: cur && curCount
-            ? `Done — ${curCount} change${curCount === 1 ? '' : 's'} to ${cur.machine}, shown on its sequence card.`
-            : Object.keys(diffByKey).length
-              ? 'Done — updated.'
+            ? `Done — ${curCount} change${curCount === 1 ? '' : 's'} to ${cur.machine}, shown on its sequence card.${removedClause}`
+            : Object.keys(diffByKey).length || removedDevNames.length
+              ? `Done — updated.${removedClause}`
               : 'I read that as approving the proposal as-is — nothing changed. Did I miss an edit?',
           at: Date.now(),
         }]);
         // NEVER-SILENT (Dan's eaten-message P0): if the engine honored a
         // request somewhere other than a visible sequence line, say where.
+        // GUARDED (Finger-2 P0): a note CLAIMING a removal the apply did not
+        // make is an APPLY FAILURE — say so honestly, never print the claim.
         const note = String(d.noteToEngineer ?? '').trim();
-        if (note) setChatThread(th => [...th, { role: 'jarvis', text: note, at: Date.now() }]);
+        if (note) {
+          // FALSE-CLAIM = the removal VERB'S OBJECT survived — a note that
+          // merely mentions other devices while explaining a real removal
+          // is fine (learned: the guard's first cut flagged those too).
+          const spellNums2 = (t) => String(t ?? '')
+            .replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+            .toLowerCase().replace(/[0-9]/g, (ch) => ` ${NUM_WORDS[+ch]}`);
+          const noteText = spellNums2(note);
+          const survivors = (summary?.devices ?? [])
+            .map(dv => String(dv?.displayName ?? dv?.name ?? ''))
+            .filter(nm => !matchesDropped(nm));
+          const falseClaim = survivors.some(nm => {
+            const words = spellNums2(nm).split(/[^a-z]+/).filter(w => w.length > 1);
+            if (!words.length) return false;
+            const tail = words.slice(-2).join('[^a-z]{0,3}');
+            return new RegExp(`\\b(dropp?ed|removed|deleted)\\b[^.!?]{0,50}${tail}`, 'i').test(noteText);
+          });
+          setChatThread(th => [...th, {
+            role: 'jarvis',
+            text: falseClaim
+              ? 'Part of that didn\'t apply — I described a device removal the sheet doesn\'t show. Tell me again ("drop <device>") and I\'ll make it land.'
+              : note,
+            at: Date.now(),
+          }]);
+        }
       }
       if (linkedSmId) appendChangeLog(linkedSmId, {
         what: `State-machine proposal — ${d.stateMachines.length} machine${d.stateMachines.length === 1 ? '' : 's'}`,
@@ -6692,6 +6787,70 @@ export function CreateStationPage({ embedded = false }) {
     }
     return out;
   }
+
+  // RECONCILE ON LOAD (Dan's Finger-2 P0, 2026-08-28): before the atomic-
+  // removal fix, an engine round could drop a device from the proposal while
+  // its sheet row (and open question) survived. On load: if the ME explicitly
+  // asked to remove a device in this draft's chat, AND the current proposal
+  // neither owns nor mentions it, the removal finally LANDS — sheet row out,
+  // questions closed, one honest chat line. Both conditions required: an
+  // explicit directive alone or an unowned device alone never deletes.
+  const reconciledDraftRef = useRef(null);
+  useEffect(() => {
+    if (phase !== 'summary' || !smProposal?.stateMachines?.length) return;
+    if (reconciledDraftRef.current === (draftIdRef.current ?? draftKey)) return;
+    reconciledDraftRef.current = draftIdRef.current ?? draftKey;
+    const ownedKeys = new Set(smProposal.stateMachines.flatMap(m => m.ownedDeviceNames ?? []).map(devKey));
+    const prose = smProposal.stateMachines
+      .flatMap(m => [...(m.sequence ?? []), ...(m.faultRecovery ?? [])]).map(devKey).join('|');
+    const spellNums = (t) => String(t ?? '')
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+      .toLowerCase().replace(/[0-9]/g, (ch) => ` ${NUM_WORDS[+ch]}`);
+    const meText = chatThread.filter(t => t?.role === 'me').map(t => spellNums(t.text)).join(' … ');
+    const askedToRemove = (nm) => {
+      const words = spellNums(nm).split(/[^a-z]+/).filter(w => w.length > 1);
+      if (!words.length) return false;
+      const tail = words.slice(-2).join('[^a-z]{0,3}');
+      return new RegExp(`(drop|remove|delete|get rid of|lose|don't need|do not need|without the)[^.!?]{0,60}${tail}`, 'i').test(meText);
+    };
+    const gone = (summary?.devices ?? [])
+      .map(dv => String(dv?.displayName ?? dv?.name ?? ''))
+      .filter(nm => {
+        const k = devKey(nm);
+        return k && !ownedKeys.has(k) && ![...ownedKeys].some(o => o.includes(k) || k.includes(o))
+          && !prose.includes(k) && askedToRemove(nm);
+      });
+    if (!gone.length) return;
+    const isGone = (nm) => gone.some(g => devKey(g) === devKey(nm));
+    setSummary(s => withSheetPrefill({
+      ...s,
+      devices: (s.devices ?? []).filter(dv => !isGone(dv?.displayName ?? dv?.name ?? '')),
+    }));
+    setDirty(true);
+    setAgreedNeeds(prev => {
+      const next = new Set(prev);
+      for (const covKey of Object.keys(jarvisCoverage ?? {})) {
+        for (const n of (jarvisCoverage?.[covKey]?.needs ?? [])) {
+          const qk = devKey(n?.question ?? '');
+          if ((n?.device && isGone(n.device)) || gone.some(nm => { const k = devKey(nm); return qk.includes(k) || (k.length > 8 && qk.includes(k.slice(-8))); })) {
+            next.add(`${covKey}:${n.question}`);
+          }
+        }
+      }
+      return next;
+    });
+    setDeviceAssignments(prev => {
+      const next = { ...(prev ?? {}) };
+      for (const nm of Object.keys(next)) { if (isGone(nm)) delete next[nm]; }
+      return next;
+    });
+    setChatThread(th => [...th, {
+      role: 'jarvis',
+      text: `Cleaned up: ${gone.join(' and ')} — you asked me to drop ${gone.length === 1 ? 'it' : 'them'} and the proposal did, but the sheet row survived. It's out now and its open question is closed.`,
+      at: Date.now(),
+    }]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, smProposal, draftKey]);
 
   function openSectionEdit(key) {
     if (sectionEditKey === key) { setSectionEditKey(null); setSectionProposal(null); return; }

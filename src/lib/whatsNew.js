@@ -10,12 +10,22 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.24';
+export const UI_BUILD = 'v2.6.25';
 
 export const BUILT_AT = '2026-08-28';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.25',
+    date: '2026-08-28',
+    items: [
+      'FIXED (the Finger-2 bug) — DEVICE REMOVAL IS NOW ATOMIC: "get rid of finger 2" removed it from the proposal but the device CARD and its open question lived elsewhere and survived, while the receipt narrated the drop. Now one apply hits every artifact: the sheet device row goes, the device\'s open questions auto-close, its placement record clears — and the receipt only ever states what the before/after comparison actually shows. A narrated removal the sheet doesn\'t show prints an honest "part of that didn\'t apply" instead',
+      'Your stuck draft self-heals on load: a device you explicitly told Jarvis to drop, that the proposal did drop but the sheet still showed, is cleaned up with one line in the chat saying exactly what happened',
+      'FIXED — resuming a draft silently WIPED its chat history (the conversation the engine relies on). It survives resume now',
+      'The checker now rejects half-removals: a device dropped from ownership but still named in a sequence line (or vice versa) bounces back to the thinker before you ever see it',
+    ],
+  },
   {
     version: 'v2.6.24',
     date: '2026-08-28',
