@@ -3731,6 +3731,10 @@ const nameMatchesText = (name, text) => {
 const stripParens = (l) => String(typeof l === 'string' ? l : l?.text ?? '')
   .replace(/\s*\([^)]*\)/g, '').replace(/\s{2,}/g, ' ').trim();
 const stripSeqItem = (x) => (typeof x === 'string' ? stripParens(x) : { ...x, text: stripParens(x) });
+// ONE WORD (Dan, 2026-08-28): stored lines from before the terminology
+// ruling render normalized — "handshake" never reaches the screen. The
+// engine rewrites the stored text properly at the next gate.
+const normalizeSeqLine = (l) => stripParens(l).replace(/\bhandshakes\b/gi, 'signals').replace(/\bhandshake\b/gi, 'signal');
 
 /** LIVE DIFF rows for a sequence card (Dan, 2026-08-28): the new sequence
  *  with added/changed lines marked, removed lines struck through in place. */
@@ -3787,6 +3791,13 @@ function CascadeStepBar({ step, stepNo, stepCount, needsCount = 0, valuesCount =
       }}>
         Step {stepNo} of {stepCount}
       </span>
+      {/* Interactions review = the sequence card's tag column (Dan,
+          2026-08-28) — one prompt sentence here, never a second list. */}
+      {step.kind === 'interactions' && (
+        <span data-testid={`cascade-stepbar-hint-${step.key}`} style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.85)', whiteSpace: 'nowrap' }}>
+          check the tagged signal lines — complete?
+        </span>
+      )}
       {(needsCount > 0 || valuesCount > 0) && (
         <span data-testid={`cascade-stepbar-needs-${step.key}`} style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.85)', whiteSpace: 'nowrap' }}>
           {[needsCount > 0 ? `${needsCount} to answer` : null, valuesCount > 0 ? `${valuesCount} value${valuesCount === 1 ? '' : 's'} needed` : null]
@@ -6817,9 +6828,12 @@ export function CreateStationPage({ embedded = false }) {
   // kind — recovery renders inside the sequence section's recovery column.
   const hostSectionOf = (kind) =>
     kind === 'devices' ? 'devices'
-      : kind === 'sequence' || kind === 'recovery' ? 'sequence'
-        : kind === 'interactions' ? 'interactions'
-          : null;
+      // Interactions host on the SEQUENCE section (Dan, 2026-08-28): the
+      // review surface IS the sequence card's tag column — the old
+      // interactions section is hidden during the walk, so the step bar
+      // (Step N of M · Approve) must live where the content lives.
+      : kind === 'sequence' || kind === 'recovery' || kind === 'interactions' ? 'sequence'
+        : null;
   const activeStep = cascadeLive ? cascade.activeStep : null;
   const activeHostSection = activeStep ? hostSectionOf(activeStep.kind) : null;
   const activeStepNeeds = activeStep && activeStep.kind !== 'smSplit' ? needsForStep(activeStep) : [];
@@ -8455,17 +8469,19 @@ export function CreateStationPage({ embedded = false }) {
                                     // INTERACTIONS ARE SEQUENCE LINES (Dan, 2026-08-28): derived
                                     // at render, never stored. Two scopes, two colors — another
                                     // machine in THIS station vs another station entirely.
-                                    const ix = deriveInteractionLines((e.sequence ?? []).map(x => stripParens(x)), {
+                                    const ix = deriveInteractionLines((e.sequence ?? []).map(x => normalizeSeqLine(x)), {
                                       selfName: e.name,
                                       // ALL the station's machines — not just the revealed
                                       // columns (a hidden machine is still a counterpart).
                                       sameMachines: (smChipEntries ?? []).filter(o => o.key !== e.key).map(o => o.name).filter(Boolean),
-                                      otherStations: peerNames,
+                                      // The Dial is a standing counterpart on dial machines
+                                      // even when no "Dial" station exists in the project.
+                                      otherStations: [...new Set([...peerNames, 'Dial'])],
                                     });
                                     const ixByText = new Map();
                                     (e.sequence ?? []).forEach((ln, i2) => {
                                       const info = ix.byLine.get(i2);
-                                      if (info) ixByText.set(stripParens(ln), info);
+                                      if (info) ixByText.set(normalizeSeqLine(ln), info);
                                     });
                                     const scopeStyle = (scope) => scope === 'sameStation'
                                       ? { color: '#075985', background: '#e0f2fe', border: '1px solid #bae6fd' }
@@ -8476,22 +8492,32 @@ export function CreateStationPage({ embedded = false }) {
                                       {/* LIVE DIFF (Dan, 2026-08-28): a correction shows right
                                           here — removed struck, added/changed highlighted —
                                           parenthetical annotations never render. */}
-                                      <ol style={{ margin: 0, paddingLeft: 20, fontSize: 12, lineHeight: 1.55, color: C.text }}>
+                                      {/* ALIGNED TAG COLUMN (Dan, 2026-08-28): sequence text
+                                          left, interaction tag right — all tags on one
+                                          vertical line regardless of line length. The arrow
+                                          is the direction: ← incoming wait, → outgoing set. */}
+                                      <div style={{
+                                        display: 'grid', gridTemplateColumns: 'auto 1fr auto',
+                                        columnGap: 8, rowGap: 2, alignItems: 'baseline',
+                                        fontSize: 12, lineHeight: 1.55, color: C.text,
+                                      }}>
                                         {seqDiffRows(e.sequence, seqDiff?.byKey?.[e.key] ?? null).map((r, li) => {
-                                          const info = ixByText.get(stripParens(r.t)) ?? null;
+                                          const txt = normalizeSeqLine(r.t);
+                                          const info = ixByText.get(txt) ?? null;
+                                          const rowStyle = r.removed
+                                            ? { textDecoration: 'line-through', color: '#991b1b', opacity: 0.75 }
+                                            : (r.added || r.changed)
+                                              ? { background: '#fef9c3', borderRadius: 3 }
+                                              : undefined;
                                           return (
-                                          <li
-                                            key={li}
-                                            data-testid={r.removed ? `seq-removed-${e.key}-${li}` : r.added ? `seq-added-${e.key}-${li}` : undefined}
-                                            title={r.changed ? `was: ${stripParens(r.was)}` : undefined}
-                                            style={r.removed
-                                              ? { textDecoration: 'line-through', color: '#991b1b', opacity: 0.75 }
-                                              : (r.added || r.changed)
-                                                ? { background: '#fef9c3', borderRadius: 3 }
-                                                : undefined}
-                                          >
-                                            {stripParens(r.t)}
-                                            {info && !r.removed && (
+                                          <Fragment key={li}>
+                                            <span style={{ ...rowStyle, color: C.muted, fontSize: 11 }}>{li + 1}.</span>
+                                            <span
+                                              data-testid={r.removed ? `seq-removed-${e.key}-${li}` : r.added ? `seq-added-${e.key}-${li}` : undefined}
+                                              title={r.changed ? `was: ${normalizeSeqLine(r.was)}` : undefined}
+                                              style={rowStyle}
+                                            >{txt}</span>
+                                            {info && !r.removed ? (
                                               <span
                                                 data-testid={`seq-ix-tag-${e.key}-${li}`}
                                                 title={info.scope === 'sameStation'
@@ -8499,15 +8525,15 @@ export function CreateStationPage({ embedded = false }) {
                                                   : `Signal with ${info.counterpart} — a different station (this station's external interface)`}
                                                 style={{
                                                   ...scopeStyle(info.scope), fontSize: 9.5, fontWeight: 700,
-                                                  borderRadius: 4, padding: '0px 5px', marginLeft: 6,
-                                                  whiteSpace: 'nowrap', verticalAlign: '1px',
+                                                  borderRadius: 4, padding: '0px 6px', justifySelf: 'start',
+                                                  whiteSpace: 'nowrap',
                                                 }}
-                                              >— {info.counterpart}</span>
-                                            )}
-                                          </li>
+                                              >{/^\s*wait\b/i.test(txt) ? '←' : '→'} {info.counterpart}</span>
+                                            ) : <span />}
+                                          </Fragment>
                                           );
                                         })}
-                                      </ol>
+                                      </div>
                                       {seqDiff?.byKey?.[e.key] && (
                                         <button
                                           type="button"
@@ -8519,36 +8545,10 @@ export function CreateStationPage({ embedded = false }) {
                                           }}
                                         >✓ got it</button>
                                       )}
-                                      {/* THE INTERACTIONS LENS (Dan, 2026-08-28): a review view
-                                          DERIVED from the sequence — the single source. Nothing
-                                          stored separately, so it can never drift. */}
-                                      {stepRevealed('interactions', e.key) && (
-                                        <div data-testid={`interactions-lens-${e.key}`} style={{ marginTop: 8 }}>
-                                          <SubHead color="#0e7490">Signals with other machines</SubHead>
-                                          {ix.groups.length === 0 ? (
-                                            <div style={{ fontSize: 12, color: C.muted }}>
-                                              No signals with other machines in this sequence.
-                                            </div>
-                                          ) : ix.groups.map((g) => (
-                                            <div key={`${g.scope}:${g.counterpart}`} style={{ fontSize: 12, color: C.text, lineHeight: 1.55, marginBottom: 4 }}>
-                                              <span style={{ fontWeight: 700 }}>{g.counterpart}</span>
-                                              <span
-                                                style={{
-                                                  ...scopeStyle(g.scope), fontSize: 9.5, fontWeight: 700,
-                                                  borderRadius: 4, padding: '0px 5px', marginLeft: 6, whiteSpace: 'nowrap',
-                                                }}
-                                              >{g.scope === 'sameStation' ? 'this station' : 'other station'}</span>
-                                              <div style={{ color: C.muted, fontSize: 11.5 }}>
-                                                {g.lines.map((l, gi) => <div key={gi}>• {l}</div>)}
-                                              </div>
-                                            </div>
-                                          ))}
-                                          <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
-                                            Drawn from the sequence lines above — complete and correct?
-                                            Approve, or tell Jarvis what's missing.
-                                          </div>
-                                        </div>
-                                      )}
+                                      {/* NO SECOND LIST (Dan, 2026-08-28: "you're already
+                                          putting that in the sequence — why have another row
+                                          below?"): the interactions review IS this card's tag
+                                          column; the step bar carries the one prompt line. */}
                                       {(e.faultRecovery?.length ?? 0) > 0 && stepRevealed('recovery', e.key) && (
                                         <>
                                           <SubHead color="#b45309">Fault recovery</SubHead>
