@@ -10,12 +10,30 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.22';
+export const UI_BUILD = 'v2.6.23';
 
-export const BUILT_AT = '2026-08-26';
+export const BUILT_AT = '2026-08-28';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.23',
+    date: '2026-08-28',
+    items: [
+      'DEVICE PLACEMENT IS AGENTIC, GATE-DRIVEN, AND CHECKED — no more guessing rules and no background calls: at the cascade gates (your explanation submitted; each Approve) a THINKER decides device↔machine ownership like an SDC controls engineer — from the shipped-work precedents, the station-archetype concepts, and standing knowledge — and a CHECKER trained on the same knowledge reviews it BEFORE it renders (ship/fix, one bounce: a bowl proposed onto the pick-and-place comes back on the escapement machine with the violation named). Jason\'s process, applied to the spec sheet',
+      'EVIDENCE, NOT GUESSES — a precedent-backed placement is confident: no question, and the receipt cites the source ("in our shipped escapement stations the bowl is part of the state machine that includes the escapement — FlexFeeder, the escapement pattern"). Only a device class with genuinely NO SDC example asks — and the question says so: "I searched our shipped work and standards — no example of a PlasmaWelder on any station. Where does it belong?" Your answer files as dated doctrine — asked once, ever',
+      'THE RENDER NEVER DEPENDS ON A MODEL CALL — devices keep their last-known machine while a placement pass runs or fails; a failure retries once quietly then says the real reason ONE time. The red "(200)" spam and the vanishing devices are dead (root causes: a stale server build answering HTML, and last-known homes being ignored)',
+      'The thousand-bowl fact is written down (station archetypes: bowl + escapement + nest are part of the feeding state machine, never the pick-and-place) — the missing knowledge that caused the guess in the first place',
+    ],
+  },
+  {
+    version: 'v2.6.22',
+    date: '2026-08-27',
+    items: [
+      'MOVE A DEVICE BY SAYING SO — "FeederBowl belongs to the Escapement" in the chat moves it instantly: it leaves this machine\'s step, appears on the other\'s, the receipt says so, and your word outranks every automatic signal',
+      'Drafts mirror to the server on every save (sans pictures) so a live incident is diagnosable from real data',
+    ],
+  },
   {
     version: 'v2.6.21',
     date: '2026-08-27',

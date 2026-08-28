@@ -28,7 +28,7 @@ Features planned or in-progress. Update this as things ship or get deprioritized
 
 | Feature | Notes |
 |---------|-------|
-| Electron desktop app packaging | `electron/main.js` + `BUILD_DESKTOP.bat` exist but packaging untested. Revisit when web version is stable. |
+| Electron desktop app packaging | `electron/main.js` + `_archive/BUILD_DESKTOP.bat` exist but packaging untested. Revisit when web version is stable. |
 | Servo R04/R05 velocity/acceleration inputs | CE always tunes post-export; keeping 0.0 placeholders is intentional |
 | Additional station-type init templates | Standard pneumatic, inspection, robot-cell — add as needed per project type |
 
@@ -43,3 +43,5 @@ Features planned or in-progress. Update this as things ship or get deprioritized
 - v1.22 — Wait-branching rule + standards library seed/export
 - v1.21 — Edge clearance: owner nodes push their own stub-adjacent segments
 - v1.20 — Standards auto-save, Copy + inline rename, category grouping
+
+| Thinker/checker corpus expansion | Dan (2026-08-28): train the spec-sheet thinker/checker on far more shipped machine code — "a million examples: front stations, cameras, all kinds" — extend scripts/harvestPrecedents.cjs to harvest SM-breakup + device-ownership patterns per station family, refreshed by the daily training run. Also: prompt-cache the stable context blocks (knowledge, precedents, sheet snapshot) on the chat engine call. |

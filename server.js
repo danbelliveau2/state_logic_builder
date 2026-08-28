@@ -1073,7 +1073,57 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
   // class and what ran.
   const SECTION_MODEL_ = process.env.JARVIS_SECTION_MODEL || 'claude-sonnet-5';
 
-  async function routeCorrectionRound_(author, body, { signal = null, onProgress = null } = {}) {
+  /** ONE ENGINE, CHECKED (Dan, 2026-08-28): every substantive corrections
+   *  round runs thinker → CHECKER before it renders — did the revision apply
+   *  every edit embedded in the feedback, the SDC way? fix → ONE bounce with
+   *  the violations folded in, then surface honestly. Pure value patches
+   *  (zero judgment) keep their deterministic fast path. */
+  async function routeCorrectionRound_(author, body, opts = {}) {
+    const result = await routeCorrectionRoundInner_(author, body, opts);
+    const corrections = String(body.corrections ?? '').trim();
+    if (!corrections || !body.sheetState || !result || !result.summary) return result;
+    if (result.routing && result.routing.class === 'value') return result; // zero-judgment fast path
+    try {
+      const { checkProposal } = require('./src/lib/agentGenerator/smDecomposer.js');
+      const chk = await checkProposal({
+        kind: 'sheet-correction',
+        payload: {
+          engineersFeedback: corrections,
+          changesMade: result.changesMade || [],
+          chatReply: result.chatReply || '',
+          revised: {
+            devices: (result.summary.devices || []).map(d => ({ name: d && d.name, type: d && d.type })),
+            sequence: result.summary.sequence || [],
+            failureHandling: result.summary.failureHandling || [],
+            interactions: result.summary.interactions || [],
+          },
+        },
+        description: String(body.description || ''),
+        signal: opts.signal || null,
+      });
+      let out = result;
+      if (chk.verdict === 'fix' && chk.violations.length) {
+        const bounced = await routeCorrectionRoundInner_(author, {
+          ...body,
+          corrections: corrections
+            + '\n\nCHECKER FINDINGS (a second SDC engineer reviewed your previous attempt at this '
+            + 'exact correction and found these misses — fix every one this time):\n- '
+            + chk.violations.join('\n- '),
+        }, opts);
+        if (bounced && bounced.summary) out = bounced;
+        out.checked = { verdict: 'fix', violations: chk.violations, bounced: true };
+      } else {
+        out.checked = { verdict: chk.verdict, violations: chk.violations };
+      }
+      if (out.meta) out.meta.costUSD = Number((((out.meta.costUSD || 0) + chk.meta.costUSD)).toFixed(4));
+      return out;
+    } catch (e) {
+      result.checked = { verdict: 'unchecked', violations: ['checker unavailable: ' + e.message] };
+      return result;
+    }
+  }
+
+  async function routeCorrectionRoundInner_(author, body, { signal = null, onProgress = null } = {}) {
     const baseArgs = {
       description: body.description,
       images: Array.isArray(body.images) ? body.images : [],
@@ -2025,6 +2075,8 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
           images: Array.isArray(body.images) ? body.images : [],
           expectedStateMachines: typeof body.expectedStateMachines === 'string' ? body.expectedStateMachines : '',
           otherSms: Array.isArray(body.otherSms) ? body.otherSms : [],
+          // Correction rounds carry the proposal being revised (one engine).
+          currentProposal: Array.isArray(body.currentProposal) ? body.currentProposal : null,
         });
       } finally { releaseAi(); }
       sendJson(res, 200, { ok: true, ...result });
@@ -3387,6 +3439,47 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     if (pathname === '/api/jarvis/decompose') {
       if (method === 'POST') return handleJarvisDecompose(req, res);
       return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    // AGENTIC device→machine assignment (Dan, 2026-08-28: "aren't you using
+    // our standards, our history?") — batched, cheap tier, evidence-cited.
+    if (pathname === '/api/jarvis/assign-devices') {
+      if (method !== 'POST') return sendJson(res, 405, { error: 'Method not allowed' });
+      return (async () => {
+        try {
+          const body = JSON.parse(await readBody(req) || '{}');
+          const decomposer = require('./src/lib/agentGenerator/smDecomposer.js');
+          const releaseAi = beginAiWork_('assign-devices', null, body.smName || null, { register: false });
+          let result;
+          try {
+            result = await decomposer.assignDevices({
+              devices: Array.isArray(body.devices) ? body.devices : [],
+              machines: Array.isArray(body.machines) ? body.machines : [],
+              description: typeof body.description === 'string' ? body.description : '',
+            });
+          } finally { releaseAi(); }
+          sendJson(res, 200, { ok: true, ...result });
+        } catch (e) {
+          if (e && e.code === 'AI_NOT_CONFIGURED') return sendJson(res, 503, { error: e.message });
+          sendJson(res, 500, { error: e.message });
+        }
+      })();
+    }
+
+    // DEVICE-OWNERSHIP DOCTRINE (Dan, 2026-08-28: a no-precedent ruling files
+    // as a dated fact — asked ONCE, ever, company-wide).
+    if (pathname === '/api/jarvis/learn-ownership') {
+      if (method !== 'POST') return sendJson(res, 405, { error: 'Method not allowed' });
+      return (async () => {
+        try {
+          const body = JSON.parse(await readBody(req) || '{}');
+          const fact = String(body.fact ?? '').trim();
+          if (!fact) return sendJson(res, 400, { error: 'fact required' });
+          const { appendLearnedFacts } = require('./src/lib/agentGenerator/meKnowledge.js');
+          const { recorded } = appendLearnedFacts([{ scope: 'sdc-standard', fact }], { who: body.who || 'ME' });
+          sendJson(res, 200, { ok: true, recorded: recorded.length > 0 });
+        } catch (e) { sendJson(res, 500, { error: e.message }); }
+      })();
     }
 
     // Sheet-draft mirror — the serialized draft persists server-side so live

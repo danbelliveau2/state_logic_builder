@@ -3788,10 +3788,15 @@ function CascadeStepBar({ step, stepNo, stepCount, needsCount = 0, valuesCount =
  *  section — their ONE home. Each carries Jarvis's proposal + Agree; the chat
  *  understands numbered answers ("1 — yes; 2 — actually …"). Value-asks ride
  *  as jump links, counted in the header's needs line. */
-function StepQuestionsPanel({ step, needs = [], valueAsks = [], onAgreeNeed, onFocusChat }) {
-  if (!needs.length && !valueAsks.length) return null;
+function StepQuestionsPanel({ step, needs = [], valueAsks = [], onAgreeNeed, onFocusChat, pendingNote = null }) {
+  if (!needs.length && !valueAsks.length && !pendingNote) return null;
   return (
     <div data-testid={`cascade-step-needs-${step.key}`} style={{ margin: '0 0 8px' }}>
+      {pendingNote && (
+        <div data-testid={`cascade-assign-pending-${step.key}`} style={{ fontSize: 11, color: C.muted, margin: '2px 0 4px' }}>
+          ⟳ {pendingNote}
+        </div>
+      )}
       {needs.map((n, i) => (
         <div key={`n${i}`} style={{
           display: 'flex', alignItems: 'flex-start', gap: 8, margin: '2px 0',
@@ -5057,6 +5062,7 @@ export function CreateStationPage({ embedded = false }) {
    *  materialize smSplit from the compiled proposal when the split agent
    *  hasn't persisted one yet. Approved = THE authority. */
   function approveSmSplit() {
+    assignGateRef.current = true; // gate: machines exist → place the devices
     // Approve WHAT'S DISPLAYED — the panel's ONE-truth source (never a stale
     // smSplit hijacking the approval of the fresh proposal).
     const displayed = panelModel.decomp ?? smDecomp;
@@ -5414,6 +5420,15 @@ export function CreateStationPage({ embedded = false }) {
       round: qaRounds,
       qaHistory,
       priorCoverage: jarvisCoverage,
+      // FULL CONTEXT ON EVERY CHAT TURN (Dan, 2026-08-28): the chat is the
+      // SAME engine as the build — it sees the conversation, where he is in
+      // the cascade, and the recent actions.
+      chatHistory: chatThread.slice(-20).map(t => ({ role: t.role, text: String(t.text ?? '').slice(0, 300) })),
+      cascadePosition: cascade.activeStep ? {
+        activeLabel: cascade.activeStep.label,
+        approved: cascade.steps.filter(s => s.status === 'approved').map(s => s.label),
+      } : null,
+      changeLog: localChangeLogOf(linkedSm).slice(0, 12).map(e => e.what).filter(Boolean),
     }, (pct, stage) => {
       setSumPct(pct);
       setSumStage(stage);
@@ -5635,6 +5650,11 @@ export function CreateStationPage({ embedded = false }) {
               ? `\n\nENGINEER'S CORRECTION to your previous proposal${(smProposal?.stateMachines?.length ?? 0) ? ` (${smProposal.stateMachines.map(m => m.name).join(', ')})` : ''}: ${splitCounterRef.current}\nRe-propose accordingly — his correction wins.`
               : ''),
           otherSms: peerSms.map(s => ({ name: s.name, displayName: s.displayName ?? s.name })),
+          // ONE ENGINE (Dan, 2026-08-28): a correction round revises the
+          // CURRENT proposal — machines, sequences, ownership carry forward
+          // verbatim except where the feedback touches them.
+          ...(splitCounterRef.current && smProposal?.stateMachines?.length
+            ? { currentProposal: smProposal.stateMachines } : {}),
           smName: name.trim() || null,
         }),
       });
@@ -5648,11 +5668,40 @@ export function CreateStationPage({ embedded = false }) {
         costUSD: d.meta?.costUSD ?? null,
       });
       setProposeRun(null);
+      assignGateRef.current = true; // gate: proposal landed → place the devices
       if (splitCounterRef.current) {
         splitCounterRef.current = '';
+        // COMPUTED RECEIPT (never claims): diff the revised proposal against
+        // the one it replaces — per machine, sequence lines added/removed.
+        const items = [];
+        const oldByKey = new Map((smProposal?.stateMachines ?? []).map(m => [normKey(m.name), m]));
+        for (const m of d.stateMachines) {
+          const old = oldByKey.get(normKey(m.name));
+          const oldSeq = old?.sequence ?? [];
+          const newSeq = m.sequence ?? [];
+          for (const l of oldSeq.filter(x => !newSeq.includes(x))) items.push({ section: 'sequence', text: `${m.name}: removed “${l}”` });
+          for (const l of newSeq.filter(x => !oldSeq.includes(x))) items.push({ section: 'sequence', text: `${m.name}: added “${l}”` });
+          const oldDev = old?.ownedDeviceNames ?? [];
+          const newDev = m.ownedDeviceNames ?? [];
+          for (const x of oldDev.filter(v => !newDev.includes(v))) items.push({ section: 'devices', text: `${m.name}: no longer owns ${x}` });
+          for (const x of newDev.filter(v => !oldDev.includes(v))) items.push({ section: 'devices', text: `${m.name}: now owns ${x}` });
+        }
+        for (const m of (smProposal?.stateMachines ?? [])) {
+          if (!d.stateMachines.some(x => normKey(x.name) === normKey(m.name))) items.push({ section: 'stateMachines', text: `machine removed: ${m.name}` });
+        }
+        for (const m of d.stateMachines) {
+          if (!oldByKey.has(normKey(m.name))) items.push({ section: 'stateMachines', text: `machine added: ${m.name}` });
+        }
+        const chk = d.checked;
         setChatThread(th => [...th, {
           role: 'jarvis',
-          text: `Re-proposed — ${d.stateMachines.length} state machine${d.stateMachines.length === 1 ? '' : 's'}: ${d.stateMachines.map(m => m.name).join(', ')}. ${d.reasoning ?? ''}`.trim(),
+          // NEVER SILENT (Dan, 2026-08-28): zero diff on substantive feedback
+          // states the reading and asks what was missed.
+          text: (items.length
+            ? `Done — ${d.stateMachines.length} state machine${d.stateMachines.length === 1 ? '' : 's'}; here is what actually changed:`
+            : `I read that as approving the proposal as-is — nothing changed. Did I miss an edit?`)
+            + (chk?.violations?.length ? `\n(reviewer notes: ${chk.violations[0]})` : ''),
+          items,
           at: Date.now(),
         }]);
       }
@@ -5734,26 +5783,80 @@ export function CreateStationPage({ embedded = false }) {
     if (cascadeLive && changes.trim()) {
       const move = parseReassignmentIntent(changes.trim());
       if (move) {
+        // ONE ENGINE (Dan, 2026-08-28: "the chat has to be the same engine
+        // that builds the stations"): the ME's ruling goes THROUGH the
+        // assignment thinker+checker with his word as a directive that
+        // outranks precedent — then the sheet updates and the receipt cites
+        // the checked result. His placement stands even offline (fallback).
         const raw = changes.trim();
-        setDeviceAssignments(prev => ({ ...(prev ?? {}), [normKey(move.deviceName)]: { key: move.machineKey, by: 'ME' } }));
-        setChatThread(t => [...t,
-          { role: 'me', text: raw, at: Date.now() },
-          { role: 'jarvis', text: `Moved ${move.deviceName} to ${move.machineName} — it renders on that machine's devices step now.`, at: Date.now() }]);
-        if (linkedSmId) appendChangeLog(linkedSmId, { what: `moved ${move.deviceName} → ${move.machineName}`, class: 'value' });
+        const prior = deviceAssignments?.[normKey(move.deviceName)];
+        const wasNoPrecedent = prior && typeof prior === 'object' && prior.by === 'agent' && prior.precedent === false;
+        setChatThread(t => [...t, { role: 'me', text: raw, at: Date.now() }]);
         setChanges('');
+        setApplying(true);
+        let engineEvidence = '';
+        let engineFlag = '';
+        try {
+          const dev = (summary?.devices ?? []).find(x => normKey(x?.name) === normKey(move.deviceName));
+          const entries = smChipEntries ?? [];
+          const r = await fetch('/api/jarvis/assign-devices', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            signal: AbortSignal.timeout(90000),
+            body: JSON.stringify({
+              devices: [{ name: move.deviceName, type: dev ? sheetType(dev) : 'unknown', purpose: dev?.purpose ?? '' }],
+              machines: entries.map(e => ({ name: e.name, key: e.key, ownedDeviceNames: e.deviceNames ?? [], sequence: e.sequence ?? [] })),
+              description: description.trim(),
+              directives: [`${move.deviceName} is part of the state machine that includes the ${move.machineName} — the engineer ruled it.`],
+              smName: name.trim() || null,
+            }),
+          });
+          const d = await r.json().catch(() => null);
+          const a = d?.ok ? (d.assignments ?? []).find(x => normKey(x.device) === normKey(move.deviceName)) : null;
+          engineEvidence = a?.evidence ?? '';
+          const viol = (d?.checked?.violations ?? [])[0];
+          if (viol) engineFlag = ` (flagged for review: ${viol})`;
+        } catch { /* the ME's word stands regardless — engine adds evidence only */ }
+        setDeviceAssignments(prev => ({ ...(prev ?? {}), [normKey(move.deviceName)]: { key: move.machineKey, by: 'ME', evidence: engineEvidence } }));
+        if (wasNoPrecedent) {
+          const dev = (summary?.devices ?? []).find(x => normKey(x?.name) === normKey(move.deviceName));
+          fetch('/api/jarvis/learn-ownership', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fact: `DEVICE OWNERSHIP (ME ruling on ${name.trim() || 'a station'}): a ${dev?.type ?? 'device'} like "${move.deviceName}" is part of the state machine that includes the ${move.machineName}.`,
+              who: 'ME',
+            }),
+          }).catch(() => {});
+        }
+        setApplying(false);
+        setChatThread(t => [...t, {
+          role: 'jarvis',
+          text: `Moved ${move.deviceName} to ${move.machineName}.`
+            + (engineEvidence ? ` ${engineEvidence}` : '')
+            + engineFlag
+            + (wasNoPrecedent ? ' Recorded as standing doctrine — this will never be asked again.' : ''),
+          at: Date.now(),
+        }]);
+        if (linkedSmId) appendChangeLog(linkedSmId, { what: `moved ${move.deviceName} → ${move.machineName}${wasNoPrecedent ? ' (ruling recorded as doctrine)' : ''}`, class: 'value' });
         return;
       }
     }
-    // DRAFT SPLIT COUNTER (Dan, 2026-08-26): while step 1's decompose-only
-    // proposal is up on a FRESH draft, a chat message about it RE-DECOMPOSES
-    // (there is no station for the summarize pipeline to re-plan yet).
-    if (!linkedSmId && smProposal && cascadeLive
-      && cascade.activeStep?.kind === 'smSplit' && changes.trim()) {
+    // PROPOSAL FEEDBACK = THE BUILDER ENGINE (Dan, 2026-08-28: "the chat has
+    // to be the same engine that builds the stations"). On a fresh draft the
+    // split/devices/sequence/recovery content IS the decompose proposal — so
+    // feedback about it re-enters the decompose thinker+checker with the
+    // CURRENT proposal riding along, and the receipt diffs old vs new.
+    // (Numbered answers and value fills keep their zero-judgment paths.)
+    if (!linkedSmId && smProposal && cascadeLive && changes.trim()
+      && ['smSplit', 'devices', 'sequence', 'recovery'].includes(cascade.activeStep?.kind)
+      && !(activeStepNeeds.length && parseNumberedAnswers(changes.trim(), activeStepNeeds))) {
       const t = changes.trim();
-      splitCounterRef.current = t;
+      splitCounterRef.current = cascade.activeStep.kind === 'smSplit'
+        ? t
+        : `(the engineer is reviewing "${cascade.activeStep.label}") ${t}`;
       setChatThread(th => [...th, { role: 'me', text: t, at: Date.now() }]);
       setChanges('');
-      setSmProposal(null); // the re-proposal replaces it
+      // The OLD proposal keeps rendering while the revision runs (the render
+      // never depends on a live call) — success swaps it in with a receipt.
       kickProposal();
       return;
     }
@@ -5840,9 +5943,14 @@ export function CreateStationPage({ embedded = false }) {
       // (a lying reply is impossible by construction — the bullets are
       // measured against the sheet that actually landed).
       const reply = String(applied.data?.chatReply ?? '').trim();
+      // THE CHECKED RESULT shows (Dan, 2026-08-28): a bounce says so.
+      const chkd = applied.data?.checked;
+      const chkLine = chkd?.bounced
+        ? `\n✓ checked — the reviewer bounced the first attempt (${chkd.violations?.[0] ?? 'missed edit'}); this is the corrected result.`
+        : '';
       setChatThread(t => [...t, {
         role: 'jarvis',
-        text: reply || (items.length ? 'Done — here is what actually changed:' : 'Nothing changed — the sheet already matched that.'),
+        text: (reply || (items.length ? 'Done — here is what actually changed:' : 'Nothing changed — the sheet already matched that.')) + chkLine,
         items,
         at: Date.now(),
       }]);
@@ -5995,6 +6103,7 @@ export function CreateStationPage({ embedded = false }) {
   /** Approve / rename the DRAFT's proposed split (no station yet — the
    *  approval records in cascade state and rides into Generate's machineSpec). */
   function approveDraftSplit() {
+    assignGateRef.current = true; // gate: machines exist → place the devices
     writeCascade(c => ({
       ...c,
       steps: { ...c.steps, smSplit: { approved: true, by: 'ME', at: new Date().toISOString() } },
@@ -6029,6 +6138,7 @@ export function CreateStationPage({ embedded = false }) {
   function approveCascadeStep(step) {
     if (!step) return;
     advanceRef.current = true; // auto-advance: the next step opens immediately
+    assignGateRef.current = true; // gate: an approve re-runs placement for anything still pending
     if (step.kind === 'smSplit' && step.hasProposal) { approveSmSplit(); return; }
     writeCascade(c => ({
       ...c,
@@ -6198,113 +6308,157 @@ export function CreateStationPage({ embedded = false }) {
   // ── STEP-SCOPED QUESTIONS (Dan, 2026-08-26: "questions surface WITH their
   // step" — nothing about a later step appears early). ─────────────────────
   const covOfKind = { devices: 'devices', sequence: 'sequence', recovery: 'failures', interactions: 'interactions' };
-  /** EVERY DEVICE HAS A MACHINE (Dan, 2026-08-27: no unassigned pile, ever —
-   *  Jarvis commits, the ME corrects). Priority per device row:
-   *    1. the machine that claims it by ownedDeviceNames (rename-safe),
-   *    2. the ME's / Jarvis's persisted assignment (deviceAssignments),
-   *    3. machine-NAME token semantics (EscapementFinger → Mid Base Escapement),
-   *    4. best-guess fallback: the LAST machine in the walk — its own devices
-   *       step carries a numbered "I guessed" question (guessedFallback set).
-   *  Returns { map: idx→machineKey, guessedFallback: Set<idx> }. */
+  /** EVERY DEVICE HAS A MACHINE — AGENTIC, NOT A RULE SET (Dan, 2026-08-28:
+   *  "Why is it a guess? Aren't you using our standards, our history, our
+   *  code examples?"). Deterministic layers handle only the CERTAIN cases:
+   *    0. the ME said so (explicit move — outranks everything),
+   *    1. an exact/contained ownedDeviceNames claim (rename-safe),
+   *    2. the AGENT's recorded decision (evidence-cited; precedent:false
+   *       carries the searched-and-found-nothing question).
+   *  Everything else goes to ONE batched agentic call (assign-devices) that
+   *  decides like an SDC CE from precedents + concepts + standing knowledge.
+   *  The token-ladder / persisted-auto / silent-fallback guessing is DELETED.
+   *  Returns { map, pendingAgent, noPrecedent, evidenceByIdx }. */
   const devAssign = useMemo(() => {
     const entries = smChipEntries ?? panelModel.decomp ?? smDecomp ?? null;
     const map = new Map();
-    const guessedFallback = new Set();
-    // LOW-CONFIDENCE = the assignment came from persistence or fallback, not
-    // a live signal — those wear the "I guessed" question WHEREVER they sit
-    // (Dan, 2026-08-27: FeederBowl guessed silently). ME-explicit moves are
-    // top priority and never questioned.
-    const lowConfidence = new Set();
-    const asgnOf = (nm) => {
-      const a = deviceAssignments?.[normKey(nm)];
-      if (!a) return null;
-      if (typeof a === 'string') return { key: a, explicit: false };
-      return { key: a.key, explicit: a.by === 'ME' };
-    };
+    const pendingAgent = new Set();   // awaiting the agentic decision
+    const noPrecedent = new Set();    // agent searched — no SDC example: asks
+    const evidenceByIdx = new Map();
     const groups = groupDevicesBySm(entries, summary?.devices ?? []);
     for (const g of groups) for (const { i } of g.devices) map.set(i, g.sm?.key ?? null);
-    if (!entries || entries.length < 2) return { map, guessedFallback, lowConfidence };
+    if (!entries || entries.length < 2) return { map, pendingAgent, noPrecedent, evidenceByIdx };
     (summary?.devices ?? []).forEach((d, i) => {
       const nm = String(d?.displayName ?? d?.name ?? '');
-      // 0. THE ME SAID SO — an explicit move outranks every signal.
-      const asgn = asgnOf(nm);
-      if (asgn?.explicit && entries.some(e => e.key === asgn.key)) { map.set(i, asgn.key); return; }
+      const rec = deviceAssignments?.[normKey(nm)];
+      // Legacy string values were the dead guessing era — ignored entirely.
+      const recObj = rec && typeof rec === 'object' ? rec : null;
+      // 0. THE ME SAID SO.
+      if (recObj?.by === 'ME' && entries.some(e => e.key === recObj.key)) { map.set(i, recObj.key); return; }
+      // 1. Owned-name claim (from groupDevicesBySm above).
       if (map.get(i)) return;
-      // Meaningful tokens of the device — name AND purpose (the purpose often
-      // carries the original spec wording: "pneumatic Z (MXS) slide 150mm",
-      // "sensorless end gripper" — the bridge across renames).
-      const dw = new Set([...wordsOf(nm), ...wordsOf(d?.purpose ?? '')].filter(w => w.length >= 4));
-      const bestOf = (textOf) => {
-        let best = null;
-        for (const e of entries) {
-          const tw = wordsOf(textOf(e)).filter(w => w.length >= 4);
-          const shared = tw.filter(w => dw.has(w)).length;
-          if (shared > 0 && (!best || shared > best.shared)) best = { key: e.key, shared };
-        }
-        return best?.key ?? null;
-      };
-      // 2. owned-NAME token overlap — 'ZSlide'/'end gripper' still pull the
-      //    renamed VerticalSlide/PnPGripper home ('slide'/'gripper' tokens).
-      //    SIGNALS OUTRANK the persisted layer (Dan's second-vanish, 2026-08-27:
-      //    stale fallback-era assignments must self-heal, never stick).
-      const byOwned = bestOf(e => (e.deviceNames ?? []).join(' '));
-      if (byOwned) { map.set(i, byOwned); return; }
-      // 3. machine-name token semantics (EscapementFinger → Mid Base Escapement)
-      const byName = bestOf(e => e.name ?? '');
-      if (byName) { map.set(i, byName); return; }
-      // 4. sequence semantics ("vertical slide extends" owns VerticalSlide)
-      const bySeq = bestOf(e => (e.sequence ?? []).join(' '));
-      if (bySeq) { map.set(i, bySeq); return; }
-      // 5. persisted AUTO assignment — refresh stability for signal-less
-      //    devices; still a GUESS, so it keeps its question (low confidence).
-      if (asgn && entries.some(e => e.key === asgn.key)) {
-        map.set(i, asgn.key);
-        lowConfidence.add(i);
+      // 2. The agent's recorded, evidence-cited decision.
+      if (recObj?.by === 'agent' && entries.some(e => e.key === recObj.key)) {
+        map.set(i, recObj.key);
+        evidenceByIdx.set(i, recObj.evidence ?? '');
+        if (recObj.precedent === false) noPrecedent.add(i);
         return;
       }
-      // 6. fallback — last machine of the walk, wearing a numbered question
-      map.set(i, entries[entries.length - 1].key);
-      guessedFallback.add(i);
-      lowConfidence.add(i);
-    });
-    // HARD INVARIANT (Dan, 2026-08-27 — second silent disappearance): every
-    // sheet device resolves to exactly ONE machine. A miss is a defect, never
-    // a silent drop — scream and self-report.
-    const missing = (summary?.devices ?? []).map((d, i) => (map.get(i) ? null : (d?.name ?? `#${i}`))).filter(Boolean);
-    if (missing.length) {
-      console.error('[cascade] DEVICE ASSIGNMENT INVARIANT VIOLATED — no machine for:', missing);
-      fetch('/api/jarvis/questions', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: `BUG auto-report: device assignment produced no machine for: ${missing.join(', ')}`, context: 'cascade devAssign invariant', source: 'auto-invariant' }),
-      }).catch(() => {});
-      for (const [idx] of (summary?.devices ?? []).entries()) {
-        if (!map.get(idx)) { map.set(idx, entries[entries.length - 1].key); guessedFallback.add(idx); lowConfidence.add(idx); }
+      // 3. LAST-KNOWN HOME (Dan's third-vanish, 2026-08-28): a legacy
+      //    assignment keeps the device RENDERING exactly where it was — the
+      //    render NEVER depends on a live model call. The agentic pass only
+      //    ever REFINES it in the background.
+      const legacyKey = typeof rec === 'string' && entries.some(e => e.key === rec) ? rec : null;
+      if (legacyKey) {
+        map.set(i, legacyKey);
+        pendingAgent.add(i); // refine quietly; the device stays put meanwhile
+        return;
       }
-    }
-    return { map, guessedFallback, lowConfidence };
+      // 4. Truly unknown → interim home on the last machine (the one-home
+      //    invariant), visibly marked pending until the agent decides.
+      map.set(i, entries[entries.length - 1].key);
+      pendingAgent.add(i);
+    });
+    return { map, pendingAgent, noPrecedent, evidenceByIdx };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [approvedSmDecomp, panelModel, smDecomp, summary, smProposal, localCascade, deviceAssignments]);
   const devSmKeyByIdx = devAssign.map;
 
-  // COMMIT the guesses (Dan: Jarvis assigns, he corrects): persist every
-  // computed assignment by name so a refresh reproduces it, and file ONE
-  // "I guessed" ask per fallback device on its machine's devices step.
+  // THE AGENTIC ASSIGNMENT CALL — one cheap batched round for everything the
+  // certain layers couldn't place. The receipt cites the precedent per
+  // device; no-precedent devices ask on their step. Once per device-set.
+  const agentRunRef = useRef('');
+  const agentAttemptsRef = useRef({}); // signature -> attempts (cap 2; never a red spam loop)
+  // GATE-DRIVEN, NEVER BACKGROUND (Dan, 2026-08-28): the thinker/checker pair
+  // runs at the cascade gates only — explanation submitted, split approved,
+  // each step Approve. Nothing model-driven fires while he sits on a step.
+  const assignGateRef = useRef(false);
+  const [assignBusy, setAssignBusy] = useState(false);
   useEffect(() => {
-    if (!(cascade.steps.length && phase === 'summary')) return;
+    if (!assignGateRef.current) return;
+    if (phase !== 'summary' || !devAssign.pendingAgent.size) { assignGateRef.current = false; return; }
+    const entries = smChipEntries ?? [];
+    if (entries.length < 2) return;
     const devs = summary?.devices ?? [];
-    let aChanged = false;
-    const nextAssign = { ...(deviceAssignments ?? {}) };
-    for (const [i, key] of devAssign.map) {
-      const nm = normKey(devs[i]?.name);
-      const cur = nextAssign[nm];
-      if (cur && typeof cur === 'object' && cur.by === 'ME') continue; // explicit stays
-      const curKey = typeof cur === 'string' ? cur : cur?.key;
-      if (nm && key && curKey !== key) { nextAssign[nm] = key; aChanged = true; }
-    }
-    if (aChanged) setDeviceAssignments(nextAssign);
-    // (The old assignmentAsks store is gone — 2026-08-27: the "I guessed"
-    // question DERIVES from where a low-confidence device actually sits, so
-    // it can never drift from the render again.)
+    const pendIdx = [...devAssign.pendingAgent];
+    const sig = pendIdx.map(i => normKey(devs[i]?.name)).filter(Boolean).sort().join('|');
+    if (!sig || agentRunRef.current === sig) return;
+    if ((agentAttemptsRef.current[sig] ?? 0) >= 2) { assignGateRef.current = false; return; } // gave up quietly — last-known homes stand
+    assignGateRef.current = false; // the gate token is consumed by this run
+    agentRunRef.current = sig;
+    agentAttemptsRef.current[sig] = (agentAttemptsRef.current[sig] ?? 0) + 1;
+    (async () => {
+      setAssignBusy(true);
+      try {
+        const r = await fetch('/api/jarvis/assign-devices', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(90000),
+          body: JSON.stringify({
+            devices: pendIdx.map(i => ({ name: devs[i]?.name, type: sheetType(devs[i] ?? {}), purpose: devs[i]?.purpose ?? '' })),
+            machines: entries.map(e => ({ name: e.name, key: e.key, ownedDeviceNames: e.deviceNames ?? [], sequence: e.sequence ?? [] })),
+            description: description.trim(),
+            smName: name.trim() || null,
+          }),
+        });
+        const text = await r.text();
+        let d = null;
+        try { d = JSON.parse(text); } catch { /* non-JSON — named below */ }
+        // HONEST FAILURE REASONS (Dan's "(200)" spam, 2026-08-28): a 200 that
+        // isn't JSON is a stale server build answering with the app page.
+        if (!d) throw new Error(`the API answered with something that isn't JSON (status ${r.status}) — a stale server build; restart the API`);
+        if (!r.ok || !d.ok) throw new Error(d.error ?? `HTTP ${r.status}`);
+        const byName = {};
+        for (const a of (d.assignments ?? [])) {
+          byName[normKey(a.device)] = { key: a.machineKey, by: 'agent', evidence: a.evidence ?? '', precedent: a.precedent === true };
+        }
+        // A device the agent skipped still gets a record — as a no-precedent
+        // ask, never a silent hole (the one-home invariant).
+        for (const i of pendIdx) {
+          const k = normKey(devs[i]?.name);
+          if (k && !byName[k]) byName[k] = { key: entries[entries.length - 1].key, by: 'agent', evidence: 'no decision returned', precedent: false };
+        }
+        setDeviceAssignments(prev => {
+          const next = { ...(prev ?? {}) };
+          for (const [k, v] of Object.entries(byName)) {
+            const cur = next[k];
+            if (cur && typeof cur === 'object' && cur.by === 'ME') continue; // the ME's word stands
+            next[k] = v;
+          }
+          return next;
+        });
+        const placed = (d.assignments ?? []).filter(a => a.precedent);
+        const unknown = (d.assignments ?? []).filter(a => !a.precedent);
+        setChatThread(t => [...t, {
+          role: 'jarvis',
+          text: [
+            placed.length ? `Placed from our shipped work: ${placed.map(a => `${a.device} → ${a.machine} — ${a.evidence}`).join('; ')}.` : null,
+            unknown.length ? `No SDC example found for ${unknown.map(a => a.device).join(', ')} — asking on the step.` : null,
+          ].filter(Boolean).join(' '),
+          at: Date.now(),
+        }]);
+        if (linkedSmId) {
+          for (const a of placed) {
+            appendChangeLog(linkedSmId, { what: `${a.device} → ${a.machine} — ${a.evidence}`, class: 'value', costUSD: d.meta?.costUSD ?? null });
+          }
+        }
+      } catch (e) {
+        // NEVER a render consequence, NEVER a spam loop: devices keep their
+        // last-known homes; one quiet retry, then one honest line and stop.
+        const attempts = agentAttemptsRef.current[sig] ?? 1;
+        if (attempts >= 2) {
+          setChatThread(t => [...t, {
+            role: 'jarvis',
+            text: `Couldn't check our shipped work for device placement — ${e.message}. The devices stay where they are; I'll try again after the next sheet change.`,
+            error: true, at: Date.now(),
+          }]);
+        }
+        agentRunRef.current = ''; // the cap gates the retries
+        assignGateRef.current = true; // one quiet retry rides the same gate
+      } finally {
+        setAssignBusy(false);
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [devAssign, phase]);
   // ── ROBUST MACHINE ATTRIBUTION (Dan's live MidBaseLoad round, 2026-08-27:
@@ -6367,18 +6521,23 @@ export function CreateStationPage({ embedded = false }) {
       .map(n => ({ ...n, _owner: needOwnerKey(n, entries) }))
       .filter(n => n._owner === step.smKey || (n._owner === null && isLastOfKind))
       .map(({ _owner, ...n }) => (_owner === null ? { ...n, unattributed: true } : n));
-    // "I GUESSED" ASKS derive from WHERE THE DEVICE ACTUALLY SITS (Dan,
-    // 2026-08-27: FeederBowl was guessed onto Pick And Place silently —
-    // a guess ALWAYS asks, on the step it landed on; confident matches
-    // stay quiet; ME-explicit moves never ask).
+    // NO-PRECEDENT ASKS (Dan, 2026-08-28): a precedent-backed placement is
+    // CONFIDENT — no question, the receipt cites the evidence. Only a device
+    // the search genuinely found nothing for asks — and the question SHOWS
+    // the search, on the step where the device sits.
     if (step.kind === 'devices') {
-      for (const i of devAssign.lowConfidence) {
+      for (const i of devAssign.noPrecedent) {
         if (devAssign.map.get(i) !== step.smKey) continue;
         const dn = String((summary?.devices ?? [])[i]?.name ?? '');
         if (!dn) continue;
-        const q = `I guessed ${dn} belongs to ${step.smName} — is that right?`;
+        const q = `I searched our shipped work and standards — no example of a ${dn} on any station. Where does it belong?`;
         if (agreedNeeds.has(`devices:${q}`)) continue;
-        routed.push({ question: q, proposedSolution: `Keep it on ${step.smName} — or name the right machine in the chat ("${dn} belongs to …") and I move it`, blocking: false, covKey: 'devices' });
+        routed.push({
+          question: q,
+          proposedSolution: devAssign.evidenceByIdx.get(i)
+            || `My best read: keep it on ${step.smName} — name the right machine in the chat ("${dn} belongs to …") and I move it AND record the ruling`,
+          blocking: false, covKey: 'devices',
+        });
       }
     }
     return routed;
@@ -6595,6 +6754,9 @@ export function CreateStationPage({ embedded = false }) {
         valueAsks={activeStepValues}
         onAgreeNeed={(n) => agreeNeed({ covKey: n.covKey }, n)}
         onFocusChat={focusChat}
+        pendingNote={activeStep.kind === 'devices' && assignBusy && devAssign.pendingAgent.size > 0
+          ? `checking our shipped work for ${devAssign.pendingAgent.size} device placement${devAssign.pendingAgent.size === 1 ? '' : 's'}…`
+          : null}
       />
     );
   };

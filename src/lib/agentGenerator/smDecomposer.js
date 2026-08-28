@@ -67,7 +67,7 @@ function extractJson(text) {
  * @param {AbortSignal} [args.signal]
  * @returns {Promise<{stateMachines:Array, reasoning:string, meta:object}>}
  */
-async function decompose({ description, images = [], expectedStateMachines = '', otherSms = [], signal = null }) {
+async function decompose({ description, images = [], expectedStateMachines = '', otherSms = [], currentProposal = null, signal = null }) {
   const client = getClient();
   let me = '';
   try { me = loadMeKnowledge(); } catch { /* knowledge optional */ }
@@ -118,6 +118,16 @@ async function decompose({ description, images = [], expectedStateMachines = '',
     }
   }
   let userText = `# The engineer's explanation\n${String(description).trim()}`;
+  // CORRECTION ROUNDS (Dan's one-engine law, 2026-08-28): the proposal being
+  // revised rides along COMPLETE — the feedback edits IT; everything the
+  // feedback doesn't touch carries forward VERBATIM (machines, sequences,
+  // owned devices). Dictated feedback resolves its garbled words against the
+  // REAL names in this proposal — never ignore a comment for odd wording, and
+  // "looks good outside my comments" means: apply every comment, keep the rest.
+  if (Array.isArray(currentProposal) && currentProposal.length) {
+    userText += '\n\n# YOUR CURRENT PROPOSAL (being revised — carry forward everything the feedback does not touch, verbatim)\n'
+      + JSON.stringify(currentProposal, null, 1);
+  }
   if (String(expectedStateMachines).trim()) {
     userText += `\n\n# The engineer expects (guidance — agree or counter with reasoning)\n${String(expectedStateMachines).trim()}`;
   }
@@ -150,15 +160,300 @@ async function decompose({ description, images = [], expectedStateMachines = '',
     .filter((m) => m.name);
   if (!stateMachines.length) throw new Error('The decomposer returned no state machines — retry');
 
+  // THE CHECKER (Dan, 2026-08-28): the breakup is reviewed against the same
+  // knowledge BEFORE the ME sees it. One bounce — a corrected decomposition
+  // is adopted; violations ride along either way.
+  let finalMachines = stateMachines;
+  let finalReasoning = String(parsed.reasoning ?? '').trim();
+  let checked = null;
+  let checkCost = 0;
+  try {
+    const chk = await checkProposal({
+      kind: 'decomposition',
+      payload: {
+        stateMachines,
+        reasoning: finalReasoning,
+        correctionRound: !!(Array.isArray(currentProposal) && currentProposal.length),
+      },
+      description, signal,
+    });
+    checkCost = chk.meta.costUSD;
+    checked = { verdict: chk.verdict, violations: chk.violations };
+    if (chk.verdict === 'fix' && Array.isArray(chk.corrected?.stateMachines)) {
+      const fixed = chk.corrected.stateMachines
+        .map((m) => ({
+          name: String(m?.name ?? '').trim().replace(/\s+/g, ' '),
+          oneLiner: String(m?.oneLiner ?? '').trim(),
+          ownedDeviceNames: (Array.isArray(m?.ownedDeviceNames) ? m.ownedDeviceNames : []).map((x) => String(x).trim()).filter(Boolean),
+          why: String(m?.why ?? '').trim(),
+          sequence: (Array.isArray(m?.sequence) ? m.sequence : []).map((x) => String(x).trim()).filter(Boolean),
+        }))
+        .filter((m) => m.name);
+      // ADOPTION GUARD (Dan's approved keys, 2026-08-28): on a correction
+      // round the checker may fix CONTENT but never the machine identities —
+      // a rename would orphan every approval keyed to the old names.
+      const isCorrection = Array.isArray(currentProposal) && currentProposal.length > 0;
+      const normId = (x) => String(x ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const sameIdentities = fixed.length === stateMachines.length
+        && fixed.every((f) => stateMachines.some((m) => normId(m.name) === normId(f.name)));
+      if (fixed.length && (!isCorrection || sameIdentities)) {
+        finalMachines = fixed;
+        if (String(chk.corrected.reasoning ?? '').trim()) finalReasoning = String(chk.corrected.reasoning).trim();
+        checked.corrected = true;
+      } else if (fixed.length) {
+        checked.violations = [...chk.violations, 'checker correction NOT adopted — it renamed/re-split approved machines on a correction round'];
+      }
+    }
+  } catch (e) {
+    checked = { verdict: 'unchecked', violations: [`checker unavailable: ${e.message}`] };
+  }
+
   return {
-    stateMachines,
-    reasoning: String(parsed.reasoning ?? '').trim(),
+    stateMachines: finalMachines,
+    reasoning: finalReasoning,
+    checked,
     meta: {
       model: response.model || MODEL,
       usage: response.usage || null,
-      costUSD: Number(costOf(response.usage, response.model || MODEL).toFixed(4)),
+      costUSD: Number((costOf(response.usage, response.model || MODEL) + checkCost).toFixed(4)),
     },
   };
 }
 
-module.exports = { decompose };
+// ── assignDevices — AGENTIC device→machine assignment (Dan, 2026-08-28:
+// "Why is it a guess? Aren't you using our standards, our history, our code
+// examples?"). The client's deterministic layers handle only the CERTAIN
+// cases (ME-explicit, exact owned-name claims); everything else lands here in
+// ONE cheap batched call that decides like an SDC controls engineer — from
+// precedents, the concept files, and standing knowledge — and states its
+// EVIDENCE. precedent:false means the search genuinely found nothing: the
+// sheet then asks the ME (once, ever — the answer files as doctrine). ────────
+
+const ASSIGN_MODEL = process.env.JARVIS_ASSIGN_MODEL || 'claude-haiku-4-5';
+function loadConceptFile(name) {
+  try {
+    return require('fs').readFileSync(
+      path.join(__dirname, '..', '..', '..', 'jarvis-knowledge', 'concepts', name), 'utf8').trim();
+  } catch { return ''; }
+}
+
+/**
+ * @param {object} args
+ * @param {Array}  args.devices     [{name, type, purpose}] — the UNRESOLVED devices only
+ * @param {Array}  args.machines    [{name, key, ownedDeviceNames, sequence}]
+ * @param {string} [args.description] the ME's station explanation (context)
+ * @returns {Promise<{assignments:[{device,machine,evidence,precedent}], meta}>}
+ */
+async function assignDevices({ devices, machines, description = '', signal = null }) {
+  if (!Array.isArray(devices) || !devices.length) return { assignments: [], meta: { costUSD: 0 } };
+  if (!Array.isArray(machines) || machines.length < 2) throw new Error('assignDevices needs >= 2 machines');
+  const client = getClient();
+  let me = '';
+  try { me = loadMeKnowledge(); } catch { /* optional */ }
+  const { precedentsBlock } = require('./precedents');
+  const system = [
+    "You are JARVIS, SDC Automation's controls engineer. TASK: decide which state machine",
+    'each listed device runs with — the way a senior SDC CE would: from SDC\'s SHIPPED WORK,',
+    'standards, and the concept notes below. Never guess from word similarity.',
+    '',
+    'For each device: name the machine, and give ONE line of EVIDENCE citing the precedent',
+    '("in our shipped escapement stations the bowl runs with the feeding machine — FlexFeeder,',
+    'the escapement pattern"). Return the device name EXACTLY as given — never reworded.',
+    '',
+    'PRECEDENT HONESTY: "precedent": true ONLY when this DEVICE CLASS actually appears in the',
+    'precedent lists, concept notes, or standing knowledge below — you can point at the line.',
+    'A device class absent from ALL of them is "precedent": false EVEN IF general engineering',
+    'logic suggests a placement — then still pick the most sensible machine, and the evidence',
+    'line states plainly: no SDC example of this device class exists. Never dress a general',
+    'inference up as a precedent.',
+    '',
+    'Respond with ONLY one JSON object (no fences):',
+    '{ "assignments": [ { "device": "<exact device name given>", "machine": "<exact machine name given>",',
+    '    "evidence": "<one line>", "precedent": true|false } ] }',
+    '',
+    '# SDC concept notes — station archetypes (feeding patterns live here)',
+    loadConceptFile('station-archetypes.md'),
+    '',
+    '# SDC concept notes — multi-state-machine stations',
+    loadConceptFile('multi-state-machine.md'),
+    me ? '\n# Standing SDC knowledge\n' + me : '',
+    precedentsBlock(),
+  ].join('\n');
+  const userText = [
+    '# The station (the engineer\'s explanation)',
+    String(description).trim() || '(none given)',
+    '',
+    '# The state machines',
+    ...machines.map((m) => `- ${m.name}: owns [${(m.ownedDeviceNames ?? []).join(', ')}]`
+      + ((m.sequence ?? []).length ? `; sequence: ${(m.sequence ?? []).join(' → ')}` : '')),
+    '',
+    '# Devices to place (one decision each)',
+    ...devices.map((d) => `- ${d.name} (${d.type ?? 'unknown type'})${d.purpose ? ` — ${d.purpose}` : ''}`),
+    ...((Array.isArray(directives) ? directives : []).filter(Boolean).length
+      ? ['', "# THE ENGINEER RULED (honor these — his word outranks precedent; if one violates a hard SDC standard, still honor it and say so in the evidence)",
+        ...directives.filter(Boolean).map((x) => `- ${String(x).trim()}`)]
+      : []),
+  ].join('\n');
+  const response = await client.messages.create(
+    { model: ASSIGN_MODEL, max_tokens: 1500, system, messages: [{ role: 'user', content: userText }] },
+    signal ? { signal } : undefined
+  );
+  const text = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+  const parsed = extractJson(text);
+  let assignments = canonAssignments(parsed.assignments, devices, machines);
+
+  // THE CHECKER (Dan, 2026-08-28): a second engineer reviews the placement
+  // against the same knowledge BEFORE it renders. One bounce max — a fix
+  // with corrections is adopted; violations ride the response either way.
+  let checked = null;
+  let checkCost = 0;
+  try {
+    const chk = await checkProposal({
+      kind: 'assignment',
+      payload: {
+        machines: machines.map((m) => ({ name: m.name, ownedDeviceNames: m.ownedDeviceNames ?? [] })),
+        assignments,
+      },
+      description, signal,
+    });
+    checkCost = chk.meta.costUSD;
+    checked = { verdict: chk.verdict, violations: chk.violations };
+    if (chk.verdict === 'fix' && Array.isArray(chk.corrected?.assignments)) {
+      const fixed = canonAssignments(chk.corrected.assignments, devices, machines);
+      if (fixed.length) {
+        const byDev = new Map(fixed.map((a) => [a.device.toLowerCase(), a]));
+        assignments = assignments.map((a) => byDev.get(a.device.toLowerCase()) ?? a);
+        for (const f of fixed) {
+          if (!assignments.some((a) => a.device.toLowerCase() === f.device.toLowerCase())) assignments.push(f);
+        }
+        checked.corrected = true;
+      }
+    }
+  } catch (e) {
+    checked = { verdict: 'unchecked', violations: [`checker unavailable: ${e.message}`] };
+  }
+
+  return {
+    assignments,
+    checked,
+    meta: {
+      model: response.model || ASSIGN_MODEL,
+      usage: response.usage || null,
+      costUSD: Number((costOf(response.usage, response.model || ASSIGN_MODEL) + checkCost).toFixed(4)),
+    },
+  };
+}
+
+/** Canonicalize model assignment rows back onto the REQUESTED device names
+ *  and REAL machines (models sometimes echo "PlasmaWelder (Custom)"). */
+function canonAssignments(list, devices, machines) {
+  const norm = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return (Array.isArray(list) ? list : [])
+    .map((a) => {
+      const machine = machines.find((m) => norm(m.name) === norm(a?.machine))
+        ?? machines.find((m) => norm(m.name).includes(norm(a?.machine)) || norm(a?.machine).includes(norm(m.name)));
+      const given = devices.find((d) => norm(d?.name) === norm(a?.device))
+        ?? devices.find((d) => norm(a?.device).includes(norm(d?.name)) || norm(d?.name).includes(norm(a?.device)));
+      return machine && given ? {
+        device: String(given.name),
+        machine: machine.name,
+        machineKey: machine.key,
+        evidence: String(a?.evidence ?? '').trim(),
+        precedent: a?.precedent === true,
+      } : null;
+    })
+    .filter((a) => a && a.device);
+}
+
+// ── checkProposal — THE CHECKER (Dan, 2026-08-28: "an agent that really
+// understands SDC state machines… then a CHECKER trained on the same
+// information that checks the thinker's proposal BEFORE we build/render it"
+// — Jason's process applied to the spec sheet, exactly like internalReviewer
+// does for code). Same knowledge as the thinker; verdict pass|fix; one
+// bounce max, then surface honestly. ─────────────────────────────────────────
+
+const CHECK_MODEL = process.env.JARVIS_SPEC_CHECK_MODEL || 'claude-haiku-4-5';
+
+/**
+ * @param {object} args
+ * @param {'decomposition'|'assignment'} args.kind
+ * @param {object} args.payload   decomposition: {stateMachines, reasoning};
+ *                                assignment: {machines, assignments}
+ * @param {string} [args.description]
+ * @returns {Promise<{verdict:'pass'|'fix', violations:string[], corrected:object|null, meta}>}
+ */
+async function checkProposal({ kind, payload, description = '', signal = null }) {
+  const client = getClient();
+  let me = '';
+  try { me = loadMeKnowledge(); } catch { /* optional */ }
+  const { precedentsBlock } = require('./precedents');
+  const system = [
+    "You are JARVIS's CHECKER — a second SDC controls engineer reviewing the first one's",
+    `proposal (${kind}) BEFORE it reaches the mechanical engineer. Same question as every SDC`,
+    'review: is it correct, and is it the SDC way — per the shipped work, the concept notes,',
+    'and standing knowledge below?',
+    kind === 'assignment'
+      ? 'SCOPE: check ONLY the device→machine ownership and each "precedent" claim (a feeder '
+        + 'bowl owned by a pick-and-place violates every dial station SDC has shipped; '
+        + '"precedent": true the knowledge does not support is a violation). Names are NOT in '
+        + 'scope here — never flag naming.'
+      : kind === 'sheet-correction'
+        ? 'SCOPE: the engineer gave feedback (often dictated — words that match no real name '
+          + 'are phonetic slips; resolve them against the sheet\'s actual device/position/step '
+          + 'names in the payload, never via alias tables) and the thinker returned a revised '
+          + 'sheet. Check ONE thing: was EVERY edit embedded in the feedback actually APPLIED, '
+          + 'the SDC way? Approval-with-comments is approval PLUS edits — each comment must '
+          + 'show up in the revision. A substantive edit missing from the revision is a '
+          + 'violation — name it precisely. Style/naming is NOT in scope. Always set '
+          + '"corrected": null for this kind.'
+        : 'SCOPE: check the split (asynchrony justification per machine — a purely sequential '
+          + 'station is ONE machine), the device ownership implied by ownedDeviceNames, and the '
+          + 'machine names (natural SDC speech with spaces — "Mid Base Escapement"; NEVER '
+          + 'underscores or PascalCase here, the PLC program name is derived later). EXCEPTION — '
+          + 'CORRECTION ROUNDS (payload.correctionRound true): the engineer already approved this '
+          + 'proposal and gave feedback on it; check ONLY that the feedback was applied and the '
+          + 'untouched content carried forward verbatim. Machine names and the split itself are '
+          + 'NOT in scope then — never rename or re-split what he already approved.',
+    '',
+    'Respond with ONLY one JSON object (no fences):',
+    '{ "verdict": "pass" | "fix",',
+    '  "violations": ["<one line each — empty when pass>"],',
+    kind === 'assignment'
+      ? '  "corrected": { "assignments": [ { "device": "...", "machine": "...", "evidence": "...", "precedent": true|false } ] } | null }'
+      : '  "corrected": { "stateMachines": [ ...same shape as proposed... ], "reasoning": "..." } | null }',
+    'Provide "corrected" ONLY when you can fix it outright from the knowledge; otherwise null.',
+    '',
+    '# SDC concept notes — station archetypes',
+    loadConceptFile('station-archetypes.md'),
+    '',
+    '# SDC concept notes — multi-state-machine stations',
+    loadConceptFile('multi-state-machine.md'),
+    me ? '\n# Standing SDC knowledge\n' + me : '',
+    precedentsBlock(),
+  ].join('\n');
+  const userText = [
+    '# The station (the engineer\'s explanation)',
+    String(description).trim() || '(none given)',
+    '',
+    `# The ${kind} proposal to check`,
+    JSON.stringify(payload, null, 1),
+  ].join('\n');
+  const response = await client.messages.create(
+    { model: CHECK_MODEL, max_tokens: 2000, system, messages: [{ role: 'user', content: userText }] },
+    signal ? { signal } : undefined
+  );
+  const text = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+  const parsed = extractJson(text);
+  return {
+    verdict: parsed.verdict === 'fix' ? 'fix' : 'pass',
+    violations: (Array.isArray(parsed.violations) ? parsed.violations : []).map(String).filter(Boolean),
+    corrected: parsed.corrected && typeof parsed.corrected === 'object' ? parsed.corrected : null,
+    meta: {
+      model: response.model || CHECK_MODEL,
+      usage: response.usage || null,
+      costUSD: Number(costOf(response.usage, response.model || CHECK_MODEL).toFixed(4)),
+    },
+  };
+}
+
+module.exports = { decompose, assignDevices, checkProposal };

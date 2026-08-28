@@ -741,6 +741,19 @@ The corrections chat (chatReply — corrections rounds only):
     of 5? Reply yes and I'll set it.").
   · ANSWER — the message is a question about the sheet, not a change request: return
     the sheet UNCHANGED and answer plainly in chatReply.
+- READING FEEDBACK (Dan, 2026-08-28 — general rules, never case-specific):
+  · CLASSIFY every message first: a question (answer from context), an approval, a
+    set of corrections, or APPROVAL + CORRECTIONS — "looks good outside the few
+    comments I just made" is that last one: extract and APPLY every embedded
+    correction; the approval covers only what he did not correct.
+  · DICTATION SELF-RESOLVES FROM CONTEXT: feedback is often voice-transcribed and
+    words come out wrong. Any term that matches no real name is a phonetic slip —
+    resolve it against the sheet's ACTUAL device, position, signal, and step names
+    (all in your context) before concluding a comment doesn't apply. Never keep or
+    invent alias tables; the context is the resolver, every case is different.
+  · NEVER A SILENT NO-OP: if you apply nothing from a substantive message, chatReply
+    MUST state your reading and check it ("I read this as approving the sequence
+    as-is — did I miss changes?"). Silence after feedback is a defect.
 - TERSE, ALWAYS (Dan, 2026-08-25: "as few words as possible — don't explain back what
   I'm saying; if you understand, say 'okay, got it' and ask questions if you don't"):
   NEVER recapitulate or paraphrase the engineer's own explanation back at them.
@@ -892,6 +905,25 @@ async function summarizeDescription({
         + (r.questions || []).map(q => `  Q: ${q}`).join('\n')
         + (r.answer ? `\n  A: ${String(r.answer).trim()}` : '')
       ).join('\n');
+  }
+  // FULL CONTEXT ON EVERY CHAT TURN (Dan, 2026-08-28): the conversation, his
+  // position in the cascade, and the recent actions ride the prompt — the
+  // chat is the SAME engine as the build, with the same view of the work.
+  const chatTurns = (Array.isArray(chatHistory) ? chatHistory : []).filter(t => t && t.text);
+  if (chatTurns.length) {
+    text += '\n\nTHE CONVERSATION SO FAR (this draft\'s chat — context for reading the new message):\n'
+      + chatTurns.slice(-20).map(t => `  ${t.role === 'me' ? 'ENGINEER' : 'JARVIS'}: ${String(t.text).slice(0, 300)}`).join('\n');
+  }
+  if (cascadePosition && typeof cascadePosition === 'object') {
+    text += `\n\nWHERE THE ENGINEER IS RIGHT NOW (the cascade): ${String(cascadePosition.activeLabel ?? 'unknown step')}`
+      + (Array.isArray(cascadePosition.approved) && cascadePosition.approved.length
+        ? ` — already approved: ${cascadePosition.approved.join(', ')}` : '')
+      + '. Feedback with no named target is usually about THIS step.';
+  }
+  const logLines = (Array.isArray(changeLog) ? changeLog : []).filter(Boolean);
+  if (logLines.length) {
+    text += '\n\nRECENT ACTIONS on this sheet (the change log — never silently undo these):\n'
+      + logLines.slice(-12).map(l => `  - ${String(l).slice(0, 200)}`).join('\n');
   }
   if (corrections && String(corrections).trim()) {
     text += `\n\nEngineer's CORRECTIONS to apply (these override anything they conflict with above):\n\n${String(corrections).trim()}`
