@@ -10,12 +10,22 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.26';
+export const UI_BUILD = 'v2.6.27';
 
 export const BUILT_AT = '2026-08-28';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.27',
+    date: '2026-08-28',
+    items: [
+      'THE AGENT LOOP IS LIVE (Phase 1 — you approved it this morning): talking to Jarvis on a draft now runs a real working agent, not a one-shot prompt. He reads what he needs (the sheet exactly as you see it — tags included, the conversation, the standing rulings, the shipped-work precedents, the code library), makes each edit through a typed operation that returns the REAL diff, re-checks himself, and a reviewer walks the diffs against your message before anything renders. You watch it live — "reading the sheet… searching shipped work… editing… checking the work…"',
+      'RECEIPTS CANNOT LIE ANYMORE — the receipt line is assembled from the diffs the edits actually returned, never from what the model says it did ("Done — 2 changes to Mid-Base Escapement\'s sequence (tags only — no lines touched)"). A request the turn could not finish says so honestly, and your text goes back in the box',
+      'The one-shot correction paths for drafts are DELETED (one-door law) — tag feedback, device removals, question answers, everything you say on a draft goes through the loop. Caps: $1 / 90s / 25 steps per turn, honest wrap-up on cap. Regression fixtures (your finger-2 and tag transcripts) run through the real loop',
+      'RECOVERY STEP restored to every machine\'s walk + STATION ACCEPT: at the end of a walk, accept the station (banks for the machine-level generate) or generate now for testing. The JARVIS Inbox folder is live at C:\\SDC-StateLogic\\JARVIS Inbox — drop anything; the librarian that reads it daily is next in line',
+    ],
+  },
   {
     version: 'v2.6.26',
     date: '2026-08-28',

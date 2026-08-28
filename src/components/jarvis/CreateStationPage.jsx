@@ -1582,6 +1582,91 @@ async function summarizeRequest(payload, onProgress) {
   return data;
 }
 
+/** THE AGENT LOOP transport (Dan approved 2026-08-28): POSTs the turn, streams
+ *  `state` activity labels live, resolves with the `done` payload
+ *  { reply, diffs, draft, asks, notes, capped, meta }. */
+async function agentTurnRequest(payload, onState) {
+  const res = await fetch('/api/jarvis/agent-turn/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const isSse = res.ok && (res.headers.get('content-type') || '').includes('text/event-stream') && !!res.body;
+  if (!isSse) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Agent turn failed (${res.status}${res.ok ? ' — non-stream response; restart the API server' : ''})`);
+  }
+  let result = null; let err = null;
+  await readSse(res, (event, data) => {
+    if (event === 'state') onState?.(data.label);
+    else if (event === 'done') result = data;
+    else if (event === 'error') err = new Error(data.error || 'Agent turn failed');
+  });
+  if (err) throw err;
+  if (!result || !result.ok) throw new Error(result?.error || 'Agent turn ended without a result');
+  return result;
+}
+
+/** RECEIPT FROM DIFFS ONLY (the law): one plain line composed from the typed
+ *  edits the server actually applied — the model's narration never rides. */
+function receiptFromAgentDiffs(diffs = []) {
+  if (!diffs.length) return '';
+  const parts = [];
+  const byMachine = new Map();
+  let tagOnly = 0;
+  for (const d of diffs) {
+    if (/^(sequence|recovery)\./.test(d.op)) {
+      byMachine.set(d.machine, (byMachine.get(d.machine) ?? 0) + 1);
+      if (/set_tag|clear_tag/.test(d.op)) tagOnly += 1;
+    }
+  }
+  for (const [m, n] of byMachine) {
+    parts.push(`${n} change${n === 1 ? '' : 's'} to ${m}'s sequence${tagOnly && n === tagOnly ? ' (tags only — no lines touched)' : ''}, shown on its card`);
+  }
+  const removed = diffs.filter(d => d.op === 'device.remove');
+  for (const d of removed) {
+    parts.push(`removed ${d.device}${(d.closedQuestions?.length ?? 0) ? ` (its ${d.closedQuestions.length === 1 ? 'open question' : 'questions'} closed)` : ''}`);
+  }
+  for (const d of diffs.filter(x => x.op === 'device.add')) parts.push(`added ${d.after}${d.machine ? ` to ${d.machine}` : ''}`);
+  for (const d of diffs.filter(x => x.op === 'device.rename' || x.op === 'machine.rename')) parts.push(`renamed ${d.before} → ${d.after}`);
+  for (const d of diffs.filter(x => x.op === 'device.reassign')) parts.push(`moved ${d.device} to ${d.after}`);
+  for (const d of diffs.filter(x => x.op === 'value.set')) parts.push(`set ${d.device} ${d.field} = ${d.after}`);
+  const closed = diffs.filter(x => x.op === 'question.close').length;
+  if (closed) parts.push(`closed ${closed} question${closed === 1 ? '' : 's'}`);
+  const asked = diffs.filter(x => x.op === 'question.ask').length;
+  if (asked) parts.push(`${asked} new question${asked === 1 ? '' : 's'} for you`);
+  return parts.length ? `Done — ${parts.join('; ')}.` : '';
+}
+
+/** Per-machine sequence diff (for the live card highlight) between two
+ *  proposal snapshots — same pairing logic as the gate rounds. */
+function computeProposalSeqDiff(oldMs = [], newMs = []) {
+  const overlap = (a, b) => {
+    const A = new Set(wordsOf(a)); const B = new Set(wordsOf(b));
+    const inter = [...A].filter(x => B.has(x)).length;
+    return inter / Math.max(1, Math.min(A.size, B.size));
+  };
+  const nk = (x) => String(x ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const oldByKey = new Map(oldMs.map(m => [nk(m.name), m]));
+  const diffByKey = {};
+  for (const m of newMs) {
+    const k = nk(m.name);
+    const oldSeq = (oldByKey.get(k)?.sequence ?? []).map(x => stripParens(x));
+    const newSeq = (m.sequence ?? []).map(x => stripParens(x));
+    let removed = oldSeq.filter(x => !newSeq.includes(x));
+    let added = newSeq.filter(x => !oldSeq.includes(x));
+    const changed = [];
+    for (const r0 of [...removed]) {
+      const match = added.find(a2 => overlap(r0, a2) >= 0.6);
+      if (match) { changed.push([r0, match]); removed = removed.filter(x => x !== r0); added = added.filter(x => x !== match); }
+    }
+    if (removed.length || added.length || changed.length) {
+      diffByKey[k] = { removed, added, changed, machine: m.name, oldSeq };
+    }
+  }
+  return diffByKey;
+}
+
 // Honest stage lines for the summarize progress ring.
 const SUMMARIZE_STAGE_TEXT = {
   sent: 'Reading your explanation…',
@@ -4167,6 +4252,9 @@ export function CreateStationPage({ embedded = false }) {
   // implicitly; direct fixes happen inline on the lines themselves.
   const [changes, setChanges] = useState('');
   const [applying, setApplying] = useState(false);
+  // THE AGENT LOOP's live activity line ("reading the sheet…") — Dan
+  // approved the loop build 2026-08-28; docs/jarvis-agent-loop-design.md.
+  const [agentState, setAgentState] = useState(null);
   // Standing rules JARVIS just learned from the engineer's answers —
   // only facts the model explicitly returned AND the server recorded.
   const [learnedNotes, setLearnedNotes] = useState([]);
@@ -5974,6 +6062,79 @@ export function CreateStationPage({ embedded = false }) {
     return { deviceName, machineKey: best.e.key, machineName: best.e.name };
   }
 
+  /** THE AGENT LOOP TURN (Dan approved 2026-08-28 — the one door for fresh-
+   *  draft chat): sends the message + draft snapshot; the server agent reads
+   *  through tools, applies typed diff-returning edits, gets checked, and the
+   *  applied draft comes back. Receipt is composed from the diffs HERE. */
+  async function runAgentChatTurn(msg) {
+    if (applying) return;
+    console.log('[chat] dispatched: agent loop');
+    const oldMachines = (smProposal?.stateMachines ?? []).map(m => ({ name: m.name, sequence: [...(m.sequence ?? [])] }));
+    setChatThread(t => [...t, { role: 'me', text: msg, at: Date.now() }]);
+    setChanges('');
+    setApplying(true);
+    setAgentState('thinking…');
+    try {
+      const approvedMachineNames = cascade.steps.find(s => s.kind === 'smSplit')?.status === 'approved'
+        ? (smProposal?.stateMachines ?? []).map(m => m.name)
+        : [];
+      const d = await agentTurnRequest({
+        message: msg,
+        draft: {
+          name: name.trim(), description: description.trim(),
+          summary, smProposal, jarvisCoverage,
+          agreedNeeds: [...agreedNeeds], deviceAssignments,
+          chatThread: chatThread.slice(-24).map(t => ({ role: t.role, text: String(t.text ?? '').slice(0, 300) })),
+        },
+        cascadePosition: cascade.activeStep ? {
+          activeStep: { kind: cascade.activeStep.kind, smKey: cascade.activeStep.smKey, label: cascade.activeStep.label },
+          approved: cascade.steps.filter(s => s.status === 'approved').map(s => s.label),
+          approvedMachineNames,
+        } : { approvedMachineNames },
+      }, label => setAgentState(label));
+      // Land the applied draft — the server edited a working copy through
+      // typed ops; the client stays the storage authority.
+      if (d.draft) {
+        if (d.draft.summary) setSummary(withSheetPrefill(d.draft.summary));
+        if (d.draft.smProposal?.stateMachines) {
+          setSmProposal(p => ({ ...(p ?? {}), stateMachines: d.draft.smProposal.stateMachines, at: Date.now() }));
+        }
+        if (d.draft.jarvisCoverage) setJarvisCoverage(normCoverage(d.draft.jarvisCoverage));
+        if (Array.isArray(d.draft.agreedNeeds)) setAgreedNeeds(new Set(d.draft.agreedNeeds));
+        if (d.draft.deviceAssignments) setDeviceAssignments(d.draft.deviceAssignments);
+        setDirty(true);
+      }
+      // Live card diff (strike/highlight until "got it").
+      const diffByKey = computeProposalSeqDiff(oldMachines, d.draft?.smProposal?.stateMachines ?? []);
+      setSeqDiff(Object.keys(diffByKey).length ? { byKey: diffByKey, at: Date.now() } : null);
+      // RECEIPT FROM DIFFS + the model's (checked) short reply. Internals
+      // never print; a capped turn says so honestly.
+      const receipt = receiptFromAgentDiffs(d.diffs ?? []);
+      const capLine = d.capped ? ` (stopped at the ${d.capped} — anything unfinished is stated above.)` : '';
+      const text = [receipt, String(d.reply ?? '').trim()].filter(Boolean).join(' ') + capLine;
+      setChatThread(t => [...t, {
+        role: 'jarvis',
+        text: text || 'Done.',
+        at: Date.now(),
+      }]);
+      for (const noteText of (d.notes ?? [])) {
+        setChatThread(t => [...t, { role: 'jarvis', text: noteText, at: Date.now() }]);
+      }
+      setSummarizeCost(c => Number((c + (Number(d.meta?.costUSD) || 0)).toFixed(4)));
+    } catch (e) {
+      // Honest failure — his text goes back in the box (send-path law).
+      setChanges(msg);
+      setChatThread(t => [...t, {
+        role: 'jarvis',
+        text: `That didn't go through — ${e.message}. Your text is back in the box — hit Send to retry.`,
+        error: true, at: Date.now(),
+      }]);
+    } finally {
+      setApplying(false);
+      setAgentState(null);
+    }
+  }
+
   async function handleApplyChanges() {
     // NEVER SILENT AT THE UI LAYER (Dan's eaten repost, 2026-08-28): every
     // early exit states itself inline; every dispatch logs its branch.
@@ -6052,35 +6213,32 @@ export function CreateStationPage({ embedded = false }) {
         return;
       }
     }
-    // PROPOSAL FEEDBACK = THE BUILDER ENGINE (Dan, 2026-08-28: "the chat has
-    // to be the same engine that builds the stations"). On a fresh draft the
-    // split/devices/sequence/recovery content IS the decompose proposal — so
-    // feedback about it re-enters the decompose thinker+checker with the
-    // CURRENT proposal riding along, and the receipt diffs old vs new.
-    // (Numbered answers and value fills keep their zero-judgment paths.)
-    if (!linkedSmId && smProposal && cascadeLive && msg
-      // 'interactions' too (Dan, 2026-08-28): the lens derives from the
-      // proposal sequences — corrections must edit THOSE, both sides.
-      && ['smSplit', 'devices', 'sequence', 'recovery', 'interactions'].includes(cascade.activeStep?.kind)
+    // THE AGENT LOOP IS THE ONE DOOR for fresh-draft chat (Dan approved the
+    // build 2026-08-28; flow-replacement law: the one-shot decompose-
+    // correction and summarize-correction dispatches for drafts are DELETED
+    // in this same change). Numbered pure-agrees keep their zero-judgment
+    // free path below; everything else an ME says on a draft runs the loop.
+    if (!linkedSmId && phase === 'summary' && msg
       && !(activeStepNeeds.length && parseNumberedAnswers(msg, activeStepNeeds))) {
-      if (proposeRun?.stage === 'compile') {
-        setApplyHint('Still working on the previous round — send again when it lands.');
-        console.warn('[chat] send blocked: proposal round in flight');
+      // The ONE exception kept: a re-split argument while the smSplit step is
+      // up still re-enters the decompose gate engine (that is a GATE event —
+      // the whole-proposal rethink; loop ops edit content, not the split).
+      if (smProposal && cascadeLive && cascade.activeStep?.kind === 'smSplit') {
+        if (proposeRun?.stage === 'compile') {
+          setApplyHint('Still working on the previous round — send again when it lands.');
+          console.warn('[chat] send blocked: proposal round in flight');
+          return;
+        }
+        console.log('[chat] dispatched: split argument → decompose gate');
+        reviewingKeyRef.current = null;
+        splitCounterRef.current = msg;
+        setChatThread(th => [...th, { role: 'me', text: msg, at: Date.now() }]);
+        setChanges('');
+        setApplying(true);
+        try { await kickProposal(); } finally { setApplying(false); }
         return;
       }
-      console.log('[chat] dispatched: proposal feedback → decompose engine');
-      reviewingKeyRef.current = cascade.activeStep.smKey ?? null;
-      const t = msg;
-      splitCounterRef.current = cascade.activeStep.kind === 'smSplit'
-        ? t
-        : `(the engineer is reviewing "${cascade.activeStep.label}") ${t}`;
-      setChatThread(th => [...th, { role: 'me', text: t, at: Date.now() }]);
-      setChanges('');
-      // The OLD proposal keeps rendering while the revision runs (the render
-      // never depends on a live call) — success swaps it in with a receipt.
-      // The THINKING INDICATOR is visible for the whole round (applying).
-      setApplying(true);
-      try { await kickProposal(); } finally { setApplying(false); }
+      await runAgentChatTurn(msg);
       return;
     }
     // NUMBERED ANSWERS (Dan, 2026-08-27): "1 — yes; 2 — actually there's a
@@ -6113,13 +6271,14 @@ export function CreateStationPage({ embedded = false }) {
         const scope = activeStep.smKey && activeStep.smKey !== 'station'
           ? `the ${activeStep.smName} state machine's ${KIND_NOUN[activeStep.kind] ?? activeStep.kind}`
           : `the station's ${KIND_NOUN[activeStep.kind] ?? activeStep.kind}`;
-        await sendCorrections(
-          `Answers to your numbered questions on ${scope}:\n${corrections.join('\n')}\n`
-          + 'Fold each answer into the sheet where it applies and leave everything else exactly as it was.',
-          raw,
-          parsed.map(p => p.q.question),
-          () => setChanges('')
-        );
+        const framed = `Answers to your numbered questions on ${scope}:\n${corrections.join('\n')}\n`
+          + 'Fold each answer in where it applies and leave everything else exactly as it was.';
+        if (!linkedSmId) {
+          // Fresh drafts: the agent loop is the one door.
+          await runAgentChatTurn(framed);
+          return;
+        }
+        await sendCorrections(framed, raw, parsed.map(p => p.q.question), () => setChanges(''));
         return;
       }
     }
@@ -7547,8 +7706,8 @@ export function CreateStationPage({ embedded = false }) {
             data-testid="apply-changes-progress"
             style={{ display: 'flex', alignItems: 'center', gap: 10 }}
           >
-            <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>
-              {SUMMARIZE_STAGE_TEXT[sumStage] ?? 'Working…'}
+            <span data-testid="agent-state-label" style={{ fontSize: 12, fontWeight: 600, color: C.text }}>
+              {agentState ?? SUMMARIZE_STAGE_TEXT[sumStage] ?? 'Working…'}
             </span>
             <ProgressRing pct={sumPct} size={44} subLabel="" />
           </div>

@@ -3448,6 +3448,56 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       return sendJson(res, 405, { error: 'Method not allowed' });
     }
 
+    // THE AGENT LOOP (Dan approved 2026-08-28 — docs/jarvis-agent-loop-design.md):
+    // one chat turn = read tools + typed diff-returning edits + checker over
+    // the diffs. SSE: `state` events (the live activity line), then `done`
+    // with { reply, diffs, draft, asks, notes, meta }.
+    if (pathname === '/api/jarvis/agent-turn/stream') {
+      if (method !== 'POST') return sendJson(res, 405, { error: 'Method not allowed' });
+      let loop;
+      try {
+        loop = require('./src/lib/agentGenerator/agentLoop.js');
+      } catch (e) {
+        return sendJson(res, 503, { error: 'Agent loop not available: ' + e.message });
+      }
+      let body;
+      try { body = JSON.parse(await readBody(req) || '{}'); } catch { return sendJson(res, 400, { error: 'bad JSON' }); }
+      if (!String(body.message ?? '').trim()) return sendJson(res, 400, { error: 'message is required' });
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+        'X-Accel-Buffering': 'no',
+      });
+      const send = (event, data) => {
+        try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch (_) {}
+      };
+      const abort = new AbortController();
+      let clientGone = false;
+      req.on('close', () => { clientGone = true; abort.abort(); });
+      const releaseAi = beginAiWork_('agent-turn', null, body.draft?.name || null, { register: false });
+      try {
+        const result = await loop.runAgentTurn({
+          draft: body.draft ?? {},
+          message: String(body.message),
+          cascadePosition: body.cascadePosition ?? null,
+          signal: abort.signal,
+          onEvent: (label) => send('state', { label }),
+        });
+        send('done', { ok: true, ...result });
+      } catch (e) {
+        if (clientGone || (e && (e.name === 'AbortError' || e.name === 'APIUserAbortError'))) {
+          // client cancelled
+        } else {
+          send('error', { error: e.message || String(e) });
+        }
+      } finally {
+        releaseAi();
+      }
+      return res.end();
+    }
+
     // AGENTIC device→machine assignment (Dan, 2026-08-28: "aren't you using
     // our standards, our history?") — batched, cheap tier, evidence-cited.
     if (pathname === '/api/jarvis/assign-devices') {
