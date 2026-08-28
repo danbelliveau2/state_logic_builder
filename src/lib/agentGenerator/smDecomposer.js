@@ -59,6 +59,57 @@ function extractJson(text) {
   return JSON.parse(text.slice(s, e + 1));
 }
 
+// STRUCTURED SEQUENCE STEPS (Dan, 2026-08-28: the grid shape "should come
+// FROM the engine, not regex-parsed from prose"). The model emits
+// {action, target, detail, counterpart}; we keep the objects on
+// sequenceSteps (exact tag derivation + cleaner codegen input) AND
+// serialize each to ONE canonical prose line (sequence stays string[] —
+// every downstream consumer keeps working, and the render's type column
+// splits on the canonical first word exactly, not fuzzily).
+function normalizeStep(x) {
+  if (x && typeof x === 'object') {
+    const step = {
+      action: String(x.action ?? '').trim(),
+      target: String(x.target ?? '').trim(),
+      detail: String(x.detail ?? '').trim(),
+      counterpart: String(x.counterpart ?? '').trim(),
+    };
+    return (step.action || step.target) ? step : null;
+  }
+  const t = String(x ?? '').trim();
+  return t ? { raw: t } : null;
+}
+function stepText(s) {
+  if (!s) return '';
+  if (s.raw) return s.raw;
+  const a = s.action.toLowerCase();
+  if (a === 'wait') {
+    // target may already say "…signal" — never double the word.
+    const tgt = s.target.replace(/\s*\bsignal\b\s*$/i, '');
+    return s.counterpart
+      ? `Wait for ${s.counterpart}'s ${tgt} signal`
+      : `Wait for ${s.target}${s.detail ? ` — ${s.detail}` : ''}`;
+  }
+  if (a === 'signal' && s.counterpart) return `Signal ${s.target} to ${s.counterpart}`;
+  if (a === 'home') return `Home: ${[s.target, s.detail].filter(Boolean).join(' — ') || 'initial position'}`;
+  if (a === 'repeat') return 'Repeat';
+  return `${s.action}${s.target ? ` ${s.target}` : ''}${s.detail ? ` — ${s.detail}` : ''}`.trim();
+}
+function normalizeMachine(m) {
+  const steps = (Array.isArray(m?.sequence) ? m.sequence : []).map(normalizeStep).filter(Boolean);
+  return {
+    // Natural display name, spaces kept ("Mid Base Escapement") — the
+    // PascalCase PLC program name is derived at Generate, not here.
+    name: String(m?.name ?? '').trim().replace(/\s+/g, ' '),
+    oneLiner: String(m?.oneLiner ?? '').trim(),
+    ownedDeviceNames: (Array.isArray(m?.ownedDeviceNames) ? m.ownedDeviceNames : [])
+      .map((x) => String(x).trim()).filter(Boolean),
+    why: String(m?.why ?? '').trim(),
+    sequence: steps.map(stepText).filter(Boolean),
+    sequenceSteps: steps,
+  };
+}
+
 /**
  * @param {object} args
  * @param {string} args.description             the ME's raw explanation (required)
@@ -109,6 +160,13 @@ async function decompose({ description, images = [], expectedStateMachines = '',
     'another machine ONLY when a stated interaction requires it (a new signal needs both',
     'sides). Never reword another machine\'s lines in passing — carry them forward verbatim.',
     '',
+    'TAG FEEDBACK IS NOT LINE FEEDBACK (Dan, 2026-08-28: "I didn\'t ask you to change these',
+    'things"): the engineer sees each step with its interaction tag (the counterpart). A',
+    'comment that a step "doesn\'t need to interact with X" / questions its tag CLEARS that',
+    'step\'s counterpart and NOTHING ELSE — the step itself stays, word for word. DELETING a',
+    'step requires the engineer explicitly asking to remove the step. When in doubt: keep the',
+    'line, clear the tag.',
+    '',
     'VOICE (Dan, 2026-08-26): the reasoning speaks directly TO the engineer — second person',
     '("Your description shows…"), NEVER about him ("the ME…", "the engineer\'s description…").',
     'ONE to TWO short sentences, no more.',
@@ -122,7 +180,13 @@ async function decompose({ description, images = [], expectedStateMachines = '',
     '      "oneLiner": "<one sentence: what this machine owns and does>",',
     '      "ownedDeviceNames": ["<device name as the engineer said it>", ...],',
     '      "why": "<one line: why it must run asynchronously from the others (omit or empty for a single machine)>",',
-    '      "sequence": ["<short step, one line>", ...] }',
+    '      "sequence": [ { "action": "<ONE canonical verb: Home|Wait|Extend|Retract|Close|Open|Signal|Move|Index|Repeat|...>",',
+    '                      "target": "<the device, sensor, or signal acted on — \'Escapement Finger One\', \'part ready for pick\'>",',
+    '                      "detail": "<OPTIONAL short clause — \'stop the next part\'; omit when the action+target says it all>",',
+    '                      "counterpart": "<OPTIONAL machine/station name — ONLY when this step is a REAL interaction:',
+    '                        waiting on that machine\'s signal, or signaling to it. A motion that merely mentions a',
+    '                        machine (\'Extend Shuttle to present the part to X\') gets NO counterpart. Home and Repeat',
+    '                        NEVER have one.>" }, ... ] }',
     '  ],',
     '  "reasoning": "<1-2 short sentences, spoken TO the engineer: the asynchrony reasoning behind this count>",',
     '  "noteToEngineer": "<OPTIONAL, usually omit. ONE plain sentence, ONLY when something the engineer',
@@ -176,17 +240,7 @@ async function decompose({ description, images = [], expectedStateMachines = '',
   const text = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
   const parsed = extractJson(text);
   const stateMachines = (Array.isArray(parsed.stateMachines) ? parsed.stateMachines : [])
-    .map((m) => ({
-      // Natural display name, spaces kept ("Mid Base Escapement") — the
-      // PascalCase PLC program name is derived at Generate, not here.
-      name: String(m?.name ?? '').trim().replace(/\s+/g, ' '),
-      oneLiner: String(m?.oneLiner ?? '').trim(),
-      ownedDeviceNames: (Array.isArray(m?.ownedDeviceNames) ? m.ownedDeviceNames : [])
-        .map((x) => String(x).trim()).filter(Boolean),
-      why: String(m?.why ?? '').trim(),
-      sequence: (Array.isArray(m?.sequence) ? m.sequence : [])
-        .map((x) => String(x).trim()).filter(Boolean),
-    }))
+    .map(normalizeMachine)
     .filter((m) => m.name);
   if (!stateMachines.length) throw new Error('The decomposer returned no state machines — retry');
 
@@ -215,13 +269,7 @@ async function decompose({ description, images = [], expectedStateMachines = '',
     checked = { verdict: chk.verdict, violations: chk.violations };
     if (chk.verdict === 'fix' && Array.isArray(chk.corrected?.stateMachines)) {
       const fixed = chk.corrected.stateMachines
-        .map((m) => ({
-          name: String(m?.name ?? '').trim().replace(/\s+/g, ' '),
-          oneLiner: String(m?.oneLiner ?? '').trim(),
-          ownedDeviceNames: (Array.isArray(m?.ownedDeviceNames) ? m.ownedDeviceNames : []).map((x) => String(x).trim()).filter(Boolean),
-          why: String(m?.why ?? '').trim(),
-          sequence: (Array.isArray(m?.sequence) ? m.sequence : []).map((x) => String(x).trim()).filter(Boolean),
-        }))
+        .map(normalizeMachine)
         .filter((m) => m.name);
       // ADOPTION GUARD (Dan's approved keys, 2026-08-28): on a correction
       // round the checker may fix CONTENT but never the machine identities —
@@ -457,6 +505,11 @@ async function checkProposal({ kind, payload, description = '', signal = null })
           + 'proposal and gave feedback on it; check ONLY that the feedback was applied and the '
           + 'untouched content carried forward verbatim. Machine names and the split itself are '
           + 'NOT in scope then — never rename or re-split what he already approved. '
+          + 'UNREQUESTED DELETIONS: a sequence step present in the prior proposal but missing '
+          + 'from the revision, with no explicit "remove that step" in the feedback, is a '
+          + 'violation — restore it. Feedback about a step\'s INTERACTION ("doesn\'t need to '
+          + 'interact with X") clears that step\'s counterpart tag only; it never deletes the '
+          + 'step. '
           + 'ALWAYS in scope — REMOVAL PROPAGATION: when the feedback removes a device, the '
           + 'corrected proposal must reference it NOWHERE — not in any ownedDeviceNames, sequence '
           + 'line, or fault-recovery line. A half-removed device (dropped from ownership but still '

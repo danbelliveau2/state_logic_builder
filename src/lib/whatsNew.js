@@ -10,12 +10,21 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.25';
+export const UI_BUILD = 'v2.6.26';
 
 export const BUILT_AT = '2026-08-28';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.26',
+    date: '2026-08-28',
+    items: [
+      'FIXED (the tag misapply) — TAG FEEDBACK NEVER DELETES LINES: "doesn\'t need to interact" now clears that line\'s counterpart tag and nothing else; deleting a step requires you explicitly asking to remove the step. The engine sees the tags as first-class data (structured steps), and the checker restores any line a revision drops without an explicit ask. Your Escapement draft self-heals on load: Home, the part-clear wait, and Repeat come back with an honest chat line; only the two tags you removed stay gone. Locked in as a paid regression test with your exact transcript (8/8 passing)',
+      'ONLY REAL INTERACTIONS TAG — exactly two shapes count: waiting on another machine\'s signal, or signaling to it. A motion that merely mentions a machine ("Extend Shuttle to present the part to X") is a motion; Home and Repeat never tag',
+      'SEQUENCES READ AS A TYPE-FIRST GRID — same breakdown as the diagram: action type column (Home | Wait | Extend | Retract | Close | Open | Signal | Move) then the object and detail, identical shape for every machine; the interaction tag column stays at right and tagged lines drop the counterpart from the text (the tag carries it). The shape comes FROM the engine — it now emits structured steps (action / target / detail / counterpart), which also hands codegen cleaner input',
+    ],
+  },
   {
     version: 'v2.6.25',
     date: '2026-08-28',

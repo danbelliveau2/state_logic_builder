@@ -76,12 +76,26 @@ export function deriveInteractionLines(sequence, { selfName = '', sameMachines =
     ...otherStations.map((n) => ({ name: n, scope: 'otherStation' })),
   ].map((c) => ({ ...c, distinct: words(c.name).filter((w) => !selfWords.has(w)) }))
     .filter((c) => c.distinct.length > 0);
+  const matchCandidate = (nameText) => {
+    const nw = new Set(words(nameText));
+    return candidates.find((c) => c.distinct.some((w) => nw.has(w))) ?? null;
+  };
+  // ONLY THE TWO CANONICAL SHAPES ARE INTERACTIONS (Dan's Finger-tag
+  // misapply, 2026-08-28): a wait ON another machine's signal, or a signal
+  // TO another machine. A motion that merely names a machine ("Extend
+  // Shuttle to present the part to X") is a motion; Home lines never tag.
+  const interactionOf = (line) => {
+    const t = String(line ?? '').trim();
+    let m = t.match(/^wait\s+for\s+(.+?)['’]s\b.*\bsignal\b/i);
+    if (m) return matchCandidate(m[1]);
+    m = t.match(/^(?:signal|set)\b.*?\bto\s+([A-Za-z0-9 '’.&-]+?)\s*$/i);
+    if (m) return matchCandidate(m[1]);
+    return null;
+  };
   const byLine = new Map();
   const groupMap = new Map();
   (sequence ?? []).forEach((line, i) => {
-    const lw = new Set(words(line));
-    // sameStation candidates first — the nearer counterpart wins a tie.
-    const hit = candidates.find((c) => c.distinct.some((w) => lw.has(w)));
+    const hit = interactionOf(line);
     if (!hit) return;
     byLine.set(i, { counterpart: hit.name, scope: hit.scope });
     const k = `${hit.scope}:${hit.name}`;

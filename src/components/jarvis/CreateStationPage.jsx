@@ -3741,6 +3741,24 @@ const devKey = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
 // ruling render normalized — "handshake" never reaches the screen. The
 // engine rewrites the stored text properly at the next gate.
 const normalizeSeqLine = (l) => stripParens(l).replace(/\bhandshakes\b/gi, 'signals').replace(/\bhandshake\b/gi, 'signal');
+// ACTION-TYPE COLUMN (Dan, 2026-08-28: "same breakdown as the state machine
+// diagram — type first, then the object"). The engine emits canonical line
+// shapes, so this split is exact, not fuzzy. Tagged interaction lines drop
+// the counterpart from the text — the tag column carries it.
+function splitSeqLine(txt, tagged) {
+  const t = String(txt ?? '').trim();
+  let m;
+  if (tagged && (m = t.match(/^wait\s+for\s+.+?['’]s\s+(.*)$/i))) return { type: 'Wait', rest: m[1] };
+  if (tagged && (m = t.match(/^(?:signal|set)\s+(.*?)\s+to\s+[A-Za-z0-9 '’.&-]+$/i))) return { type: 'Signal', rest: m[1] };
+  if ((m = t.match(/^home\s*:?\s*(.*)$/i))) return { type: 'Home', rest: m[1] };
+  if ((m = t.match(/^wait\s+(?:for\s+)?(.*)$/i))) return { type: 'Wait', rest: m[1] };
+  m = t.match(/^([A-Za-z]+)\s*(.*)$/);
+  return m
+    ? { type: m[1].charAt(0).toUpperCase() + m[1].slice(1), rest: m[2] }
+    : { type: '', rest: t };
+}
+// Subtle per-type color — the type column itself is the clarity (Dan).
+const SEQ_TYPE_COLORS = { Wait: '#1574C4', Signal: '#0e7490', Home: '#8a94a6', Repeat: '#8a94a6' };
 
 /** LIVE DIFF rows for a sequence card (Dan, 2026-08-28): the new sequence
  *  with added/changed lines marked, removed lines struck through in place. */
@@ -6806,6 +6824,41 @@ export function CreateStationPage({ embedded = false }) {
     if (phase !== 'summary' || !smProposal?.stateMachines?.length) return;
     if (reconciledDraftRef.current === (draftIdRef.current ?? draftKey)) return;
     reconciledDraftRef.current = draftIdRef.current ?? draftKey;
+    // MISAPPLY REPAIR (Dan, 2026-08-28, one-time): tag-only feedback got read
+    // as line deletions — Home, the part-clear wait, and Repeat were struck
+    // from the Escapement sequence he never asked to change. Fingerprinted
+    // tightly to that exact damaged state; restores the three steps with an
+    // honest line. (The tags he DID ask removed are gone via the canonical
+    // tag derivation — no data change needed for those.)
+    {
+      const esc = smProposal.stateMachines.find(m => /escapement/i.test(m?.name ?? ''));
+      const seq = (esc?.sequence ?? []).map(x => String(x));
+      const damaged = esc
+        && seq[0] === 'Retract Escapement Finger 1 to release the stopped part into the shuttle nest'
+        && !seq.some(l => /part-clear/i.test(l)) && !seq.some(l => /^repeat\b/i.test(l))
+        && !seq.some(l => /^home\b/i.test(l))
+        && seq.some(l => /^retract escapement shuttle/i.test(l))
+        && chatThread.some(t => t?.role === 'jarvis' && /Done — 3 changes to Mid-?Base Escapement/i.test(t?.text ?? ''));
+      if (damaged) {
+        const restored = [
+          'Home: Escapement Shuttle retracted and aligned with track, Shuttle Gripper open, Escapement Finger 1 extended holding the next part at the stop',
+          ...seq.slice(0, seq.findIndex(l => /^retract escapement shuttle/i.test(l))),
+        ];
+        restored.push("Wait for Mid-Base Pick and Place's part-clear signal");
+        restored.push(...seq.filter(l => /^retract escapement shuttle/i.test(l)));
+        restored.push('Repeat');
+        setSmProposal(p => ({
+          ...p,
+          stateMachines: p.stateMachines.map(m => (m === esc || m?.name === esc.name
+            ? { ...m, sequence: restored } : m)),
+        }));
+        setChatThread(th => [...th, {
+          role: 'jarvis',
+          text: 'Put back 3 steps I struck out by mistake — you asked me to remove two interaction tags, not the steps. Home, the part-clear wait, and Repeat are restored; only the tags are gone.',
+          at: Date.now(),
+        }]);
+      }
+    }
     const ownedKeys = new Set(smProposal.stateMachines.flatMap(m => m.ownedDeviceNames ?? []).map(devKey));
     const prose = smProposal.stateMachines
       .flatMap(m => [...(m.sequence ?? []), ...(m.faultRecovery ?? [])]).map(devKey).join('|');
@@ -8678,14 +8731,19 @@ export function CreateStationPage({ embedded = false }) {
                                           left, interaction tag right — all tags on one
                                           vertical line regardless of line length. The arrow
                                           is the direction: ← incoming wait, → outgoing set. */}
+                                      {/* TYPE-FIRST GRID (Dan, 2026-08-28): number | action
+                                          type | object/detail | interaction tag — the same
+                                          breakdown as the state machine diagram, identical
+                                          shape for every machine. */}
                                       <div style={{
-                                        display: 'grid', gridTemplateColumns: 'auto 1fr auto',
-                                        columnGap: 8, rowGap: 2, alignItems: 'baseline',
+                                        display: 'grid', gridTemplateColumns: 'auto auto 1fr auto',
+                                        columnGap: 10, rowGap: 2, alignItems: 'baseline',
                                         fontSize: 12, lineHeight: 1.55, color: C.text,
                                       }}>
                                         {seqDiffRows(e.sequence, seqDiff?.byKey?.[e.key] ?? null).map((r, li) => {
                                           const txt = normalizeSeqLine(r.t);
                                           const info = ixByText.get(txt) ?? null;
+                                          const { type, rest } = splitSeqLine(txt, !!info);
                                           const rowStyle = r.removed
                                             ? { textDecoration: 'line-through', color: '#991b1b', opacity: 0.75 }
                                             : (r.added || r.changed)
@@ -8695,10 +8753,19 @@ export function CreateStationPage({ embedded = false }) {
                                           <Fragment key={li}>
                                             <span style={{ ...rowStyle, color: C.muted, fontSize: 11 }}>{li + 1}.</span>
                                             <span
+                                              data-testid={`seq-type-${e.key}-${li}`}
+                                              style={{
+                                                ...rowStyle,
+                                                fontSize: 10, fontWeight: 800, letterSpacing: '0.04em',
+                                                textTransform: 'uppercase',
+                                                color: r.removed ? '#991b1b' : (SEQ_TYPE_COLORS[type] ?? C.text),
+                                              }}
+                                            >{type}</span>
+                                            <span
                                               data-testid={r.removed ? `seq-removed-${e.key}-${li}` : r.added ? `seq-added-${e.key}-${li}` : undefined}
                                               title={r.changed ? `was: ${normalizeSeqLine(r.was)}` : undefined}
                                               style={rowStyle}
-                                            >{txt}</span>
+                                            >{rest}</span>
                                             {info && !r.removed ? (
                                               <span
                                                 data-testid={`seq-ix-tag-${e.key}-${li}`}
@@ -8710,7 +8777,7 @@ export function CreateStationPage({ embedded = false }) {
                                                   borderRadius: 4, padding: '0px 6px', justifySelf: 'start',
                                                   whiteSpace: 'nowrap',
                                                 }}
-                                              >{/^\s*wait\b/i.test(txt) ? '←' : '→'} {info.counterpart}</span>
+                                              >{type === 'Wait' ? '←' : '→'} {info.counterpart}</span>
                                             ) : <span />}
                                           </Fragment>
                                           );
