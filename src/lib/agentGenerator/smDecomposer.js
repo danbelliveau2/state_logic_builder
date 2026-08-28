@@ -74,6 +74,11 @@ function normalizeStep(x) {
       detail: String(x.detail ?? '').trim(),
       counterpart: String(x.counterpart ?? '').trim(),
     };
+    // ONE VOCABULARY (Dan, 2026-08-28): the stored step carries the SDC
+    // operation, so sequence ↔ diagram ↔ codegen agree by construction.
+    if (/^close$/i.test(step.action) && /gripper/i.test(step.target)) step.action = 'Engage';
+    if (/^open$/i.test(step.action) && /gripper/i.test(step.target)) step.action = 'Disengage';
+    if (/^move$/i.test(step.action) && /axis/i.test(step.target)) step.action = 'Servo Move';
     return (step.action || step.target) ? step : null;
   }
   const t = String(x ?? '').trim();
@@ -84,11 +89,15 @@ function stepText(s) {
   if (s.raw) return s.raw;
   const a = s.action.toLowerCase();
   if (a === 'wait') {
-    // target may already say "…signal" — never double the word.
-    const tgt = s.target.replace(/\s*\bsignal\b\s*$/i, '');
-    return s.counterpart
-      ? `Wait for ${s.counterpart}'s ${tgt} signal`
-      : `Wait for ${s.target}${s.detail ? ` — ${s.detail}` : ''}`;
+    // target may already say "…signal" / lead with the counterpart's
+    // possessive / "wait for" — never double any of them.
+    let tgt = s.target.replace(/^wait\s+for\s+/i, '').replace(/\s*\bsignal\b\s*$/i, '');
+    if (s.counterpart) {
+      const esc = s.counterpart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      tgt = tgt.replace(new RegExp(`^${esc}['’]s\\s+`, 'i'), '');
+      return `Wait for ${s.counterpart}'s ${tgt} signal`;
+    }
+    return `Wait for ${tgt}${s.detail ? ` — ${s.detail}` : ''}`;
   }
   if (a === 'signal' && s.counterpart) return `Signal ${s.target} to ${s.counterpart}`;
   if (a === 'home') return `Home: ${[s.target, s.detail].filter(Boolean).join(' — ') || 'initial position'}`;
@@ -180,7 +189,11 @@ async function decompose({ description, images = [], expectedStateMachines = '',
     '      "oneLiner": "<one sentence: what this machine owns and does>",',
     '      "ownedDeviceNames": ["<device name as the engineer said it>", ...],',
     '      "why": "<one line: why it must run asynchronously from the others (omit or empty for a single machine)>",',
-    '      "sequence": [ { "action": "<ONE canonical verb: Home|Wait|Extend|Retract|Close|Open|Signal|Move|Index|Repeat|...>",',
+    '      "sequence": [ { "action": "<ONE canonical operation — the SAME vocabulary as diagram actions:',
+    '                        Extend|Retract (pneumatics) · Engage|Disengage (grippers — NEVER \'Open\'/\'Close\'',
+    '                        a gripper, that is not SDC terminology) · Servo Move (servos — the target names',
+    '                        the axis and the named position: target \'X Axis\', detail \'to Place\') ·',
+    '                        Index (dial/indexer) · Wait|Signal|Home|Repeat (non-motion)>",',
     '                      "target": "<the device, sensor, or signal acted on — \'Escapement Finger One\', \'part ready for pick\'>",',
     '                      "detail": "<OPTIONAL short clause — \'stop the next part\'; omit when the action+target says it all>",',
     '                      "counterpart": "<OPTIONAL machine/station name — ONLY when this step is a REAL interaction:',

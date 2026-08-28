@@ -97,6 +97,9 @@ const DESCRIPTION = 'Mid-base load station on the dial machine: a track feeds mi
   check('kept: part-ready Signal keeps counterpart', !!partReady && /pick/i.test(String(partReady.counterpart ?? '')));
   const partClear = stepBy(/part.?clear/i);
   check('kept: part-clear Wait keeps counterpart', !!partClear && /pick/i.test(String(partClear.counterpart ?? '')));
+  // ONE VOCABULARY (Dan, 2026-08-28): grippers engage/disengage, never open/close.
+  check('vocabulary: no Open/Close gripper lines', !seq.some((l) => /^(open|close)\b.*gripper/i.test(String(l))));
+  check('vocabulary: gripper uses Engage/Disengage', seq.some((l) => /^(engage|disengage)\b.*gripper/i.test(String(l))));
 
   let fail = 0;
   for (const r of results) {

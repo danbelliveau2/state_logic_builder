@@ -3740,7 +3740,12 @@ const devKey = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
 // ONE WORD (Dan, 2026-08-28): stored lines from before the terminology
 // ruling render normalized — "handshake" never reaches the screen. The
 // engine rewrites the stored text properly at the next gate.
-const normalizeSeqLine = (l) => stripParens(l).replace(/\bhandshakes\b/gi, 'signals').replace(/\bhandshake\b/gi, 'signal');
+const normalizeSeqLine = (l) => stripParens(l)
+  .replace(/\bhandshakes\b/gi, 'signals').replace(/\bhandshake\b/gi, 'signal')
+  // ONE VOCABULARY (Dan, 2026-08-28): grippers ENGAGE/DISENGAGE — "Open/
+  // Close gripper" is not SDC terminology. Stored lines render corrected;
+  // the engine rewrites the stored text at the next gate.
+  .replace(/^close\b(?=.*gripper)/i, 'Engage').replace(/^open\b(?=.*gripper)/i, 'Disengage');
 // ACTION-TYPE COLUMN (Dan, 2026-08-28: "same breakdown as the state machine
 // diagram — type first, then the object"). The engine emits canonical line
 // shapes, so this split is exact, not fuzzy. Tagged interaction lines drop
@@ -3752,13 +3757,23 @@ function splitSeqLine(txt, tagged) {
   if (tagged && (m = t.match(/^(?:signal|set)\s+(.*?)\s+to\s+[A-Za-z0-9 '’.&-]+$/i))) return { type: 'Signal', rest: m[1] };
   if ((m = t.match(/^home\s*:?\s*(.*)$/i))) return { type: 'Home', rest: m[1] };
   if ((m = t.match(/^wait\s+(?:for\s+)?(.*)$/i))) return { type: 'Wait', rest: m[1] };
+  // ONE VOCABULARY (Dan, 2026-08-28): the operation set is the diagram's.
+  // "Servo Move" is two words; a legacy bare "Move X Axis…" reads as servo.
+  if ((m = t.match(/^servo\s+move\s*(.*)$/i))) return { type: 'Servo Move', rest: m[1] };
+  if ((m = t.match(/^move\s+(.*)$/i)) && /axis/i.test(m[1])) return { type: 'Servo Move', rest: m[1] };
   m = t.match(/^([A-Za-z]+)\s*(.*)$/);
   return m
     ? { type: m[1].charAt(0).toUpperCase() + m[1].slice(1), rest: m[2] }
     : { type: '', rest: t };
 }
-// Subtle per-type color — the type column itself is the clarity (Dan).
-const SEQ_TYPE_COLORS = { Wait: '#1574C4', Signal: '#0e7490', Home: '#8a94a6', Repeat: '#8a94a6' };
+// Subtle color per FAMILY (Dan, 2026-08-28): motion vs wait vs signal vs
+// home — the type column itself is the clarity.
+const SEQ_TYPE_COLORS = {
+  Wait: '#1574C4', Signal: '#0e7490',
+  Home: '#8a94a6', Repeat: '#8a94a6',
+  Extend: '#7c5c10', Retract: '#7c5c10', Engage: '#7c5c10', Disengage: '#7c5c10',
+  'Servo Move': '#7c5c10', Move: '#7c5c10', Index: '#7c5c10',
+};
 
 /** LIVE DIFF rows for a sequence card (Dan, 2026-08-28): the new sequence
  *  with added/changed lines marked, removed lines struck through in place. */
