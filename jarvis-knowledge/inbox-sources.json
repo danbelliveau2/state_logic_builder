@@ -1,6 +1,16 @@
 {
   "networkRoot": "\\\\stevendouglas.local\\dfs\\Company\\Engineering\\Electrical Dept",
   "networkDropFolder": "JARVIS Inbox",
+  "watchAll": true,
+  "exclude": [
+    "ARCHIVE",
+    "EPLAN",
+    "Backup",
+    "Backups",
+    "Old",
+    "node_modules",
+    "_archive"
+  ],
   "watch": [
     "JARVIS Inbox",
     "SDC Knowledgebase",

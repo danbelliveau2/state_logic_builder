@@ -8,17 +8,33 @@ Drop ANYTHING here that Jarvis should learn from:
   - Standards documents (.pdf, .docx, .md, .txt)
   - Reference files, vendor docs, lessons-learned notes
 
-You do not need to tell anyone. Jarvis reads new files daily (and on the
-"Learn now" button on the Jarvis page), distills what matters into his
-knowledge base, and that knowledge rides every future station and machine
-build.
+THE SUBMISSION FORM (the good way to drop)
+  1. Copy SUBMISSION FORM.docx, fill it in, save it with SUBMISSION in the
+     name (SUBMISSION - JSmith - 1119.docx).
+  2. Drop it NEXT TO your files (a subfolder keeps a drop together).
+  The "what should Jarvis study" line steers his reading and is cited in
+  what he learns. Marking "engineer-verified working code: YES" ranks the
+  attached L5X as a top exemplar — only when true.
+
+CATEGORY FOLDERS — dropping into the right family helps him file it:
+  Robot Integration | Vision | Servo Motion | Conveyors & Indexers |
+  Laser Marking | Full Machine Examples | Standards Docs
+
+QUESTIONS FROM JARVIS
+  If he has questions about a drop, a "Questions from Jarvis - ...docx"
+  appears next to the files. Type answers under each question and save —
+  he reads them on his next pass, files what he learned cited to the
+  answerer, and renames the doc "(answered)".
 
 WHAT HAPPENS TO A FILE
   - Once read, it MOVES to  _learned\  (never deleted).
   - _learned\LEDGER.md  lists every file: when it was read, what Jarvis
-    took from it, and where that knowledge was filed.
+    took from it (study focus cited), and where that knowledge was filed.
   - Anything unclear or conflicting with existing knowledge becomes a
-    question in the Jarvis page's question queue — never a silent guess.
+    question — in a questions doc and in the app's question queue.
 
-So: files still sitting in this folder = not read yet.
-Files in _learned\ = read, with the ledger showing what was learned.
+There is also a TEAM inbox on the network for the controls engineers:
+\stevendouglas.local\dfs\Company\Engineering\Electrical Dept\JARVIS Inbox
+(files there are read in place and never moved). Jarvis also watches the
+whole Electrical Dept share daily — exclusions are listed in
+jarvis-knowledge\inbox-sources.json.
