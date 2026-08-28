@@ -10,12 +10,24 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.23';
+export const UI_BUILD = 'v2.6.24';
 
 export const BUILT_AT = '2026-08-28';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.24',
+    date: '2026-08-28',
+    items: [
+      'INTERACTIONS ARE SEQUENCE LINES — no separate interactions list to drift out of sync: signal lines live in each machine\'s sequence ("Wait for Escapement\'s part-ready signal"), tagged inline with the counterpart in TWO colors — blue for another machine in THIS station (program-to-program), purple for a different station (the station\'s external interface — an important distinction for the generated code, now written into the standing knowledge). The walk\'s Interactions step is a review lens DERIVED from those lines — grouped by counterpart, "complete and correct?" — and corrections there edit the sequences themselves, both sides. One word everywhere: "signal", never "handshake"',
+      'FIXED — chat send failing with "chatHistory is not defined": three full-context fields were missing from the summarize entry point. The honest error with your text preserved worked exactly as designed and stays',
+      'YOUR EXPLANATION IS EDITABLE — the "Your explanation" card on the cascade now has ✎ edit: rewrite or add to it any time, even mid-walk. Applying is a real thinking round through the same engine — it reconciles with everything you already approved (approved machines keep their names, untouched content carries verbatim) and the changes land as the live diff on the sequence cards with a receipt. Never a silent rebuild',
+      'NOTHING YOU ASK FOR VANISHES — when the engine honors a request somewhere other than a visible sequence line (a blow-off pulse folded into the gripper-open parameters, say), Jarvis now tells you where it went in the chat instead of leaving you to think the message was eaten',
+      'APP FLOW — new tab on the Jarvis page: the layers of how the create-station pipeline is actually constructed, stage by stage — what you do, the six sources Jarvis pulls from, the thinking, the check, what renders, and what your two moves fire. Plus the honest memory model (offline distillation carried on every call) and the ask-vs-decide rule. Kept current with the wiring',
+      'Knowledge rides every call by construction — one shared context assembly (laws, precedents, archetype notes) is physically attached to the thinker, the checker, and the device-placement agent; the sheet\'s real device names now ride correction rounds so dictated words resolve against them',
+    ],
+  },
   {
     version: 'v2.6.23',
     date: '2026-08-28',

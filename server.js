@@ -1136,6 +1136,11 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       qaHistory: Array.isArray(body.qaHistory) ? body.qaHistory : [],
       priorCoverage: body.priorCoverage && typeof body.priorCoverage === 'object' ? body.priorCoverage : null,
       sheetState: body.sheetState && typeof body.sheetState === 'object' ? body.sheetState : null,
+      // FULL CONTEXT ON EVERY CHAT TURN (Dan, 2026-08-28): conversation,
+      // cascade position, and recent actions ride every summarize call.
+      chatHistory: Array.isArray(body.chatHistory) ? body.chatHistory : [],
+      cascadePosition: body.cascadePosition && typeof body.cascadePosition === 'object' ? body.cascadePosition : null,
+      changeLog: Array.isArray(body.changeLog) ? body.changeLog : [],
       signal, onProgress,
     };
     const corrections = baseArgs.corrections.trim();
@@ -2075,8 +2080,10 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
           images: Array.isArray(body.images) ? body.images : [],
           expectedStateMachines: typeof body.expectedStateMachines === 'string' ? body.expectedStateMachines : '',
           otherSms: Array.isArray(body.otherSms) ? body.otherSms : [],
-          // Correction rounds carry the proposal being revised (one engine).
+          // Correction rounds carry the proposal being revised (one engine)
+          // and the sheet's real device names (dictation resolves on them).
           currentProposal: Array.isArray(body.currentProposal) ? body.currentProposal : null,
+          sheetDevices: Array.isArray(body.sheetDevices) ? body.sheetDevices : [],
         });
       } finally { releaseAi(); }
       sendJson(res, 200, { ok: true, ...result });

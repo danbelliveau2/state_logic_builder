@@ -14,7 +14,7 @@
  * safe. SDC palette only.
  */
 
-import { useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { useDictation, MicButton } from './DescribeSurface.jsx';
 
 const C = {
@@ -23,35 +23,76 @@ const C = {
   light: 'var(--color-text-light)',
 };
 
+// Layout-affecting style keys migrate from the textarea onto the wrapper so
+// the mic overlay (positioned against the wrapper) always sits INSIDE the
+// visible box. Bug fixed here (Dan, Aug 23): a fixed-width textarea inside the
+// full-width wrapper left the mic floating half-outside the input.
+const LAYOUT_KEYS = [
+  'width', 'minWidth', 'maxWidth', 'flex', 'flexGrow', 'flexShrink', 'flexBasis',
+  'alignSelf', 'margin', 'marginTop', 'marginBottom', 'marginLeft', 'marginRight',
+];
+
 export function DictatedTextarea({
   value,
   onChange,               // (nextString) => void
   micTestId = 'dictate-btn',
   containerStyle = {},
   style = {},
+  autoGrow = true,        // prose inputs must SHOW everything written (Dan, Aug 24) — never a one-line scroll
   ...textareaProps        // rows, placeholder, data-testid, className, autoFocus, …
 }) {
   const textareaRef = useRef(null);
-  const { listening, interim, micError, speechSupported, toggleDictation } = useDictation({
+  const { listening, interim, micError, speechSupported, toggleDictation, flushInterim } = useDictation({
     value: value ?? '',
     onChange,
     textareaRef,
   });
 
+  // FLUSH-ON-SEND seam (Dan's eaten dictation, 2026-08-28): senders call
+  // el.__flushDictation() before reading the value so an in-flight interim
+  // transcript can never be lost between the mic and the Send click.
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (el) el.__flushDictation = flushInterim;
+  });
+
+  // Auto-expand to fit the content (standing UI rule, meKnowledge 2026-08-24).
+  useLayoutEffect(() => {
+    if (!autoGrow) return;
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight + 2}px`;
+  }, [value, autoGrow]);
+
+  const layoutStyle = {};
+  const innerStyle = {};
+  for (const [k, v] of Object.entries(style)) {
+    if (LAYOUT_KEYS.includes(k)) layoutStyle[k] = v;
+    else innerStyle[k] = v;
+  }
+  const sized = 'width' in layoutStyle || 'flex' in layoutStyle || 'flexGrow' in layoutStyle;
+
   return (
-    <div style={{ position: 'relative', ...containerStyle }}>
+    <div style={{ position: 'relative', ...layoutStyle, ...containerStyle }}>
       <textarea
         ref={textareaRef}
         value={value ?? ''}
         onChange={e => onChange(e.target.value)}
         {...textareaProps}
-        style={{ ...style, paddingRight: 54 }}
+        style={{
+          ...innerStyle,
+          ...(sized ? { width: '100%', boxSizing: 'border-box' } : {}),
+          ...(autoGrow ? { overflowY: 'hidden', resize: 'none' } : {}),
+          paddingRight: 54,
+          minHeight: 34, // never shorter than the mic overlay (26px btn + inset)
+        }}
       />
       {/* Mic controls — top-right INSIDE the input, matching the describe box.
           preventDefault on mousedown keeps focus (and blur-commit flows) intact. */}
       <div
         onMouseDown={e => e.preventDefault()}
-        style={{ position: 'absolute', top: 5, right: 6, display: 'flex', alignItems: 'center', gap: 6 }}
+        style={{ position: 'absolute', top: 4, right: 6, display: 'flex', alignItems: 'center', gap: 6 }}
       >
         {listening && (
           <span

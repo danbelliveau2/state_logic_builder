@@ -54,7 +54,7 @@ import { getDeviceTags } from '../../lib/tagNaming.js';
 import { ValueCell } from '../../v2/ServoValuesTable.jsx';
 import { PathDiagram } from './PathDiagram.jsx';
 import { smDecompositionOf, stationSmDecompositionOf, groupDevicesBySm, smSplitApprovalOf, approvedSmDecompositionOf, signalSourceOf, unclaimedHandshakesOf, splitDecompositionOf, compiledDecompositionOf } from './smGrouping.js';
-import { cascadeStepsOf, deriveCascade, KIND_SECTION, KIND_NOUN } from './cascadeModel.js';
+import { cascadeStepsOf, deriveCascade, deriveInteractionLines, KIND_SECTION, KIND_NOUN } from './cascadeModel.js';
 import { stationSmsOf } from '../../lib/stationModel.js';
 import { isRealQuestion } from '../../v2/stationNeeds.js';
 import { sheetGeometryIssues, axisGeometryIssues } from '../../lib/geometrySanity.js';
@@ -125,10 +125,10 @@ const GEN_LEVELS = [
   {
     id: 'hooks',
     label: 'Full station + machine hooks',
-    title: 'Interactions are live: also generate the coordination/handshakes with the defined peer stations',
+    title: 'Interactions are live: also generate the coordination signals with the defined peer stations',
     scope: {
       generate: [...SCOPE_GEN_BASE,
-        'coordination/handshakes with the defined peer stations (the sheet’s interactions)'],
+        'coordination signals with the defined peer stations (the sheet’s interactions)'],
       notYet: SCOPE_NOTYET_BASE.filter(x =>
         !/upstream\/downstream coordination|supervisor sequencing/.test(x)),
     },
@@ -1401,7 +1401,7 @@ function hydrateSummaryFromSm(s, sm) {
 // Jarvis, so it lives in the INPUT band above the review sections (Dan,
 // Aug 24 two-band restructure).
 const SUMMARY_SECTIONS = [
-  { key: 'interactions', covKey: 'interactions', title: 'Interactions', color: '#5a9a48', headerNote: 'handshakes with the machine’s other stations', editHint: 'one per line:  Station: the interaction' },
+  { key: 'interactions', covKey: 'interactions', title: 'Interactions', color: '#5a9a48', headerNote: 'signals with the machine’s other stations', editHint: 'one per line:  Station: the interaction' },
   { key: 'devices', covKey: 'devices', title: 'Devices', color: '#061d39', headerNote: 'what the station actuates and senses', editHint: 'Name — what it is for' },
   { key: 'sequence', covKey: 'sequence', title: 'Sequence', color: '#1574C4', headerNote: 'the cycle in order — and how it recovers', editHint: 'one step per line, in order' },
   { key: 'failureHandling', covKey: 'failures', title: 'Fault recovery', renderInside: 'sequence', editHint: 'one step per line, in order:  when → what to do' },
@@ -1686,7 +1686,7 @@ function SyntheticSignalGroup({ rows, labeled = true }) {
         margin: '4px 0 6px', paddingBottom: 2, borderBottom: `2px solid ${color}`,
       }}>
         <span style={{ fontSize: 10, fontWeight: 800, color, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-          {labeled ? 'Signals' : 'Handshakes'}
+          Signals
         </span>
         <span style={{ fontSize: 10, color: C.light }}>({rows.length})</span>
       </div>
@@ -3726,6 +3726,32 @@ const nameMatchesText = (name, text) => {
   return nw.length > 0 && nw.every(w => tw.has(w));
 };
 
+// SEQUENCE LINES ARE THE ACTION ONLY (Dan, 2026-08-28): parenthetical
+// annotations never render — values live on the device sheet.
+const stripParens = (l) => String(typeof l === 'string' ? l : l?.text ?? '')
+  .replace(/\s*\([^)]*\)/g, '').replace(/\s{2,}/g, ' ').trim();
+const stripSeqItem = (x) => (typeof x === 'string' ? stripParens(x) : { ...x, text: stripParens(x) });
+
+/** LIVE DIFF rows for a sequence card (Dan, 2026-08-28): the new sequence
+ *  with added/changed lines marked, removed lines struck through in place. */
+function seqDiffRows(newSeq, diff) {
+  const rows = (newSeq ?? []).map(t => {
+    const t0 = stripParens(t);
+    if (!diff) return { t: t0 };
+    if (diff.added.includes(t0)) return { t: t0, added: true };
+    const chg = (diff.changed ?? []).find(([, n]) => n === t0);
+    if (chg) return { t: t0, changed: true, was: chg[0] };
+    return { t: t0 };
+  });
+  if (diff) {
+    for (const r of (diff.removed ?? [])) {
+      const oldIdx = (diff.oldSeq ?? []).indexOf(r);
+      rows.splice(Math.min(oldIdx < 0 ? rows.length : oldIdx, rows.length), 0, { t: r, removed: true });
+    }
+  }
+  return rows;
+}
+
 /** NUMBERED-ANSWER PARSER (Dan, 2026-08-27): "1 — yes; 2 — actually there's
  *  a track-full sensor" → [{n, q, answer}] against the active step's
  *  numbered questions. Null when the text isn't numbered-answer shaped
@@ -4190,6 +4216,14 @@ export function CreateStationPage({ embedded = false }) {
   // { stateMachines:[{name,oneLiner,ownedDeviceNames,why,sequence}], reasoning, at }
   const [smProposal, setSmProposal] = useState(draft?.smProposal ?? null);
   const splitCounterRef = useRef(''); // a chat counter to the draft proposal rides the re-decompose
+  const reviewingKeyRef = useRef(null); // which machine the feedback round was about
+  // LIVE DIFF (Dan, 2026-08-28): a correction shows IN the sequence card —
+  // removed lines struck through, added/changed highlighted — until "got it".
+  const [seqDiff, setSeqDiff] = useState(null); // { byKey: {k:{removed,added,changed,machine}}, at }
+  // EDITABLE EXPLANATION (Dan, 2026-08-28): re-enterable after the cascade
+  // starts; applying an edit is a gate event through the same engine.
+  const [explEditing, setExplEditing] = useState(false);
+  const [explDraft, setExplDraft] = useState('');
   // NO UNASSIGNED, EVER (Dan, 2026-08-27: "you know what goes to what —
   // assign them and I'll tell you if it's right or wrong"). Jarvis COMMITS a
   // machine for every device; committed guesses persist here (name-keyed) so
@@ -5625,9 +5659,12 @@ export function CreateStationPage({ embedded = false }) {
    *  NOTHING is drawn, built, or compiled here — that is the Generate step,
    *  the LAST step, after every approval. A stall can never freeze: the
    *  request hard-aborts at 120s and surfaces Retry with the reason. */
-  async function kickProposal() {
+  async function kickProposal(descOverride = null) {
+    // (descOverride: an explanation edit re-thinks against the NEW text
+    // before the state update lands — Dan, 2026-08-28.)
+    const descText = String(descOverride ?? description).trim();
     if (busy || applying || proposeRun?.stage === 'compile') return;
-    if (!description.trim()) {
+    if (!descText) {
       setProposeRun({ stage: 'error', msg: 'There is no explanation yet — describe the station first' });
       return;
     }
@@ -5640,7 +5677,7 @@ export function CreateStationPage({ embedded = false }) {
         headers: { 'Content-Type': 'application/json' },
         signal: ctrl.signal,
         body: JSON.stringify({
-          description: description.trim(),
+          description: descText,
           images: images.filter(i => String(i.mediaType || '').startsWith('image/'))
             .map(i => ({ name: i.name, base64: i.base64, mediaType: i.mediaType })),
           expectedStateMachines:
@@ -5655,6 +5692,8 @@ export function CreateStationPage({ embedded = false }) {
           // verbatim except where the feedback touches them.
           ...(splitCounterRef.current && smProposal?.stateMachines?.length
             ? { currentProposal: smProposal.stateMachines } : {}),
+          // The sheet's real device names — dictated words resolve on them.
+          sheetDevices: (summary?.devices ?? []).map(dv => ({ name: dv?.name, type: dv?.type })).filter(dv => dv.name),
           smName: name.trim() || null,
         }),
       });
@@ -5671,39 +5710,51 @@ export function CreateStationPage({ embedded = false }) {
       assignGateRef.current = true; // gate: proposal landed → place the devices
       if (splitCounterRef.current) {
         splitCounterRef.current = '';
-        // COMPUTED RECEIPT (never claims): diff the revised proposal against
-        // the one it replaces — per machine, sequence lines added/removed.
-        const items = [];
+        const focusKey = reviewingKeyRef.current;
+        reviewingKeyRef.current = null;
+        // COMPUTED, SCOPED, VISUAL (Dan, 2026-08-28): per-machine diff with
+        // reworded-line pairing; the WALKED machine gets one receipt line +
+        // the live diff on its card; other machines stay SILENT — he finds
+        // their content already updated when the walk arrives. Reviewer/
+        // checker notes are layer-internal and NEVER print.
+        const overlap = (a, b) => {
+          const A = new Set(wordsOf(a)); const B = new Set(wordsOf(b));
+          const inter = [...A].filter(x => B.has(x)).length;
+          return inter / Math.max(1, Math.min(A.size, B.size));
+        };
+        const diffByKey = {};
         const oldByKey = new Map((smProposal?.stateMachines ?? []).map(m => [normKey(m.name), m]));
         for (const m of d.stateMachines) {
-          const old = oldByKey.get(normKey(m.name));
-          const oldSeq = old?.sequence ?? [];
-          const newSeq = m.sequence ?? [];
-          for (const l of oldSeq.filter(x => !newSeq.includes(x))) items.push({ section: 'sequence', text: `${m.name}: removed “${l}”` });
-          for (const l of newSeq.filter(x => !oldSeq.includes(x))) items.push({ section: 'sequence', text: `${m.name}: added “${l}”` });
-          const oldDev = old?.ownedDeviceNames ?? [];
-          const newDev = m.ownedDeviceNames ?? [];
-          for (const x of oldDev.filter(v => !newDev.includes(v))) items.push({ section: 'devices', text: `${m.name}: no longer owns ${x}` });
-          for (const x of newDev.filter(v => !oldDev.includes(v))) items.push({ section: 'devices', text: `${m.name}: now owns ${x}` });
+          const k = normKey(m.name);
+          const oldSeq = (oldByKey.get(k)?.sequence ?? []).map(x => stripParens(x));
+          const newSeq = (m.sequence ?? []).map(x => stripParens(x));
+          let removed = oldSeq.filter(x => !newSeq.includes(x));
+          let added = newSeq.filter(x => !oldSeq.includes(x));
+          const changed = [];
+          for (const r0 of [...removed]) {
+            const match = added.find(a2 => overlap(r0, a2) >= 0.6);
+            if (match) { changed.push([r0, match]); removed = removed.filter(x => x !== r0); added = added.filter(x => x !== match); }
+          }
+          if (removed.length || added.length || changed.length) {
+            diffByKey[k] = { removed, added, changed, machine: m.name, oldSeq };
+          }
         }
-        for (const m of (smProposal?.stateMachines ?? [])) {
-          if (!d.stateMachines.some(x => normKey(x.name) === normKey(m.name))) items.push({ section: 'stateMachines', text: `machine removed: ${m.name}` });
-        }
-        for (const m of d.stateMachines) {
-          if (!oldByKey.has(normKey(m.name))) items.push({ section: 'stateMachines', text: `machine added: ${m.name}` });
-        }
-        const chk = d.checked;
+        setSeqDiff(Object.keys(diffByKey).length ? { byKey: diffByKey, at: Date.now() } : null);
+        const cur = focusKey ? diffByKey[focusKey] : null;
+        const curCount = cur ? cur.removed.length + cur.added.length + cur.changed.length : 0;
         setChatThread(th => [...th, {
           role: 'jarvis',
-          // NEVER SILENT (Dan, 2026-08-28): zero diff on substantive feedback
-          // states the reading and asks what was missed.
-          text: (items.length
-            ? `Done — ${d.stateMachines.length} state machine${d.stateMachines.length === 1 ? '' : 's'}; here is what actually changed:`
-            : `I read that as approving the proposal as-is — nothing changed. Did I miss an edit?`)
-            + (chk?.violations?.length ? `\n(reviewer notes: ${chk.violations[0]})` : ''),
-          items,
+          text: cur && curCount
+            ? `Done — ${curCount} change${curCount === 1 ? '' : 's'} to ${cur.machine}, shown on its sequence card.`
+            : Object.keys(diffByKey).length
+              ? 'Done — updated.'
+              : 'I read that as approving the proposal as-is — nothing changed. Did I miss an edit?',
           at: Date.now(),
         }]);
+        // NEVER-SILENT (Dan's eaten-message P0): if the engine honored a
+        // request somewhere other than a visible sequence line, say where.
+        const note = String(d.noteToEngineer ?? '').trim();
+        if (note) setChatThread(th => [...th, { role: 'jarvis', text: note, at: Date.now() }]);
       }
       if (linkedSmId) appendChangeLog(linkedSmId, {
         what: `State-machine proposal — ${d.stateMachines.length} machine${d.stateMachines.length === 1 ? '' : 's'}`,
@@ -5725,8 +5776,9 @@ export function CreateStationPage({ embedded = false }) {
 
   /** The ONE Corrections box, framed so Jarvis routes it: the ME's wording
    *  names its target section implicitly — apply it there, touch nothing else. */
-  function combinedCorrections() {
-    if (!changes.trim()) return '';
+  function combinedCorrections(msgText = changes) {
+    const body = String(msgText ?? '').trim();
+    if (!body) return '';
     // STEP-AWARE CHAT (Dan, 2026-08-26): the ONE chat is the conversation
     // channel — a message while a cascade step is active applies to that
     // step by default (routing by content still wins when he names another).
@@ -5737,8 +5789,12 @@ export function CreateStationPage({ embedded = false }) {
         ? `The engineer is currently reviewing the STATE MACHINE decomposition proposal${(smDecomp?.length ?? 0) ? ` (Jarvis proposed ${smDecomp.length}: ${(smDecomp ?? []).map(e => e.name).join(', ')})` : ''} — a correction about the split re-proposes it. `
         : `The engineer is currently reviewing ${step.smKey && step.smKey !== 'station' ? `the ${step.smName} state machine's ` : "the station's "}${KIND_NOUN[step.kind] ?? step.kind} — corrections default there unless they clearly name another section. `)
       : '';
+    // OTHER-MACHINE CONTENT IS STORED SILENTLY (Dan, 2026-08-28): apply it
+    // where it belongs; he sees it when the walk reaches that machine.
     return `${stepFrame}Corrections from the engineer — each names its target section implicitly; `
-      + `apply each to the section(s) it targets and leave every untouched section exactly as it was:\n${changes.trim()}`;
+      + 'apply each to the section(s) it targets and leave every untouched section exactly as it was. '
+      + 'Anything concerning a machine OTHER than the one he is reviewing: apply it there quietly — '
+      + `he reviews that machine later and should find it already reflected:\n${body}`;
   }
 
   /** Land the cursor in the ONE chat (the step cards link here). */
@@ -5775,20 +5831,32 @@ export function CreateStationPage({ embedded = false }) {
   }
 
   async function handleApplyChanges() {
-    if (applying) return;
+    // NEVER SILENT AT THE UI LAYER (Dan's eaten repost, 2026-08-28): every
+    // early exit states itself inline; every dispatch logs its branch.
+    if (applying) {
+      setApplyHint('A round is already running — it lands in a few seconds; Send again after.');
+      console.warn('[chat] send blocked: a round is already applying');
+      return;
+    }
+    // FLUSH DICTATION FIRST: commit any interim ghost text into the message
+    // BEFORE reading it (the eaten-message branch: Send raced the recognizer,
+    // saw an empty value, and died at the validation hint).
+    const flushed = document.querySelector('[data-testid="changes-textarea"]')?.__flushDictation?.() ?? '';
+    const msg = `${(changes ?? '').trim()}${flushed ? `${(changes ?? '').trim() ? ' ' : ''}${flushed}` : ''}`.trim();
     // EXPLICIT REASSIGNMENT (Dan, 2026-08-27: "how would I say it shouldn't
     // be here?" — like this): atomic, instant, free. The ME's word lands as
     // an explicit assignment that outranks every signal, the device moves
     // machines, and the receipt says so.
-    if (cascadeLive && changes.trim()) {
-      const move = parseReassignmentIntent(changes.trim());
+    if (cascadeLive && msg) {
+      const move = parseReassignmentIntent(msg);
       if (move) {
+        console.log('[chat] dispatched: explicit device move');
         // ONE ENGINE (Dan, 2026-08-28: "the chat has to be the same engine
         // that builds the stations"): the ME's ruling goes THROUGH the
         // assignment thinker+checker with his word as a directive that
         // outranks precedent — then the sheet updates and the receipt cites
         // the checked result. His placement stands even offline (fallback).
-        const raw = changes.trim();
+        const raw = msg;
         const prior = deviceAssignments?.[normKey(move.deviceName)];
         const wasNoPrecedent = prior && typeof prior === 'object' && prior.by === 'agent' && prior.precedent === false;
         setChatThread(t => [...t, { role: 'me', text: raw, at: Date.now() }]);
@@ -5846,10 +5914,19 @@ export function CreateStationPage({ embedded = false }) {
     // feedback about it re-enters the decompose thinker+checker with the
     // CURRENT proposal riding along, and the receipt diffs old vs new.
     // (Numbered answers and value fills keep their zero-judgment paths.)
-    if (!linkedSmId && smProposal && cascadeLive && changes.trim()
-      && ['smSplit', 'devices', 'sequence', 'recovery'].includes(cascade.activeStep?.kind)
-      && !(activeStepNeeds.length && parseNumberedAnswers(changes.trim(), activeStepNeeds))) {
-      const t = changes.trim();
+    if (!linkedSmId && smProposal && cascadeLive && msg
+      // 'interactions' too (Dan, 2026-08-28): the lens derives from the
+      // proposal sequences — corrections must edit THOSE, both sides.
+      && ['smSplit', 'devices', 'sequence', 'recovery', 'interactions'].includes(cascade.activeStep?.kind)
+      && !(activeStepNeeds.length && parseNumberedAnswers(msg, activeStepNeeds))) {
+      if (proposeRun?.stage === 'compile') {
+        setApplyHint('Still working on the previous round — send again when it lands.');
+        console.warn('[chat] send blocked: proposal round in flight');
+        return;
+      }
+      console.log('[chat] dispatched: proposal feedback → decompose engine');
+      reviewingKeyRef.current = cascade.activeStep.smKey ?? null;
+      const t = msg;
       splitCounterRef.current = cascade.activeStep.kind === 'smSplit'
         ? t
         : `(the engineer is reviewing "${cascade.activeStep.label}") ${t}`;
@@ -5857,16 +5934,19 @@ export function CreateStationPage({ embedded = false }) {
       setChanges('');
       // The OLD proposal keeps rendering while the revision runs (the render
       // never depends on a live call) — success swaps it in with a receipt.
-      kickProposal();
+      // The THINKING INDICATOR is visible for the whole round (applying).
+      setApplying(true);
+      try { await kickProposal(); } finally { setApplying(false); }
       return;
     }
     // NUMBERED ANSWERS (Dan, 2026-08-27): "1 — yes; 2 — actually there's a
     // track-full sensor" routes each answer to its Q-number on the active
     // step, in ONE corrections round. Agree-ish answers just record.
-    if (cascadeLive && activeStep && activeStepNeeds.length && changes.trim()) {
-      const parsed = parseNumberedAnswers(changes.trim(), activeStepNeeds);
+    if (cascadeLive && activeStep && activeStepNeeds.length && msg) {
+      const parsed = parseNumberedAnswers(msg, activeStepNeeds);
       if (parsed) {
-        const raw = changes.trim();
+        console.log('[chat] dispatched: numbered answers');
+        const raw = msg;
         const agreeish = /^(yes|yep|yeah|ok(ay)?|agreed?|correct|go (with (that|it)|ahead)|sounds good|fine)\.?$/i;
         const corrections = [];
         for (const { n, q, answer } of parsed) {
@@ -5899,14 +5979,15 @@ export function CreateStationPage({ embedded = false }) {
         return;
       }
     }
-    const corrections = combinedCorrections();
+    const corrections = combinedCorrections(msg);
     if (!corrections) {
-      // Never a silent no-op — say what's needed and put the cursor there.
-      setApplyHint('Type or talk an answer or correction here first — it covers the whole sheet');
+      // Empty box: just put the cursor there — a chat box needs no lecture.
+      console.warn('[chat] send blocked: empty message');
       document.querySelector('[data-testid="changes-textarea"]')?.focus();
       return;
     }
-    await sendCorrections(corrections, changes.trim(), questions.slice(), () => setChanges(''));
+    console.log('[chat] dispatched: corrections engine');
+    await sendCorrections(corrections, msg, questions.slice(), () => setChanges(''));
   }
 
   /** THE one corrections pipeline (Dan's Magnet Dial round, 2026-08-25:
@@ -5943,14 +6024,11 @@ export function CreateStationPage({ embedded = false }) {
       // (a lying reply is impossible by construction — the bullets are
       // measured against the sheet that actually landed).
       const reply = String(applied.data?.chatReply ?? '').trim();
-      // THE CHECKED RESULT shows (Dan, 2026-08-28): a bounce says so.
-      const chkd = applied.data?.checked;
-      const chkLine = chkd?.bounced
-        ? `\n✓ checked — the reviewer bounced the first attempt (${chkd.violations?.[0] ?? 'missed edit'}); this is the corrected result.`
-        : '';
+      // Checker/reviewer notes are layer-INTERNAL — the user sees only the
+      // (already corrected) result, never the machinery (Dan, 2026-08-28).
       setChatThread(t => [...t, {
         role: 'jarvis',
-        text: (reply || (items.length ? 'Done — here is what actually changed:' : 'Nothing changed — the sheet already matched that.')) + chkLine,
+        text: reply || (items.length ? 'Done — here is what actually changed:' : 'Nothing changed — the sheet already matched that.'),
         items,
         at: Date.now(),
       }]);
@@ -6137,6 +6215,7 @@ export function CreateStationPage({ embedded = false }) {
    *  approveSmSplit path (one approval artifact, never two). */
   function approveCascadeStep(step) {
     if (!step) return;
+    setSeqDiff(null); // the highlights served their purpose
     advanceRef.current = true; // auto-advance: the next step opens immediately
     assignGateRef.current = true; // gate: an approve re-runs placement for anything still pending
     if (step.kind === 'smSplit' && step.hasProposal) { approveSmSplit(); return; }
@@ -6300,8 +6379,11 @@ export function CreateStationPage({ embedded = false }) {
       return hosted.length ? hosted.some(s => s.status !== 'pending') : cascade.allApproved;
     }
     if (sectionKey === 'interactions') {
-      const hosted = cascade.steps.filter(s => s.kind === 'interactions');
-      return hosted.length ? hosted.some(s => s.status !== 'pending') : cascade.allApproved;
+      // INTERACTIONS ARE SEQUENCE LINES (Dan, 2026-08-28): during the walk the
+      // stored station-level card never shows — the Interactions step is a
+      // LENS derived from each machine's sequence, on its sequence card. The
+      // stored editor already drifted from the sequence once; never again.
+      return false;
     }
     return true;
   };
@@ -6461,6 +6543,40 @@ export function CreateStationPage({ embedded = false }) {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [devAssign, phase]);
+
+  // NEVER-SILENT WATCHDOG (Dan, 2026-08-28: "when I say something, it
+  // happens" — a user message with no visible consequence within seconds is
+  // a hard bug BY DEFINITION). If his last chat turn sits 6s with nothing
+  // visibly running and no reply, say so inline and auto-file the bug.
+  const applyingWdRef = useRef(applying); applyingWdRef.current = applying;
+  const proposeWdRef = useRef(proposeRun); proposeWdRef.current = proposeRun;
+  const assignWdRef = useRef(assignBusy); assignWdRef.current = assignBusy;
+  const chatLenWdRef = useRef(chatThread.length); chatLenWdRef.current = chatThread.length;
+  useEffect(() => {
+    const last = chatThread[chatThread.length - 1];
+    if (!last || last.role !== 'me') return undefined;
+    const seen = chatThread.length;
+    const t = setTimeout(() => {
+      if (chatLenWdRef.current > seen) return; // a reply landed
+      if (applyingWdRef.current || assignWdRef.current || proposeWdRef.current?.stage === 'compile') return; // visibly running
+      console.error('[chat] WATCHDOG: a message produced no visible consequence within 6s');
+      fetch('/api/jarvis/questions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: 'BUG auto-report: a chat message produced no visible consequence within 6s (send-path watchdog)',
+          context: String(last.text ?? '').slice(0, 200),
+          source: 'auto-invariant',
+        }),
+      }).catch(() => {});
+      setChatThread(x => [...x, {
+        role: 'jarvis',
+        text: "Your message didn't produce a response — that's a bug on my side and it has been reported. Please send it again.",
+        error: true, at: Date.now(),
+      }]);
+    }, 6000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatThread]);
   // ── ROBUST MACHINE ATTRIBUTION (Dan's live MidBaseLoad round, 2026-08-27:
   // every escapement question rendered on the Pick And Place step; the old
   // rule leaked every UNMATCHED question onto the CURRENT step). Rules now:
@@ -7190,21 +7306,15 @@ export function CreateStationPage({ embedded = false }) {
             {applyHint}
           </span>
         )}
-        <span style={{ flex: 1, fontSize: 10.5, color: C.light }}>
-          {cascadeLive && cascade.activeStep
-            && !(cascade.activeStep.kind === 'smSplit' && !cascade.activeStep.hasProposal)
-            ? `A message now applies to “${cascade.activeStep.label}” by default — name another section to change it instead.`
-            : 'Untouched sections stay exactly as they are. For a direct fix, click any line to edit it.'}
-        </span>
+        {/* No instructions on the chat box (Dan, 2026-08-28): the focus IS
+            the walked machine — self-evident from where he is. */}
+        <span style={{ flex: 1 }} />
         <button
           className="btn btn--primary"
           data-testid="apply-changes-btn"
           onClick={handleApplyChanges}
-          onMouseEnter={() => { if (!hasAnyChanges && !applying) setApplyHint('Type or talk an answer or correction here first — it covers the whole sheet'); }}
           disabled={applying || overSummarizeBudget}
-          title={overSummarizeBudget
-            ? budgetMessage
-            : (hasAnyChanges ? undefined : 'Type or talk an answer or correction here first — it covers the whole sheet')}
+          title={overSummarizeBudget ? budgetMessage : undefined}
         >
           Send
         </button>
@@ -7710,12 +7820,83 @@ export function CreateStationPage({ embedded = false }) {
                         Your explanation
                       </span>
                       <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.78)' }}>
-                        read-only — change anything by telling Jarvis in the chat
+                        {explEditing ? 'add or rewrite — Jarvis re-thinks and reconciles with what you approved' : ''}
                       </span>
+                      <span style={{ flex: 1 }} />
+                      {/* EDITABLE (Dan, 2026-08-28: "maybe I thought about
+                          things differently"). The edit is a GATE event:
+                          the same engine re-thinks against the new text and
+                          reconciles — approved steps stand unless the new
+                          text contradicts them, shown as diffs, never a
+                          silent rebuild. */}
+                      {!explEditing && (
+                        <button
+                          type="button"
+                          data-testid="explanation-edit-btn"
+                          onClick={() => { setExplDraft(description); setExplEditing(true); }}
+                          style={{
+                            ...chipBase, cursor: 'pointer', color: '#fff',
+                            background: 'rgba(255,255,255,0.16)', border: '1px solid rgba(255,255,255,0.5)',
+                          }}
+                        >✎ edit</button>
+                      )}
                     </div>
-                    <div style={{ padding: '8px 14px 10px', fontSize: 12, color: C.text, lineHeight: 1.6, whiteSpace: 'pre-wrap', maxWidth: 900, overflowWrap: 'anywhere' }}>
-                      {description}
-                    </div>
+                    {explEditing ? (
+                      <div style={{ padding: '8px 14px 10px', maxWidth: 900 }}>
+                        <DictatedTextarea
+                          value={explDraft}
+                          onChange={setExplDraft}
+                          rows={8}
+                          data-testid="explanation-edit-input"
+                          micTestId="explanation-edit-mic"
+                          className="form-input"
+                          style={{ width: '100%', boxSizing: 'border-box', fontSize: 12.5, lineHeight: 1.6 }}
+                        />
+                        <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                          <button
+                            type="button"
+                            data-testid="explanation-edit-apply"
+                            disabled={applying || !explDraft.trim()}
+                            onClick={async () => {
+                              const flushedTail = document.querySelector('[data-testid="explanation-edit-input"]')?.__flushDictation?.() ?? '';
+                              const nextText = `${explDraft.trim()}${flushedTail ? ` ${flushedTail}` : ''}`.trim();
+                              if (!nextText || nextText === description.trim()) { setExplEditing(false); return; }
+                              setDescription(nextText);
+                              setExplEditing(false);
+                              setChatThread(th => [...th, { role: 'me', text: '(revised my explanation)', at: Date.now() }]);
+                              if (smProposal?.stateMachines?.length) {
+                                // GATE: re-think + RECONCILE against the new text.
+                                reviewingKeyRef.current = cascade.activeStep?.smKey ?? null;
+                                splitCounterRef.current =
+                                  'The engineer REVISED his explanation (the new full text is above). Reconcile: '
+                                  + 'everything he already approved stays unless the new text contradicts it; apply '
+                                  + 'exactly what the revision changes, carry the rest forward verbatim.';
+                                console.log('[chat] dispatched: explanation revision → decompose engine');
+                                setApplying(true);
+                                try { await kickProposal(nextText); } finally { setApplying(false); }
+                              }
+                            }}
+                            style={{
+                              background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 6,
+                              fontSize: 12, fontWeight: 700, padding: '5px 16px', cursor: 'pointer',
+                            }}
+                          >Apply — Jarvis re-thinks</button>
+                          <button
+                            type="button"
+                            data-testid="explanation-edit-cancel"
+                            onClick={() => setExplEditing(false)}
+                            style={{
+                              background: 'none', border: `1px solid ${C.border}`, borderRadius: 6,
+                              fontSize: 12, color: C.muted, padding: '5px 12px', cursor: 'pointer',
+                            }}
+                          >Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ padding: '8px 14px 10px', fontSize: 12, color: C.text, lineHeight: 1.6, whiteSpace: 'pre-wrap', maxWidth: 900, overflowWrap: 'anywhere' }}>
+                        {description}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -8255,7 +8436,7 @@ export function CreateStationPage({ embedded = false }) {
                                   propose → approve or the corrections box. */}
                               <SectionLines
                                 sectionKey="failureHandling"
-                                items={summary.failureHandling}
+                                items={(summary.failureHandling ?? []).map(stripSeqItem)}
                                 editHint={failSec.editHint}
                                 readOnly
                                 onChange={() => {}}
@@ -8270,22 +8451,115 @@ export function CreateStationPage({ embedded = false }) {
                                   gridTemplateColumns: 'repeat(auto-fit, minmax(330px, 620px))',
                                   gap: '6px 20px', alignItems: 'start',
                                 }}>
-                                  {perSm.map((e, ei) => (
+                                  {perSm.map((e, ei) => {
+                                    // INTERACTIONS ARE SEQUENCE LINES (Dan, 2026-08-28): derived
+                                    // at render, never stored. Two scopes, two colors — another
+                                    // machine in THIS station vs another station entirely.
+                                    const ix = deriveInteractionLines((e.sequence ?? []).map(x => stripParens(x)), {
+                                      selfName: e.name,
+                                      // ALL the station's machines — not just the revealed
+                                      // columns (a hidden machine is still a counterpart).
+                                      sameMachines: (smChipEntries ?? []).filter(o => o.key !== e.key).map(o => o.name).filter(Boolean),
+                                      otherStations: peerNames,
+                                    });
+                                    const ixByText = new Map();
+                                    (e.sequence ?? []).forEach((ln, i2) => {
+                                      const info = ix.byLine.get(i2);
+                                      if (info) ixByText.set(stripParens(ln), info);
+                                    });
+                                    const scopeStyle = (scope) => scope === 'sameStation'
+                                      ? { color: '#075985', background: '#e0f2fe', border: '1px solid #bae6fd' }
+                                      : { color: '#6b21a8', background: '#f3e8ff', border: '1px solid #e9d5ff' };
+                                    return (
                                     <div key={e.key} style={{ minWidth: 0 }} data-testid={`sequence-sm-${e.key}`}>
                                       <SubHead color="#1574C4">{e.name} sequence</SubHead>
+                                      {/* LIVE DIFF (Dan, 2026-08-28): a correction shows right
+                                          here — removed struck, added/changed highlighted —
+                                          parenthetical annotations never render. */}
                                       <ol style={{ margin: 0, paddingLeft: 20, fontSize: 12, lineHeight: 1.55, color: C.text }}>
-                                        {e.sequence.map((l, li) => <li key={li}>{l}</li>)}
+                                        {seqDiffRows(e.sequence, seqDiff?.byKey?.[e.key] ?? null).map((r, li) => {
+                                          const info = ixByText.get(stripParens(r.t)) ?? null;
+                                          return (
+                                          <li
+                                            key={li}
+                                            data-testid={r.removed ? `seq-removed-${e.key}-${li}` : r.added ? `seq-added-${e.key}-${li}` : undefined}
+                                            title={r.changed ? `was: ${stripParens(r.was)}` : undefined}
+                                            style={r.removed
+                                              ? { textDecoration: 'line-through', color: '#991b1b', opacity: 0.75 }
+                                              : (r.added || r.changed)
+                                                ? { background: '#fef9c3', borderRadius: 3 }
+                                                : undefined}
+                                          >
+                                            {stripParens(r.t)}
+                                            {info && !r.removed && (
+                                              <span
+                                                data-testid={`seq-ix-tag-${e.key}-${li}`}
+                                                title={info.scope === 'sameStation'
+                                                  ? `Signal with ${info.counterpart} — another machine in this station (program-to-program)`
+                                                  : `Signal with ${info.counterpart} — a different station (this station's external interface)`}
+                                                style={{
+                                                  ...scopeStyle(info.scope), fontSize: 9.5, fontWeight: 700,
+                                                  borderRadius: 4, padding: '0px 5px', marginLeft: 6,
+                                                  whiteSpace: 'nowrap', verticalAlign: '1px',
+                                                }}
+                                              >— {info.counterpart}</span>
+                                            )}
+                                          </li>
+                                          );
+                                        })}
                                       </ol>
+                                      {seqDiff?.byKey?.[e.key] && (
+                                        <button
+                                          type="button"
+                                          data-testid={`seq-diff-gotit-${e.key}`}
+                                          onClick={() => setSeqDiff(null)}
+                                          style={{
+                                            ...chipBase, cursor: 'pointer', marginTop: 3,
+                                            color: '#2f6b3c', background: '#e9f5ec', border: '1px solid #bfe0c8',
+                                          }}
+                                        >✓ got it</button>
+                                      )}
+                                      {/* THE INTERACTIONS LENS (Dan, 2026-08-28): a review view
+                                          DERIVED from the sequence — the single source. Nothing
+                                          stored separately, so it can never drift. */}
+                                      {stepRevealed('interactions', e.key) && (
+                                        <div data-testid={`interactions-lens-${e.key}`} style={{ marginTop: 8 }}>
+                                          <SubHead color="#0e7490">Signals with other machines</SubHead>
+                                          {ix.groups.length === 0 ? (
+                                            <div style={{ fontSize: 12, color: C.muted }}>
+                                              No signals with other machines in this sequence.
+                                            </div>
+                                          ) : ix.groups.map((g) => (
+                                            <div key={`${g.scope}:${g.counterpart}`} style={{ fontSize: 12, color: C.text, lineHeight: 1.55, marginBottom: 4 }}>
+                                              <span style={{ fontWeight: 700 }}>{g.counterpart}</span>
+                                              <span
+                                                style={{
+                                                  ...scopeStyle(g.scope), fontSize: 9.5, fontWeight: 700,
+                                                  borderRadius: 4, padding: '0px 5px', marginLeft: 6, whiteSpace: 'nowrap',
+                                                }}
+                                              >{g.scope === 'sameStation' ? 'this station' : 'other station'}</span>
+                                              <div style={{ color: C.muted, fontSize: 11.5 }}>
+                                                {g.lines.map((l, gi) => <div key={gi}>• {l}</div>)}
+                                              </div>
+                                            </div>
+                                          ))}
+                                          <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+                                            Drawn from the sequence lines above — complete and correct?
+                                            Approve, or tell Jarvis what's missing.
+                                          </div>
+                                        </div>
+                                      )}
                                       {(e.faultRecovery?.length ?? 0) > 0 && stepRevealed('recovery', e.key) && (
                                         <>
                                           <SubHead color="#b45309">Fault recovery</SubHead>
                                           <ol style={{ margin: 0, paddingLeft: 20, fontSize: 12, lineHeight: 1.55, color: C.text }}>
-                                            {e.faultRecovery.map((l, li) => <li key={li}>{l}</li>)}
+                                            {e.faultRecovery.map((l, li) => <li key={li}>{stripParens(l)}</li>)}
                                           </ol>
                                         </>
                                       )}
                                     </div>
-                                  ))}
+                                    );
+                                  })}
                                   {/* Shared recovery only when no machine carries its own —
                                       revealed once any recovery step is reached. */}
                                   {!anyPerSmRecovery
@@ -8310,7 +8584,7 @@ export function CreateStationPage({ embedded = false }) {
                                     with what Jarvis would regenerate. */}
                                 <SectionLines
                                   sectionKey="sequence"
-                                  items={summary.sequence}
+                                  items={(summary.sequence ?? []).map(stripSeqItem)}
                                   editHint={section.editHint}
                                   readOnly
                                   onChange={() => {}}

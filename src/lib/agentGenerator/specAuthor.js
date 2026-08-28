@@ -23,7 +23,8 @@ require('dotenv').config({ path: path.join(__dirname, '..', '..', '..', '.env'),
 
 const { costOfUsage, AiNotConfiguredError } = require('./client');
 const { loadMeKnowledge } = require('./meKnowledge');
-const { precedentsBlock } = require('./precedents');
+const { precedentsBlock } = require('./precedents'); // eslint-disable-line no-unused-vars
+const { buildEngineContext } = require('./engineContext');
 
 const MODEL = process.env.JARVIS_MODEL || 'claude-opus-5';
 const MAX_TOKENS = parseInt(process.env.JARVIS_SPEC_MAX_TOKENS, 10) || 8000;
@@ -404,7 +405,8 @@ async function authorSpec({
     : '';
 
   // PRECEDENT PACK (Dan, 2026-08-26): every step grounds in shipped names.
-  const meKnowledge = loadMeKnowledge() + precedentsBlock();
+  const meKnowledge = loadMeKnowledge()
+    + buildEngineContext(['precedents', 'concepts:station-archetypes', 'concepts:multi-state-machine']);
   const system =
     'You are JARVIS, the SDC Automation station-spec extractor. A manufacturing engineer explains ' +
     'an automation station in plain language, the way they would to a new engineer. You extract a ' +
@@ -839,6 +841,9 @@ async function summarizeDescription({
   description, images = [], checklist = null, sm = {}, otherSms = [],
   priorSummary = '', corrections = '', round = 0, qaHistory = [],
   priorCoverage = null, sheetState = null, signal = null, onProgress = null,
+  // FULL CONTEXT ON EVERY CHAT TURN (Dan, 2026-08-28) — the P0 "chatHistory
+  // is not defined" send failure was these three missing from this list.
+  chatHistory = [], cascadePosition = null, changeLog = [],
   // THE SPEED ARCHITECTURE (class b — section-scoped corrections): the edit
   // classifier routes single-section content edits here with a cheaper model
   // and a scope lock so the round costs <20s instead of a full opus pass.
@@ -854,7 +859,8 @@ async function summarizeDescription({
     || '  (no other stations in this project yet)';
 
   // PRECEDENT PACK (Dan, 2026-08-26): every step grounds in shipped names.
-  const meKnowledge = loadMeKnowledge() + precedentsBlock();
+  const meKnowledge = loadMeKnowledge()
+    + buildEngineContext(['precedents', 'concepts:station-archetypes', 'concepts:multi-state-machine']);
   const system =
     'You are JARVIS, an intelligent SDC controls engineer listening to a MECHANICAL engineer ' +
     'who has just finished explaining an automation station out loud (dictated and/or typed — ' +

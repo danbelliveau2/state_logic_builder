@@ -31,6 +31,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { DictatedTextarea } from './DictatedTextarea.jsx';
+import { AppFlowTab } from './AppFlowTab.jsx';
 import { ScorePicker, scoreColor100, SCORE_SCALE_HINT } from './BuildScoreRow.jsx';
 import { useDiagramStore } from '../../store/useDiagramStore.js';
 import { useV2Shell } from '../../v2/useV2Shell.js';
@@ -2571,6 +2572,9 @@ const TABS = [
   { id: 'questions', label: 'Questions for Controls' },
   { id: 'knowledge', label: 'What Jarvis knows' },
   { id: 'how', label: 'How Jarvis works' },
+  // APP FLOW (Dan, 2026-08-28): the layers of how the pipeline is actually
+  // constructed — so he can see the thinking/checking/loading and improve it.
+  { id: 'appflow', label: 'App flow' },
 ];
 
 // focusSmName: land on the generations grid with THIS station's latest build
@@ -2734,6 +2738,7 @@ export function JarvisPage({ onClose, focusSmName = null }) {
           {tab === 'how' && (
             <HowJarvisWorksTab onSeeKnowledge={() => setTab('knowledge')} />
           )}
+          {tab === 'appflow' && <AppFlowTab />}
           {tab === 'generations' && (
             <GenerationsTab
               gens={gens}

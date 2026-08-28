@@ -16,7 +16,8 @@ require('dotenv').config({ path: path.join(__dirname, '..', '..', '..', '.env'),
 
 const { AiNotConfiguredError } = require('./client');
 const { loadMeKnowledge } = require('./meKnowledge');
-const { precedentsBlock } = require('./precedents');
+const { precedentsBlock } = require('./precedents'); // (assign/check still reference it via engineContext)
+const { buildEngineContext } = require('./engineContext');
 
 const MODEL = process.env.JARVIS_DECOMPOSE_MODEL || 'claude-sonnet-5';
 // 16K floor — 3000 truncated real proposals (a multi-SM station with per-machine
@@ -67,7 +68,7 @@ function extractJson(text) {
  * @param {AbortSignal} [args.signal]
  * @returns {Promise<{stateMachines:Array, reasoning:string, meta:object}>}
  */
-async function decompose({ description, images = [], expectedStateMachines = '', otherSms = [], currentProposal = null, signal = null }) {
+async function decompose({ description, images = [], expectedStateMachines = '', otherSms = [], currentProposal = null, sheetDevices = [], signal = null }) {
   const client = getClient();
   let me = '';
   try { me = loadMeKnowledge(); } catch { /* knowledge optional */ }
@@ -87,6 +88,25 @@ async function decompose({ description, images = [], expectedStateMachines = '',
     'escapements exist — say what it escapes). No PascalCase here: the PLC program name is',
     'derived later.',
     '',
+    'SEQUENCE LINES ARE THE ACTION ONLY (Dan, 2026-08-28): NO parenthetical annotations,',
+    'ever — no "(250ms)", no "(finger1 + shuttle extended)", no "(X already at pick)".',
+    'Values live on the device sheet; reasoning stays in your head. "Close gripper", not',
+    '"Close gripper (250ms)".',
+    '',
+    'INTERACTIONS ARE SEQUENCE LINES (Dan, 2026-08-28): machines coordinate through lines IN',
+    'their sequences — never a separate interactions list. Every such line NAMES the',
+    'counterpart and uses the word "signal": "Wait for Escapement\'s part-ready signal",',
+    '"Signal part gripped", "Wait for Dial\'s ready signal". NEVER the word "handshake" in a',
+    'sequence line. Every wait-for-a-signal line must have its counterpart: the machine that',
+    'SETS that signal does it at its own state transition, as a line in ITS sequence. Two',
+    'scopes matter for the code: another machine in THIS station is program-to-program',
+    'signaling inside the station; a DIFFERENT station entirely goes through the station\'s',
+    'external interface — keep the counterpart\'s name exact so the scope is unambiguous.',
+    '',
+    'SCOPE ON CORRECTION ROUNDS: feedback about one machine edits THAT machine; touch',
+    'another machine ONLY when a stated interaction requires it (a new signal needs both',
+    'sides). Never reword another machine\'s lines in passing — carry them forward verbatim.',
+    '',
     'VOICE (Dan, 2026-08-26): the reasoning speaks directly TO the engineer — second person',
     '("Your description shows…"), NEVER about him ("the ME…", "the engineer\'s description…").',
     'ONE to TWO short sentences, no more.',
@@ -102,13 +122,17 @@ async function decompose({ description, images = [], expectedStateMachines = '',
     '      "why": "<one line: why it must run asynchronously from the others (omit or empty for a single machine)>",',
     '      "sequence": ["<short step, one line>", ...] }',
     '  ],',
-    '  "reasoning": "<1-2 short sentences, spoken TO the engineer: the asynchrony reasoning behind this count>"',
+    '  "reasoning": "<1-2 short sentences, spoken TO the engineer: the asynchrony reasoning behind this count>",',
+    '  "noteToEngineer": "<OPTIONAL, usually omit. ONE plain sentence, ONLY when something the engineer',
+    '    explicitly asked for was honored somewhere OTHER than a visible sequence line (e.g. folded into',
+    '    a device parameter or an existing step) — tell him where it went so he never thinks it was',
+    '    dropped. Never use this for style fixes or internals.>"',
     '}',
-    me ? '\n# Standing SDC knowledge\n' + me : '',
     loadDecompositionConcept(),
-    // PRECEDENT PACK (Dan, 2026-08-26): past work is the baseline — names
-    // come from what SDC has actually shipped, never from an invented style.
-    precedentsBlock(),
+    // STRUCTURAL KNOWLEDGE CARRIAGE (Dan, 2026-08-28): every engine call
+    // physically includes its knowledge — meKnowledge, precedents, and the
+    // archetype/multi-SM concepts (the thousand-bowl facts) by construction.
+    buildEngineContext(['meKnowledge', 'precedents', 'concepts:station-archetypes', 'concepts:multi-state-machine']),
   ].join('\n');
 
   const content = [];
@@ -124,6 +148,10 @@ async function decompose({ description, images = [], expectedStateMachines = '',
   // owned devices). Dictated feedback resolves its garbled words against the
   // REAL names in this proposal — never ignore a comment for odd wording, and
   // "looks good outside my comments" means: apply every comment, keep the rest.
+  if (Array.isArray(sheetDevices) && sheetDevices.length) {
+    userText += '\n\n# THE SHEET\'S DEVICES (real names — resolve dictated words against these)\n'
+      + sheetDevices.map((d) => `- ${d.name}${d.type ? ` (${d.type})` : ''}`).join('\n');
+  }
   if (Array.isArray(currentProposal) && currentProposal.length) {
     userText += '\n\n# YOUR CURRENT PROPOSAL (being revised — carry forward everything the feedback does not touch, verbatim)\n'
       + JSON.stringify(currentProposal, null, 1);
@@ -165,6 +193,10 @@ async function decompose({ description, images = [], expectedStateMachines = '',
   // is adopted; violations ride along either way.
   let finalMachines = stateMachines;
   let finalReasoning = String(parsed.reasoning ?? '').trim();
+  // NEVER-SILENT (Dan's eaten-message P0, 2026-08-28): when the engine honors
+  // an ME request somewhere other than a visible sequence line, this sentence
+  // tells him where it went. User-facing — rides to the chat as a Jarvis turn.
+  let noteToEngineer = String(parsed.noteToEngineer ?? '').trim();
   let checked = null;
   let checkCost = 0;
   try {
@@ -199,6 +231,7 @@ async function decompose({ description, images = [], expectedStateMachines = '',
       if (fixed.length && (!isCorrection || sameIdentities)) {
         finalMachines = fixed;
         if (String(chk.corrected.reasoning ?? '').trim()) finalReasoning = String(chk.corrected.reasoning).trim();
+        if (String(chk.corrected.noteToEngineer ?? '').trim()) noteToEngineer = String(chk.corrected.noteToEngineer).trim();
         checked.corrected = true;
       } else if (fixed.length) {
         checked.violations = [...chk.violations, 'checker correction NOT adopted — it renamed/re-split approved machines on a correction round'];
@@ -208,9 +241,21 @@ async function decompose({ description, images = [], expectedStateMachines = '',
     checked = { verdict: 'unchecked', violations: [`checker unavailable: ${e.message}`] };
   }
 
+  // IDENTITY LOCK on correction rounds (Dan's "Mid-Base" drift, 2026-08-28):
+  // an identity-matched machine keeps its EXACT prior name — thinker and
+  // checker drift ("Mid-Base Pick and Place") never touches approved names.
+  if (Array.isArray(currentProposal) && currentProposal.length) {
+    const normId2 = (x) => String(x ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    finalMachines = finalMachines.map((m) => {
+      const prior = currentProposal.find((p) => normId2(p?.name) === normId2(m.name));
+      return prior?.name ? { ...m, name: String(prior.name) } : m;
+    });
+  }
+
   return {
     stateMachines: finalMachines,
     reasoning: finalReasoning,
+    noteToEngineer,
     checked,
     meta: {
       model: response.model || MODEL,
@@ -244,7 +289,7 @@ function loadConceptFile(name) {
  * @param {string} [args.description] the ME's station explanation (context)
  * @returns {Promise<{assignments:[{device,machine,evidence,precedent}], meta}>}
  */
-async function assignDevices({ devices, machines, description = '', signal = null }) {
+async function assignDevices({ devices, machines, description = '', directives = [], signal = null }) {
   if (!Array.isArray(devices) || !devices.length) return { assignments: [], meta: { costUSD: 0 } };
   if (!Array.isArray(machines) || machines.length < 2) throw new Error('assignDevices needs >= 2 machines');
   const client = getClient();
@@ -271,13 +316,9 @@ async function assignDevices({ devices, machines, description = '', signal = nul
     '{ "assignments": [ { "device": "<exact device name given>", "machine": "<exact machine name given>",',
     '    "evidence": "<one line>", "precedent": true|false } ] }',
     '',
-    '# SDC concept notes — station archetypes (feeding patterns live here)',
-    loadConceptFile('station-archetypes.md'),
-    '',
-    '# SDC concept notes — multi-state-machine stations',
-    loadConceptFile('multi-state-machine.md'),
-    me ? '\n# Standing SDC knowledge\n' + me : '',
-    precedentsBlock(),
+    // STRUCTURAL KNOWLEDGE CARRIAGE (Dan, 2026-08-28): assembled in ONE
+    // place — a pass cannot exist without its knowledge riding along.
+    buildEngineContext(['meKnowledge', 'precedents', 'concepts:station-archetypes', 'concepts:multi-state-machine']),
   ].join('\n');
   const userText = [
     '# The station (the engineer\'s explanation)',
@@ -413,23 +454,27 @@ async function checkProposal({ kind, payload, description = '', signal = null })
           + 'CORRECTION ROUNDS (payload.correctionRound true): the engineer already approved this '
           + 'proposal and gave feedback on it; check ONLY that the feedback was applied and the '
           + 'untouched content carried forward verbatim. Machine names and the split itself are '
-          + 'NOT in scope then — never rename or re-split what he already approved.',
+          + 'NOT in scope then — never rename or re-split what he already approved. '
+          + 'ALWAYS in scope — SIGNALS: every "Wait for X\'s ... signal" line must have a '
+          + 'counterpart line in machine X\'s sequence that sets it (and clears it where the cycle '
+          + 'repeats); a wait nobody sets, or a set nobody waits on, is a violation. Sequence lines '
+          + 'never use the word "handshake" — the word is "signal", with the counterpart named.',
     '',
     'Respond with ONLY one JSON object (no fences):',
     '{ "verdict": "pass" | "fix",',
     '  "violations": ["<one line each — empty when pass>"],',
     kind === 'assignment'
       ? '  "corrected": { "assignments": [ { "device": "...", "machine": "...", "evidence": "...", "precedent": true|false } ] } | null }'
-      : '  "corrected": { "stateMachines": [ ...same shape as proposed... ], "reasoning": "..." } | null }',
+      : '  "corrected": { "stateMachines": [ ...same shape as proposed... ], "reasoning": "...", "noteToEngineer": "<optional>" } | null }',
     'Provide "corrected" ONLY when you can fix it outright from the knowledge; otherwise null.',
+    'NEVER-SILENT RULE: if your correction moves something the engineer explicitly asked for OFF a',
+    'visible sequence line (e.g. a blow-off pulse becomes a device parameter on an existing step),',
+    'you MUST say where it went in "noteToEngineer" — one plain sentence to him. His request must',
+    'never just vanish from what he sees.',
     '',
-    '# SDC concept notes — station archetypes',
-    loadConceptFile('station-archetypes.md'),
-    '',
-    '# SDC concept notes — multi-state-machine stations',
-    loadConceptFile('multi-state-machine.md'),
-    me ? '\n# Standing SDC knowledge\n' + me : '',
-    precedentsBlock(),
+    // STRUCTURAL KNOWLEDGE CARRIAGE (Dan, 2026-08-28): the checker reads the
+    // SAME assembled knowledge as the thinker — by construction.
+    buildEngineContext(['meKnowledge', 'precedents', 'concepts:station-archetypes', 'concepts:multi-state-machine']),
   ].join('\n');
   const userText = [
     '# The station (the engineer\'s explanation)',

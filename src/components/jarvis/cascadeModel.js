@@ -40,8 +40,56 @@ export const KIND_NOUN = {
   devices: 'devices',
   sequence: 'sequence',
   recovery: 'fault recovery',
-  interactions: 'interactions / handshakes',
+  // ONE WORD (Dan, 2026-08-28): "signal" — never "handshake" in step labels.
+  interactions: 'signals with other machines',
 };
+
+/**
+ * INTERACTIONS ARE SEQUENCE LINES (Dan, 2026-08-28: no duplicate surfaces —
+ * the sequence is the single source; the walk's Interactions step is a
+ * review LENS over it, nothing stored separately).
+ *
+ * Derives, for one machine's sequence, which lines talk to a counterpart and
+ * the SCOPE of each ("kind of an important distinction for generating good
+ * code" — Dan):
+ *   sameStation  — another state machine in THIS station: program-to-program
+ *                  signals inside the station's own programs.
+ *   otherStation — a different station entirely: the station's external
+ *                  interface (supervisor-visible p_ signals).
+ *
+ * @param sequence      string[] — the machine's sequence lines.
+ * @param selfName      this machine's name (its own words never match).
+ * @param sameMachines  names of the OTHER machines in this station.
+ * @param otherStations names of the project's other stations.
+ * @returns {{ byLine: Map<number,{counterpart,scope}>, groups: Array<{counterpart,scope,lines:string[]}> }}
+ */
+export function deriveInteractionLines(sequence, { selfName = '', sameMachines = [], otherStations = [] } = {}) {
+  const words = (s) => String(s ?? '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2);
+  const selfWords = new Set(words(selfName));
+  // A counterpart matches on its DISTINCTIVE words — the ones not shared
+  // with this machine's own name ("MidBase Escapement" vs "MidBase Pick and
+  // Place" → "escapement"; the Dial station → "dial").
+  const candidates = [
+    ...sameMachines.map((n) => ({ name: n, scope: 'sameStation' })),
+    ...otherStations.map((n) => ({ name: n, scope: 'otherStation' })),
+  ].map((c) => ({ ...c, distinct: words(c.name).filter((w) => !selfWords.has(w)) }))
+    .filter((c) => c.distinct.length > 0);
+  const byLine = new Map();
+  const groupMap = new Map();
+  (sequence ?? []).forEach((line, i) => {
+    const lw = new Set(words(line));
+    // sameStation candidates first — the nearer counterpart wins a tie.
+    const hit = candidates.find((c) => c.distinct.some((w) => lw.has(w)));
+    if (!hit) return;
+    byLine.set(i, { counterpart: hit.name, scope: hit.scope });
+    const k = `${hit.scope}:${hit.name}`;
+    if (!groupMap.has(k)) groupMap.set(k, { counterpart: hit.name, scope: hit.scope, lines: [] });
+    groupMap.get(k).lines.push(String(line));
+  });
+  return { byLine, groups: [...groupMap.values()] };
+}
 
 /** Home/tree label for an unfinished draft: where its cascade sits (Dan,
  *  2026-08-26: "MidBaseLoad — draft · at step 1 · Continue"). */

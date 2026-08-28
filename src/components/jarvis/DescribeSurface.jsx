@@ -160,6 +160,26 @@ export function useDictation({ value, onChange, textareaRef, onEnd = null }) {
     }
   }
 
+  // FLUSH-ON-SEND (Dan's eaten dictation, 2026-08-28: he hit Send while the
+  // tail of his speech was still INTERIM ghost text — Send saw an empty/short
+  // value and the message died at a validation hint). flushInterim commits
+  // the pending interim into the value RIGHT NOW, aborts the in-flight
+  // utterance so it can't double-insert when it finalizes, and returns the
+  // flushed text so the caller can dispatch with it synchronously.
+  const interimRef = useRef('');
+  interimRef.current = interim;
+  function flushInterim() {
+    const pending = String(interimRef.current ?? '').trim();
+    if (!pending) return '';
+    setInterim('');
+    interimRef.current = '';
+    // Abort (not stop): drop the utterance so its final result never fires;
+    // onend restarts recognition while the mic toggle stays on.
+    try { recognitionRef.current?.abort(); } catch { /* noop */ }
+    insertFinalTranscript(pending);
+    return pending;
+  }
+
   // Stop cleanly on unmount (page/modal close)
   useEffect(() => () => {
     wantListeningRef.current = false;
@@ -167,7 +187,7 @@ export function useDictation({ value, onChange, textareaRef, onEnd = null }) {
     recognitionRef.current = null;
   }, []);
 
-  return { listening, interim, micError, speechSupported, toggleDictation };
+  return { listening, interim, micError, speechSupported, toggleDictation, flushInterim };
 }
 
 /** The mic toggle button — shared styling for every dictation-enabled input. */
@@ -230,6 +250,7 @@ export function DescribeSurface({
   errorTitle = 'Extraction failed:',
   onDictationEnd = null,  // called when the user toggles dictation OFF
   showTextarea = true,    // false = images-only mode ("Add pictures" step)
+  syncStates = null,      // { [img._hash]: 'saving'|'saved'|'error' } — per-image server sync badge
 }) {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef(null);
@@ -342,12 +363,45 @@ export function DescribeSurface({
             (max {MAX_DESCRIBE_IMAGES}, auto-resized)
           </span>
         )}
-        {images.map((img, i) => (
-          <div key={i} style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+        {images.map((img, i) => {
+          // Per-image sync state — silent loss is impossible when every
+          // thumbnail says whether the server has it (Dan, Aug 24).
+          const sync = syncStates && img._hash ? syncStates[img._hash] : null;
+          const badge = sync === 'saved'
+            ? { text: '✓ saved', bg: '#e9f5ec', fg: '#2f6b3c', bd: '#bfe0c8', title: 'Saved on the server with the station' }
+            : sync === 'error'
+              ? { text: '! retrying', bg: '#fdf6e3', fg: '#8a3b3b', bd: '#d4a0a0', title: 'Not saved yet — retrying automatically' }
+              : sync === 'saving'
+                ? { text: '⟳ saving', bg: '#fdf6e3', fg: '#6b5513', bd: '#e6d9a8', title: 'Saving to the server…' }
+                : null;
+          const isImg = String(img.mediaType || '').startsWith('image/');
+          return (
+          <div key={img._hash ?? i} style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+            {isImg ? (
             <img
               src={img.previewUrl} alt={img.name} title={img.name}
               style={{ width: 88, height: 66, objectFit: 'cover', borderRadius: 6, border: `1px solid ${C.border}` }}
             />
+            ) : (
+              // Non-image reference file (added on the sheet) — compact chip
+              <span title={img.name} style={{
+                display: 'inline-flex', alignItems: 'center', maxWidth: 160, height: 24,
+                border: `1px solid ${C.border}`, borderRadius: 6, padding: '0 8px',
+                fontSize: 11, color: C.muted, background: '#fff',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>{img.name}</span>
+            )}
+            {badge && (
+              <span
+                data-testid={`img-sync-${sync}-${i}`}
+                title={badge.title}
+                style={{
+                  position: 'absolute', left: 3, bottom: 3, fontSize: 8.5, fontWeight: 700,
+                  lineHeight: 1, padding: '2px 5px', borderRadius: 3, whiteSpace: 'nowrap',
+                  background: badge.bg, color: badge.fg, border: `1px solid ${badge.bd}`,
+                }}
+              >{badge.text}</span>
+            )}
             <button
               onClick={() => onImagesChange(images.filter((_, j) => j !== i))}
               title="Remove"
@@ -358,7 +412,8 @@ export function DescribeSurface({
               }}
             >×</button>
           </div>
-        ))}
+          );
+        })}
         {images.length > 0 && images.length < MAX_DESCRIBE_IMAGES && (
           <span style={{ fontSize: 20, color: C.light, padding: '0 10px' }}>
             ＋ <span style={{ fontSize: 11 }}>drop / paste more</span>
