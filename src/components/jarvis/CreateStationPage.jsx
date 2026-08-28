@@ -6472,16 +6472,22 @@ export function CreateStationPage({ embedded = false }) {
    *  (the chips are its editing surface). */
   const sectionRevealed = (sectionKey) => {
     if (!cascadeLive) return true;
+    // MACHINE-AWARE (Dan, 2026-08-28: "I shouldn't see the sequence yet —
+    // I haven't approved the devices"): with a machine selected, only THAT
+    // machine's steps count. On the Escapement's view, the PnP's settled
+    // sequence step must not reveal the section — it is ABSENT until the
+    // Escapement's own walk reaches it. "All" keeps station-wide reveal.
+    const scoped = (steps) => (sheetSmKey !== 'all' ? steps.filter(s => s.smKey === sheetSmKey || s.smKey === 'station') : steps);
     // A section with NO step of its own stays hidden until everything is
     // agreed (strict: nothing about a later stage appears early).
     if (sectionKey === 'devices') {
-      const hosted = cascade.steps.filter(s => s.kind === 'devices');
+      const hosted = scoped(cascade.steps.filter(s => s.kind === 'devices'));
       return hosted.length ? hosted.some(s => s.status !== 'pending') : cascade.allApproved;
     }
     if (sectionKey === 'sequence') {
       // THE STEP IS THE SECTION (Dan, 2026-08-27): the active sequence /
       // recovery step renders AS the section — reveal on active too.
-      const hosted = cascade.steps.filter(s => s.kind === 'sequence' || s.kind === 'recovery');
+      const hosted = scoped(cascade.steps.filter(s => s.kind === 'sequence' || s.kind === 'recovery'));
       return hosted.length ? hosted.some(s => s.status !== 'pending') : cascade.allApproved;
     }
     if (sectionKey === 'interactions') {
@@ -8359,7 +8365,11 @@ export function CreateStationPage({ embedded = false }) {
                                 // SM TOGGLE (Dan, 2026-08-26): a selected
                                 // machine shows ONLY its own devices — the
                                 // overview shows everything.
-                                const visibleSmGroups = (sheetSmKey !== 'all' && smGroups.some(g => g.sm?.key === sheetSmKey)
+                                // STRICT SCOPE (Dan, 2026-08-28): a selected
+                                // machine NEVER shows another machine's content
+                                // — no fallback to "all" when the filter comes
+                                // up empty.
+                                const visibleSmGroups = (sheetSmKey !== 'all'
                                   ? smGroups.filter(g => g.sm?.key === sheetSmKey)
                                   : smGroups)
                                   // STRICT REVEAL: an SM whose devices step
@@ -8542,8 +8552,16 @@ export function CreateStationPage({ embedded = false }) {
                                 proof gate before code. Full width, grows,
                                 never scrolls. */}
                             <PathDiagram
-                              devices={summary.devices}
-                              sequence={summary.sequence}
+                              // STRICT SCOPE (Dan, 2026-08-28): a selected
+                              // machine's motion path draws from ITS devices
+                              // and ITS sequence — never the pick-and-place
+                              // path on the Escapement view.
+                              devices={sheetSmKey !== 'all'
+                                ? (summary.devices ?? []).filter((_, di2) => devSmKeyByIdx.get(di2) === sheetSmKey)
+                                : summary.devices}
+                              sequence={sheetSmKey !== 'all'
+                                ? ((smChipEntries ?? []).find(e2 => e2.key === sheetSmKey)?.sequence ?? [])
+                                : summary.sequence}
                               onPointClick={(axisName, rowName) => {
                                 // One click from the picture to the value:
                                 // focus the matching row's input on the sheet.
@@ -8581,7 +8599,12 @@ export function CreateStationPage({ embedded = false }) {
                             .filter(e => stepRevealed('sequence', e.key));
                           // SM TOGGLE (Dan, 2026-08-26): the selected machine's
                           // sequence/recovery column only; overview = all.
-                          const perSm = sheetSmKey !== 'all' && perSmAll.some(e => e.key === sheetSmKey)
+                          // STRICT SCOPE (Dan, 2026-08-28): the selected
+                          // machine's column ONLY — never a fallback to every
+                          // machine (that leak rendered the PnP sequence on
+                          // the Escapement view). Empty = the section hides
+                          // (sectionRevealed is machine-aware).
+                          const perSm = sheetSmKey !== 'all'
                             ? perSmAll.filter(e => e.key === sheetSmKey)
                             : perSmAll;
                           // Handshakes live in the SIGNALS device group now
