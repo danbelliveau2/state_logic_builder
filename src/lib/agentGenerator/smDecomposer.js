@@ -106,7 +106,10 @@ function stepText(s) {
 }
 function normalizeMachine(m) {
   const steps = (Array.isArray(m?.sequence) ? m.sequence : []).map(normalizeStep).filter(Boolean);
+  const recovery = (Array.isArray(m?.faultRecovery) ? m.faultRecovery : [])
+    .map((x) => (typeof x === 'string' ? x.trim() : stepText(normalizeStep(x)))).filter(Boolean);
   return {
+    faultRecovery: recovery,
     // Natural display name, spaces kept ("Mid Base Escapement") — the
     // PascalCase PLC program name is derived at Generate, not here.
     name: String(m?.name ?? '').trim().replace(/\s+/g, ' '),
@@ -199,7 +202,10 @@ async function decompose({ description, images = [], expectedStateMachines = '',
     '                      "counterpart": "<OPTIONAL machine/station name — ONLY when this step is a REAL interaction:',
     '                        waiting on that machine\'s signal, or signaling to it. A motion that merely mentions a',
     '                        machine (\'Extend Shuttle to present the part to X\') gets NO counterpart. Home and Repeat',
-    '                        NEVER have one.>" }, ... ] }',
+    '                        NEVER have one.>" }, ... ],',
+    '      "faultRecovery": ["<short line, same action vocabulary: how THIS machine gets home safe from a',
+    '                        mid-cycle fault — retract vertical motion first, part-in-gripper and empty handled',
+    '                        separately, land in a known safe state. 3-6 lines. ALWAYS provide it.>", ...] }',
     '  ],',
     '  "reasoning": "<1-2 short sentences, spoken TO the engineer: the asynchrony reasoning behind this count>",',
     '  "noteToEngineer": "<OPTIONAL, usually omit. ONE plain sentence, ONLY when something the engineer',

@@ -4280,6 +4280,9 @@ export function CreateStationPage({ embedded = false }) {
   // a refresh keeps them, and fallback guesses ask a numbered question on
   // their machine's own devices step.
   const [deviceAssignments, setDeviceAssignments] = useState(draft?.deviceAssignments ?? {});
+  // STATION ACCEPT (Dan, 2026-08-28): stations are accepted one after
+  // another; code generates for the WHOLE MACHINE at the end. {by, at}.
+  const [stationAccepted, setStationAccepted] = useState(draft?.stationAccepted ?? null);
   // ONE collapsible chat (Dan, 2026-08-26): the thread tucks away on demand.
   const [chatCollapsed, setChatCollapsed] = useState(false);
 
@@ -4326,6 +4329,7 @@ export function CreateStationPage({ embedded = false }) {
     chatThread: chatThread.slice(-40),
     ...(localCascade ? { cascadeLocal: localCascade } : {}),
     ...(smProposal ? { smProposal } : {}),
+    ...(stationAccepted ? { stationAccepted } : {}),
     ...(Object.keys(deviceAssignments ?? {}).length ? { deviceAssignments } : {}),
     ...(absorbedIdsRef.current.length ? { absorbedDraftIds: absorbedIdsRef.current } : {}),
     ...(linkedSmId ? { smId: linkedSmId } : {}),
@@ -4554,7 +4558,7 @@ export function CreateStationPage({ embedded = false }) {
     setPurpose(''); setExpectedSms(''); setAgreedNeeds(new Set());
     setSheetAhead(false); setApplyReceipt(null); setLocalCascade(null);
     setSmProposal(null); setProposeRun(null);
-    setDeviceAssignments({});
+    setDeviceAssignments({}); setStationAccepted(null);
     setQaRounds(0); setQaHistory([]); setLearnedNotes([]);
     setSummarizeCost(0); setError(null); setDraftImagesDropped(0);
     setOtherDrafts(loadDrafts(draftKey).filter(d => d.draftId !== draftIdRef.current && (!d.smId || !smExists(d.smId))));
@@ -4608,6 +4612,7 @@ export function CreateStationPage({ embedded = false }) {
     // this setter was missing — the persist effect then saved [] over the
     // stored thread, silently WIPING the draft's chat history on resume.
     setChatThread(Array.isArray(d.chatThread) ? d.chatThread : []);
+    setStationAccepted(d.stationAccepted ?? null);
     reconciledDraftRef.current = null; // re-run the load reconcile for this draft
     setOtherDrafts(loadDrafts(draftKey).filter(x => x.draftId !== d.draftId && (!x.smId || !smExists(x.smId))));
     setPhase(d.phase === 'summary' && s ? 'summary' : 'input');
@@ -8813,13 +8818,27 @@ export function CreateStationPage({ embedded = false }) {
                                           putting that in the sequence — why have another row
                                           below?"): the interactions review IS this card's tag
                                           column; the step bar carries the one prompt line. */}
-                                      {(e.faultRecovery?.length ?? 0) > 0 && stepRevealed('recovery', e.key) && (
-                                        <>
-                                          <SubHead color="#b45309">Fault recovery</SubHead>
-                                          <ol style={{ margin: 0, paddingLeft: 20, fontSize: 12, lineHeight: 1.55, color: C.text }}>
-                                            {e.faultRecovery.map((l, li) => <li key={li}>{stripParens(l)}</li>)}
-                                          </ol>
-                                        </>
+                                      {stepRevealed('recovery', e.key) && (
+                                        (e.faultRecovery?.length ?? 0) > 0 ? (
+                                          <>
+                                            <SubHead color="#b45309">Fault recovery</SubHead>
+                                            <ol style={{ margin: 0, paddingLeft: 20, fontSize: 12, lineHeight: 1.55, color: C.text }}>
+                                              {e.faultRecovery.map((l, li) => <li key={li}>{stripParens(l)}</li>)}
+                                            </ol>
+                                          </>
+                                        ) : (
+                                          /* RECOVERY IS A STEP, ALWAYS (Dan, 2026-08-28): the step
+                                             exists even when no content was drafted — say so
+                                             honestly instead of hiding the review. */
+                                          <div data-testid={`recovery-empty-${e.key}`} style={{ marginTop: 8 }}>
+                                            <SubHead color="#b45309">Fault recovery</SubHead>
+                                            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>
+                                              Nothing drafted yet — tell Jarvis how {e.name || 'this machine'} gets
+                                              home safe from a mid-cycle fault (part in the gripper vs empty), or
+                                              Approve to accept none.
+                                            </div>
+                                          </div>
+                                        )
                                       )}
                                     </div>
                                     );
@@ -9100,6 +9119,53 @@ export function CreateStationPage({ embedded = false }) {
                     <div style={{ fontSize: 10.5, fontWeight: 800, color: C.primary, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 5 }}>
                       Generate — diagram &amp; code
                     </div>
+                    {/* STATION ACCEPT (Dan, 2026-08-28): his real workflow —
+                        stations are accepted one after another; code
+                        generates for the WHOLE MACHINE at the end. Two
+                        choices here: generate now (testing) or accept and
+                        move on. Accepted stations bank for the machine-level
+                        generate (roadmap — multi-program emission). */}
+                    {stationAccepted ? (
+                      <div
+                        data-testid="station-accepted-banner"
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
+                          background: '#e9f5ec', border: '1px solid #bfe0c8', borderRadius: 6,
+                          padding: '6px 10px', fontSize: 12, color: '#2f6b3c',
+                        }}
+                      >
+                        <span style={{ fontWeight: 800 }}>✓ Station accepted</span>
+                        <span style={{ color: '#4a7c59' }}>
+                          banked for the machine-level generate — code for the whole machine
+                          builds once every station is accepted. Generating below is still
+                          available for testing.
+                        </span>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          data-testid="accept-station-btn"
+                          onClick={() => {
+                            const rec = { by: 'ME', at: Date.now() };
+                            setStationAccepted(rec);
+                            setDirty(true);
+                            setChatThread(th => [...th, {
+                              role: 'jarvis',
+                              text: `${name.trim() || 'This station'} is accepted and banked. Code for the whole machine generates once every station is accepted — or generate this station alone below for testing.`,
+                              at: Date.now(),
+                            }]);
+                          }}
+                          style={{
+                            ...chipBase, cursor: 'pointer', fontSize: 12, fontWeight: 800, padding: '5px 14px',
+                            color: '#2f6b3c', background: '#e9f5ec', border: '1px solid #7fb08c',
+                          }}
+                        >✓ Accept station — move to the next</button>
+                        <span style={{ fontSize: 11, color: C.muted }}>
+                          or generate this station's code now (testing):
+                        </span>
+                      </div>
+                    )}
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
                       {[
                         { id: 'standard', label: 'Full station — standard' },

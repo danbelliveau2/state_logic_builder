@@ -1,4 +1,4 @@
-# Dependencies
+﻿# Dependencies
 node_modules/
 
 # Build output
@@ -40,3 +40,6 @@ plc_guide.*
 # Smoke test output (regenerated)
 scripts/out.L5X
 test_output*.L5X
+JARVIS Deliveries/
+JARVIS Inbox/*
+!JARVIS Inbox/README.txt

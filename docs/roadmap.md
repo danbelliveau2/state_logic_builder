@@ -14,6 +14,13 @@ Features planned or in-progress. Update this as things ship or get deprioritized
 
 | Feature | Notes |
 |---------|-------|
+| Agent loop — Phase 1 (chat engine) | IN BUILD NOW — docs/jarvis-agent-loop-design.md; tool registry + typed diff ops, SDK loop, cutover deletes one-shot draft-correction paths |
+| Machine-level Generate (multi-program emission) | Dan 2026-08-28: stations ACCEPT one after another (banked); when all accepted, one machine-level build takes overall structure + BOM + cross-station signal tags and emits every program so handshakes wire up across programs. The multi-SM generation inability-guard lifts only when this can actually wire them. Sequenced after agent-loop Phase 1. |
+| Add features to a finished station | Dan 2026-08-28: reopen an accepted/generated station with a described addition; engine thinks the DELTA and reopens only affected steps as diffs vs the accepted state; untouched machines never reopen; generation is revision-aware (states changes vs previous L5X); the addition appends dated into the station's permanent explanation. Depends on agent loop + accept/generate. |
+| Knowledge inbox + librarian (daily lessons-learned) | Dan 2026-08-28: `JARVIS Inbox\` folder (scaffolded, README + _learned ledger live) — drop anything; a librarian agent classifies, distills into the ONE knowledge store (precedents/concepts/meKnowledge, source-cited), compacts derived material (rulings append-only), files conflicts as questions, moves processed files to _learned with ledger lines. Daily run + "Learn now" button with inbox status on the Jarvis page. Ingestion lands after agent-loop Phase 1 cutover. |
+
+| Feature | Notes |
+|---------|-------|
 | Custom Condition signals | UI placeholder exists; needs raw tag reference builder |
 | Part Tracking L5X write logic | Field structure exported; write rungs are user-authored today |
 | Vision job outcome editing | Must delete + re-add device to change pass/fail outcome labels |

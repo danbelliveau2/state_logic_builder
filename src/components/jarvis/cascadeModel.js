@@ -150,7 +150,13 @@ export function cascadeStepsOf({ decomp = null, approvedEntries = null, summary 
     if (hasDevices) steps.push({ key: `devices:${e.key}`, kind: 'devices', smKey: e.key, smName: e.name ?? '', label: single ? 'Devices' : `${e.name} devices` });
     if (hasSeq) steps.push({ key: `sequence:${e.key}`, kind: 'sequence', smKey: e.key, smName: e.name ?? '', label: single ? 'Sequence' : `${e.name} sequence` });
     steps.push({ key: `interactions:${e.key}`, kind: 'interactions', smKey: e.key, smName: e.name ?? '', label: single ? 'Interactions' : `${e.name} interactions` });
-    if (hasRec) steps.push({ key: `recovery:${e.key}`, kind: 'recovery', smKey: e.key, smName: e.name ?? '', label: single ? 'Fault recovery' : `${e.name} recovery` });
+    // RECOVERY IS A STEP, ALWAYS (Dan, 2026-08-28: his 7-step walk had no
+    // recovery anywhere — the hasRec gate silently dropped it when the
+    // proposal carried no recovery content). The step exists whether or not
+    // content does; empty content is the step's problem, not a reason to
+    // skip the review.
+    void hasRec;
+    steps.push({ key: `recovery:${e.key}`, kind: 'recovery', smKey: e.key, smName: e.name ?? '', label: single ? 'Fault recovery' : `${e.name} recovery` });
   }
   return steps;
 }

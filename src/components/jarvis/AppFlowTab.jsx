@@ -102,16 +102,25 @@ const STAGES = [
   {
     n: '6', title: 'Fault recovery',
     rows: {
-      do: 'You review what this machine does when a step faults — what retracts, what opens, where it lands.',
+      do: 'You review what this machine does when a step faults — what retracts, what disengages, where it lands. It renders in the same block as the sequence, side by side: the cycle in order, and how it recovers. Always its own approve step, for every machine.',
       loads: 'Standing knowledge and the archetype notes — recovery follows the shipped init patterns: retract vertical, then travel, land in a known safe state.',
       think: 'A safe path home from every stage of the cycle, part-in-gripper and empty handled separately.',
       check: 'Same checker discipline.',
       back: 'The recovery outline. Approving it finishes this machine — the walk moves to the next machine and repeats stages three through six.',
-      moves: 'Approve, or correct. When the last machine’s recovery is approved, Generate unlocks. Never before.',
+      moves: 'Approve, or correct. When the last machine’s recovery is approved, the station is done. Never before.',
     },
   },
   {
-    n: '7', title: 'Generate — diagram and code',
+    n: '7', title: 'Accept the station — or generate it now',
+    rows: {
+      do: 'The real workflow: stations get built and ACCEPTED one after another; code generates for the whole machine at the end. At the end of a walk you choose — accept the station and move to the next (it banks, no code yet), or generate this station’s code now for testing.',
+      think: 'Accepting is your call, not a model call.',
+      back: 'An accepted station is banked. When every station is accepted, the machine-level Generate takes the overall structure you specify, the bill of materials, and the cross-station signals already tagged in the sequences (this is where those tags pay off — they wire up across programs) and emits the whole machine’s code in one build, so everything interacts correctly. Machine-level generate is on the roadmap; station-level generate is what runs today. A finished station can also be reopened later with “Add features”: you describe the addition, only the affected steps reopen showing a diff against the accepted state, you walk just the deltas, and the addition files into the station’s permanent explanation — dated — so the record always reads as what the station is now.',
+      moves: 'Accept and move on, or generate for testing.',
+    },
+  },
+  {
+    n: '8', title: 'Generate — diagram and code',
     rows: {
       do: 'You hit Generate. This is the only stage that builds anything.',
       loads: 'Everything: the approved spec in full, standing knowledge, precedents, the verified exemplar library, and the SDC template patterns.',
@@ -122,7 +131,7 @@ const STAGES = [
     },
   },
   {
-    n: '8', title: 'Verify — and Jarvis learns',
+    n: '9', title: 'Verify — and Jarvis learns',
     rows: {
       do: 'A controls lead runs the code, scores it, files corrections or confirms it.',
       loads: '—',
@@ -210,6 +219,10 @@ export function AppFlowTab() {
           the distillate grew: your ruling was filed, a correction became a
           lesson, a verified build became an exemplar. That is the whole
           mechanism — no magic, and it is why filing your answers matters.
+          And it is ONE brain: the sheet walk and code generation think from
+          the same single knowledge base — a lesson from a code fix rides
+          the next sheet conversation, and a ruling you file on the sheet
+          rides the next build. There is no sheet-side copy of anything.
         </div>
       </div>
 
