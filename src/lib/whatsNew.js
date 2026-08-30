@@ -10,12 +10,23 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.27';
+export const UI_BUILD = 'v2.6.28';
 
-export const BUILT_AT = '2026-08-28';
+export const BUILT_AT = '2026-08-30';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.28',
+    date: '2026-08-30',
+    items: [
+      'THE ENGINEER GUIDES THE WALK — every reply ends with what just closed, what\'s still open, and the concrete next move ("hit Approve on the recovery step — next is the Escapement\'s devices"); when an edit changed something on screen it says where to look. Saying just "agree" now closes the open question(s) on your step instantly — same as clicking Agree — and tells you what\'s next',
+      'THE RELOAD BAR (from the SDC Scheduler): when a newer build ships or your tab goes stale, one bar appears bottom-center — "A newer version is available. [Reload now]" — reloading never loses a keystroke (drafts flush first). Nobody will ever tell you to hard-refresh in the chat again',
+      'YOUR ESCAPEMENT RECOVERY LANDED — the dictation that got dropped (gripped+part → finish forward and hold ready for pick; no part or not gripped → gripper open, shuttle back to the bowl, finger down = home) is on the FAULT RECOVERY panel, starved-feed handling kept. New law: a message with several things in it lands ALL of them — answers, recovery, directives — or says plainly what it didn\'t get to',
+      'AUDIENCE TOGGLE (ME | CE) on the chat header: ME (default) gets pure machine talk — no tags, no PLC-speak; CE gets full controls detail. Per browser. Plus honest turn progress: activity narration + elapsed clock (percent is gone), connection loss reconnects to the still-running turn, and the failed-turn line has a Retry button',
+      'Speaking to who\'s there, guiding where you are — turns run on the top reasoning model (your call: correctness over cost); station AI budget raised to $25 so a real walk never strands with a disabled Send',
+    ],
+  },
   {
     version: 'v2.6.27',
     date: '2026-08-28',
