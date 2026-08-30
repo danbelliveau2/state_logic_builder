@@ -3901,6 +3901,40 @@ const normalizeSeqLine = (l) => stripParens(l)
   // Close gripper" is not SDC terminology. Stored lines render corrected;
   // the engine rewrites the stored text at the next gate.
   .replace(/^close\b(?=.*gripper)/i, 'Engage').replace(/^open\b(?=.*gripper)/i, 'Disengage');
+// One client-side step composer (mirrors the server's stepText).
+function composeStepClient(s) {
+  if (typeof s === 'string') return s;
+  if (!s) return '';
+  if (s.raw) return s.raw;
+  const a = String(s.action ?? '').toLowerCase();
+  if (a === 'wait') {
+    const tgt = String(s.target ?? '').replace(/\s*\bsignal\b\s*$/i, '');
+    return s.counterpart ? `Wait for ${s.counterpart}'s ${tgt} signal`
+      : `Wait for ${s.target}${s.detail ? ` — ${s.detail}` : ''}`;
+  }
+  if (a === 'signal' && s.counterpart) return `Signal ${s.target} to ${s.counterpart}`;
+  if (a === 'home') return `Home: ${[s.target, s.detail].filter(Boolean).join(' — ') || 'initial position'}`;
+  if (a === 'repeat') return 'Repeat';
+  if (a === 'signal') return `Signal ${s.target}${s.detail ? ` — ${s.detail}` : ''}`;
+  return `${s.action}${s.target ? ` ${s.target}` : ''}${s.detail ? ` — ${s.detail}` : ''}`.trim();
+}
+// TITLE CASE LAW (Dan, 2026-08-30): named things — devices, named positions,
+// signals — capitalize the first letter of every word, everywhere they
+// appear. Existing inner caps survive ("XAxis" stays "XAxis").
+const titleCaseName = (s) => String(s ?? '').replace(/(^|[\s\-/])([a-z])/g, (m, sep, ch) => sep + ch.toUpperCase());
+// RECOVERY AS A BRANCHING FLOW (Dan, 2026-08-30) — client-side flatten,
+// mirroring smDecomposer.flattenRecoveryItems (strings = derived view).
+function flattenRecoveryClient(items, composeStep) {
+  const lineOf = (s) => (typeof s === 'string' ? s : composeStep(s));
+  const out = [];
+  for (const it of (items ?? [])) {
+    if (it && typeof it === 'object' && it.decision) {
+      out.push(`◇ ${String(it.decision).trim()}`);
+      for (const b of (it.branches ?? [])) for (const s of (b.steps ?? [])) out.push(`${String(b.label ?? '?').trim()}: ${lineOf(s)}`);
+    } else if (it != null) out.push(lineOf(it));
+  }
+  return out.filter(Boolean);
+}
 // ACTION-TYPE COLUMN (Dan, 2026-08-28: "same breakdown as the state machine
 // diagram — type first, then the object"). The engine emits canonical line
 // shapes, so this split is exact, not fuzzy. Tagged interaction lines drop
@@ -3921,6 +3955,102 @@ function splitSeqLine(txt, tagged) {
     ? { type: m[1].charAt(0).toUpperCase() + m[1].slice(1), rest: m[2] }
     : { type: '', rest: t };
 }
+// ── THE INLINE FLOW VIEW (Dan, 2026-08-30: the sequence IS a diagram — the
+// ME view, simple on purpose: no state numbers, no tag names). Steps flow
+// down as compact nodes; decisions branch with labeled paths and rejoin —
+// the same shapes the diagram + codegen use. ────────────────────────────────
+function FlowMiniNode({ line, tag }) {
+  const { type, rest } = splitSeqLine(normalizeSeqLine(line), !!tag);
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'baseline', gap: 7, maxWidth: 340,
+      background: '#fff', border: `1px solid ${C.border}`, borderLeft: `3px solid ${SEQ_TYPE_COLORS[type] ?? '#8a94a6'}`,
+      borderRadius: 6, padding: '4px 10px', fontSize: 11.5, lineHeight: 1.45, color: C.text,
+      boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+    }}>
+      <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase', color: SEQ_TYPE_COLORS[type] ?? C.muted, whiteSpace: 'nowrap' }}>{type}</span>
+      <span style={{ minWidth: 0 }}>{rest}</span>
+      {tag && (
+        <span style={{
+          fontSize: 9, fontWeight: 700, borderRadius: 4, padding: '0 5px', whiteSpace: 'nowrap',
+          ...(tag.scope === 'sameStation'
+            ? { color: '#075985', background: '#e0f2fe', border: '1px solid #bae6fd' }
+            : { color: '#6b21a8', background: '#f3e8ff', border: '1px solid #e9d5ff' }),
+        }}>{type === 'Wait' ? '←' : '→'} {tag.counterpart}</span>
+      )}
+    </div>
+  );
+}
+const FlowArrow = () => (
+  <div style={{ width: 0, height: 14, borderLeft: `2px solid ${C.border}`, margin: '1px 0 1px 24px', position: 'relative' }}>
+    <span style={{ position: 'absolute', left: -4.5, bottom: -3, fontSize: 8, color: C.border }}>▼</span>
+  </div>
+);
+const BRANCH_LABEL_STYLE = (label) => (/^(yes|on|pass|true)$/i.test(label)
+  ? { color: '#2f6b3c', background: '#e9f5ec', border: '1px solid #7fb08c' }
+  : /^(no|off|fail|false)$/i.test(label)
+    ? { color: '#8a3b3b', background: '#fdf2f2', border: '1px solid #d4a0a0' }
+    : { color: '#0f4c81', background: '#eef3f8', border: '1px solid #b8c4d0' });
+/** items: [ lineString | {decision, branches:[{label, lines:[string]}]} ] —
+ *  built from the flattened strings + structure by the caller. */
+function FlowMini({ items, tagOf = () => null }) {
+  return (
+    <div data-testid="flow-mini" style={{ padding: '4px 0 2px' }}>
+      {items.map((it, i) => (
+        <Fragment key={i}>
+          {i > 0 && <FlowArrow />}
+          {typeof it === 'string' ? (
+            <FlowMiniNode line={it} tag={tagOf(it)} />
+          ) : (
+            <div>
+              {/* the DECISION diamond, diagram-style */}
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                background: '#fdf6e3', border: '1.5px solid #d9b64c', borderRadius: 8,
+                padding: '4px 12px', fontSize: 11.5, fontWeight: 800, color: '#7a5b13',
+              }}>
+                <span style={{ fontSize: 12 }}>◇</span> {it.decision}
+              </div>
+              <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', margin: '6px 0 0 14px', flexWrap: 'wrap' }}>
+                {(it.branches ?? []).map((b, bi) => (
+                  <div key={bi} style={{ borderLeft: `2px solid ${C.border}`, paddingLeft: 10, minWidth: 0 }}>
+                    <span style={{
+                      display: 'inline-block', fontSize: 9.5, fontWeight: 800, borderRadius: 4,
+                      padding: '1px 8px', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.03em',
+                      ...BRANCH_LABEL_STYLE(b.label ?? ''),
+                    }}>{b.label}</span>
+                    {(b.lines ?? []).map((l, li) => (
+                      <Fragment key={li}>
+                        {li > 0 && <FlowArrow />}
+                        <div><FlowMiniNode line={l} tag={tagOf(l)} /></div>
+                      </Fragment>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+/** Regroup structured items (+ their flat strings) into FlowMini's shape. */
+function flowItemsOf(structured, flatLines, composeStep) {
+  if (Array.isArray(structured) && structured.some(x => x && typeof x === 'object' && x.decision)) {
+    return structured.map(it => (it && typeof it === 'object' && it.decision
+      ? {
+        decision: it.decision,
+        branches: (it.branches ?? []).map(b => ({
+          label: b.label,
+          lines: (b.steps ?? []).map(s => (typeof s === 'string' ? s : composeStep(s))),
+        })),
+      }
+      : (typeof it === 'string' ? it : composeStep(it))));
+  }
+  return (flatLines ?? []).map(String);
+}
+
 // Subtle color per FAMILY (Dan, 2026-08-28): motion vs wait vs signal vs
 // home — the type column itself is the clarity.
 const SEQ_TYPE_COLORS = {
@@ -4441,6 +4571,9 @@ export function CreateStationPage({ embedded = false }) {
   // machines exist as records. Cascade approvals persist per station on
   // machineSpec.cascadeState; fresh drafts keep them locally.
   const [sheetSmKey, setSheetSmKey] = useState('all');
+  // FLOW ONLY (Dan, 2026-08-30): the sequence card IS the flow diagram —
+  // no list toggle. Diff detail rows appear transiently while change marks
+  // are up; ✓ got it returns the flow.
   const [localCascade, setLocalCascade] = useState(draft?.cascadeLocal ?? null);
   // EXPLANATION → SEND → GO (Dan, 2026-08-26): submitting the explanation
   // auto-kicks the SM proposal (build + compile). This tracks the run so the
@@ -6708,6 +6841,9 @@ export function CreateStationPage({ embedded = false }) {
       // engine drafted his recovery into smProposal and the panel never saw
       // it. The proposal's per-machine recovery IS the panel's data.
       faultRecovery: m.faultRecovery ?? [], handshakes: [],
+      // Structured steps ride to the render (flow view + branch shapes).
+      sequenceSteps: m.sequenceSteps ?? null,
+      faultRecoverySteps: m.faultRecoverySteps ?? null,
     }));
   }, [smProposal]);
   // Fresh drafts record the breakup approval in the cascade state itself
@@ -7378,7 +7514,7 @@ export function CreateStationPage({ embedded = false }) {
         return { action: type, target: (target ?? '').trim(), detail: d2.join(' — ').trim() };
       };
       const compose = (s) => {
-        const a = s.action.toLowerCase();
+        const a = String(s.action ?? '').toLowerCase();
         if (a === 'wait') return `Wait for ${s.target}${s.detail ? ` — ${s.detail}` : ''}`;
         if (a === 'home') return `Home: ${[s.target, s.detail].filter(Boolean).join(' — ') || 'initial position'}`;
         if (a === 'repeat') return 'Repeat';
@@ -7414,7 +7550,8 @@ export function CreateStationPage({ embedded = false }) {
             // Interaction lines (counterpart-shaped) and non-device lines
             // never resolve against devices.
             const isSignalLine = /^(signal|home|repeat)$/i.test(s.action ?? '') || Boolean(s.counterpart)
-              || /^wait\s+for\s+.+?['’]s\s/i.test(String(l));
+              || /^wait\s+for\s+.+?['’]s\s/i.test(String(l))
+              || /^◇/.test(String(l)) || /^[A-Za-z][A-Za-z ]{0,12}:\s/.test(String(l)); // decision/branch flat lines
             if (!s.deviceId && !isSignalLine && s.target) {
               const dev = resolveDevice(s.target);
               if (dev) {
@@ -7434,6 +7571,22 @@ export function CreateStationPage({ embedded = false }) {
                 anyChange = true;
               }
             }
+            // DETAIL RULES BY DEVICE TYPE (Dan, 2026-08-30): a pneumatic
+            // action IS the whole statement — no trailing clause; Servo Move
+            // keeps its NAMED POSITION, Title Case. Waits title-case their
+            // named object.
+            const linkedDev = s.deviceId ? devices.find(dv => dv.devId === s.deviceId) : null;
+            if (linkedDev && /^(extend|retract|engage|disengage)$/i.test(s.action ?? '') && isPneumaticSheet(linkedDev) && s.detail) {
+              s.detail = ''; anyChange = true;
+            }
+            if (/^servo move$/i.test(s.action ?? '') && s.detail) {
+              const tc = titleCaseName(s.detail.replace(/^to\s+/i, ''));
+              if (tc !== s.detail) { s.detail = tc; anyChange = true; }
+            }
+            if (/^wait$/i.test(s.action ?? '') && !isSignalLine && s.target) {
+              const tc = titleCaseName(s.target);
+              if (tc !== s.target) { s.target = tc; anyChange = true; }
+            }
             const line2 = s.counterpart
               ? l // interaction lines keep their canonical two-shape text
               : compose(s);
@@ -7443,7 +7596,13 @@ export function CreateStationPage({ embedded = false }) {
           return { outLines, outSteps };
         };
         const seqR = migrateList(m.sequence, m.sequenceSteps);
-        const recR = migrateList(m.faultRecovery, m.faultRecoverySteps);
+        // Structured (branching) recoveries are already device-linked and
+        // flatten to multi-line-per-item — the line migration must NOT walk
+        // them (item/line misalignment crashed the render, 2026-08-30).
+        const recStructured = (m.faultRecoverySteps ?? []).some(x => x && typeof x === 'object' && x.decision);
+        const recR = recStructured
+          ? { outLines: m.faultRecovery ?? [], outSteps: m.faultRecoverySteps }
+          : migrateList(m.faultRecovery, m.faultRecoverySteps);
         return {
           ...m,
           sequence: seqR.outLines, sequenceSteps: seqR.outSteps,
@@ -7473,6 +7632,83 @@ export function CreateStationPage({ embedded = false }) {
           }
           return next;
         });
+      }
+    }
+    // RECOVERY RE-FIT ONTO THE SHIPPED TEMPLATE (Dan, 2026-08-30): prose
+    // recoveries with inline "if"s re-shape onto the SDCStandardPNP home
+    // pattern — retract vertical → BRANCH on gripper (carry-forward vs
+    // empty-return) → known safe state. Content preserved; shape becomes
+    // the same branching flow the diagram + codegen use. One-time per
+    // machine (fingerprint: inline-if prose, no structure yet).
+    {
+      const devs2 = (summary?.devices ?? []).filter(dv => dv?.devId);
+      const findDev = (re) => devs2.find(dv => re.test(String(dv.displayName ?? dv.name)));
+      const needsRefit = (m) => (m.faultRecovery ?? []).some(l => /—\s*if |if gripper|gripped with a part|no part or not gripped/i.test(String(l)))
+        && !(m.faultRecoverySteps ?? []).some(x => x && typeof x === 'object' && x.decision);
+      const oldMs2 = smProposal.stateMachines.map(m => ({ name: m.name, faultRecovery: [...(m.faultRecovery ?? [])] }));
+      let refitAny = false;
+      const nextMs2 = smProposal.stateMachines.map(m => {
+        if (!needsRefit(m)) return m;
+        const vert = findDev(/vertical|z ?slide|pneumatic cylinder/i);
+        const x = findDev(/x ?axis|horizontal/i);
+        const shuttle = findDev(/escapement ?shuttle$|shuttle$/i) ?? findDev(/shuttle/i);
+        const gripper = findDev(/shuttle ?gripper/i) ?? findDev(/gripper/i);
+        const finger = findDev(/finger ?(1|one)/i);
+        let items = null;
+        if (/pick/i.test(m.name) && vert && x) {
+          items = [
+            { action: 'Retract', target: String(vert.displayName ?? vert.name), deviceId: vert.devId },
+            {
+              decision: 'Gripper Engaged?',
+              branches: [
+                { label: 'Yes', steps: [
+                  { action: 'Servo Move', target: String(x.displayName ?? x.name), detail: 'Place Position', deviceId: x.devId },
+                  { action: 'Wait', target: 'Dial Ready Signal' },
+                  'Rejoin the normal place flow',
+                ] },
+                { label: 'No', steps: [
+                  { action: 'Servo Move', target: String(x.displayName ?? x.name), detail: 'Pick Position', deviceId: x.devId },
+                  'Rejoin the normal pick flow',
+                ] },
+              ],
+            },
+          ];
+        } else if (/escapement/i.test(m.name) && shuttle && gripper) {
+          const starved = (m.faultRecovery ?? []).filter(l => /part present|starved|fault the station|no part feeds/i.test(String(l)) && !/gripped/i.test(String(l)));
+          items = [
+            {
+              decision: 'Gripped With A Part?',
+              branches: [
+                { label: 'Yes', steps: [
+                  { action: 'Extend', target: String(shuttle.displayName ?? shuttle.name), deviceId: shuttle.devId },
+                  { action: 'Signal', target: 'Part Ready For Pick' },
+                  'Hold — Ready For Pick',
+                ] },
+                { label: 'No', steps: [
+                  { action: 'Disengage', target: String(gripper.displayName ?? gripper.name), deviceId: gripper.devId },
+                  { action: 'Retract', target: String(shuttle.displayName ?? shuttle.name), deviceId: shuttle.devId },
+                  ...(finger ? [{ action: 'Extend', target: String(finger.displayName ?? finger.name), deviceId: finger.devId }] : []),
+                  'Home',
+                ] },
+              ],
+            },
+            ...starved,
+          ];
+        }
+        if (!items) return m;
+        refitAny = true;
+        return { ...m, faultRecoverySteps: items, faultRecovery: flattenRecoveryClient(items, composeStepClient) };
+      });
+      if (refitAny) {
+        setSmProposal(p => ({ ...p, stateMachines: nextMs2 }));
+        setDirty(true);
+        const rd2 = computeProposalSeqDiff(oldMs2, nextMs2, 'faultRecovery');
+        if (Object.keys(rd2).length) setRecDiff({ byKey: rd2, at: Date.now() });
+        setChatThread(th => [...th, {
+          role: 'jarvis',
+          text: 'Re-shaped the recoveries onto our shipped home pattern (the standard PNP init: retract the vertical motion, branch on the gripper — carrying finishes forward, empty returns) — same content, drawn as branches now, like the diagram. The changed panels are marked; ✓ got it clears them.',
+          at: Date.now(),
+        }]);
       }
     }
     const ownedKeys = new Set(smProposal.stateMachines.flatMap(m => m.ownedDeviceNames ?? []).map(devKey));
@@ -8347,40 +8583,9 @@ export function CreateStationPage({ embedded = false }) {
         display: 'flex', flexDirection: 'column',
       }}
     >
-      {/* THE LOOP CONTRACT's acknowledgment (Dan, 2026-08-30): while any
-          change marks are on the page — from a turn OR pushed live from the
-          server — this pill says so; Show scrolls to them, ✓ got it clears
-          everything at once. */}
-      {anyMarks && (
-        <div
-          data-testid="updates-pill"
-          style={{
-            position: 'absolute', right: 22, bottom: 18, zIndex: 950,
-            display: 'flex', alignItems: 'center', gap: 10,
-            background: '#7f1d1d', color: '#fff', borderRadius: 10,
-            padding: '8px 12px', boxShadow: '0 6px 24px rgba(0,0,0,.3)', fontSize: 12.5, fontWeight: 700,
-          }}
-        >
-          <span>● updates on the sheet</span>
-          <button
-            type="button"
-            data-testid="updates-pill-show"
-            onClick={() => {
-              const el = document.querySelector('[data-testid="devices-changed-strip"]')
-                ?? document.querySelector('[data-testid^="seq-diff-gotit-"], [data-testid^="rec-diff-gotit-"]')
-                ?? document.querySelector('[data-testid^="sequence-sm-"]');
-              el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }}
-            style={{ background: '#fff', color: '#7f1d1d', border: 'none', borderRadius: 6, padding: '4px 10px', fontWeight: 800, cursor: 'pointer', fontSize: 12 }}
-          >Show</button>
-          <button
-            type="button"
-            data-testid="updates-pill-gotit"
-            onClick={clearAllMarks}
-            style={{ background: 'transparent', color: '#fecaca', border: '1px solid #fca5a5', borderRadius: 6, padding: '4px 10px', fontWeight: 800, cursor: 'pointer', fontSize: 12 }}
-          >✓ got it</button>
-        </div>
-      )}
+      {/* (The "updates on the sheet" card DOCKS in the right rail with the
+          step guide — never a floating overlay covering content; only the
+          one-shot reload bar may overlay. Dan, 2026-08-30.) */}
       {/* ── Header ── */}
       <div style={{
         height: 50, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 14,
@@ -9687,6 +9892,7 @@ export function CreateStationPage({ embedded = false }) {
                                     const scopeStyle = (scope) => scope === 'sameStation'
                                       ? { color: '#075985', background: '#e0f2fe', border: '1px solid #bae6fd' }
                                       : { color: '#6b21a8', background: '#f3e8ff', border: '1px solid #e9d5ff' };
+                                    const tagOfLine = (line) => ixByText.get(normalizeSeqLine(line)) ?? null;
                                     return (
                                     <div key={e.key} style={{ minWidth: 0 }} data-testid={`sequence-sm-${e.key}`}>
                                       <SubHead color="#1574C4">{e.name} sequence</SubHead>
@@ -9697,10 +9903,16 @@ export function CreateStationPage({ embedded = false }) {
                                           left, interaction tag right — all tags on one
                                           vertical line regardless of line length. The arrow
                                           is the direction: ← incoming wait, → outgoing set. */}
-                                      {/* TYPE-FIRST GRID (Dan, 2026-08-28): number | action
-                                          type | object/detail | interaction tag — the same
-                                          breakdown as the state machine diagram, identical
-                                          shape for every machine. */}
+                                      {/* THE FLOW VIEW, ONLY (Dan, 2026-08-30: "the sequence
+                                          IS a diagram" — no list toggle). Changes ring the
+                                          flow RED until ✓ got it; the diff detail rows render
+                                          only while marks are up, then the flow returns. */}
+                                      {!seqDiff?.byKey?.[e.key] ? (
+                                        <FlowMini
+                                          items={flowItemsOf(e.sequenceSteps, e.sequence, composeStepClient)}
+                                          tagOf={tagOfLine}
+                                        />
+                                      ) : (
                                       <div style={{
                                         display: 'grid', gridTemplateColumns: 'auto auto 1fr auto',
                                         columnGap: 10, rowGap: 2, alignItems: 'baseline',
@@ -9749,6 +9961,7 @@ export function CreateStationPage({ embedded = false }) {
                                           );
                                         })}
                                       </div>
+                                      )}
                                       {seqDiff?.byKey?.[e.key] && (
                                         <button
                                           type="button"
@@ -9768,9 +9981,19 @@ export function CreateStationPage({ embedded = false }) {
                                         (e.faultRecovery?.length ?? 0) > 0 || recDiff?.byKey?.[e.key] ? (
                                           <>
                                             <SubHead color="#b45309">Fault recovery</SubHead>
-                                            {/* THE LOOP CONTRACT (Dan, 2026-08-30): recovery
-                                                changes mark RED like sequence changes —
-                                                removed struck, added highlighted, ✓ got it. */}
+                                            {/* RECOVERY IS A BRANCHING FLOW (Dan, 2026-08-30):
+                                                structured recoveries draw as a small branch
+                                                diagram; changes ring RED until ✓ got it. */}
+                                            {(e.faultRecoverySteps ?? []).some(x => x && typeof x === 'object' && x.decision) ? (
+                                              <div style={recDiff?.byKey?.[e.key]
+                                                ? { border: '2px solid #fca5a5', borderRadius: 8, padding: '6px 8px', background: '#fffafa' }
+                                                : undefined}>
+                                                <FlowMini
+                                                  items={flowItemsOf(e.faultRecoverySteps, e.faultRecovery, composeStepClient)}
+                                                  tagOf={tagOfLine}
+                                                />
+                                              </div>
+                                            ) : (
                                             <ol style={{ margin: 0, paddingLeft: 20, fontSize: 12, lineHeight: 1.55, color: C.text }}>
                                               {seqDiffRows(e.faultRecovery ?? [], recDiff?.byKey?.[e.key] ?? null).map((r, li) => (
                                                 <li
@@ -9784,6 +10007,7 @@ export function CreateStationPage({ embedded = false }) {
                                                 >{stripParens(r.t)}</li>
                                               ))}
                                             </ol>
+                                            )}
                                             {recDiff?.byKey?.[e.key] && (
                                               <button
                                                 type="button"
@@ -10323,14 +10547,53 @@ export function CreateStationPage({ embedded = false }) {
                 )}
               </div>
               {/* THE STEP-BY-STEP GUIDE (Dan, 2026-08-26): how this is going
-                  to go and what each step needs — sticky at the side. */}
+                  to go and what each step needs — sticky at the side. The
+                  UPDATES card docks here too (Dan, 2026-08-30: never a
+                  floating overlay covering content — only the one-shot
+                  reload bar may overlay). */}
               {cascadeLive && (
-                <CascadeGuide
-                  steps={cascade.steps}
-                  hasExplanation={!!description.trim()}
-                  allApproved={cascade.allApproved}
-                  onJump={jumpToCascadeStep}
-                />
+                <div style={{ position: 'sticky', top: 10, flexShrink: 0, width: 200 }}>
+                  {anyMarks && (
+                    <div
+                      data-testid="updates-pill"
+                      style={{
+                        display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8,
+                        background: '#061d39', color: '#fff', borderRadius: 10,
+                        padding: '8px 12px', fontSize: 13, fontWeight: 600,
+                      }}
+                    >
+                      <span style={{ flexBasis: '100%' }}>Updates on the sheet.</span>
+                      <button
+                        type="button"
+                        data-testid="updates-pill-show"
+                        onClick={() => {
+                          const find = () => document.querySelector('[data-testid="devices-changed-strip"]')
+                            ?? document.querySelector('[data-testid^="seq-diff-gotit-"], [data-testid^="rec-diff-gotit-"]')
+                            ?? document.querySelector('[data-testid^="sequence-sm-"]');
+                          const el = find();
+                          if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+                          // The marked card may be hidden by the machine
+                          // filter — widen to All, then scroll to it.
+                          selectSheetSm('all');
+                          setTimeout(() => find()?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+                        }}
+                        style={{ background: '#ffde51', color: '#061d39', border: 'none', borderRadius: 6, padding: '5px 11px', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}
+                      >Show</button>
+                      <button
+                        type="button"
+                        data-testid="updates-pill-gotit"
+                        onClick={clearAllMarks}
+                        style={{ background: 'none', color: 'rgba(255,255,255,0.75)', border: 'none', padding: 0, fontWeight: 600, cursor: 'pointer', fontSize: 12.5, textDecoration: 'underline' }}
+                      >✓ got it</button>
+                    </div>
+                  )}
+                  <CascadeGuide
+                    steps={cascade.steps}
+                    hasExplanation={!!description.trim()}
+                    allApproved={cascade.allApproved}
+                    onJump={jumpToCascadeStep}
+                  />
+                </div>
               )}
             </div>
           )}

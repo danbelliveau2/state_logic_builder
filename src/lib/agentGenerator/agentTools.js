@@ -30,6 +30,9 @@ const keysMatch = (a, b) => {
   return !!ka && !!kb && (ka === kb || ka.includes(kb) || kb.includes(ka));
 };
 
+// Recovery-as-branching-flow helpers live in smDecomposer (one source).
+const { flattenRecoveryItems, normalizeRecoveryItems } = require('./smDecomposer.js');
+
 // Parse a canonical prose line back into a structured step (legacy strings).
 function parseStepText(t) {
   const s = String(t ?? '').trim();
@@ -393,6 +396,23 @@ function applyEdit(state, input) {
       writeSteps(m, steps);
       return pushDiff(state, { op, machine: m.name, before, after: stepText(steps[i]), line: i + 1 });
     }
+    case 'recovery.set': {
+      // THE branching-recovery writer (Dan, 2026-08-30): the whole recovery
+      // in ONE call — linear steps until a DECISION, then labeled branches.
+      const m = findMachine(state, input.machine);
+      if (!m) return { error: `No machine matching "${input.machine}".` };
+      const items = normalizeRecoveryItems(input.recovery);
+      if (!items.length) return { error: 'recovery.set needs recovery: [ step | {decision, branches:[{label, steps:[…]}]} … ]' };
+      const before = [...(m.faultRecovery ?? [])];
+      m.faultRecoverySteps = items;
+      m.faultRecovery = flattenRecoveryItems(items);
+      return pushDiff(state, {
+        op, machine: m.name,
+        before: before.join(' | ').slice(0, 300) || null,
+        after: m.faultRecovery.join(' | ').slice(0, 300),
+        lines: m.faultRecovery.length,
+      });
+    }
     case 'value.set': {
       const row = (summary.devices ?? []).find((x) => keysMatch(x?.displayName ?? x?.name, input.device));
       if (!row) return { error: `No device matching "${input.device}".` };
@@ -441,7 +461,7 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'apply_edit',
-    description: 'Apply typed edits to the working draft. Returns the real diff(s) (or errors). BATCH related edits: pass `ops: [ {op, ...}, ... ]` to apply a whole set in ONE call (e.g. drafting a 5-line recovery = one call with 5 recovery.insert ops) — never one call per line. Single-edit form (top-level op) still works. Ops: device.remove {device} (atomic: row + questions + record) · device.add {name,type?,machine?} · device.rename {device,newName} · device.reassign {device,machine,evidence?} · machine.rename {machine,newName} (rejected for approved machines) · sequence.insert {machine, afterLine?, step:{action,target,detail?,counterpart?}} · sequence.remove {machine,line} · sequence.reword {machine,line,step} · sequence.set_tag {machine,line,counterpart} · sequence.clear_tag {machine,line} (tag ops touch the counterpart ONLY) · recovery.insert/remove/reword {machine,...} · value.set {device,field,value}. Line refs: 1-based number or the line\'s text. Action vocabulary: Extend/Retract, Engage/Disengage (grippers), Servo Move, Index, Wait, Signal, Home, Repeat. DEVICE LINKS: a step that acts on a sheet device carries its devId as step.deviceId and the device\'s REAL current name as target — never shorthand ("Z", "X"); read_sheet lists every device\'s devId.',
+    description: 'Apply typed edits to the working draft. Returns the real diff(s) (or errors). BATCH related edits: pass `ops: [ {op, ...}, ... ]` to apply a whole set in ONE call (e.g. drafting a 5-line recovery = one call with 5 recovery.insert ops) — never one call per line. Single-edit form (top-level op) still works. Ops: device.remove {device} (atomic: row + questions + record) · device.add {name,type?,machine?} · device.rename {device,newName} · device.reassign {device,machine,evidence?} · machine.rename {machine,newName} (rejected for approved machines) · sequence.insert {machine, afterLine?, step:{action,target,detail?,counterpart?}} · sequence.remove {machine,line} · sequence.reword {machine,line,step} · sequence.set_tag {machine,line,counterpart} · sequence.clear_tag {machine,line} (tag ops touch the counterpart ONLY) · recovery.insert/remove/reword {machine,...} · value.set {device,field,value}. Line refs: 1-based number or the line\'s text. Action vocabulary: Extend/Retract, Engage/Disengage (grippers), Servo Move, Index, Wait, Signal, Home, Repeat. DEVICE LINKS: a step that acts on a sheet device carries its devId as step.deviceId and the device\'s REAL current name as target — never shorthand ("Z", "X"); read_sheet lists every device\'s devId. RECOVERY IS A BRANCHING FLOW: write it with recovery.set {machine, recovery:[ step | {decision:"Gripper Engaged?", branches:[{label:"Yes", steps:[…]}, {label:"No", steps:[…]}]} ]} — linear steps until a decision, then labeled branches; NEVER inline "if …" conditions in a step\'s text. DETAIL RULES: pneumatic actions are the whole statement — NO detail clause ("Retract Vertical Slide", never "— to clear height"); Servo Move carries the NAMED POSITION as detail ("Servo Move X Axis — Place Position"); named things (devices, positions, signals) are Title Case.',
     input_schema: {
       type: 'object',
       properties: {

@@ -108,12 +108,47 @@ function stepText(s) {
   if (a === 'repeat') return 'Repeat';
   return `${s.action}${s.target ? ` ${s.target}` : ''}${s.detail ? ` — ${s.detail}` : ''}`.trim();
 }
+// ── RECOVERY IS A BRANCHING FLOW (Dan, 2026-08-30) ──────────────────────────
+// Items: a step object/string, OR {decision:'Gripper Engaged?', branches:
+// [{label:'Yes'|'No'|…, steps:[step|string]}]}. Strings stay the derived,
+// persisted flat view; renders compose from the structure.
+function flattenRecoveryItems(items) {
+  const lineOf = (s) => (typeof s === 'string' ? s : stepText(s));
+  const out = [];
+  for (const it of (items ?? [])) {
+    if (it && typeof it === 'object' && it.decision) {
+      out.push(`◇ ${String(it.decision).trim()}`);
+      for (const b of (it.branches ?? [])) {
+        for (const s of (b.steps ?? [])) out.push(`${String(b.label ?? '?').trim()}: ${lineOf(s)}`);
+      }
+    } else if (it != null) {
+      out.push(lineOf(it));
+    }
+  }
+  return out.filter(Boolean);
+}
+function normalizeRecoveryItems(items) {
+  return (Array.isArray(items) ? items : []).map((it) => {
+    if (it && typeof it === 'object' && it.decision) {
+      return {
+        decision: String(it.decision).trim(),
+        branches: (Array.isArray(it.branches) ? it.branches : []).map((b) => ({
+          label: String(b?.label ?? 'Yes').trim(),
+          steps: (Array.isArray(b?.steps) ? b.steps : [])
+            .map((s) => (typeof s === 'string' ? s : normalizeStep(s))).filter(Boolean),
+        })).filter((b) => b.steps.length),
+      };
+    }
+    return typeof it === 'string' ? it : normalizeStep(it);
+  }).filter((it) => it && (typeof it === 'string' || it.decision || it.action || it.target || it.raw));
+}
+
 function normalizeMachine(m) {
   const steps = (Array.isArray(m?.sequence) ? m.sequence : []).map(normalizeStep).filter(Boolean);
-  const recovery = (Array.isArray(m?.faultRecovery) ? m.faultRecovery : [])
-    .map((x) => (typeof x === 'string' ? x.trim() : stepText(normalizeStep(x)))).filter(Boolean);
+  const recoveryItems = normalizeRecoveryItems(m?.faultRecovery);
   return {
-    faultRecovery: recovery,
+    faultRecovery: flattenRecoveryItems(recoveryItems),
+    faultRecoverySteps: recoveryItems,
     // Natural display name, spaces kept ("Mid Base Escapement") — the
     // PascalCase PLC program name is derived at Generate, not here.
     name: String(m?.name ?? '').trim().replace(/\s+/g, ' '),
@@ -209,9 +244,18 @@ async function decompose({ description, images = [], expectedStateMachines = '',
     '                        waiting on that machine\'s signal, or signaling to it. A motion that merely mentions a',
     '                        machine (\'Extend Shuttle to present the part to X\') gets NO counterpart. Home and Repeat',
     '                        NEVER have one.>" }, ... ],',
-    '      "faultRecovery": ["<short line, same action vocabulary: how THIS machine gets home safe from a',
-    '                        mid-cycle fault — retract vertical motion first, part-in-gripper and empty handled',
-    '                        separately, land in a known safe state. 3-6 lines. ALWAYS provide it.>", ...] }',
+    '      "faultRecovery": [ <how THIS machine gets home safe from a mid-cycle fault — a BRANCHING FLOW,',
+    '                        never prose with inline "if"s: linear steps until a DECISION, then labeled branches.',
+    '                        Items are steps (same shape as sequence) or decisions:',
+    '                        { "decision": "Gripper Engaged?", "branches": [ { "label": "Yes", "steps": [ … ] },',
+    '                        { "label": "No", "steps": [ … ] } ] }. Retract vertical motion first; land in a',
+    '                        known safe state. ALWAYS provide it. > ] }',
+    '',
+    'DETAIL RULES BY DEVICE TYPE (Dan): pneumatics are two-position devices — the action IS the',
+    'whole statement ("Retract Vertical Slide", NEVER "— to clear height"; sensors/timers say when',
+    'it\'s there). Servo Move DOES carry the named position as detail ("Servo Move X Axis — Place',
+    'Position"). Waits/signals keep their object. TITLE CASE for named things everywhere: devices,',
+    'named positions, signals ("Place Position", "Part-Ready Signal") — ordinary words stay normal.',
     '  ],',
     '  "reasoning": "<1-2 short sentences, spoken TO the engineer: the asynchrony reasoning behind this count>",',
     '  "noteToEngineer": "<OPTIONAL, usually omit. ONE plain sentence, ONLY when something the engineer',
@@ -585,4 +629,4 @@ async function checkProposal({ kind, payload, description = '', signal = null })
   };
 }
 
-module.exports = { decompose, assignDevices, checkProposal, normalizeStep, stepText };
+module.exports = { decompose, assignDevices, checkProposal, normalizeStep, stepText, flattenRecoveryItems, normalizeRecoveryItems };

@@ -10,12 +10,22 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.30';
+export const UI_BUILD = 'v2.6.31';
 
 export const BUILT_AT = '2026-08-30';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.31',
+    date: '2026-08-30',
+    items: [
+      'THE SEQUENCE IS A DIAGRAM — sequence cards render as a simple vertical flow: typed step nodes, decision diamonds with Yes/No branch paths, interaction tags riding along. Recoveries draw the same way. Simple on purpose: no state numbers, no tag names — the approved flow IS the diagram, and Generate compiles numbering/tags/init from it',
+      'RECOVERY = BRANCHES ON THE SHIPPED PATTERN — no more prose with inline "if"s: recoveries re-shaped onto our standard home pattern (retract vertical → branch on gripper: carrying finishes forward, empty returns), your two stations re-fit with content unchanged, marked red. Filed one question asking which shipped jobs have recovery flows worth learning — drop them in the JARVIS Inbox',
+      'CLEAN LINES: pneumatic actions are the whole statement ("Retract Vertical Slide" — no "— to clear height"); servo moves carry their named position ("Servo Move X Axis — Place Position"); named things are Title Case everywhere. The engine and its reviewer enforce all of it',
+      'The scheduler-style bar family: reload bar bottom-center (navy/yellow, one button); the updates card docks in the step-guide rail — nothing floats over your content while you scroll',
+    ],
+  },
   {
     version: 'v2.6.30',
     date: '2026-08-30',

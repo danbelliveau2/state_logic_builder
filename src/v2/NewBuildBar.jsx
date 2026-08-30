@@ -60,10 +60,12 @@ export function NewBuildBar() {
       id="new-build-bar"
       data-testid="new-build-bar"
       style={{
+        // Pixel-for-pixel the Scheduler's bar (Dan, 2026-08-30):
+        // Project_Scheduler public/app.js:29125-29133.
         position: 'fixed', left: '50%', bottom: 18, transform: 'translateX(-50%)',
         zIndex: 99999, background: '#061d39', color: '#fff', padding: '10px 14px',
         borderRadius: 10, boxShadow: '0 6px 24px rgba(0,0,0,.3)',
-        fontSize: 13.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 12,
+        fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 12,
       }}
     >
       <span>{msg}</span>
@@ -78,7 +80,7 @@ export function NewBuildBar() {
         }}
         style={{
           background: '#ffde51', color: '#061d39', border: 'none', borderRadius: 6,
-          padding: '6px 12px', fontWeight: 800, cursor: 'pointer', fontSize: 13,
+          padding: '6px 12px', fontWeight: 700, cursor: 'pointer', fontSize: 14,
         }}
       >Reload now</button>
     </div>
