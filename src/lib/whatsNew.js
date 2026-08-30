@@ -10,12 +10,22 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.28';
+export const UI_BUILD = 'v2.6.29';
 
 export const BUILT_AT = '2026-08-30';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.29',
+    date: '2026-08-30',
+    items: [
+      'THE REAL HARNESS IS EMBEDDED — the chat now runs the same engine as the assistant you compare it to (the Claude Agent SDK), living in the server with ONLY the station tools: it reads the sheet, the knowledge, and the shipped code, and edits station data — no file system, no shell, no reach into the app (verified: it refuses honestly). One session per station draft, so the conversation genuinely remembers across turns. All regression fixtures pass through it; the old engine is deleted',
+      'THE PAGE IS ALWAYS CURRENT — drafts now live on the server as the single source of truth and every open page subscribes: any change (a chat turn, a background fix, another engineer someday) appears on your screen within about a second, marked in RED until you ✓ got it. The 7-line recovery that sat invisible on a stale tab can\'t happen again',
+      'THE LOOP YOU ASKED FOR — tell it → it does it → the changed items highlight red (sequence lines, recovery lines, devices) → you look → "✓ got it" clears them, or keep talking. A floating "● updates on the sheet — Show" pill appears when changes land anywhere you\'re not looking',
+      'Your edits always win a collision: if a save crosses paths with an engine change, your name/description/sheet edits stand and the engine artifacts take the newest copy — nothing silently lost either way',
+    ],
+  },
   {
     version: 'v2.6.28',
     date: '2026-08-30',
