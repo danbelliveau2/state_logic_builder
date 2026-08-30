@@ -105,6 +105,119 @@ export function deriveInteractionLines(sequence, { selfName = '', sameMachines =
   return { byLine, groups: [...groupMap.values()] };
 }
 
+/**
+ * HANDSHAKE DEADLOCK CHECK (coordinator, 2026-08-30 — runs at sequence/
+ * interaction approvals and before Generate): pairs every cross-machine
+ * WAIT with its setter and verifies reachability/ordering by simulating
+ * the machines round-robin. Pure, instant, no model. Findings in plain
+ * words; the caller turns them into numbered questions.
+ */
+export function checkHandshakes(machines = []) {
+  const NUMW = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+  const sigKey = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '').replace(/[0-9]/g, (c) => NUMW[+c])
+    .replace(/signal$/, '');
+  const keysMatch = (a, b) => !!a && !!b && (a === b || a.includes(b) || b.includes(a));
+  const nk = (x) => String(x ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  // Parse each machine's sequence into events.
+  const ms = machines.map((m) => {
+    const events = (m.sequence ?? []).map((l, i) => {
+      const t = String(l);
+      let mm = t.match(/^wait\s+for\s+(.+?)['’]s\s+(.+?)\s*(?:signal)?\s*$/i);
+      if (mm) return { type: 'wait', from: mm[1], sig: sigKey(mm[2]), i, line: t };
+      mm = t.match(/^(?:signal|set)\s+(.+?)\s+to\s+([A-Za-z0-9 '’.&-]+?)\s*$/i);
+      if (mm) return { type: 'set', to: mm[2], sig: sigKey(mm[1]), i, line: t };
+      return { type: 'other', i, line: t };
+    });
+    return { name: m.name, key: nk(m.name), events, recovery: (m.faultRecovery ?? []).map(String) };
+  });
+  const findings = [];
+  const allSetters = ms.flatMap((m) => m.events.filter((e) => e.type === 'set').map((e) => ({ ...e, by: m.name })));
+  // 1+2: unmatched waits / setters (cross-machine only).
+  for (const m of ms) {
+    for (const w of m.events.filter((e) => e.type === 'wait')) {
+      const partner = ms.find((x) => x !== m && (keysMatch(nk(w.from), x.key) || keysMatch(x.key, nk(w.from))));
+      if (!partner) continue; // waits on Dial/other stations — outside this station's graph
+      const setter = partner.events.find((e) => e.type === 'set' && keysMatch(e.sig, w.sig));
+      if (!setter) {
+        findings.push({
+          kind: 'unmatched-wait',
+          plain: `${m.name} waits for "${w.line.replace(/^Wait for /i, '')}" (step ${w.i + 1}), but ${partner.name} never signals it — that wait can hang forever.`,
+          proposal: `Add the matching Signal step to ${partner.name}'s sequence, or drop the wait.`,
+        });
+      }
+    }
+    for (const s of m.events.filter((e) => e.type === 'set')) {
+      const partner = ms.find((x) => x !== m && (keysMatch(nk(s.to), x.key) || keysMatch(x.key, nk(s.to))));
+      if (!partner) continue;
+      const waiter = partner.events.find((e) => e.type === 'wait' && keysMatch(e.sig, s.sig));
+      if (!waiter) {
+        findings.push({
+          kind: 'unused-set',
+          plain: `${m.name} signals "${s.line.replace(/^Signal /i, '')}" (step ${s.i + 1}) but ${partner.name} never waits on it — dead signal or a missing wait.`,
+          proposal: `Add the wait on ${partner.name}'s side, or remove the signal step.`,
+        });
+      }
+    }
+  }
+  // 3: round-robin simulation → circular waits / ordering deadlocks.
+  {
+    const ptr = ms.map(() => 0);
+    const set = new Set();
+    let guard = 0;
+    for (;;) {
+      let progressed = false;
+      ms.forEach((m, mi) => {
+        while (ptr[mi] < m.events.length) {
+          const ev = m.events[ptr[mi]];
+          if (ev.type === 'wait') {
+            const partner = ms.find((x) => x !== m && (keysMatch(nk(ev.from), x.key) || keysMatch(x.key, nk(ev.from))));
+            if (partner && ![...set].some((k) => keysMatch(k, ev.sig))) break; // blocked in-station
+          }
+          if (ev.type === 'set') set.add(ev.sig);
+          ptr[mi] += 1;
+          progressed = true;
+        }
+      });
+      const allDone = ptr.every((p, i) => p >= ms[i].events.length);
+      if (allDone) break;
+      if (!progressed) {
+        const blocked = ms.filter((m, mi) => ptr[mi] < m.events.length)
+          .map((m, _, __) => {
+            const mi = ms.indexOf(m);
+            const ev = m.events[ptr[mi]];
+            return `${m.name} is stuck at step ${ev.i + 1} ("${ev.line}")`;
+          });
+        findings.push({
+          kind: 'deadlock',
+          plain: `The machines deadlock running their cycles in order: ${blocked.join('; ')} — each is waiting on a signal the other hasn't reached yet.`,
+          proposal: 'Reorder the waits/signals so each wait\'s setter runs earlier in the counterpart\'s cycle.',
+        });
+        break;
+      }
+      if (++guard > 500) break;
+    }
+  }
+  // 4: fault-window hangs — a wait whose setter's machine can fault into
+  // recovery without ever re-signaling.
+  for (const m of ms) {
+    for (const w of m.events.filter((e) => e.type === 'wait')) {
+      const partner = ms.find((x) => x !== m && (keysMatch(nk(w.from), x.key) || keysMatch(x.key, nk(w.from))));
+      if (!partner || !partner.recovery.length) continue;
+      const setter = partner.events.find((e) => e.type === 'set' && keysMatch(e.sig, w.sig));
+      if (!setter) continue;
+      const recovered = partner.recovery.some((l) => keysMatch(sigKey(String(l).replace(/^.*?:\s*/, '')), w.sig) || /rejoin/i.test(l));
+      if (!recovered) {
+        findings.push({
+          kind: 'fault-window',
+          plain: `If ${partner.name} faults before its step ${setter.i + 1} ("${setter.line}"), ${m.name} waits forever at its step ${w.i + 1} — ${partner.name}'s recovery never re-signals and doesn't rejoin the flow before that point.`,
+          proposal: `Have ${partner.name}'s recovery re-signal (or rejoin the cycle before step ${setter.i + 1}), or give ${m.name}'s wait a fault path.`,
+        });
+      }
+    }
+  }
+  return findings;
+}
+
 /** Home/tree label for an unfinished draft: where its cascade sits (Dan,
  *  2026-08-26: "MidBaseLoad — draft · at step 1 · Continue"). */
 export function draftCascadeStepNote(draft) {

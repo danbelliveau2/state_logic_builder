@@ -54,7 +54,7 @@ import { getDeviceTags } from '../../lib/tagNaming.js';
 import { ValueCell } from '../../v2/ServoValuesTable.jsx';
 import { PathDiagram } from './PathDiagram.jsx';
 import { smDecompositionOf, stationSmDecompositionOf, groupDevicesBySm, smSplitApprovalOf, approvedSmDecompositionOf, signalSourceOf, unclaimedHandshakesOf, splitDecompositionOf, compiledDecompositionOf } from './smGrouping.js';
-import { cascadeStepsOf, deriveCascade, deriveInteractionLines, KIND_SECTION, KIND_NOUN } from './cascadeModel.js';
+import { cascadeStepsOf, deriveCascade, deriveInteractionLines, checkHandshakes, KIND_SECTION, KIND_NOUN } from './cascadeModel.js';
 import { stationSmsOf } from '../../lib/stationModel.js';
 import { isRealQuestion } from '../../v2/stationNeeds.js';
 import { sheetGeometryIssues, axisGeometryIssues } from '../../lib/geometrySanity.js';
@@ -6920,6 +6920,41 @@ export function CreateStationPage({ embedded = false }) {
       steps: { ...c.steps, [step.key]: { approved: true, by: 'ME', at: new Date().toISOString() } },
     }));
     if (linkedSmId) appendChangeLog(linkedSmId, { what: `${step.label} approved — locked on the sheet`, class: 'approval' });
+    // HANDSHAKE DEADLOCK CHECK (coordinator, 2026-08-30): at sequence /
+    // interaction approvals, pair every cross-machine WAIT with its setter
+    // and simulate the cycles — findings become numbered questions with
+    // proposals, computed (no model), in plain words.
+    if ((step.kind === 'sequence' || step.kind === 'interactions') && smProposal?.stateMachines?.length >= 2) {
+      try {
+        const findings = checkHandshakes(smProposal.stateMachines).slice(0, 4);
+        const existing = new Set([
+          ...((jarvisCoverage?.interactions?.needs ?? []).map(n => n.question)),
+          ...[...agreedNeeds],
+        ].map(String));
+        const fresh = findings.filter(f => ![...existing].some(q => q.includes(f.plain.slice(0, 60))));
+        if (fresh.length) {
+          setJarvisCoverage(cov => {
+            const next = { ...(cov ?? {}) };
+            next.interactions = { ...(next.interactions ?? {}) };
+            next.interactions.needs = [
+              ...(next.interactions.needs ?? []),
+              ...fresh.map(f => ({
+                question: f.plain,
+                proposedSolution: f.proposal,
+                evidence: 'Computed from the signal graph — every cross-machine wait paired with its setter, cycles simulated in order (recovery paths included).',
+                blocking: false,
+              })),
+            ];
+            return next;
+          });
+          setChatThread(t => [...t, {
+            role: 'jarvis',
+            text: `Checked the machines' signals against each other:\n${fresh.map((f, i) => `Q${i + 1}. ${f.plain}\n   My proposal: ${f.proposal}`).join('\n')}\n\nAgree on the cards, or answer here.`,
+            at: Date.now(),
+          }]);
+        }
+      } catch (e) { console.warn('[handshake-check] skipped:', e.message); }
+    }
   }
 
   /** A content edit under an approved step re-opens it and marks every
@@ -10313,6 +10348,29 @@ export function CreateStationPage({ embedded = false }) {
                     <div style={{ fontSize: 10.5, fontWeight: 800, color: C.primary, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 5 }}>
                       Generate — diagram &amp; code
                     </div>
+                    {/* PRE-GENERATE HANDSHAKE CHECK (coordinator, 2026-08-30):
+                        computed signal-graph findings surface HERE before any
+                        code spends — plain words, one per line. */}
+                    {(() => {
+                      if ((smProposal?.stateMachines?.length ?? 0) < 2) return null;
+                      let fs2 = [];
+                      try {
+                        fs2 = checkHandshakes(smProposal.stateMachines)
+                          .filter(f => ![...agreedNeeds].some(k => String(k).includes(f.plain.slice(0, 60))))
+                          .slice(0, 4);
+                      } catch { return null; }
+                      if (!fs2.length) return null;
+                      return (
+                        <div data-testid="pregen-handshake-findings" style={{
+                          background: '#fdf6e3', border: '1px solid #e6d9a8', borderRadius: 6,
+                          padding: '7px 11px', marginBottom: 8, fontSize: 11.5, color: '#6b5513', lineHeight: 1.5,
+                        }}>
+                          <b>Signal check before generating:</b>
+                          {fs2.map((f, i) => <div key={i}>• {f.plain}</div>)}
+                          <div style={{ color: C.muted, marginTop: 2 }}>Answer in the chat (or Agree on the step cards) — generating anyway is allowed, the code will carry these as-is.</div>
+                        </div>
+                      );
+                    })()}
                     {/* STATION ACCEPT (Dan, 2026-08-28): his real workflow —
                         stations are accepted one after another; code
                         generates for the WHOLE MACHINE at the end. Two
