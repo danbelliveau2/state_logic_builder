@@ -10,7 +10,9 @@
  *
  * Run: node -r dotenv/config scripts/regressAgentLoop.cjs   (3 paid turns)
  */
-const { runAgentTurn } = require('../src/lib/agentGenerator/agentLoop.js');
+// THE EMBEDDED HARNESS (Dan, 2026-08-30): fixtures run through the Claude
+// Agent SDK engine — the hand-rolled loop is deleted (one-door law).
+const { runAgentTurn } = require('../src/lib/agentGenerator/agentLoopSdk.js');
 const { stepText } = require('../src/lib/agentGenerator/smDecomposer.js');
 
 const S = (action, target, detail, counterpart) => ({ action, target, detail: detail ?? '', counterpart: counterpart ?? '' });

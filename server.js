@@ -346,24 +346,78 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     const safe = /^[a-zA-Z0-9_-]{1,80}$/.test(String(draftId || '')) ? String(draftId) : null;
     return safe ? path.join(SHEET_DRAFTS_DIR_, `${safe}.json`) : null;
   }
+  // SERVER = SINGLE SOURCE OF TRUTH (Dan, 2026-08-30: the 7-line recovery he
+  // couldn't see): drafts live HERE with a monotonic rev; every write —
+  // client autosave, agent turn, repair — broadcasts to subscribed pages,
+  // which render the pushed state within ~1s. localStorage demotes to an
+  // offline cache. Stale-DATA class dead; multi-user prerequisite in place.
+  const draftSubs_ = new Map(); // draftId -> Set<res>
+  function readDraftStore_(draftId) {
+    const fp = sheetDraftPath(draftId);
+    if (!fp || !fs.existsSync(fp)) return null;
+    try { return JSON.parse(fs.readFileSync(fp, 'utf8')); } catch { return null; }
+  }
+  function broadcastDraft_(draftId, payload) {
+    for (const sub of (draftSubs_.get(draftId) ?? [])) {
+      try { sub.write(`event: draft\ndata: ${JSON.stringify(payload)}\n\n`); } catch (_) { /* drop */ }
+    }
+  }
+  function writeDraftStore_(draftId, draft, { by = 'client', clientId = null } = {}) {
+    const fp = sheetDraftPath(draftId);
+    if (!fp) return null;
+    fs.mkdirSync(SHEET_DRAFTS_DIR_, { recursive: true });
+    const prev = readDraftStore_(draftId) ?? {};
+    const rev = (Number(prev.rev) || 0) + 1;
+    const record = { draftId, rev, updatedAt: Date.now(), updatedBy: by, mirroredAt: Date.now(), draft };
+    fs.writeFileSync(fp, JSON.stringify(record));
+    broadcastDraft_(draftId, { rev, updatedBy: by, clientId, draft });
+    return rev;
+  }
   async function handleSheetDraftPut(req, res) {
     try {
       const body = JSON.parse(await readBody(req) || '{}');
       const fp = sheetDraftPath(body.draftId);
       if (!fp) return sendJson(res, 400, { error: 'Invalid draftId' });
       if (!body.draft || typeof body.draft !== 'object') return sendJson(res, 400, { error: 'draft object required' });
-      fs.mkdirSync(SHEET_DRAFTS_DIR_, { recursive: true });
-      fs.writeFileSync(fp, JSON.stringify({ draftId: body.draftId, mirroredAt: Date.now(), draft: body.draft }));
-      sendJson(res, 200, { ok: true });
+      // Optimistic concurrency: a save based on a stale rev conflicts — the
+      // client merges (his manual edits win; engine artifacts take the
+      // newer server copy) and re-posts. Legacy clients (no baseRev) keep
+      // last-write-wins so nothing breaks mid-rollout.
+      const current = readDraftStore_(body.draftId);
+      if (body.baseRev != null && current && Number(body.baseRev) < (Number(current.rev) || 0)) {
+        return sendJson(res, 409, { ok: false, conflict: true, rev: current.rev, updatedBy: current.updatedBy ?? null, draft: current.draft });
+      }
+      const rev = writeDraftStore_(body.draftId, body.draft, { by: 'client', clientId: body.clientId ?? null });
+      sendJson(res, 200, { ok: true, rev });
     } catch (e) { sendJson(res, 500, { error: e.message }); }
   }
   function handleSheetDraftGet(res, query) {
     const fp = sheetDraftPath(query.draftId);
     if (!fp) return sendJson(res, 400, { error: 'Invalid draftId' });
     try {
-      if (!fs.existsSync(fp)) return sendJson(res, 200, { ok: true, draft: null });
+      if (!fs.existsSync(fp)) return sendJson(res, 200, { ok: true, draft: null, rev: 0 });
       sendJson(res, 200, { ok: true, ...JSON.parse(fs.readFileSync(fp, 'utf8')) });
     } catch (e) { sendJson(res, 500, { error: e.message }); }
+  }
+  /** GET /api/jarvis/draft-events?draftId&clientId — the page's live
+   *  subscription: `draft` events on every store write (echoes carry the
+   *  writer's clientId so a tab can ignore its own), pings every 15s. */
+  function handleDraftEvents(req, res, query) {
+    const draftId = String(query.draftId ?? '');
+    if (!sheetDraftPath(draftId)) { return sendJson(res, 400, { error: 'Invalid draftId' }); }
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'X-Accel-Buffering': 'no',
+    });
+    if (!draftSubs_.has(draftId)) draftSubs_.set(draftId, new Set());
+    draftSubs_.get(draftId).add(res);
+    const current = readDraftStore_(draftId);
+    try { res.write(`event: hello\ndata: ${JSON.stringify({ rev: Number(current?.rev) || 0 })}\n\n`); } catch (_) {}
+    const ping = setInterval(() => { try { res.write(`event: ping\ndata: {}\n\n`); } catch (_) {} }, 15000);
+    req.on('close', () => { clearInterval(ping); draftSubs_.get(draftId)?.delete(res); });
   }
   /** FNV-1a over the base64 payload — same function as the client's
    *  (createStationDrafts.imgHash). Content identity for union-by-hash. */
@@ -3485,7 +3539,9 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       if (method !== 'POST') return sendJson(res, 405, { error: 'Method not allowed' });
       let loop;
       try {
-        loop = require('./src/lib/agentGenerator/agentLoop.js');
+        // THE EMBEDDED HARNESS (Dan, 2026-08-30): the Claude Agent SDK engine
+        // — same window, same contract; the hand-rolled loop is deleted.
+        loop = require('./src/lib/agentGenerator/agentLoopSdk.js');
       } catch (e) {
         return sendJson(res, 503, { error: 'Agent loop not available: ' + e.message });
       }
@@ -3520,6 +3576,8 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
           cascadePosition: body.cascadePosition ?? null,
           // KNOW YOUR AUDIENCE (Dan, 2026-08-30): ME (default) or CE.
           audience: body.audience === 'CE' ? 'CE' : 'ME',
+          // Session continuity: one SDK session per draft.
+          draftId: body.draftId ? String(body.draftId) : null,
           signal: abort.signal,
           // Two event shapes: {reading} = the model's spoken reading of the
           // request (a chat turn, streamed early); a string = activity state.
@@ -3546,6 +3604,13 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         if (body.draftId) {
           agentTurnResults_.set(String(body.draftId), { at: Date.now(), result: { ok: true, ...result } });
           if (agentTurnResults_.size > 20) agentTurnResults_.delete(agentTurnResults_.keys().next().value);
+          // SERVER IS THE SOURCE OF TRUTH (Dan, 2026-08-30): the turn's
+          // applied draft lands in the store HERE — every subscribed page
+          // sees it within ~1s whether or not the requesting tab survives.
+          // The requester ignores its own echo via clientId.
+          try {
+            if (result?.draft) writeDraftStore_(String(body.draftId), result.draft, { by: 'agent', clientId: body.clientId ?? null });
+          } catch (e) { console.warn('[agent-turn] store write failed:', e.message); }
         }
         send('done', { ok: true, ...result });
       } catch (e) {
@@ -3608,6 +3673,12 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     if (pathname === '/api/jarvis/sheet-draft') {
       if (method === 'POST' || method === 'PUT') return handleSheetDraftPut(req, res);
       if (method === 'GET') return handleSheetDraftGet(res, query);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    // Live draft subscription (server = source of truth, Dan 2026-08-30).
+    if (pathname === '/api/jarvis/draft-events') {
+      if (method === 'GET') return handleDraftEvents(req, res, query);
       return sendJson(res, 405, { error: 'Method not allowed' });
     }
 

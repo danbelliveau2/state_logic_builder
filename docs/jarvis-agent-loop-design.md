@@ -103,14 +103,21 @@ receipt or a stated reading · internals never print.
 
 ## 8. Runtime shape
 
-- Server-side (node, `@anthropic-ai/sdk` tool-use loop) in
-  `src/lib/agentGenerator/agentLoop.js` — one module owning the loop, tool
-  registry, caps, and streaming. The tools are thin wrappers over the same
-  draft-state the client mirrors to the server today (`/api/jarvis/sheet-draft`),
-  which becomes the agent's working copy: the client sends the current draft
-  with the turn, the agent edits the server copy through the tools, and the
-  client applies the returned diff list — the render never depends on the
-  model, and the client remains the storage authority.
+- **THE EMBEDDED HARNESS (Dan, 2026-08-30 — supersedes the hand-rolled loop):**
+  the engine is the Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`, the
+  embeddable Claude Code engine; self-contained runtime bundled by npm, an
+  API key runs it). `src/lib/agentGenerator/agentLoopSdk.js` registers the
+  typed tool registry (agentTools.js) as in-process SDK custom tools
+  (`createSdkMcpServer`/`tool`), replaces the default system prompt with the
+  contract + laws, and streams SDK events to the same SSE. TOOL SCOPING IS
+  THE SECURITY MODEL: `allowedTools: mcp__station__*` + every built-in
+  disallowed by name + `permissionMode: 'dontAsk'` + `settingSources: []` +
+  an isolated `CLAUDE_CONFIG_DIR` — the engine has no file system, no shell,
+  no web, no reach into this machine's Claude login. One SDK session per
+  draft (resume) gives the thread real continuity. Our checker-over-diffs
+  stays as the post-turn gate (one bounce). The client still sends the draft
+  with the turn and applies the returned diff list — storage authority
+  unchanged; receipts still computed from diffs only.
 - Model: **opus for the loop** (Dan, 2026-08-30: "act and answer questions
   correctly — that's all I care about"; upgraded from the original sonnet
   design call). The checker stays on the cheap tier (bounded verification).

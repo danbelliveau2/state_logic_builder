@@ -1699,7 +1699,10 @@ function receiptFromAgentDiffs(diffs = []) {
 
 /** Per-machine sequence diff (for the live card highlight) between two
  *  proposal snapshots — same pairing logic as the gate rounds. */
-function computeProposalSeqDiff(oldMs = [], newMs = []) {
+// One tab-instance identity — echo suppression on the live draft channel.
+const CLIENT_ID = 'c_' + Math.random().toString(36).slice(2, 10);
+
+function computeProposalSeqDiff(oldMs = [], newMs = [], field = 'sequence') {
   const overlap = (a, b) => {
     const A = new Set(wordsOf(a)); const B = new Set(wordsOf(b));
     const inter = [...A].filter(x => B.has(x)).length;
@@ -4445,6 +4448,15 @@ export function CreateStationPage({ embedded = false }) {
   // LIVE DIFF (Dan, 2026-08-28): a correction shows IN the sequence card —
   // removed lines struck through, added/changed highlighted — until "got it".
   const [seqDiff, setSeqDiff] = useState(null); // { byKey: {k:{removed,added,changed,machine}}, at }
+  // THE LOOP CONTRACT, ALL ARTIFACTS (Dan, 2026-08-30: tell → do → RED on
+  // the page → look → "✓ got it" or feedback): recovery + device marks ride
+  // the same highlight-until-acknowledged pattern as the sequence diff.
+  const [recDiff, setRecDiff] = useState(null);   // { byKey: {k:{removed,added,changed,machine}}, at }
+  const [devChanged, setDevChanged] = useState(null); // { names: [], at }
+  const clearAllMarks = () => { setSeqDiff(null); setRecDiff(null); setDevChanged(null); };
+  const anyMarks = !!(seqDiff || recDiff || devChanged);
+  // Server-draft sync bookkeeping (server = source of truth).
+  const lastServerRevRef = useRef(0);
   // EDITABLE EXPLANATION (Dan, 2026-08-28): re-enterable after the cascade
   // starts; applying an edit is a gate event through the same engine.
   const [explEditing, setExplEditing] = useState(false);
@@ -4524,17 +4536,44 @@ export function CreateStationPage({ embedded = false }) {
   const persistDraftNow = (extra = {}) => {
     const { payload, droppedImages } = buildDraftPayload();
     const merged = { ...payload, ...extra };
-    // SERVER MIRROR (Dan's second-vanish, 2026-08-27): the draft (sans
-    // images — those have their own store) rides to the server on every
-    // save so a live incident is diagnosable from REAL data. Best-effort.
+    // SERVER = SOURCE OF TRUTH (Dan, 2026-08-30; grew out of the 2026-08-27
+    // mirror): every save posts with the rev it was based on. A 409 means
+    // someone else (an agent turn, another tab) wrote meanwhile — merge with
+    // the standing policy (HIS manual inputs win; engine artifacts take the
+    // newer server copy; the longer chat wins) and re-post once.
     try {
       const { images: _mirrorImgs, ...mirror } = merged;
-      fetch('/api/jarvis/sheet-draft', {
+      const post = (draftObj, baseRev) => fetch('/api/jarvis/sheet-draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ draftId: draftIdRef.current, draft: mirror }),
+        body: JSON.stringify({ draftId: draftIdRef.current, draft: draftObj, baseRev, clientId: CLIENT_ID }),
+      });
+      post(mirror, lastServerRevRef.current).then(async (r) => {
+        if (r.ok) {
+          const d = await r.json().catch(() => null);
+          if (d?.rev) lastServerRevRef.current = d.rev;
+          return;
+        }
+        if (r.status !== 409) return;
+        const c = await r.json().catch(() => null);
+        if (!c?.draft) return;
+        const server = c.draft;
+        const mergedDraft = {
+          ...server,
+          // His manual inputs win:
+          name: mirror.name, station: mirror.station, description: mirror.description,
+          summary: mirror.summary, explanationLayers: mirror.explanationLayers,
+          purpose: mirror.purpose, genLevel: mirror.genLevel, expectedSms: mirror.expectedSms,
+          referenceText: mirror.referenceText, sheetAhead: mirror.sheetAhead,
+          ...(mirror.stationAccepted ? { stationAccepted: mirror.stationAccepted } : {}),
+          // The longer conversation wins:
+          chatThread: (server.chatThread?.length ?? 0) > (mirror.chatThread?.length ?? 0) ? server.chatThread : mirror.chatThread,
+        };
+        const r2 = await post(mergedDraft, c.rev);
+        const d2 = r2.ok ? await r2.json().catch(() => null) : null;
+        if (d2?.rev) lastServerRevRef.current = d2.rev;
       }).catch(() => {});
-    } catch { /* mirror is never load-bearing */ }
+    } catch { /* the store write is retried on the next autosave */ }
     if (saveDraft(draftKey, merged)) {
       setDraftImagesDropped(droppedImages);
       return true;
@@ -6180,7 +6219,9 @@ export function CreateStationPage({ embedded = false }) {
   async function runAgentChatTurn(msg, { isRetry = false } = {}) {
     if (applying) return;
     console.log('[chat] dispatched: agent loop' + (isRetry ? ' (retry)' : ''));
-    const oldMachines = (smProposal?.stateMachines ?? []).map(m => ({ name: m.name, sequence: [...(m.sequence ?? [])] }));
+    const oldMachines = (smProposal?.stateMachines ?? []).map(m => ({
+      name: m.name, sequence: [...(m.sequence ?? [])], faultRecovery: [...(m.faultRecovery ?? [])],
+    }));
     // OPTIMISTIC, ALWAYS (Dan, 2026-08-30: box-refill "looks like an unsent
     // draft"): his message lives in the chat from the moment he sends; a
     // retry re-runs THAT message without duplicating it.
@@ -6196,6 +6237,7 @@ export function CreateStationPage({ embedded = false }) {
         message: msg,
         audience, // ME (default) | CE — the loop's voice contract
         draftId: draftIdRef.current, // reconnect key: /agent-turn/last
+        clientId: CLIENT_ID, // echo suppression on the live draft channel
         draft: {
           name: name.trim(), description: fullExplanation.trim(),
           summary, smProposal, jarvisCoverage,
@@ -6237,9 +6279,16 @@ export function CreateStationPage({ embedded = false }) {
         if (d.draft.deviceAssignments) setDeviceAssignments(d.draft.deviceAssignments);
         setDirty(true);
       }
-      // Live card diff (strike/highlight until "got it").
-      const diffByKey = computeProposalSeqDiff(oldMachines, d.draft?.smProposal?.stateMachines ?? []);
+      // Live marks — the loop contract's RED, on every artifact the turn
+      // touched (sequence, recovery, devices), until "✓ got it".
+      const newMs = d.draft?.smProposal?.stateMachines ?? [];
+      const diffByKey = computeProposalSeqDiff(oldMachines, newMs, 'sequence');
       setSeqDiff(Object.keys(diffByKey).length ? { byKey: diffByKey, at: Date.now() } : null);
+      const recByKey = computeProposalSeqDiff(oldMachines, newMs, 'faultRecovery');
+      setRecDiff(Object.keys(recByKey).length ? { byKey: recByKey, at: Date.now() } : null);
+      const devNames = [...new Set((d.diffs ?? []).filter(x => /^device\./.test(x.op))
+        .map(x => x.device ?? x.after ?? x.before).filter(Boolean))];
+      setDevChanged(devNames.length ? { names: devNames, at: Date.now() } : null);
       // THE SPEAKING LAYER (Dan, 2026-08-30): the spoken paragraph is the
       // model's reply — his terms, his content, ball location. The COMPUTED
       // receipt (from the diffs, unfakeable) attaches as the folded change
@@ -7326,6 +7375,97 @@ export function CreateStationPage({ embedded = false }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, smProposal, draftKey]);
 
+  // ── LIVE DRAFT SYNC (Dan, 2026-08-30: the 7-line recovery he couldn't
+  // see): the server is the source of truth; this page SUBSCRIBES. Any
+  // write from anywhere — an agent turn, a repair, another tab — renders
+  // here within ~1s, its changes marked RED until "✓ got it". This tab's
+  // own writes echo back with our CLIENT_ID and only advance the rev. ────
+  const adoptServerDraftRef = useRef(null);
+  adoptServerDraftRef.current = (draft, rev, updatedBy) => {
+    if (!draft || typeof draft !== 'object') return;
+    const oldMachines = (smProposal?.stateMachines ?? []).map(m => ({
+      name: m.name, sequence: [...(m.sequence ?? [])], faultRecovery: [...(m.faultRecovery ?? [])],
+    }));
+    const newMachines = draft.smProposal?.stateMachines ?? [];
+    // Land the state (the same setters every apply path uses).
+    if (isStructuredSummary(draft.summary)) setSummary(withSheetPrefill(draft.summary));
+    if (draft.smProposal?.stateMachines) setSmProposal(p => ({ ...(p ?? {}), stateMachines: draft.smProposal.stateMachines, at: Date.now() }));
+    if (draft.jarvisCoverage) setJarvisCoverage(normCoverage(draft.jarvisCoverage));
+    if (Array.isArray(draft.agreedNeeds)) setAgreedNeeds(new Set(draft.agreedNeeds));
+    if (draft.deviceAssignments) setDeviceAssignments(draft.deviceAssignments);
+    if (Array.isArray(draft.explanationLayers)) setExplLayers(draft.explanationLayers);
+    if (draft.stationAccepted) setStationAccepted(draft.stationAccepted);
+    setChatThread(t => ((draft.chatThread?.length ?? 0) > t.length ? draft.chatThread : t));
+    if (draft.cascadeLocal) setLocalCascade(draft.cascadeLocal);
+    lastServerRevRef.current = Number(rev) || lastServerRevRef.current;
+    // THE RED (the loop contract): mark exactly what changed.
+    if (newMachines.length) {
+      const sd = computeProposalSeqDiff(oldMachines, newMachines, 'sequence');
+      if (Object.keys(sd).length) setSeqDiff({ byKey: sd, at: Date.now() });
+      const rd = computeProposalSeqDiff(oldMachines, newMachines, 'faultRecovery');
+      if (Object.keys(rd).length) setRecDiff({ byKey: rd, at: Date.now() });
+      const oldDevs = new Set((summary?.devices ?? []).map(x => normKey(x?.displayName ?? x?.name)));
+      const changedDevs = (draft.summary?.devices ?? [])
+        .map(x => String(x?.displayName ?? x?.name ?? ''))
+        .filter(nm => !oldDevs.has(normKey(nm)));
+      const removedDevs = (summary?.devices ?? [])
+        .map(x => String(x?.displayName ?? x?.name ?? ''))
+        .filter(nm => !(draft.summary?.devices ?? []).some(y => normKey(y?.displayName ?? y?.name) === normKey(nm)));
+      const names = [...changedDevs, ...removedDevs];
+      if (names.length) setDevChanged({ names, at: Date.now() });
+    }
+    console.log(`[draft-sync] adopted server rev ${rev} (by ${updatedBy ?? '?'})`);
+  };
+  useEffect(() => {
+    const id = draftIdRef.current;
+    if (!id || phase !== 'summary') return undefined;
+    let es = null;
+    let dead = false;
+    (async () => {
+      // MIGRATION-SAFE INITIAL RECONCILE: adopt the server copy only when a
+      // non-client writer (an agent) has something newer than this tab's
+      // state — his manual edits always win otherwise.
+      try {
+        const r = await fetch(`/api/jarvis/sheet-draft?draftId=${encodeURIComponent(id)}`);
+        const d = await r.json().catch(() => null);
+        if (d?.ok) {
+          const localSavedAt = Number(draft?.savedAt) || 0;
+          if (d.draft && d.updatedBy === 'agent' && Number(d.updatedAt) > localSavedAt) {
+            adoptServerDraftRef.current?.(d.draft, d.rev, d.updatedBy);
+          } else {
+            lastServerRevRef.current = Number(d.rev) || 0;
+          }
+        }
+      } catch { /* subscribe anyway; the next event carries the rev */ }
+      if (dead) return;
+      es = new EventSource(`/api/jarvis/draft-events?draftId=${encodeURIComponent(id)}&clientId=${CLIENT_ID}`);
+      es.addEventListener('hello', (ev) => {
+        try {
+          const h = JSON.parse(ev.data);
+          if (Number(h.rev) > lastServerRevRef.current) {
+            // Missed writes while unsubscribed — pull once.
+            fetch(`/api/jarvis/sheet-draft?draftId=${encodeURIComponent(id)}`).then(r2 => r2.json()).then(d2 => {
+              if (d2?.ok && d2.draft && Number(d2.rev) > lastServerRevRef.current && d2.updatedBy !== 'client') {
+                adoptServerDraftRef.current?.(d2.draft, d2.rev, d2.updatedBy);
+              } else if (d2?.rev) lastServerRevRef.current = Number(d2.rev);
+            }).catch(() => {});
+          }
+        } catch { /* hello is advisory */ }
+      });
+      es.addEventListener('draft', (ev) => {
+        try {
+          const d = JSON.parse(ev.data);
+          if (d.clientId === CLIENT_ID) { lastServerRevRef.current = Math.max(lastServerRevRef.current, Number(d.rev) || 0); return; }
+          if (Number(d.rev) > lastServerRevRef.current && d.draft) {
+            adoptServerDraftRef.current?.(d.draft, d.rev, d.updatedBy);
+          }
+        } catch { /* skip malformed */ }
+      });
+    })();
+    return () => { dead = true; try { es?.close(); } catch { /* closing */ } };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, draftKey]);
+
   // ONE COMMUNICATION STREAM (Dan, 2026-08-30): when a step's questions
   // surface, they ALSO post into the chat as one Jarvis turn — the history
   // holds question and answer together. The step cards stay (same objects).
@@ -8055,6 +8195,40 @@ export function CreateStationPage({ embedded = false }) {
         display: 'flex', flexDirection: 'column',
       }}
     >
+      {/* THE LOOP CONTRACT's acknowledgment (Dan, 2026-08-30): while any
+          change marks are on the page — from a turn OR pushed live from the
+          server — this pill says so; Show scrolls to them, ✓ got it clears
+          everything at once. */}
+      {anyMarks && (
+        <div
+          data-testid="updates-pill"
+          style={{
+            position: 'absolute', right: 22, bottom: 18, zIndex: 950,
+            display: 'flex', alignItems: 'center', gap: 10,
+            background: '#7f1d1d', color: '#fff', borderRadius: 10,
+            padding: '8px 12px', boxShadow: '0 6px 24px rgba(0,0,0,.3)', fontSize: 12.5, fontWeight: 700,
+          }}
+        >
+          <span>● updates on the sheet</span>
+          <button
+            type="button"
+            data-testid="updates-pill-show"
+            onClick={() => {
+              const el = document.querySelector('[data-testid="devices-changed-strip"]')
+                ?? document.querySelector('[data-testid^="seq-diff-gotit-"], [data-testid^="rec-diff-gotit-"]')
+                ?? document.querySelector('[data-testid^="sequence-sm-"]');
+              el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }}
+            style={{ background: '#fff', color: '#7f1d1d', border: 'none', borderRadius: 6, padding: '4px 10px', fontWeight: 800, cursor: 'pointer', fontSize: 12 }}
+          >Show</button>
+          <button
+            type="button"
+            data-testid="updates-pill-gotit"
+            onClick={clearAllMarks}
+            style={{ background: 'transparent', color: '#fecaca', border: '1px solid #fca5a5', borderRadius: 6, padding: '4px 10px', fontWeight: 800, cursor: 'pointer', fontSize: 12 }}
+          >✓ got it</button>
+        </div>
+      )}
       {/* ── Header ── */}
       <div style={{
         height: 50, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 14,
@@ -8948,6 +9122,30 @@ export function CreateStationPage({ embedded = false }) {
                         // per-type tables ride inside each card.
                         renderBody: () => (
                           <>
+                            {/* THE LOOP CONTRACT (Dan, 2026-08-30): device
+                                changes from a turn mark RED here until he
+                                acknowledges — same pattern as the cards. */}
+                            {devChanged && (
+                              <div
+                                data-testid="devices-changed-strip"
+                                style={{
+                                  display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                                  background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6,
+                                  padding: '5px 10px', marginBottom: 8, fontSize: 12, color: '#991b1b',
+                                }}
+                              >
+                                <b>changed this turn:</b> {devChanged.names.join(', ')}
+                                <button
+                                  type="button"
+                                  data-testid="devices-changed-gotit"
+                                  onClick={() => setDevChanged(null)}
+                                  style={{
+                                    ...chipBase, cursor: 'pointer',
+                                    color: '#2f6b3c', background: '#e9f5ec', border: '1px solid #bfe0c8',
+                                  }}
+                                >✓ got it</button>
+                              </div>
+                            )}
                             {/* GROUPS AS COLUMNS across the page (Dan, Aug 24:
                                 Servo Axes and Pneumatics side by side when
                                 width allows — no dead right-side space).
@@ -9370,12 +9568,36 @@ export function CreateStationPage({ embedded = false }) {
                                           below?"): the interactions review IS this card's tag
                                           column; the step bar carries the one prompt line. */}
                                       {stepRevealed('recovery', e.key) && (
-                                        (e.faultRecovery?.length ?? 0) > 0 ? (
+                                        (e.faultRecovery?.length ?? 0) > 0 || recDiff?.byKey?.[e.key] ? (
                                           <>
                                             <SubHead color="#b45309">Fault recovery</SubHead>
+                                            {/* THE LOOP CONTRACT (Dan, 2026-08-30): recovery
+                                                changes mark RED like sequence changes —
+                                                removed struck, added highlighted, ✓ got it. */}
                                             <ol style={{ margin: 0, paddingLeft: 20, fontSize: 12, lineHeight: 1.55, color: C.text }}>
-                                              {e.faultRecovery.map((l, li) => <li key={li}>{stripParens(l)}</li>)}
+                                              {seqDiffRows(e.faultRecovery ?? [], recDiff?.byKey?.[e.key] ?? null).map((r, li) => (
+                                                <li
+                                                  key={li}
+                                                  data-testid={r.removed ? `rec-removed-${e.key}-${li}` : r.added ? `rec-added-${e.key}-${li}` : undefined}
+                                                  style={r.removed
+                                                    ? { textDecoration: 'line-through', color: '#991b1b', opacity: 0.75 }
+                                                    : (r.added || r.changed)
+                                                      ? { background: '#fef9c3', borderRadius: 3 }
+                                                      : undefined}
+                                                >{stripParens(r.t)}</li>
+                                              ))}
                                             </ol>
+                                            {recDiff?.byKey?.[e.key] && (
+                                              <button
+                                                type="button"
+                                                data-testid={`rec-diff-gotit-${e.key}`}
+                                                onClick={() => setRecDiff(null)}
+                                                style={{
+                                                  ...chipBase, cursor: 'pointer', marginTop: 3,
+                                                  color: '#2f6b3c', background: '#e9f5ec', border: '1px solid #bfe0c8',
+                                                }}
+                                              >✓ got it</button>
+                                            )}
                                           </>
                                         ) : (
                                           /* RECOVERY IS A STEP, ALWAYS (Dan, 2026-08-28): the step

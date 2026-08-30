@@ -223,9 +223,14 @@ export function AppFlowTab() {
           the same single knowledge base — a lesson from a code fix rides
           the next sheet conversation, and a ruling you file on the sheet
           rides the next build. There is no sheet-side copy of anything.
-          The conversation runs on the top reasoning tier — the same class of
-          model behind the chat Dan compares it to — at roughly 25¢ to $1.50
-          a turn (capped at $2): correctness over cost, his call.
+          The conversation IS the real harness now — the same engine behind
+          the chat Dan compares it to (the Claude Agent SDK), embedded in the
+          server with ONLY the station tools: it can read the sheet, the
+          knowledge, and the shipped code, and edit station data — it has no
+          file system, no shell, no reach into the app. Turns bill like that
+          chat's turns: roughly 25¢ to $1.50 each (capped at $2), on the top
+          reasoning tier — correctness over cost, his call. One session per
+          draft, so the thread genuinely remembers.
         </div>
       </div>
 
