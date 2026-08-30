@@ -62,16 +62,27 @@ function parseStepText(t) {
  * @param cascadePosition { activeStep:{kind,smKey,smName,label}, approved:[labels],
  *                approvedMachineNames:[], stepStatuses? }
  */
-function createTurnState(draft, cascadePosition) {
+function createTurnState(draft, cascadePosition, { speaker = 'Dan' } = {}) {
   return {
     draft: JSON.parse(JSON.stringify(draft ?? {})),
     cascadePosition: cascadePosition ?? null,
+    speaker: String(speaker || 'Dan'),
     diffs: [],
     asks: [],
     notes: [],
     closedQuestions: [],
     events: [],
   };
+}
+
+// ── TIER 2/3 stores (Dan's boundary design, 2026-08-30) ─────────────────────
+const PENDING_LAWS_PATH = path.join(ROOT, 'jarvis-knowledge', 'pending-laws.json');
+const APP_SUGGESTIONS_PATH = path.join(ROOT, 'jarvis-knowledge', 'app-suggestions.json');
+function readJsonFile(p, fallback) {
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return fallback; }
+}
+function writeJsonFile(p, obj) {
+  fs.writeFileSync(p, JSON.stringify(obj, null, 2) + '\n', 'utf8');
 }
 
 // ── read helpers over the working draft ────────────────────────────────────
@@ -263,6 +274,29 @@ function applyEdit(state, input) {
       for (const m of machinesOf(state)) {
         m.ownedDeviceNames = (m.ownedDeviceNames ?? []).map((n) => (keysMatch(n, from) ? to : n));
       }
+      // DEVICE-LINKED LINES (Dan, 2026-08-30: "the sequence can't be
+      // different names — it's got to be based on the devices always"):
+      // every sequence/recovery line that touches this device re-renders
+      // with the new name — by devId link when present, name-match else.
+      const devId = row.devId ?? null;
+      for (const m of machinesOf(state)) {
+        const steps = stepsOf(m);
+        let touched = false;
+        for (const s of steps) {
+          if ((devId && s.deviceId === devId) || keysMatch(s.target, from)) {
+            s.target = to;
+            if (devId) s.deviceId = devId;
+            touched = true;
+          }
+        }
+        if (touched) writeSteps(m, steps);
+        if (Array.isArray(m.faultRecovery) && m.faultRecovery.length) {
+          const esc2 = String(before).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const re = new RegExp(esc2, 'gi');
+          const next = m.faultRecovery.map((l) => String(l).replace(re, to));
+          if (JSON.stringify(next) !== JSON.stringify(m.faultRecovery)) m.faultRecovery = next;
+        }
+      }
       return pushDiff(state, { op, before, after: to });
     }
     case 'device.reassign': {
@@ -407,7 +441,7 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'apply_edit',
-    description: 'Apply typed edits to the working draft. Returns the real diff(s) (or errors). BATCH related edits: pass `ops: [ {op, ...}, ... ]` to apply a whole set in ONE call (e.g. drafting a 5-line recovery = one call with 5 recovery.insert ops) — never one call per line. Single-edit form (top-level op) still works. Ops: device.remove {device} (atomic: row + questions + record) · device.add {name,type?,machine?} · device.rename {device,newName} · device.reassign {device,machine,evidence?} · machine.rename {machine,newName} (rejected for approved machines) · sequence.insert {machine, afterLine?, step:{action,target,detail?,counterpart?}} · sequence.remove {machine,line} · sequence.reword {machine,line,step} · sequence.set_tag {machine,line,counterpart} · sequence.clear_tag {machine,line} (tag ops touch the counterpart ONLY) · recovery.insert/remove/reword {machine,...} · value.set {device,field,value}. Line refs: 1-based number or the line\'s text. Action vocabulary: Extend/Retract, Engage/Disengage (grippers), Servo Move, Index, Wait, Signal, Home, Repeat.',
+    description: 'Apply typed edits to the working draft. Returns the real diff(s) (or errors). BATCH related edits: pass `ops: [ {op, ...}, ... ]` to apply a whole set in ONE call (e.g. drafting a 5-line recovery = one call with 5 recovery.insert ops) — never one call per line. Single-edit form (top-level op) still works. Ops: device.remove {device} (atomic: row + questions + record) · device.add {name,type?,machine?} · device.rename {device,newName} · device.reassign {device,machine,evidence?} · machine.rename {machine,newName} (rejected for approved machines) · sequence.insert {machine, afterLine?, step:{action,target,detail?,counterpart?}} · sequence.remove {machine,line} · sequence.reword {machine,line,step} · sequence.set_tag {machine,line,counterpart} · sequence.clear_tag {machine,line} (tag ops touch the counterpart ONLY) · recovery.insert/remove/reword {machine,...} · value.set {device,field,value}. Line refs: 1-based number or the line\'s text. Action vocabulary: Extend/Retract, Engage/Disengage (grippers), Servo Move, Index, Wait, Signal, Home, Repeat. DEVICE LINKS: a step that acts on a sheet device carries its devId as step.deviceId and the device\'s REAL current name as target — never shorthand ("Z", "X"); read_sheet lists every device\'s devId.',
     input_schema: {
       type: 'object',
       properties: {
@@ -438,6 +472,27 @@ const TOOL_DEFINITIONS = [
         evidence: { type: 'string', description: 'what the shipped-work search found, cited — or the explicit found-nothing sentence' },
       },
       required: ['question', 'evidence'], additionalProperties: false,
+    },
+  },
+  {
+    name: 'file_law',
+    description: 'TIER 2 — DOCTRINE: the engineer stated a RULE about how Jarvis should think or behave ("sequences must always use real device names", a naming convention, a question format). File it as a standing law, dated + attributed. Laws from Dan activate immediately; anyone else\'s go to a pending queue for Dan\'s approval (say which happened in your reply). Only for durable rules about JARVIS\'s behavior — station facts use file_knowledge; app changes use suggest_app_change.',
+    input_schema: {
+      type: 'object',
+      properties: { rule: { type: 'string', description: 'the rule, stated generally, in the speaker\'s intent' } },
+      required: ['rule'], additionalProperties: false,
+    },
+  },
+  {
+    name: 'suggest_app_change',
+    description: 'TIER 3 — APP SUGGESTION: the request needs a CODE change (how things render, new panels, new features, app behavior). You cannot modify the app and must never fake it with data edits — say so honestly and file the ask here for Dan\'s review. Carries the engineer\'s verbatim ask + your one-line reading of what they want.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        ask: { type: 'string', description: 'the engineer\'s ask, verbatim or near-verbatim' },
+        reading: { type: 'string', description: 'your one-line reading of what they want and why' },
+      },
+      required: ['ask', 'reading'], additionalProperties: false,
     },
   },
   {
@@ -479,6 +534,9 @@ function executeTool(state, name, input) {
       const d = state.draft;
       const devices = (d.summary?.devices ?? []).map((x, i) => ({
         n: i + 1, name: x?.displayName ?? x?.name, type: x?.type ?? null,
+        // DEVICE LINKS (Dan, 2026-08-30): reference devices by devId in
+        // sequence/recovery steps — names derive from the link.
+        devId: x?.devId ?? null,
         machine: deviceMachineOf(state, x?.displayName ?? x?.name),
       }));
       const machines = machinesOf(state).map((m) => ({
@@ -487,6 +545,7 @@ function executeTool(state, name, input) {
         sequence: stepsOf(m).map((s, i) => ({
           n: i + 1, text: stepText(s),
           action: s.action || null, counterpart: s.counterpart || null,
+          deviceId: s.deviceId ?? null,
         })),
         faultRecovery: m.faultRecovery ?? [],
       }));
@@ -571,10 +630,50 @@ function executeTool(state, name, input) {
       const fact = String(input?.fact ?? '').trim();
       if (!fact) return { error: 'file_knowledge needs a fact' };
       try {
-        const who = String(input?.citedTo ?? '').trim() || 'the engineer, in the station chat';
+        const who = String(input?.citedTo ?? '').trim() || state.speaker || 'the engineer, in the station chat';
+        // Non-Dan teachings queue for Dan's approval like laws do.
+        if (!/^dan\b/i.test(state.speaker || '')) {
+          const arr = readJsonFile(PENDING_LAWS_PATH, []);
+          arr.push({ id: 'pl_' + Date.now().toString(36), kind: 'fact', rule: fact, speaker: state.speaker, at: new Date().toISOString(), status: 'pending' });
+          writeJsonFile(PENDING_LAWS_PATH, arr);
+          pushDiff(state, { op: 'knowledge.pending', after: fact, before: null, speaker: state.speaker });
+          return { filed: 'pending — visible to Dan for approval; not active until approved' };
+        }
         const r = fileToMeKnowledgeShared([`${fact} (taught by ${who})`], 'station chat');
         pushDiff(state, { op: 'knowledge.file', after: fact, before: null });
         return { filed: r?.recorded?.length ? 'meKnowledge.md' : 'duplicate — already known' };
+      } catch (e) { return { error: `filing failed: ${e.message}` }; }
+    }
+    case 'file_law': {
+      // TIER 2 (Dan's boundary design, 2026-08-30): rules about how JARVIS
+      // behaves. Dan's activate immediately; anyone else's queue pending.
+      const rule = String(input?.rule ?? '').trim();
+      if (!rule) return { error: 'file_law needs a rule' };
+      try {
+        if (/^dan\b/i.test(state.speaker || '')) {
+          const r = fileToMeKnowledgeShared([`LAW (${state.speaker}, via the station chat): ${rule}`], 'station chat');
+          pushDiff(state, { op: 'law.file', after: rule, before: null, speaker: state.speaker });
+          return { filed: r?.recorded?.length ? 'active immediately — standing law' : 'duplicate — already law' };
+        }
+        const arr = readJsonFile(PENDING_LAWS_PATH, []);
+        arr.push({ id: 'pl_' + Date.now().toString(36), kind: 'law', rule, speaker: state.speaker, at: new Date().toISOString(), status: 'pending' });
+        writeJsonFile(PENDING_LAWS_PATH, arr);
+        pushDiff(state, { op: 'law.pending', after: rule, before: null, speaker: state.speaker });
+        return { filed: 'pending Dan\'s approval — queued on the Jarvis page; not active until approved' };
+      } catch (e) { return { error: `filing failed: ${e.message}` }; }
+    }
+    case 'suggest_app_change': {
+      // TIER 3: app changes are never self-applied and never faked with
+      // data — they file for Dan's review, attributed, verbatim.
+      const ask = String(input?.ask ?? '').trim();
+      const reading = String(input?.reading ?? '').trim();
+      if (!ask) return { error: 'suggest_app_change needs the ask' };
+      try {
+        const arr = readJsonFile(APP_SUGGESTIONS_PATH, []);
+        arr.push({ id: 'as_' + Date.now().toString(36), speaker: state.speaker, ask, reading, at: new Date().toISOString(), status: 'new' });
+        writeJsonFile(APP_SUGGESTIONS_PATH, arr);
+        pushDiff(state, { op: 'app.suggest', after: ask, before: null, speaker: state.speaker });
+        return { filed: 'app-suggestions queue — Dan reviews; accepted ones flow to the dev loop' };
       } catch (e) { return { error: `filing failed: ${e.message}` }; }
     }
     case 'note_to_engineer': {

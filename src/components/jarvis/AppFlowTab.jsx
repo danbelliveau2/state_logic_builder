@@ -234,6 +234,28 @@ export function AppFlowTab() {
         </div>
       </div>
 
+      {/* THE THREE TIERS — what a chat message may change */}
+      <div
+        data-testid="appflow-tiers"
+        style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: '12px 16px', marginBottom: 10 }}
+      >
+        <div style={{ fontSize: 12.5, fontWeight: 800, color: C.text, marginBottom: 6 }}>The three tiers — what a message can change</div>
+        <div style={{ fontSize: 12, color: C.text, lineHeight: 1.65 }}>
+          <b>Station data</b> — devices, sequences, recovery, questions: applied
+          through the fenced tools, receipts computed from the real changes.{' '}
+          <b>Doctrine</b> — a rule about how the engineer should think ("sequences
+          always use real device names"): filed as a standing law, dated and
+          attributed; Dan's activate immediately, anyone else's wait in a queue
+          here for his approval and don't take effect until approved.{' '}
+          <b>App changes</b> — how things render, new panels, new features: the
+          engine can't change the app and never fakes it with data — it says so
+          and files the ask (verbatim, with its reading) for Dan's review;
+          accepted ones flow to the dev loop. That boundary is what makes the
+          tool safe to hand to every engineer before it's polished — the worst
+          case is a pending suggestion.
+        </div>
+      </div>
+
       {/* ASK vs DECIDE */}
       <div
         data-testid="appflow-ask-decide"

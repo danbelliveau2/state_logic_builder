@@ -10,12 +10,21 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.29';
+export const UI_BUILD = 'v2.6.30';
 
 export const BUILT_AT = '2026-08-30';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.30',
+    date: '2026-08-30',
+    items: [
+      'SEQUENCE LINES ARE LINKED TO REAL DEVICES — no more "Z"/"X" shorthand: every action line references the actual device (Vertical Slide, X Axis) by a live link, so renaming a device instantly re-renders every sequence and recovery line that touches it, marked red until ✓ got it. Your existing lines migrate on load (anything unresolvable becomes a question, never a guess); the engine and its reviewer now reject made-up device names outright',
+      'THE THREE-TIER INTAKE — safe to hand to any engineer: station data changes apply as always; a stated RULE about how Jarvis should behave files as a standing law (yours activate immediately; anyone else\'s wait in a queue on the Jarvis page for your approval); asks that need APP changes are filed — verbatim, attributed, with Jarvis\'s reading — into an app-suggestions queue for your review, never faked with data edits. Both queues live on the Jarvis page > What Jarvis knows',
+      'INPUTS FOLD — once your walk is underway the reference material + explanation band collapses to one line ("▸ INPUTS — 4 files · explanation · 2 layers"); your choice sticks per draft, and + Add a layer stays one click away from the folded line',
+    ],
+  },
   {
     version: 'v2.6.29',
     date: '2026-08-30',

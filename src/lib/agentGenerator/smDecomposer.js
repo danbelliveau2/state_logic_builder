@@ -73,6 +73,10 @@ function normalizeStep(x) {
       target: String(x.target ?? '').trim(),
       detail: String(x.detail ?? '').trim(),
       counterpart: String(x.counterpart ?? '').trim(),
+      // DEVICE LINK (Dan, 2026-08-30: "the sequence can't be different
+      // names, it's got to be based on the devices always") — the stable
+      // device id rides the step; the target NAME is derived from it.
+      ...(x.deviceId ? { deviceId: String(x.deviceId) } : {}),
     };
     // ONE VOCABULARY (Dan, 2026-08-28): the stored step carries the SDC
     // operation, so sequence ↔ diagram ↔ codegen agree by construction.
@@ -192,7 +196,9 @@ async function decompose({ description, images = [], expectedStateMachines = '',
     '      "oneLiner": "<one sentence: what this machine owns and does>",',
     '      "ownedDeviceNames": ["<device name as the engineer said it>", ...],',
     '      "why": "<one line: why it must run asynchronously from the others (omit or empty for a single machine)>",',
-    '      "sequence": [ { "action": "<ONE canonical operation — the SAME vocabulary as diagram actions:',
+    '      "sequence": [ { "deviceId": "<the device\'s devId when the step acts on a sheet device — the',
+    '                        target NAME derives from this link and follows renames>",',
+    '                      "action": "<ONE canonical operation — the SAME vocabulary as diagram actions:',
     '                        Extend|Retract (pneumatics) · Engage|Disengage (grippers — NEVER \'Open\'/\'Close\'',
     '                        a gripper, that is not SDC terminology) · Servo Move (servos — the target names',
     '                        the axis and the named position: target \'X Axis\', detail \'to Place\') ·',

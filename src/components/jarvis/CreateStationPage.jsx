@@ -1178,6 +1178,14 @@ function withSheetPrefill(s) {
   const devices = s.devices.map(d => {
     let next = d;
     const clone = () => { if (next === d) next = { ...d }; };
+    // DEVICE LINKS (Dan, 2026-08-30): every device row carries a STABLE id
+    // (devId) so sequence/recovery steps can reference the device, not a
+    // name string — renames follow for free. Assigned once, never changes.
+    if (!next.devId) {
+      clone();
+      next.devId = 'dev_' + Math.random().toString(36).slice(2, 10);
+      changed = true;
+    }
     if (isServoSheet(d) && !isRotarySheetAxis(d) && !(d.positions?.length)) {
       clone();
       next.positions = inferredPositionsFor(d, s.sequence).map(n => ({ name: n }));
@@ -4467,6 +4475,22 @@ export function CreateStationPage({ embedded = false }) {
   const [explLayers, setExplLayers] = useState(() => (Array.isArray(draft?.explanationLayers) ? draft.explanationLayers : []));
   const [explAddingLayer, setExplAddingLayer] = useState(false);
   const [explLayerDraft, setExplLayerDraft] = useState('');
+  // COLLAPSIBLE INPUTS (Dan, 2026-08-30): remembered per draft; defaults to
+  // collapsed once step 1 is approved (set by the effect below).
+  const [inputsCollapsed, setInputsCollapsed] = useState(false);
+  const inputsPrefLoadedRef = useRef(null);
+  useEffect(() => {
+    const id = draftIdRef.current;
+    if (!id || inputsPrefLoadedRef.current === id) return;
+    inputsPrefLoadedRef.current = id;
+    try {
+      const stored = localStorage.getItem(`jarvis.inputsCollapsed.${id}`);
+      if (stored != null) { setInputsCollapsed(stored === '1'); return; }
+    } catch { /* private mode */ }
+    // No stored choice: auto-collapse once the walk is underway.
+    setInputsCollapsed((localCascade?.steps && Object.values(localCascade.steps).some(r => r?.approved === true)) ?? false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
   const fullExplanation = useMemo(() => [
     description,
     ...explLayers.map((L, i) => `\n\n--- CHANGE-ORDER LAYER ${i + 2} (added ${new Date(L.at).toISOString().slice(0, 10)}) ---\n${L.text}`),
@@ -6236,6 +6260,9 @@ export function CreateStationPage({ embedded = false }) {
       const d = await agentTurnRequest({
         message: msg,
         audience, // ME (default) | CE — the loop's voice contract
+        // TIER 2/3 attribution (Dan's boundary design): who's speaking.
+        // Dan's laws activate immediately; anyone else's queue pending.
+        speaker: (() => { try { return localStorage.getItem('jarvis.speaker') || 'Dan'; } catch { return 'Dan'; } })(),
         draftId: draftIdRef.current, // reconnect key: /agent-turn/last
         clientId: CLIENT_ID, // echo suppression on the live draft channel
         draft: {
@@ -7321,6 +7348,131 @@ export function CreateStationPage({ embedded = false }) {
           text: 'Your Escapement recovery from earlier is on its FAULT RECOVERY panel now — gripped with a part: finish forward to the load position and hold ready; no part or not gripped: gripper open, shuttle back to the feeder bowl, finger down — which is also home. The starved-feed handling stays. (That message got dropped when its resend went to the two questions — fixed on my side.)',
           at: Date.now(),
         }]);
+      }
+    }
+    // DEVICE-LINK MIGRATION (Dan, 2026-08-30: "Z"/"X" shorthand — "the
+    // sequence can't be different names, it's got to be based on the
+    // devices always"): every action line resolves to a REAL device row
+    // (devId link) and re-renders with the device's CURRENT name. Shorthand
+    // resolves via the machine's devices + motion words; anything genuinely
+    // unresolvable files a question — never a silent guess.
+    {
+      const devices = (summary?.devices ?? []).filter(dv => dv?.devId);
+      const resolveDevice = (targetText) => {
+        const tk = devKey(targetText);
+        if (!tk) return null;
+        let hit = devices.find(dv => { const k = devKey(dv.displayName ?? dv.name); return k === tk || k.includes(tk) || tk.includes(k); });
+        if (hit) return hit;
+        const low = ` ${String(targetText).toLowerCase()} `;
+        if (/[^a-z]z[^a-z]|z ?slide|vertical/.test(low)) {
+          hit = devices.find(dv => /vertical|z ?slide/i.test(String(dv.displayName ?? dv.name)));
+        } else if (/[^a-z]x[^a-z]|x ?axis|horizontal/.test(low)) {
+          hit = devices.find(dv => /x ?axis|horizontal/i.test(String(dv.displayName ?? dv.name)));
+        }
+        return hit ?? null;
+      };
+      const MOTION = /^(extend|retract|engage|disengage|servo move|move|index)$/i;
+      const parseLine = (l) => {
+        const { type, rest } = splitSeqLine(normalizeSeqLine(l), false);
+        const [target, ...d2] = String(rest).split(' — ');
+        return { action: type, target: (target ?? '').trim(), detail: d2.join(' — ').trim() };
+      };
+      const compose = (s) => {
+        const a = s.action.toLowerCase();
+        if (a === 'wait') return `Wait for ${s.target}${s.detail ? ` — ${s.detail}` : ''}`;
+        if (a === 'home') return `Home: ${[s.target, s.detail].filter(Boolean).join(' — ') || 'initial position'}`;
+        if (a === 'repeat') return 'Repeat';
+        if (a === 'signal') return `Signal ${s.target}${s.detail ? ` — ${s.detail}` : ''}`;
+        return `${s.action}${s.target ? ` ${s.target}` : ''}${s.detail ? ` — ${s.detail}` : ''}`.trim();
+      };
+      const unresolved = [];
+      let anyChange = false;
+      const oldMs = smProposal.stateMachines.map(m => ({ name: m.name, sequence: [...(m.sequence ?? [])], faultRecovery: [...(m.faultRecovery ?? [])] }));
+      const nextMs = smProposal.stateMachines.map(m => {
+        const migrateList = (lines, steps) => {
+          const outLines = []; const outSteps = [];
+          (lines ?? []).forEach((l, i) => {
+            const prior = Array.isArray(steps) && steps[i] && typeof steps[i] === 'object' ? { ...steps[i] } : parseLine(l);
+            const s = prior.raw ? parseLine(prior.raw) : prior;
+            // Device-first shorthand ("Z extend down to pick", "X to place
+            // position"): the letter IS the device; re-shape to verb-first.
+            if (/^[zx]$/i.test(s.action ?? '') ) {
+              const dev = resolveDevice(s.action);
+              if (dev) {
+                const m2 = String(s.target ?? '').match(/^(extend|retract|move|down|up|to)\b\s*(.*)$/i);
+                const verb = (m2?.[1] ?? '').toLowerCase();
+                s.detail = [m2 ? m2[2] : s.target, s.detail].filter(Boolean).join(' — ');
+                s.action = verb === 'retract' ? 'Retract'
+                  : (verb === 'extend' || verb === 'down') ? 'Extend'
+                    : /axis/i.test(String(dev.displayName ?? dev.name)) ? 'Servo Move' : 'Extend';
+                s.target = String(dev.displayName ?? dev.name);
+                s.deviceId = dev.devId;
+                anyChange = true;
+              }
+            }
+            const isMotion = MOTION.test(s.action ?? '');
+            // Interaction lines (counterpart-shaped) and non-device lines
+            // never resolve against devices.
+            const isSignalLine = /^(signal|home|repeat)$/i.test(s.action ?? '') || Boolean(s.counterpart)
+              || /^wait\s+for\s+.+?['’]s\s/i.test(String(l));
+            if (!s.deviceId && !isSignalLine && s.target) {
+              const dev = resolveDevice(s.target);
+              if (dev) {
+                const cur = String(dev.displayName ?? dev.name);
+                if (devKey(s.target) !== devKey(cur) || !s.deviceId) anyChange = true;
+                s.deviceId = dev.devId;
+                // Waits keep sensor phrasing; motion targets become the name.
+                s.target = isMotion ? cur : String(s.target).replace(/^z\b|z ?slide|vertical slide/i, cur).replace(/^x\b|x ?axis/i, cur);
+                if (isMotion) s.target = cur;
+              } else if (isMotion) {
+                unresolved.push({ machine: m.name, line: l });
+              }
+            } else if (s.deviceId) {
+              const dev = devices.find(dv => dv.devId === s.deviceId);
+              if (dev && devKey(s.target) !== devKey(dev.displayName ?? dev.name)) {
+                s.target = String(dev.displayName ?? dev.name);
+                anyChange = true;
+              }
+            }
+            const line2 = s.counterpart
+              ? l // interaction lines keep their canonical two-shape text
+              : compose(s);
+            if (line2 !== l) anyChange = true;
+            outLines.push(line2); outSteps.push(s);
+          });
+          return { outLines, outSteps };
+        };
+        const seqR = migrateList(m.sequence, m.sequenceSteps);
+        const recR = migrateList(m.faultRecovery, m.faultRecoverySteps);
+        return {
+          ...m,
+          sequence: seqR.outLines, sequenceSteps: seqR.outSteps,
+          faultRecovery: recR.outLines, faultRecoverySteps: recR.outSteps,
+        };
+      });
+      if (anyChange) {
+        setSmProposal(p => ({ ...p, stateMachines: nextMs }));
+        setDirty(true);
+        const sd = computeProposalSeqDiff(oldMs, nextMs, 'sequence');
+        if (Object.keys(sd).length) setSeqDiff({ byKey: sd, at: Date.now() });
+        const rd = computeProposalSeqDiff(oldMs, nextMs, 'faultRecovery');
+        if (Object.keys(rd).length) setRecDiff({ byKey: rd, at: Date.now() });
+        setChatThread(th => [...th, {
+          role: 'jarvis',
+          text: 'Linked every sequence and recovery line to its real device — shorthand like "Z" and "X" now reads as the device itself (Vertical Slide, X Axis) and follows any rename automatically. The reworded lines are highlighted; ✓ got it clears them.',
+          at: Date.now(),
+        }]);
+      }
+      for (const u of unresolved.slice(0, 3)) {
+        setJarvisCoverage(cov => {
+          const next = { ...(cov ?? {}) };
+          next.devices = { ...(next.devices ?? {}) };
+          const q = `The line "${u.line}" on ${u.machine} names a device I can't find on the sheet. Which device is it?`;
+          if (!(next.devices.needs ?? []).some(n => n.question === q)) {
+            next.devices.needs = [...(next.devices.needs ?? []), { question: q, evidence: 'Found while linking sequence lines to real devices — no matching device row.', blocking: false }];
+          }
+          return next;
+        });
       }
     }
     const ownedKeys = new Set(smProposal.stateMachines.flatMap(m => m.ownedDeviceNames ?? []).map(devKey));
@@ -8675,10 +8827,54 @@ export function CreateStationPage({ embedded = false }) {
           {inSummary && (
             <div style={cascadeLive ? { display: 'flex', gap: 18, alignItems: 'flex-start' } : undefined}>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <BandHeader first label="Inputs" />
+                {/* COLLAPSIBLE INPUTS (Dan, 2026-08-30): deep in the walk the
+                    inputs fold to one line — remembered per draft; auto-
+                    collapses once step 1 is approved; + Add a layer stays
+                    reachable from the collapsed line. */}
+                {cascadeLive ? (
+                  <div
+                    data-testid="inputs-band-header"
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10, margin: '2px 0 10px',
+                      borderBottom: `2px solid ${C.border}`, paddingBottom: 5,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      data-testid="inputs-collapse-toggle"
+                      onClick={() => {
+                        const next = !inputsCollapsed;
+                        setInputsCollapsed(next);
+                        try { localStorage.setItem(`jarvis.inputsCollapsed.${draftIdRef.current}`, next ? '1' : '0'); } catch { /* private mode */ }
+                      }}
+                      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, fontWeight: 800, color: C.text, letterSpacing: '0.04em' }}
+                    >{inputsCollapsed ? '▸' : '▾'} INPUTS</button>
+                    {inputsCollapsed && (
+                      <span style={{ fontSize: 11.5, color: C.muted }}>
+                        {images.length ? `${images.length} file${images.length === 1 ? '' : 's'} · ` : ''}explanation{explLayers.length ? ` · ${explLayers.length} layer${explLayers.length === 1 ? '' : 's'}` : ''}
+                      </span>
+                    )}
+                    <span style={{ flex: 1 }} />
+                    {inputsCollapsed && (
+                      <button
+                        type="button"
+                        data-testid="inputs-add-layer-collapsed"
+                        onClick={() => {
+                          setInputsCollapsed(false);
+                          try { localStorage.setItem(`jarvis.inputsCollapsed.${draftIdRef.current}`, '0'); } catch { /* private mode */ }
+                          setExplLayerDraft(''); setExplAddingLayer(true);
+                        }}
+                        style={{ ...chipBase, cursor: 'pointer', fontWeight: 800, color: '#0f4c81', background: '#eef3f8', border: '1px solid #b8c4d0' }}
+                      >+ Add a layer</button>
+                    )}
+                  </div>
+                ) : (
+                  <BandHeader first label="Inputs" />
+                )}
 
                 {/* REFERENCE MATERIAL — drop anything (pictures / code /
                     docs) + the engineer's named past-job references. */}
+                {!(cascadeLive && inputsCollapsed) && (
                 <ReferenceMaterialSection
                   items={images}
                   onItemsChange={changeImages}
@@ -8688,11 +8884,12 @@ export function CreateStationPage({ embedded = false }) {
                   onReferenceTextChange={setReferenceText}
                   referenceSavedTick={referenceTick}
                 />
+                )}
 
-                {/* THE EXPLANATION NEVER DISAPPEARS (Dan, 2026-08-26):
-                    pictures above, his words right below — always visible,
-                    read-only once submitted, changed by telling Jarvis. */}
-                {cascadeLive && description.trim() && (
+                {/* THE EXPLANATION NEVER DISAPPEARS (Dan, 2026-08-26) — but
+                    it CAN fold (Dan, 2026-08-30): one header line when he's
+                    deep in the walk, one click to reopen. */}
+                {cascadeLive && !inputsCollapsed && description.trim() && (
                   <div
                     data-testid="sheet-explanation"
                     style={{

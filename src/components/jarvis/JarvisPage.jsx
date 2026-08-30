@@ -808,6 +808,66 @@ function GuideRailsPanel() {
   );
 }
 
+/** TIER 2/3 QUEUES (Dan's boundary design, 2026-08-30): pending laws from
+ *  non-Dan speakers await his approve/reject; app suggestions await review.
+ *  This is what makes the app safe to hand to engineers — their worst case
+ *  is a pending suggestion. */
+function IntakeQueues() {
+  const [laws, setLaws] = useState(null);
+  const [sugg, setSugg] = useState(null);
+  const load = () => {
+    getJson('/api/jarvis/pending-laws').then(d => setLaws((d.laws ?? []).filter(x => x.status === 'pending'))).catch(() => setLaws([]));
+    getJson('/api/jarvis/app-suggestions').then(d => setSugg((d.suggestions ?? []).filter(x => x.status === 'new'))).catch(() => setSugg([]));
+  };
+  useEffect(load, []);
+  const decideLaw = (id, action) => fetch('/api/jarvis/pending-laws', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action }),
+  }).then(load).catch(() => {});
+  const decideSugg = (id, status) => fetch('/api/jarvis/app-suggestions', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status }),
+  }).then(load).catch(() => {});
+  if (!laws?.length && !sugg?.length) return null;
+  return (
+    <div data-testid="intake-queues" style={{ marginBottom: 16 }}>
+      {(laws?.length ?? 0) > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 800, color: C.text, marginBottom: 4 }}>
+            Pending rules — engineers taught these; they don't ride prompts until you approve
+          </div>
+          {laws.map(l => (
+            <div key={l.id} data-testid={`pending-law-${l.id}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: '#fdf6e3', border: '1px solid #e6d9a8', borderRadius: 6, padding: '6px 10px', marginBottom: 4 }}>
+              <div style={{ flex: 1, fontSize: 12, color: '#6b5513', lineHeight: 1.5 }}>
+                <b>{l.speaker}</b>: {l.rule}
+                <span style={{ color: C.light, marginLeft: 6, fontSize: 10.5 }}>{fmtET(Date.parse(l.at))}</span>
+              </div>
+              <button type="button" onClick={() => decideLaw(l.id, 'approve')} style={{ cursor: 'pointer', fontSize: 11.5, fontWeight: 800, color: '#2f6b3c', background: '#e9f5ec', border: '1px solid #bfe0c8', borderRadius: 5, padding: '3px 10px' }}>✓ Approve</button>
+              <button type="button" onClick={() => decideLaw(l.id, 'reject')} style={{ cursor: 'pointer', fontSize: 11.5, fontWeight: 700, color: '#8a3b3b', background: '#fdf2f2', border: '1px solid #e0b4b4', borderRadius: 5, padding: '3px 10px' }}>✕ Reject</button>
+            </div>
+          ))}
+        </div>
+      )}
+      {(sugg?.length ?? 0) > 0 && (
+        <div>
+          <div style={{ fontSize: 12.5, fontWeight: 800, color: C.text, marginBottom: 4 }}>
+            App suggestions — asks the engine can't self-apply (code changes); accepted ones go to the dev loop
+          </div>
+          {sugg.map(s => (
+            <div key={s.id} data-testid={`app-suggestion-${s.id}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: '#eef3f8', border: '1px solid #b8c4d0', borderRadius: 6, padding: '6px 10px', marginBottom: 4 }}>
+              <div style={{ flex: 1, fontSize: 12, color: C.text, lineHeight: 1.5 }}>
+                <b>{s.speaker}</b>: “{s.ask}”
+                {s.reading && <div style={{ color: C.muted, fontSize: 11.5 }}>Jarvis's reading: {s.reading}</div>}
+                <span style={{ color: C.light, fontSize: 10.5 }}>{fmtET(Date.parse(s.at))}</span>
+              </div>
+              <button type="button" onClick={() => decideSugg(s.id, 'accepted')} style={{ cursor: 'pointer', fontSize: 11.5, fontWeight: 800, color: '#2f6b3c', background: '#e9f5ec', border: '1px solid #bfe0c8', borderRadius: 5, padding: '3px 10px' }}>Accept</button>
+              <button type="button" onClick={() => decideSugg(s.id, 'dismissed')} style={{ cursor: 'pointer', fontSize: 11.5, fontWeight: 700, color: C.muted, background: 'var(--color-sidebar)', border: `1px solid ${C.border}`, borderRadius: 5, padding: '3px 10px' }}>Dismiss</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function KnowledgeTab({ knowledge, onReload }) {
   const [collapsed, setCollapsed] = useState({});
   const [showStanding, setShowStanding] = useState(false);
@@ -841,6 +901,7 @@ function KnowledgeTab({ knowledge, onReload }) {
 
   return (
     <div>
+      <IntakeQueues />
       <div style={{
         background: '#fdf6e3', border: `1px solid ${C.warning}`, color: '#7a6220',
         borderRadius: 6, padding: '8px 12px', fontSize: 12, marginBottom: 16, lineHeight: 1.5,

@@ -105,6 +105,8 @@ function buildStationServer(state) {
         question: z.string(), proposedSolution: z.string().optional(), evidence: z.string(),
       }, wrap('ask_engineer')),
       tool('file_knowledge', descOf('file_knowledge'), { fact: z.string(), citedTo: z.string().optional() }, wrap('file_knowledge')),
+      tool('file_law', descOf('file_law'), { rule: z.string() }, wrap('file_law')),
+      tool('suggest_app_change', descOf('suggest_app_change'), { ask: z.string(), reading: z.string() }, wrap('suggest_app_change')),
       tool('note_to_engineer', descOf('note_to_engineer'), { text: z.string() }, wrap('note_to_engineer')),
     ],
   });
@@ -141,6 +143,18 @@ function systemPromptFor(audience) {
     '  settled either way. Never re-ask settled things; land on a clear ball-location.',
     '- ONE ENGINE: decide like SDC has always decided — from precedent and the standing',
     '  rulings below; invention is the last resort.',
+    '- THE THREE TIERS (what a message can change): TIER 1 — STATION DATA: devices, sequences,',
+    '  recovery, questions — apply through the typed tools, as always. TIER 2 — DOCTRINE: a',
+    '  stated RULE about how you should think or behave ("sequences must always use real',
+    '  device names") → file_law; your reply confirms it plainly ("filed as a standing rule —',
+    '  active" for Dan; "…pending Dan\'s approval" for anyone else). TIER 3 — APP CHANGES: how',
+    '  things render, new panels, new features → you CANNOT change the app and must never',
+    '  fake it with data edits; say so honestly and suggest_app_change (verbatim ask + your',
+    '  reading) — "filed for Dan\'s review". Classifying the tier is YOUR judgment; a message',
+    '  can span tiers — handle each part in its tier. Never silently drop any part.',
+    '- DEVICE-LINKED LINES: every action line references a REAL device by its devId',
+    '  (read_sheet lists them) with the device\'s CURRENT name as target — never shorthand',
+    '  ("Z", "X"), never a made-up name. Waits reference the real sensor/signal record.',
     '- READ BEFORE YOU WRITE: always read_sheet before editing — chat history never',
     '  substitutes for the sheet as it is right now. Edit ONLY what the engineer\'s message',
     '  calls for; everything else carries forward untouched.',
@@ -215,6 +229,12 @@ async function checkTurn({ message, state, signal }) {
     '5. Every question asked carries evidence (cited shipped work or explicit found-nothing).',
     '6. A question was asked whose answer already exists in the engineer\'s messages upthread —',
     '   violation: his answer should have been filed, not re-asked.',
+    '7. DEVICE-LINKED LINES: an edited action line (Extend/Retract/Engage/Disengage/Servo Move)',
+    '   whose target is not a REAL device on that machine (shorthand like "Z" or "X", or a',
+    '   made-up name) is a violation — the target must be the device\'s current name.',
+    '8. TIER BOUNDARY: a request that needs an APP change (render, panels, new features) must',
+    '   have been filed as an app suggestion, never applied as a data mutation — a data edit',
+    '   that fakes an app behavior is a violation.',
     'ONLY OBJECTIVE FAILURES are violations: a requested edit missing from the diffs, an',
     'unrequested deletion, a missing counterpart side, wrong vocabulary ON AN EDITED LINE.',
     'An applied explicit directive is CORRECT — never second-guess it. Untouched lines are',
@@ -257,9 +277,9 @@ async function checkTurn({ message, state, signal }) {
 /** Same contract as the old loop: {draft, message, cascadePosition, audience,
  *  draftId?, signal, onEvent} → {reply, diffs, asks, notes, closedQuestions,
  *  draft, capped, meta}. onEvent gets strings (activity) or {reading}. */
-async function runAgentTurn({ draft, message, cascadePosition = null, audience = 'ME', draftId = null, signal = null, onEvent = null }) {
+async function runAgentTurn({ draft, message, cascadePosition = null, audience = 'ME', speaker = 'Dan', draftId = null, signal = null, onEvent = null }) {
   fs.mkdirSync(WORK_DIR, { recursive: true });
-  const state = createTurnState(draft, cascadePosition);
+  const state = createTurnState(draft, cascadePosition, { speaker });
   const t0 = Date.now();
   const emit = (ev) => { try { onEvent?.(ev); } catch { /* display only */ } };
 

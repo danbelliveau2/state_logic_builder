@@ -3576,6 +3576,9 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
           cascadePosition: body.cascadePosition ?? null,
           // KNOW YOUR AUDIENCE (Dan, 2026-08-30): ME (default) or CE.
           audience: body.audience === 'CE' ? 'CE' : 'ME',
+          // TIER 2/3 attribution: who's speaking (laws from Dan activate
+          // immediately; anyone else's queue pending).
+          speaker: String(body.speaker ?? 'Dan').slice(0, 60),
           // Session continuity: one SDK session per draft.
           draftId: body.draftId ? String(body.draftId) : null,
           signal: abort.signal,
@@ -3679,6 +3682,55 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     // Live draft subscription (server = source of truth, Dan 2026-08-30).
     if (pathname === '/api/jarvis/draft-events') {
       if (method === 'GET') return handleDraftEvents(req, res, query);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    // TIER 2/3 queues (Dan's boundary design, 2026-08-30): pending laws
+    // (approve/reject — approval files the law dated + attributed) and app
+    // suggestions (review; accepted ones flow to the dev loop).
+    if (pathname === '/api/jarvis/pending-laws') {
+      const p = path.join(__dirname, 'jarvis-knowledge', 'pending-laws.json');
+      const readArr = () => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return []; } };
+      if (method === 'GET') return sendJson(res, 200, { ok: true, laws: readArr() });
+      if (method === 'POST') {
+        return (async () => {
+          try {
+            const body = JSON.parse(await readBody(req) || '{}');
+            const arr = readArr();
+            const it = arr.find(x => x.id === body.id);
+            if (!it) return sendJson(res, 404, { error: 'no such pending law' });
+            if (body.action === 'approve') {
+              const { appendLearnedFacts } = require('./src/lib/agentGenerator/meKnowledge.js');
+              appendLearnedFacts([{ scope: 'sdc-standard', fact: `${it.kind === 'law' ? 'LAW' : 'FACT'} (${it.speaker}, approved by Dan): ${it.rule}` }], { who: it.speaker });
+              it.status = 'approved'; it.decidedAt = new Date().toISOString();
+            } else if (body.action === 'reject') {
+              it.status = 'rejected'; it.decidedAt = new Date().toISOString();
+            } else return sendJson(res, 400, { error: 'action must be approve|reject' });
+            fs.writeFileSync(p, JSON.stringify(arr, null, 2) + '\n', 'utf8');
+            return sendJson(res, 200, { ok: true, law: it });
+          } catch (e) { return sendJson(res, 500, { error: e.message }); }
+        })();
+      }
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+    if (pathname === '/api/jarvis/app-suggestions') {
+      const p = path.join(__dirname, 'jarvis-knowledge', 'app-suggestions.json');
+      const readArr = () => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return []; } };
+      if (method === 'GET') return sendJson(res, 200, { ok: true, suggestions: readArr() });
+      if (method === 'POST') {
+        return (async () => {
+          try {
+            const body = JSON.parse(await readBody(req) || '{}');
+            const arr = readArr();
+            const it = arr.find(x => x.id === body.id);
+            if (!it) return sendJson(res, 404, { error: 'no such suggestion' });
+            if (!['accepted', 'dismissed', 'new'].includes(body.status)) return sendJson(res, 400, { error: 'bad status' });
+            it.status = body.status; it.decidedAt = new Date().toISOString();
+            fs.writeFileSync(p, JSON.stringify(arr, null, 2) + '\n', 'utf8');
+            return sendJson(res, 200, { ok: true, suggestion: it });
+          } catch (e) { return sendJson(res, 500, { error: e.message }); }
+        })();
+      }
       return sendJson(res, 405, { error: 'Method not allowed' });
     }
 
