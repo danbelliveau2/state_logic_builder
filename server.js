@@ -2205,6 +2205,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
 
   // Finished agent-turn results, held per draft for client reconnects.
   const agentTurnResults_ = new Map();
+  const SERVER_STARTED_AT_ = Date.now();
   const JARVIS_QUESTIONS_DIR_  = path.join(__dirname, 'jarvis-knowledge');
   const JARVIS_QUESTIONS_FILE_ = path.join(JARVIS_QUESTIONS_DIR_, 'questions.json');
   const ME_KNOWLEDGE_PATH_     = path.join(__dirname, 'src', 'lib', 'agentGenerator', 'meKnowledge.md');
@@ -3452,6 +3453,19 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     if (pathname === '/api/jarvis/decompose') {
       if (method === 'POST') return handleJarvisDecompose(req, res);
       return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    // THE RELOAD BAR's version source (Dan, 2026-08-30 — ported from the SDC
+    // Scheduler's new-build watcher): the UI_BUILD currently on disk, read
+    // fresh per request (no require cache — whatsNew.js is ESM), plus the
+    // server's start time. A stale tab compares and offers ONE reload.
+    if (pathname === '/api/version') {
+      let uiBuild = null;
+      try {
+        const txt = fs.readFileSync(path.join(__dirname, 'src', 'lib', 'whatsNew.js'), 'utf8');
+        uiBuild = (txt.match(/UI_BUILD\s*=\s*'([^']+)'/) || [])[1] ?? null;
+      } catch (_) { /* absent in odd deploys — bar just stays quiet */ }
+      return sendJson(res, 200, { ok: true, uiBuild, serverStartedAt: SERVER_STARTED_AT_ });
     }
 
     // RECONNECT SUPPORT (Dan's dead-gauge report, 2026-08-30): a finished

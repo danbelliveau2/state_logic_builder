@@ -1622,7 +1622,10 @@ async function agentTurnRequest(payload, onState, onReading) {
     const isSse = res.ok && (res.headers.get('content-type') || '').includes('text/event-stream') && !!res.body;
     if (!isSse) {
       const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || `Agent turn failed (${res.status}${res.ok ? ' — non-stream response; restart the API server' : ''})`);
+      // A 200-but-not-a-stream answer = this tab is older than the server.
+      // Never tell him to hard-reload in words — offer the bar (Dan).
+      if (res.ok) window.__slbOfferReload?.('The app updated underneath this tab.');
+      throw new Error(data.error || (res.ok ? 'this tab is out of date — use the Reload bar below' : `Agent turn failed (${res.status})`));
     }
     let result = null; let err = null;
     await readSse(res, (event, data) => {
@@ -4543,6 +4546,13 @@ export function CreateStationPage({ embedded = false }) {
     }
     return false; /* storage entirely unavailable */
   };
+  // RELOAD-SAFE (Dan, 2026-08-30): the new-build bar flushes the pending
+  // autosave through this hook before it reloads — a reload never loses a
+  // keystroke (localStorage save is synchronous; the mirror rides after).
+  useEffect(() => {
+    window.__slbFlushDraft = () => { try { persistDraftNow(); } catch { /* best effort */ } };
+    return () => { delete window.__slbFlushDraft; };
+  });
   useEffect(() => {
     if (phase === 'building' || phase === 'specFailed') return;
     const t = setTimeout(() => {
@@ -6192,11 +6202,24 @@ export function CreateStationPage({ embedded = false }) {
           agreedNeeds: [...agreedNeeds], deviceAssignments,
           chatThread: chatThread.slice(-24).map(t => ({ role: t.role, text: String(t.text ?? '').slice(0, 300) })),
         },
-        cascadePosition: cascade.activeStep ? {
-          activeStep: { kind: cascade.activeStep.kind, smKey: cascade.activeStep.smKey, label: cascade.activeStep.label },
-          approved: cascade.steps.filter(s => s.status === 'approved').map(s => s.label),
-          approvedMachineNames,
-        } : { approvedMachineNames },
+        // THE GUIDE's walk state (Dan, 2026-08-30: "leads you through what is
+        // happening and what to do next") — the rail knows; the engineer
+        // speaks it: current step, its open questions, the NEXT step, and
+        // how much walk remains.
+        cascadePosition: cascade.activeStep ? (() => {
+          const idx = cascade.steps.findIndex(s => s.key === cascade.activeStep.key);
+          const next = idx >= 0 ? cascade.steps.slice(idx + 1).find(s => s.status !== 'approved') : null;
+          let openQuestions = [];
+          try { openQuestions = needsForStep(cascade.activeStep).map(n => n.question).slice(0, 6); } catch { /* guide only */ }
+          return {
+            activeStep: { kind: cascade.activeStep.kind, smKey: cascade.activeStep.smKey, label: cascade.activeStep.label },
+            openQuestionsOnStep: openQuestions,
+            nextStep: next ? { kind: next.kind, label: next.label } : null,
+            stepsRemaining: cascade.steps.filter(s => s.status !== 'approved').length,
+            approved: cascade.steps.filter(s => s.status === 'approved').map(s => s.label),
+            approvedMachineNames,
+          };
+        })() : { approvedMachineNames, allApproved: cascade.allApproved },
       }, label => setAgentState(label),
       // THE READING, LIVE (Dan, 2026-08-30): the model's one-sentence reading
       // of his request posts to the chat BEFORE the edits land — the
@@ -6341,6 +6364,32 @@ export function CreateStationPage({ embedded = false }) {
         if (linkedSmId) appendChangeLog(linkedSmId, { what: `moved ${move.deviceName} → ${move.machineName}${wasNoPrecedent ? ' (ruling recorded as doctrine)' : ''}`, class: 'value' });
         return;
       }
+    }
+    // BARE AGREEMENT (Dan's "agree" P0, 2026-08-30): a plain ack resolves
+    // against the CONVERSATION — the open question(s) on the step he's
+    // looking at — exactly like clicking Agree. Zero-judgment mechanical
+    // fast path: instant, free, and it GUIDES (says what closed and what's
+    // next, straight from the rail).
+    if (cascadeLive && msg && activeStepNeeds.length
+      && /^(yes|yep|yeah|ok(ay)?|agreed?|correct|sounds good|go (with (that|it|yours))|fine|approved?)[.! ]*$/i.test(msg)) {
+      console.log('[chat] dispatched: bare agreement → agree all open step questions');
+      for (const n of activeStepNeeds) {
+        setAgreedNeeds(s => new Set([...s, needKey(n.covKey, n)]));
+        setQaHistory(h => [...h, { questions: [n.question], answer: 'Go with your proposed solution.' }]);
+      }
+      const stepIdx = cascade.steps.findIndex(s => s.key === cascade.activeStep?.key);
+      const next = stepIdx >= 0 ? cascade.steps.slice(stepIdx + 1).find(s => s.status !== 'approved') : null;
+      const qWord = activeStepNeeds.length === 1 ? 'that question' : `all ${activeStepNeeds.length} open questions`;
+      setChatThread(t => [...t,
+        { role: 'me', text: msg, at: Date.now() },
+        {
+          role: 'jarvis',
+          text: `Agreed — ${qWord} on ${cascade.activeStep?.label ?? 'this step'} closed with my proposal${activeStepNeeds.length === 1 ? '' : 's'} standing. `
+            + `Nothing else open here — hit Approve on the step card${next ? `; next up is ${next.label}` : ' and the station is done'}.`,
+          at: Date.now(),
+        }]);
+      setChanges('');
+      return;
     }
     // THE AGENT LOOP IS THE ONE DOOR for fresh-draft chat (Dan approved the
     // build 2026-08-28; flow-replacement law: the one-shot decompose-
@@ -7011,8 +7060,8 @@ export function CreateStationPage({ embedded = false }) {
       }).catch(() => {});
       setChatThread(x => [...x, {
         role: 'jarvis',
-        text: "Your message didn't produce a response — that's a bug on my side and it has been reported. Please send it again.",
-        error: true, at: Date.now(),
+        text: "Your message didn't produce a response — that's a bug on my side and it has been reported.",
+        error: true, retryText: String(last.text ?? ''), at: Date.now(),
       }]);
     }, 6000);
     return () => clearTimeout(t);
@@ -7187,6 +7236,40 @@ export function CreateStationPage({ embedded = false }) {
         setChatThread(th => [...th, {
           role: 'jarvis',
           text: 'Q2 — taken from your earlier answer: no landing check at this station; SDC usually verifies at the next check station, and this machine doesn\'t have one. Filed and closed.',
+          at: Date.now(),
+        }]);
+      }
+    }
+    // ESCAPEMENT RECOVERY REPAIR (Dan, 2026-08-30, one-time): his full
+    // recovery dictation ("check to see if you're gripped… if no part or not
+    // gripped, open up, reset, and go back") hit the 400, and the resend got
+    // consumed by the Q1/Q2 answers — the recovery content dropped. Applied
+    // here from his own words in the thread; the starved-feed lines stay.
+    {
+      const esc2 = smProposal.stateMachines.find(m => /escapement/i.test(m?.name ?? ''));
+      const saidIt = chatThread.some(t => t?.role === 'me'
+        && /for the escapement[\s\S]{0,40}the recovery/i.test(String(t.text ?? ''))
+        && /gripped/i.test(String(t.text ?? '')));
+      const missing = esc2 && !(esc2.faultRecovery ?? []).some(l => /gripped/i.test(String(l)));
+      if (saidIt && missing) {
+        const starved = (esc2.faultRecovery ?? []).filter(l => /part present|starved|fault/i.test(String(l)));
+        const recovered = [
+          'Check Shuttle Gripper and Nest Part Present — gripped with a part → finish forward; no part or not gripped → reset to home',
+          'Extend Escapement Shuttle — gripped with a part but not at the load position: move to the load position',
+          'Signal part ready for pick to Mid-Base Pick and Place — gripped with a part at the load position: hold, ready for pick',
+          'Disengage Shuttle Gripper — no part or not gripped',
+          'Retract Escapement Shuttle — back to the feeder-bowl alignment',
+          'Extend Escapement Finger 1 — finger down, holding the queue: home position',
+          ...starved,
+        ];
+        setSmProposal(p => ({
+          ...p,
+          stateMachines: p.stateMachines.map(m => (/escapement/i.test(m?.name ?? '')
+            ? { ...m, faultRecovery: recovered } : m)),
+        }));
+        setChatThread(th => [...th, {
+          role: 'jarvis',
+          text: 'Your Escapement recovery from earlier is on its FAULT RECOVERY panel now — gripped with a part: finish forward to the load position and hold ready; no part or not gripped: gripper open, shuttle back to the feeder bowl, finger down — which is also home. The starved-feed handling stays. (That message got dropped when its resend went to the two questions — fixed on my side.)',
           at: Date.now(),
         }]);
       }

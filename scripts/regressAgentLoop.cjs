@@ -187,6 +187,28 @@ const check = (name, ok, extra = '') => results.push({ name, ok, extra });
     console.log(`F done — $${r.meta.costUSD}, ${r.meta.toolCalls} calls, ${r.meta.ms}ms${r.meta.bounced ? ', bounced' : ''}`);
   }
 
+  // ── G. multi-intent message (Dan's dropped Escapement recovery,
+  //    2026-08-30): recovery description + open questions in ONE message —
+  //    EVERY intent lands; nothing silently dropped. ─────────────────────────
+  {
+    const draft = freshDraft();
+    draft.jarvisCoverage = {
+      failures: { needs: [{ question: 'What happens if no part feeds into the nest?', proposedSolution: 'Sit and wait on part-present.' }] },
+    };
+    const r = await runAgentTurn({
+      draft,
+      cascadePosition: { ...CASCADE, activeStep: { kind: 'recovery', smKey: 'midbaseescapement', label: 'Mid-Base Escapement recovery' } },
+      message: "For the escapement, the recovery is: check to see if you're gripped. If you're gripped, then check if you're at the load station for the pick and place. If you are, you're good. If gripped and not at the load station, extend to the load station and be ready and waiting given you have a part — part plus gripped means ready for pick and place. If no part or not gripped, open up, reset, and go back — home position is gripper open, slide retracted to line up with the feeder bowl, and escapement finger down. And for your question, if no part feeds it just waits at home.",
+    });
+    const esc = r.draft.smProposal.stateMachines[0];
+    check('G: recovery drafted with the gripper branch', (esc.faultRecovery ?? []).filter((l) => /gripp/i.test(l)).length >= 2, `${(esc.faultRecovery ?? []).length} lines`);
+    check('G: home reset lands (gripper open + retract + finger)',
+      (esc.faultRecovery ?? []).some((l) => /disengage/i.test(l)) && (esc.faultRecovery ?? []).some((l) => /retract/i.test(l)));
+    check('G: the question in the SAME message also closed', (r.draft.agreedNeeds ?? []).some((k) => /no part feeds/i.test(k)));
+    check('G: sequence untouched', !r.diffs.some((d) => /^sequence\.(insert|remove|reword)$/.test(d.op)));
+    console.log(`G done — $${r.meta.costUSD}, ${r.meta.toolCalls} calls, ${r.meta.ms}ms${r.meta.bounced ? ', bounced' : ''}`);
+  }
+
   let fail = 0;
   for (const x of results) {
     if (!x.ok) fail++;

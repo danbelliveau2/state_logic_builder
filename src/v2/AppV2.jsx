@@ -37,6 +37,7 @@ import { useDiagramStore } from '../store/useDiagramStore.js';
 import { initStandardsLibrary } from '../lib/standardsLibrary.js';
 import { exportProjectJSON } from '../lib/projectApi.js';
 import { TopBarV2 } from './TopBarV2.jsx';
+import { NewBuildBar } from './NewBuildBar.jsx';
 import { StationsPanel } from './StationsPanel.jsx';
 import { TREE_WIDTH } from './FeatureTreeV2.jsx';
 import { StartScreen } from './StartScreen.jsx';
@@ -348,6 +349,7 @@ export function AppV2() {
         {/* Servo values table — self-gates on useV2Shell.servoTableFor. */}
         <ServoValuesTable />
         <VersionBadge />
+        <NewBuildBar />
       </ReactFlowProvider>
     </ErrorBoundary>
   );
