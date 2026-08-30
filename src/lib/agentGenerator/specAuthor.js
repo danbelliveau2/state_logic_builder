@@ -509,7 +509,9 @@ async function authorSpec({
 // client per summary loop (JARVIS_SUMMARIZE_MAX_COST_USD, default $5,
 // surfaced via meta.maxCostUSD below).
 const SUMMARIZE_MAX_TOKENS = parseInt(process.env.JARVIS_SUMMARIZE_MAX_TOKENS, 10) || 16000;
-const SUMMARIZE_MAX_COST_USD = parseFloat(process.env.JARVIS_SUMMARIZE_MAX_COST_USD) || 5;
+// Loop-era default (Dan, 2026-08-30): opus agent turns count against this
+// ceiling too; $5 stranded a mid-walk draft with a disabled Send.
+const SUMMARIZE_MAX_COST_USD = parseFloat(process.env.JARVIS_SUMMARIZE_MAX_COST_USD) || 25;
 
 const COVERAGE_KEYS = ['devices', 'sequence', 'failures', 'interactions'];
 

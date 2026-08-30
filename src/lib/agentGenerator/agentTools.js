@@ -540,6 +540,26 @@ function executeTool(state, name, input) {
       if (!q.evidence) {
         return { error: 'REJECTED: evidence is required — search the shipped work first and cite what you found, or state explicitly that the search found nothing.' };
       }
+      // READ THE THREAD BEFORE ASKING (Dan, 2026-08-30: "always remember the
+      // chat and try to answer questions from it") — when the engineer's own
+      // recent words already cover the question's subject, the ask is
+      // rejected: file HIS answer instead (close_question / file_knowledge)
+      // or ask a sharper follow-up that references what he said.
+      {
+        const stop = new Set(['what', 'when', 'where', 'which', 'does', 'should', 'would', 'that', 'this', 'with', 'into', 'from', 'have', 'happens', 'machine', 'station', 'actually']);
+        const terms = [...new Set(String(q.question).toLowerCase().split(/[^a-z0-9-]+/)
+          .filter((w) => w.length > 3 && !stop.has(w)))];
+        const meText = (state.draft?.chatThread ?? []).filter((t) => t?.role === 'me')
+          .slice(-6).map((t) => String(t.text ?? '').toLowerCase()).join(' ');
+        const hits = terms.filter((w) => meText.includes(w));
+        if (terms.length >= 3 && hits.length / terms.length >= 0.5) {
+          return {
+            error: `REJECTED: the engineer's recent messages already address this (his words mention: ${hits.slice(0, 5).join(', ')}). `
+              + 'Read the chat history, file his answer (close_question with it, or file_knowledge for a general pattern), '
+              + 'or ask a follow-up that explicitly builds on what he said.',
+          };
+        }
+      }
       const cov = state.draft.jarvisCoverage ?? (state.draft.jarvisCoverage = {});
       cov[covKey] = cov[covKey] ?? {};
       cov[covKey].needs = [...(cov[covKey].needs ?? []), q];

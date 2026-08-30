@@ -2203,6 +2203,8 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
   // become permanent lines in meKnowledge.md "## Learned from the MEs".
   // Queue lives in <repo>/jarvis-knowledge/questions.json.
 
+  // Finished agent-turn results, held per draft for client reconnects.
+  const agentTurnResults_ = new Map();
   const JARVIS_QUESTIONS_DIR_  = path.join(__dirname, 'jarvis-knowledge');
   const JARVIS_QUESTIONS_FILE_ = path.join(JARVIS_QUESTIONS_DIR_, 'questions.json');
   const ME_KNOWLEDGE_PATH_     = path.join(__dirname, 'src', 'lib', 'agentGenerator', 'meKnowledge.md');
@@ -3452,6 +3454,15 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       return sendJson(res, 405, { error: 'Method not allowed' });
     }
 
+    // RECONNECT SUPPORT (Dan's dead-gauge report, 2026-08-30): a finished
+    // turn's result is held per draft so a client that lost the stream can
+    // fetch it instead of declaring the turn dead. Memory-only, last 20.
+    if (pathname === '/api/jarvis/agent-turn/last') {
+      const draftId = String(query?.draftId ?? '');
+      const hit = agentTurnResults_.get(draftId);
+      return sendJson(res, 200, hit ? { ok: true, at: hit.at, result: hit.result } : { ok: false });
+    }
+
     // THE AGENT LOOP (Dan approved 2026-08-28 — docs/jarvis-agent-loop-design.md):
     // one chat turn = read tools + typed diff-returning edits + checker over
     // the diffs. SSE: `state` events (the live activity line), then `done`
@@ -3479,10 +3490,14 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       };
       const abort = new AbortController();
       let clientGone = false;
-      req.on('close', () => { clientGone = true; abort.abort(); });
+      // A lost connection does NOT abort the turn — it finishes server-side
+      // and the client re-attaches via /api/jarvis/agent-turn/last (Dan,
+      // 2026-08-30: "the turn is still running on the server; reconnecting").
+      // The caps bound the cost of a truly abandoned turn.
+      req.on('close', () => { clientGone = true; });
       // Keepalive pings so the client watchdog can tell "long model call"
       // from "dead turn" (stuck-forever is impossible either way now).
-      const keepalive = setInterval(() => send('ping', { t: Date.now() }), 10000);
+      const keepalive = setInterval(() => send('ping', { t: Date.now() }), 5000);
       const releaseAi = beginAiWork_('agent-turn', null, body.draft?.name || null, { register: false });
       try {
         const runOnce = () => loop.runAgentTurn({
@@ -3510,6 +3525,11 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
           console.warn('[agent-turn] first attempt failed, retrying once:', e1.message);
           send('state', { label: 'hit a snag on my side — retrying…' });
           result = await runOnce();
+        }
+        // Held for reconnect (the stream may have died mid-turn).
+        if (body.draftId) {
+          agentTurnResults_.set(String(body.draftId), { at: Date.now(), result: { ok: true, ...result } });
+          if (agentTurnResults_.size > 20) agentTurnResults_.delete(agentTurnResults_.keys().next().value);
         }
         send('done', { ok: true, ...result });
       } catch (e) {

@@ -824,7 +824,7 @@ function ChatTurn({ turn, idx, onRetry = null }) {
               : { background: '#f4faf4', border: '1px solid #b7d9b0', color: C.text }),
       }}>
         <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', color: me ? C.primary : '#2f6b2f', marginBottom: 2 }}>
-          {me ? 'You' : 'Jarvis'}
+          {me ? 'You' : 'SDC Engineer'}
         </div>
         <div style={{ whiteSpace: 'pre-wrap' }}>{turn?.text}</div>
         {!me && turn?.error && turn?.retryText && onRetry && (
@@ -1601,17 +1601,19 @@ async function summarizeRequest(payload, onProgress) {
  *  `state` activity labels live, resolves with the `done` payload
  *  { reply, diffs, draft, asks, notes, capped, meta }. */
 async function agentTurnRequest(payload, onState, onReading) {
-  // STUCK-FOREVER IS IMPOSSIBLE (Dan's 0%-forever crash, 2026-08-30): the
-  // server pings every 10s; silence for 45s = the turn is dead → honest
-  // failure with Retry. Every turn ends in receipt | reading | failure.
+  // STUCK-FOREVER IS IMPOSSIBLE (Dan, 2026-08-30): the server heartbeats
+  // every 5s even mid-model-call. 15s of silence = connection lost → say so
+  // and RE-ATTACH (the turn keeps running server-side; the finished result
+  // is fetchable at /agent-turn/last). Only a failed re-attach is a dead
+  // turn. Every turn ends in receipt | reading | failure-with-Retry.
+  const turnStart = Date.now();
   const ctrl = new AbortController();
   let lastEvent = Date.now();
   const watchdog = setInterval(() => {
-    if (Date.now() - lastEvent > 45000) { clearInterval(watchdog); ctrl.abort(); }
-  }, 5000);
-  let res;
+    if (Date.now() - lastEvent > 15000) { clearInterval(watchdog); ctrl.abort(); }
+  }, 3000);
   try {
-    res = await fetch('/api/jarvis/agent-turn/stream', {
+    const res = await fetch('/api/jarvis/agent-turn/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -1629,13 +1631,27 @@ async function agentTurnRequest(payload, onState, onReading) {
       else if (event === 'reading') onReading?.(data.text); // his catch-the-misread-early moment
       else if (event === 'done') result = data;
       else if (event === 'error') err = new Error(data.error || 'Agent turn failed');
+      // 'ping' just refreshes lastEvent
     });
     if (err) throw err;
     if (!result || !result.ok) throw new Error(result?.error || 'Agent turn ended without a result');
     return result;
   } catch (e) {
-    if (e?.name === 'AbortError') throw new Error('that turn went quiet and died on my side');
-    throw e;
+    if (e?.name !== 'AbortError') throw e;
+    // Connection lost mid-turn — the turn is still running on the server.
+    onState?.('connection lost — the turn is still running on the server; reconnecting…');
+    if (payload.draftId) {
+      const deadline = Date.now() + 150000;
+      while (Date.now() < deadline) {
+        await new Promise(ok => setTimeout(ok, 5000));
+        try {
+          const r2 = await fetch(`/api/jarvis/agent-turn/last?draftId=${encodeURIComponent(payload.draftId)}`);
+          const d2 = await r2.json().catch(() => null);
+          if (d2?.ok && d2.at >= turnStart && d2.result?.ok) return d2.result;
+        } catch { /* keep polling until the deadline */ }
+      }
+    }
+    throw new Error('that turn died — the connection dropped and the result never landed');
   } finally {
     clearInterval(watchdog);
   }
@@ -4304,6 +4320,17 @@ export function CreateStationPage({ embedded = false }) {
   // THE AGENT LOOP's live activity line ("reading the sheet…") — Dan
   // approved the loop build 2026-08-28; docs/jarvis-agent-loop-design.md.
   const [agentState, setAgentState] = useState(null);
+  // ELAPSED, NOT PERCENT (Dan, 2026-08-30: "0% reads as dead") — percent is
+  // meaningless for an agent loop; the narration + a ticking clock is the
+  // honest signal. Ticks client-side so there is always visible motion.
+  const [agentElapsed, setAgentElapsed] = useState(0);
+  const agentStartRef = useRef(null);
+  useEffect(() => {
+    if (!agentState) { agentStartRef.current = null; setAgentElapsed(0); return undefined; }
+    if (!agentStartRef.current) agentStartRef.current = Date.now();
+    const t = setInterval(() => setAgentElapsed(Math.floor((Date.now() - agentStartRef.current) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, [agentState ? 1 : 0]); // eslint-disable-line react-hooks/exhaustive-deps
   // Standing rules JARVIS just learned from the engineer's answers —
   // only facts the model explicitly returned AND the server recorded.
   const [learnedNotes, setLearnedNotes] = useState([]);
@@ -4335,8 +4362,11 @@ export function CreateStationPage({ embedded = false }) {
   }, [chatThread, threadExpanded]);
   const [summarizeCost, setSummarizeCost] = useState(draft?.summarizeCost ?? 0);
   // Per-station-draft summarize cost ceiling ($). Server reports the real
-  // configured value in meta.maxCostUSD; 5 is the documented default.
-  const [summarizeCostCap, setSummarizeCostCap] = useState(5);
+  // configured value in meta.maxCostUSD; 25 is the loop-era default (Dan,
+  // 2026-08-30: opus turns run ~$0.25–1.50 each and "act and answer
+  // questions correctly — that's all I care about"; $5 stranded a draft
+  // mid-walk with a disabled Send).
+  const [summarizeCostCap, setSummarizeCostCap] = useState(25);
   const [pulseDone, setPulseDone] = useState(false);
   // Real summarize progress (drives the ProgressRing during
   // 'summarizing' and during Apply changes)
@@ -5629,7 +5659,8 @@ export function CreateStationPage({ embedded = false }) {
 
   // Cost gate: the limit is money, never the user's explanation length.
   const overSummarizeBudget = summarizeCost >= summarizeCostCap;
-  const budgetMessage = `This station's summary work has reached the $${summarizeCostCap.toFixed(2)} ceiling — raise JARVIS_SUMMARIZE_MAX_COST_USD in .env to continue`;
+  // Plain words, no env-var speak to the engineer (Dan, 2026-08-30).
+  const budgetMessage = `This station's AI planning budget ($${summarizeCostCap.toFixed(2)}) is used up — the ceiling is adjustable in the server settings`;
 
   // ── Summarize loop (streams real progress) ───────────────────────────────
   // SPLIT in two (Review & Edit mode, Dan 2026-08-25): requestSummarize runs
@@ -6148,6 +6179,7 @@ export function CreateStationPage({ embedded = false }) {
         : [];
       const d = await agentTurnRequest({
         message: msg,
+        draftId: draftIdRef.current, // reconnect key: /agent-turn/last
         draft: {
           name: name.trim(), description: fullExplanation.trim(),
           summary, smProposal, jarvisCoverage,
@@ -6179,14 +6211,17 @@ export function CreateStationPage({ embedded = false }) {
       // Live card diff (strike/highlight until "got it").
       const diffByKey = computeProposalSeqDiff(oldMachines, d.draft?.smProposal?.stateMachines ?? []);
       setSeqDiff(Object.keys(diffByKey).length ? { byKey: diffByKey, at: Date.now() } : null);
-      // RECEIPT FROM DIFFS + the model's (checked) short reply. Internals
-      // never print; a capped turn says so honestly.
+      // THE SPEAKING LAYER (Dan, 2026-08-30): the spoken paragraph is the
+      // model's reply — his terms, his content, ball location. The COMPUTED
+      // receipt (from the diffs, unfakeable) attaches as the folded change
+      // list under it — ground truth adjacent, never recited.
       const receipt = receiptFromAgentDiffs(d.diffs ?? []);
-      const capLine = d.capped ? ` (stopped at the ${d.capped} — anything unfinished is stated above.)` : '';
-      const text = [receipt, String(d.reply ?? '').trim()].filter(Boolean).join(' ') + capLine;
+      const spoken = String(d.reply ?? '').trim()
+        || (receipt ? 'Done — the changes are on the cards below.' : '');
       setChatThread(t => [...t, {
         role: 'jarvis',
-        text: text || 'Done.',
+        text: spoken || 'Done.',
+        ...(receipt ? { items: [{ text: receipt }] } : {}),
         at: Date.now(),
       }]);
       for (const noteText of (d.notes ?? [])) {
@@ -7129,6 +7164,27 @@ export function CreateStationPage({ embedded = false }) {
         }]);
       }
     }
+    // Q2 REPAIR (Dan, 2026-08-30, one-time): his two-part answer closed only
+    // Q1 — the second half ("For question two, no. Well, we always check…
+    // the next station will be a check station… in this case, we don't have
+    // that") answered the dial-landing question and the turn never consumed
+    // it. Tightly fingerprinted; closes with his answer and says so once.
+    {
+      const q2 = 'Any check that the part actually landed on the dial fixture?';
+      const q2Key = Object.keys(jarvisCoverage ?? {})
+        .map(k => ({ k, n: (jarvisCoverage?.[k]?.needs ?? []).find(x => x?.question === q2) }))
+        .find(x => x.n);
+      const answered = chatThread.some(t => t?.role === 'me'
+        && /for question two[\s\S]*next station will be a check station/i.test(String(t.text ?? '')));
+      if (q2Key && answered && !agreedNeeds.has(`${q2Key.k}:${q2}`)) {
+        setAgreedNeeds(prev => new Set([...prev, `${q2Key.k}:${q2}`]));
+        setChatThread(th => [...th, {
+          role: 'jarvis',
+          text: 'Q2 — taken from your earlier answer: no landing check at this station; SDC usually verifies at the next check station, and this machine doesn\'t have one. Filed and closed.',
+          at: Date.now(),
+        }]);
+      }
+    }
     const ownedKeys = new Set(smProposal.stateMachines.flatMap(m => m.ownedDeviceNames ?? []).map(devKey));
     const prose = smProposal.stateMachines
       .flatMap(m => [...(m.sequence ?? []), ...(m.faultRecovery ?? [])]).map(devKey).join('|');
@@ -7189,6 +7245,11 @@ export function CreateStationPage({ embedded = false }) {
     // NOTE: `cascadeLive` is declared further down — referencing it here (or
     // in the deps) is a TDZ render crash (took the shell down 2026-08-30).
     if (phase !== 'summary' || !cascade.steps.length || !cascade.activeStep) return;
+    // NEVER POST BELOW AN ANSWER (Dan, 2026-08-30: the questions posted
+    // directly under the message that answered them): while a turn is in
+    // flight, that turn owns these questions — it closes what his message
+    // answers; only what SURVIVES it posts.
+    if (applying) return;
     const step = cascade.activeStep;
     if (postedStepQsRef.current.has(step.key)) return;
     let needs = [];
@@ -7205,7 +7266,7 @@ export function CreateStationPage({ embedded = false }) {
       ? t
       : [...t, { role: 'jarvis', text, at: Date.now() }]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, cascade.activeStep?.key, jarvisCoverage, agreedNeeds]);
+  }, [phase, cascade.activeStep?.key, jarvisCoverage, agreedNeeds, applying]);
 
   function openSectionEdit(key) {
     if (sectionEditKey === key) { setSectionEditKey(null); setSectionProposal(null); return; }
@@ -7831,7 +7892,15 @@ export function CreateStationPage({ embedded = false }) {
             <span data-testid="agent-state-label" style={{ fontSize: 12, fontWeight: 600, color: C.text }}>
               {agentState ?? SUMMARIZE_STAGE_TEXT[sumStage] ?? 'Working…'}
             </span>
-            <ProgressRing pct={sumPct} size={44} subLabel="" />
+            {agentState ? (
+              // Loop turns: narration + elapsed clock — never a percent
+              // (0% reads as dead; Dan, 2026-08-30).
+              <span data-testid="agent-elapsed" style={{ fontSize: 11.5, fontWeight: 700, color: C.muted, fontVariantNumeric: 'tabular-nums' }}>
+                {agentElapsed}s
+              </span>
+            ) : (
+              <ProgressRing pct={sumPct} size={44} subLabel="" />
+            )}
           </div>
         )}
         {applyHint && !applying && (

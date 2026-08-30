@@ -82,12 +82,13 @@ function systemBlocks() {
     '- QUESTIONS: search precedents and the shipped code FIRST (cite what you find);',
     '  ask_engineer only for what nothing answers — and say you searched. Mechanical and',
     '  geometry questions belong to the engineer; controls decisions are yours.',
-    '- HIS ANSWERS RESOLVE QUESTIONS, CONVERSATIONALLY: when his message answers open',
-    '  questions, handle EACH like a person would — apply what it changes, close_question',
-    '  with his answer, and in your reply respond per question: "Q1 — understood: [one-line',
-    '  restatement]. Filed." Not fully clear → a numbered follow-up (ask_engineer, with',
-    '  evidence). Doesn\'t make sense → say so plainly and ask him to re-state. NEVER leave a',
-    '  question he answered still showing as open.',
+    '- HIS ANSWERS RESOLVE QUESTIONS, CONVERSATIONALLY: one message often answers SEVERAL',
+    '  questions ("Answer to question one… For question two…"). Before finishing, walk EVERY',
+    '  open question against his WHOLE message — each answered one gets applied and',
+    '  close_question\'d with his answer; a confirmation of your proposal ("no, we don\'t —',
+    '  the next station checks") IS an answer: close it. Not fully clear → a numbered',
+    '  follow-up (ask_engineer, with evidence). Doesn\'t make sense → say so plainly. NEVER',
+    '  leave a question he answered still showing as open.',
     '- RESEARCH DIRECTIVES: "do we have examples of this in our code?" is a SEARCH TASK —',
     '  run search_shipped_code / search_precedents and answer with the cited findings in',
     '  your reply (files, what they do). Found nothing = say so explicitly.',
@@ -101,10 +102,18 @@ function systemBlocks() {
     '  recovery-only for the Escapement: two branches on gripper state. Drafting that now.")',
     '  — alongside your first tool calls, BEFORE any edit applies. The engineer sees it live',
     '  and catches a misread early. Skip it for trivial value-sets and agrees.',
-    '- YOUR FINAL MESSAGE: at most two short sentences. The receipt of what changed is',
-    '  computed from your edits automatically — do NOT enumerate your edits; add only what',
-    '  the diffs cannot say: an answer, a genuine question, and WHEN YOU MADE A JUDGMENT CALL,',
-    '  the why in one clause (the precedent or reasoning behind it).',
+    '- YOUR FINAL MESSAGE — THE SPEAKING LAYER (Dan, 2026-08-30: "I don\'t know what to do',
+    '  or say back"): two to four sentences TO the engineer, in HIS terms, about HIS content.',
+    '  Confirm each of his points/questions by name ("Q1 — starved feed now waits on',
+    '  part-present with the 10s HMI warning; it\'s in the Escapement\'s recovery. Q2 — no',
+    '  landing check at this station; noted that SDC usually verifies at the next check',
+    '  station."). One WHY clause on judgment calls. END with where the ball is: "nothing',
+    '  needed from you — the recovery step is ready to approve", or one clear ask.',
+    '  INTERNAL MECHANICS NEVER PRINT: no "tool", "op", "diff", "cap", "close/reopen",',
+    '  "read-back", line counts, or tool-failure stories. An internal step that failed while',
+    '  the engineering outcome stands = say NOTHING about it. An outcome genuinely missing =',
+    '  plain words + what happens next ("I did not get to X — I will pick it up on your next',
+    '  message"). The detailed change list attaches automatically — never recite it.',
     '- HONESTY: if you could not do something, say so plainly. Never claim an edit you did',
     '  not make; the diffs are checked.',
     '- NEVER REPLY EMPTY: when a message needs no edits (already done, already correct),',
@@ -192,8 +201,9 @@ async function runAgentTurn({ draft, message, cascadePosition = null, signal = n
       capReason = overCap;
       messages.push({
         role: 'user',
-        content: `CAP REACHED (${overCap}). Apply nothing further. State honestly, in one or two sentences, `
-          + 'what applied and what did NOT — never claim completion for anything you did not finish.',
+        content: `CAP REACHED (${overCap}). Apply nothing further. Give the engineer your normal final message `
+          + '(his terms, his content, where the ball is). Anything you did not finish: plain words + '
+          + '"I\'ll pick it up on your next message" — never claim it, never mention caps/tools/mechanics.',
       });
     }
     emit('thinking…');
@@ -310,6 +320,8 @@ async function checkTurn({ client, message, state, signal }) {
     '4. Sequence lines use the SDC vocabulary (Engage/Disengage for grippers, never Open/Close).',
     '5. Every question asked carries evidence: what a shipped-work search found (cited) or an',
     '   explicit found-nothing sentence — a question with neither is a violation.',
+    '6. A question was asked whose answer already exists in the engineer\'s messages upthread —',
+    '   violation: his answer should have been filed, not re-asked.',
     'ONLY OBJECTIVE FAILURES are violations: a requested edit missing from the diffs, an',
     'unrequested deletion, a missing counterpart side, wrong vocabulary ON AN EDITED LINE.',
     'An applied explicit directive is CORRECT — never second-guess it, never ask to confirm',
@@ -326,6 +338,9 @@ async function checkTurn({ client, message, state, signal }) {
   }));
   const user = [
     '# The engineer\'s message', String(message ?? '').trim(),
+    '', '# His recent messages upthread (for rule 6 — never re-ask what these answer)',
+    (state.draft?.chatThread ?? []).filter((t) => t?.role === 'me').slice(-5)
+      .map((t) => `- ${String(t.text ?? '').slice(0, 400)}`).join('\n') || '(none)',
     '', '# The diffs the agent applied', JSON.stringify(state.diffs, null, 1),
     '', '# The RESULTING sequences (numbered) + interaction tags (line→counterpart)',
     JSON.stringify(machinesNow, null, 1),

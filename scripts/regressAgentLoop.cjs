@@ -160,6 +160,33 @@ const check = (name, ok, extra = '') => results.push({ name, ok, extra });
     console.log(`E done — $${r.meta.costUSD}, ${r.meta.toolCalls} calls, ${r.meta.ms}ms${r.meta.bounced ? ', bounced' : ''}`);
   }
 
+  // ── F. Dan's two-part answer (2026-08-30): EVERY open question walks the
+  //    WHOLE message; the reply is the speaking layer (no mechanics). ───────
+  {
+    const draft = freshDraft();
+    draft.jarvisCoverage = {
+      failures: {
+        needs: [
+          { question: 'What happens if no part feeds into the nest?', proposedSolution: 'Sit and wait on part-present (starved, no fault).' },
+          { question: 'Any check that the part actually landed on the dial fixture?', proposedSolution: 'No place-side check.' },
+        ],
+      },
+    };
+    const r = await runAgentTurn({
+      draft,
+      cascadePosition: { ...CASCADE, activeStep: { kind: 'recovery', smKey: 'midbaseescapement', label: 'Mid-Base Escapement recovery' } },
+      message: "Answer to question one. It would sit there and wait and eventually time out. But you should look at, do you have any examples of this in any of the code files you're training on? Maybe a 10-second wait, then if it doesn't have a part for 30 seconds it would fault. Or keep the machine live, send an HMI warning at 10 seconds, and fault a minute later. For question two, no. Well, we always check. But a lot of times, when we load, the next station will be a check station. In this case, we don't have that.",
+    });
+    const agreed = r.draft.agreedNeeds ?? [];
+    check('F: Q1 closed from part one', agreed.some((k) => /no part feeds/i.test(k)));
+    check('F: Q2 closed from part two', agreed.some((k) => /landed on the dial/i.test(k)));
+    const reply = String(r.reply ?? '');
+    check('F: speaking layer — no mechanics vocabulary',
+      !/\b(tool|diff|cap|ops?|read-back|reopen)\b/i.test(reply) && !/\(\d+ lines?\)/.test(reply) && !/tags only/i.test(reply),
+      reply.slice(0, 120));
+    console.log(`F done — $${r.meta.costUSD}, ${r.meta.toolCalls} calls, ${r.meta.ms}ms${r.meta.bounced ? ', bounced' : ''}`);
+  }
+
   let fail = 0;
   for (const x of results) {
     if (!x.ok) fail++;
