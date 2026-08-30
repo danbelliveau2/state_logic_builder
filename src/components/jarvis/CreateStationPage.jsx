@@ -4320,6 +4320,11 @@ export function CreateStationPage({ embedded = false }) {
   // THE AGENT LOOP's live activity line ("reading the sheet…") — Dan
   // approved the loop build 2026-08-28; docs/jarvis-agent-loop-design.md.
   const [agentState, setAgentState] = useState(null);
+  // KNOW YOUR AUDIENCE (Dan, 2026-08-30): ME | CE — whoever sits at the
+  // machine. Per-browser, default ME. Rides every loop turn's voice contract.
+  const [audience, setAudience] = useState(() => {
+    try { return localStorage.getItem('jarvis.audience') === 'CE' ? 'CE' : 'ME'; } catch { return 'ME'; }
+  });
   // ELAPSED, NOT PERCENT (Dan, 2026-08-30: "0% reads as dead") — percent is
   // meaningless for an agent loop; the narration + a ticking clock is the
   // honest signal. Ticks client-side so there is always visible motion.
@@ -6179,6 +6184,7 @@ export function CreateStationPage({ embedded = false }) {
         : [];
       const d = await agentTurnRequest({
         message: msg,
+        audience, // ME (default) | CE — the loop's voice contract
         draftId: draftIdRef.current, // reconnect key: /agent-turn/last
         draft: {
           name: name.trim(), description: fullExplanation.trim(),
@@ -7832,6 +7838,26 @@ export function CreateStationPage({ embedded = false }) {
             ask, correct, change — he applies it and shows what actually changed
           </span>
         </label>
+        {/* KNOW YOUR AUDIENCE (Dan, 2026-08-30): who's at the machine — the
+            engineer speaks mechanical to an ME (no tags, no PLC-speak) and
+            full controls to a CE. Per-browser, default ME. */}
+        <span data-testid="audience-toggle" style={{ display: 'inline-flex', gap: 2, alignItems: 'center' }}>
+          {['ME', 'CE'].map(a => (
+            <button
+              key={a}
+              type="button"
+              data-testid={`audience-${a}`}
+              title={a === 'ME' ? 'Mechanical engineer — plain machine talk, no controls vocabulary' : 'Controls engineer — tags, routines, rung logic welcome'}
+              onClick={() => { setAudience(a); try { localStorage.setItem('jarvis.audience', a); } catch { /* private mode */ } }}
+              style={{
+                ...chipBase, cursor: 'pointer', fontWeight: 800, fontSize: 10.5, padding: '2px 9px',
+                color: audience === a ? '#fff' : C.muted,
+                background: audience === a ? 'var(--color-primary)' : 'var(--color-sidebar)',
+                border: `1px solid ${audience === a ? 'var(--color-primary)' : C.border}`,
+              }}
+            >{a}</button>
+          ))}
+        </span>
         {chatThread.length > 0 && (
           <button
             type="button"

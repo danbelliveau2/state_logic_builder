@@ -3504,6 +3504,8 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
           draft: body.draft ?? {},
           message: String(body.message),
           cascadePosition: body.cascadePosition ?? null,
+          // KNOW YOUR AUDIENCE (Dan, 2026-08-30): ME (default) or CE.
+          audience: body.audience === 'CE' ? 'CE' : 'ME',
           signal: abort.signal,
           // Two event shapes: {reading} = the model's spoken reading of the
           // request (a chat turn, streamed early); a string = activity state.

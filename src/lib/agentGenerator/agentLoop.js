@@ -51,14 +51,39 @@ function costOf(usage, model) {
     + (usage.cache_read_input_tokens ?? 0) * p.cacheRead) / 1e6;
 }
 
-function systemBlocks() {
+// KNOW YOUR AUDIENCE (Dan, 2026-08-30): the chat header carries an ME | CE
+// toggle — the loop speaks to whoever is sitting at the machine. Default ME.
+function audienceBlock(audience) {
+  if (String(audience).toUpperCase() === 'CE') {
+    return [
+      '- AUDIENCE: a CONTROLS engineer. Controls speech is welcome — tag names, routine',
+      '  structure, rung logic, signal parameters, implementation detail. Be precise and',
+      '  technical; cite shipped code the way one CE cites another\'s.',
+    ].join('\n');
+  }
+  return [
+    '- AUDIENCE: a MECHANICAL engineer. Speak in mechanical terms ONLY — motions, parts,',
+    '  sensors, grippers, stations, timing. NO code or controls vocabulary, ever: no tag',
+    '  names (p_PartReady), no rungs, OTL/OTU, routine or program names, no PLC-speak.',
+    '  "Signal" as a concept is fine ("the escapement signals part-ready"); a tag is not.',
+    '  Ground every explanation in what the machine physically does.',
+  ].join('\n');
+}
+
+function systemBlocks(audience = 'ME') {
   // Static block, prompt-cached: the contract + the standing laws.
   // Precedents / concepts / shipped code come through the READ TOOLS —
   // the ONE knowledge access layer shared with codegen (Dan's ONE BRAIN).
   const contract = [
-    "You are JARVIS, SDC Automation's controls engineer, working a mechanical engineer's",
+    "You are JARVIS, SDC Automation's controls engineer, working an engineer's",
     'station draft as an AGENT: read what you need, edit through the typed tools, verify,',
     'then speak. THE CONTRACT:',
+    audienceBlock(audience),
+    '- CONVERSE WHEN THE TOPIC IS OPEN (Dan, 2026-08-30: "more flow back and forth, easy to',
+    '  converse"): when his message offers options or tradeoffs (two recovery approaches, a',
+    '  timing choice), a short back-and-forth is GOOD — state the options in his terms, give',
+    '  YOUR recommendation with the precedent reason, and ask which he wants. Apply what is',
+    '  settled either way. Never re-ask settled things; always land on a clear ball-location.',
     '- ONE ENGINE: you are the same engineer who builds the station. Decide like SDC has',
     '  always decided — from precedent and the standing rulings; invention is the last resort.',
     '- READ BEFORE YOU WRITE: always read_sheet before editing. Edit ONLY what the engineer\'s',
@@ -136,7 +161,7 @@ function systemBlocks() {
  * @param {AbortSignal} [args.signal]
  * @param {(label:string)=>void} [args.onEvent]  streamed activity states
  */
-async function runAgentTurn({ draft, message, cascadePosition = null, signal = null, onEvent = null }) {
+async function runAgentTurn({ draft, message, cascadePosition = null, audience = 'ME', signal = null, onEvent = null }) {
   const client = getClient();
   const state = createTurnState(draft, cascadePosition);
   const t0 = Date.now();
@@ -144,7 +169,7 @@ async function runAgentTurn({ draft, message, cascadePosition = null, signal = n
   let calls = 0;
   const emit = (label) => { try { onEvent?.(label); } catch { /* display only */ } };
 
-  const system = systemBlocks();
+  const system = systemBlocks(audience);
   const messages = [{
     role: 'user',
     content: [
