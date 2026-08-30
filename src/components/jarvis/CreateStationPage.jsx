@@ -3858,7 +3858,7 @@ function CascadeGuide({ steps, hasExplanation, allApproved, onJump }) {
           testId: `cascade-guide-${s.key}`,
         }))}
       {row('generate', allApproved ? '●' : '○', allApproved ? tone.active : tone.pending,
-        'Build code', allApproved ? 'everything agreed — go' : 'unlocks when every step is agreed',
+        'Accept or build', allApproved ? 'accept the station, or build its code now' : 'unlocks when every step is agreed',
         { bold: allApproved })}
     </div>
   );
@@ -6900,6 +6900,49 @@ export function CreateStationPage({ embedded = false }) {
    *  approveSmSplit path (one approval artifact, never two). */
   function approveCascadeStep(step) {
     if (!step) return;
+    // HANDSHAKE CHECK GATES THE APPROVAL (Dan, 2026-08-30: findings live in
+    // the walk, not the Build card). At sequence/interaction approvals the
+    // signal graph runs FIRST: a can-never-satisfy finding (unmatched wait,
+    // ordering deadlock — the station would fault on timeout every cycle)
+    // posts as a numbered chat question and the step CANNOT check off while
+    // it's open. Advisory findings (dead signal) post after approval,
+    // non-blocking.
+    let advisoryAfter = [];
+    if ((step.kind === 'sequence' || step.kind === 'interactions') && smProposal?.stateMachines?.length >= 2) {
+      try {
+        const all = checkHandshakes(smProposal.stateMachines);
+        const notAgreed = f => ![...agreedNeeds].some(k => String(k).includes(f.plain.slice(0, 60)));
+        const posted = new Set((jarvisCoverage?.interactions?.needs ?? []).map(n => String(n.question)));
+        const hang = all.filter(f => (f.kind === 'unmatched-wait' || f.kind === 'deadlock') && notAgreed(f)).slice(0, 4);
+        advisoryAfter = all.filter(f => f.kind !== 'unmatched-wait' && f.kind !== 'deadlock' && notAgreed(f) && !posted.has(f.plain)).slice(0, 3);
+        if (hang.length) {
+          const fresh = hang.filter(f => !posted.has(f.plain));
+          if (fresh.length) {
+            setJarvisCoverage(cov => {
+              const next = { ...(cov ?? {}) };
+              next.interactions = { ...(next.interactions ?? {}) };
+              next.interactions.needs = [
+                ...(next.interactions.needs ?? []),
+                ...fresh.map(f => ({
+                  question: f.plain,
+                  proposedSolution: f.proposal,
+                  evidence: 'Computed from the signal graph — every cross-machine wait paired with its setter, cycles simulated in order.',
+                  blocking: true,
+                })),
+              ];
+              return next;
+            });
+            setChatThread(t => [...t, {
+              role: 'jarvis',
+              text: `Before this step can check off — the signal check found ${fresh.length === 1 ? 'a handshake that would fault every cycle' : `${fresh.length} handshakes that would fault every cycle`}:\n${fresh.map((f, i) => `Q${i + 1}. ${f.plain}\n   My proposal: ${f.proposal}`).join('\n')}\n\nAnswer here or Agree on the cards, then approve the step.`,
+              at: Date.now(),
+            }]);
+          }
+          setApplyHint(`Signal check: ${hang.length} handshake question${hang.length === 1 ? '' : 's'} must be answered (or agreed) before this step checks off.`);
+          return; // the step does NOT check off while a can-never-satisfy finding is open
+        }
+      } catch (e) { console.warn('[handshake-check] skipped:', e.message); }
+    }
     setSeqDiff(null); // the highlights served their purpose
     advanceRef.current = true; // auto-advance: the next step opens immediately
     assignGateRef.current = true; // gate: an approve re-runs placement for anything still pending
@@ -6909,40 +6952,26 @@ export function CreateStationPage({ embedded = false }) {
       steps: { ...c.steps, [step.key]: { approved: true, by: 'ME', at: new Date().toISOString() } },
     }));
     if (linkedSmId) appendChangeLog(linkedSmId, { what: `${step.label} approved — locked on the sheet`, class: 'approval' });
-    // HANDSHAKE DEADLOCK CHECK (coordinator, 2026-08-30): at sequence /
-    // interaction approvals, pair every cross-machine WAIT with its setter
-    // and simulate the cycles — findings become numbered questions with
-    // proposals, computed (no model), in plain words.
-    if ((step.kind === 'sequence' || step.kind === 'interactions') && smProposal?.stateMachines?.length >= 2) {
-      try {
-        const findings = checkHandshakes(smProposal.stateMachines).slice(0, 4);
-        const existing = new Set([
-          ...((jarvisCoverage?.interactions?.needs ?? []).map(n => n.question)),
-          ...[...agreedNeeds],
-        ].map(String));
-        const fresh = findings.filter(f => ![...existing].some(q => q.includes(f.plain.slice(0, 60))));
-        if (fresh.length) {
-          setJarvisCoverage(cov => {
-            const next = { ...(cov ?? {}) };
-            next.interactions = { ...(next.interactions ?? {}) };
-            next.interactions.needs = [
-              ...(next.interactions.needs ?? []),
-              ...fresh.map(f => ({
-                question: f.plain,
-                proposedSolution: f.proposal,
-                evidence: 'Computed from the signal graph — every cross-machine wait paired with its setter, cycles simulated in order (recovery paths included).',
-                blocking: false,
-              })),
-            ];
-            return next;
-          });
-          setChatThread(t => [...t, {
-            role: 'jarvis',
-            text: `Checked the machines' signals against each other:\n${fresh.map((f, i) => `Q${i + 1}. ${f.plain}\n   My proposal: ${f.proposal}`).join('\n')}\n\nAgree on the cards, or answer here.`,
-            at: Date.now(),
-          }]);
-        }
-      } catch (e) { console.warn('[handshake-check] skipped:', e.message); }
+    if (advisoryAfter.length) {
+      setJarvisCoverage(cov => {
+        const next = { ...(cov ?? {}) };
+        next.interactions = { ...(next.interactions ?? {}) };
+        next.interactions.needs = [
+          ...(next.interactions.needs ?? []),
+          ...advisoryAfter.map(f => ({
+            question: f.plain,
+            proposedSolution: f.proposal,
+            evidence: 'Computed from the signal graph — every cross-machine wait paired with its setter.',
+            blocking: false,
+          })),
+        ];
+        return next;
+      });
+      setChatThread(t => [...t, {
+        role: 'jarvis',
+        text: `One more look at the machines' signals (advisory — the step is approved):\n${advisoryAfter.map((f, i) => `Q${i + 1}. ${f.plain}\n   My proposal: ${f.proposal}`).join('\n')}\n\nAgree on the cards, or answer here.`,
+        at: Date.now(),
+      }]);
     }
     // CONTINUOUS STUDY (Phase 3, Dan 2026-08-30): from the devices step
     // onward, every approval runs the pre-write readiness study on the sheet
@@ -10446,25 +10475,27 @@ export function CreateStationPage({ embedded = false }) {
                     <div style={{ fontSize: 10.5, fontWeight: 800, color: C.primary, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 5 }}>
                       Build station code
                     </div>
-                    {/* PRE-BUILD SIGNAL CHECK: can-hang findings BLOCK by
-                        default (SUPREME LAW); advisory ones carry as-is. */}
-                    {(pregenFindings.hang.length > 0 || pregenFindings.advisory.length > 0) && (
+                    {/* SIGNAL CHECK LIVES IN THE WALK (Dan, 2026-08-30) — a
+                        can-never-satisfy finding blocks its approval step, so
+                        this card shows at most one green line. The red block
+                        below is a LAST-RESORT guard only, if a finding
+                        somehow appears post-approval. */}
+                    {pregenFindings.hang.length > 0 ? (
                       <div data-testid="pregen-handshake-findings" style={{
-                        background: pregenFindings.hang.length ? '#fdf2f2' : '#fdf6e3',
-                        border: `1px solid ${pregenFindings.hang.length ? '#d4a0a0' : '#e6d9a8'}`, borderRadius: 6,
-                        padding: '7px 11px', marginBottom: 8, fontSize: 11.5,
-                        color: pregenFindings.hang.length ? '#8a3b3b' : '#6b5513', lineHeight: 1.5,
+                        background: '#fdf2f2', border: '1px solid #d4a0a0', borderRadius: 6,
+                        padding: '7px 11px', marginBottom: 8, fontSize: 11.5, color: '#8a3b3b', lineHeight: 1.5,
                       }}>
-                        <b>Signal check before building:</b>
+                        <b>Signal check:</b>
                         {pregenFindings.hang.map((f, i) => <div key={`h${i}`}>• {f.plain}</div>)}
-                        {pregenFindings.advisory.map((f, i) => <div key={`a${i}`} style={{ color: '#6b5513' }}>• {f.plain}</div>)}
                         <div style={{ color: C.muted, marginTop: 2 }}>
-                          {pregenFindings.hang.length
-                            ? 'The red ones can hang the machine forever, so the build is held — answer in the chat (or Agree on the step cards), or build anyway below and the code carries them as-is.'
-                            : 'Answer in the chat (or Agree on the step cards) — building anyway is allowed, the code will carry these as-is.'}
+                          These would fault on timeout every cycle, so the build is held — answer in the chat (or Agree on the step cards), or build anyway below and the code carries them as-is.
                         </div>
                       </div>
-                    )}
+                    ) : ((smProposal?.stateMachines?.length ?? 0) >= 2 && pregenFindings.advisory.length === 0 && (
+                      <div data-testid="pregen-handshake-clean" style={{ fontSize: 11.5, color: '#2f6b3c', marginBottom: 8 }}>
+                        ✓ signal handshakes check clean
+                      </div>
+                    ))}
                     {/* STATION ACCEPT (Dan, 2026-08-28): his real workflow —
                         stations are accepted one after another; code
                         generates for the WHOLE MACHINE at the end. Two
@@ -10482,9 +10513,9 @@ export function CreateStationPage({ embedded = false }) {
                       >
                         <span style={{ fontWeight: 800 }}>✓ Station accepted</span>
                         <span style={{ color: '#4a7c59' }}>
-                          banked for the machine-level generate — code for the whole machine
-                          builds once every station is accepted. Generating below is still
-                          available for testing.
+                          banked for the machine build — code for the whole machine builds
+                          once every station is accepted. Building below is still available
+                          for this station alone.
                         </span>
                       </div>
                     ) : (
@@ -10493,47 +10524,29 @@ export function CreateStationPage({ embedded = false }) {
                           type="button"
                           data-testid="accept-station-btn"
                           onClick={() => {
+                            // TWO LANES (Dan, 2026-08-30): Accept banks the
+                            // station and returns to the machine homepage —
+                            // the next station gets added there; code for
+                            // the whole machine builds at the end.
                             const rec = { by: 'ME', at: Date.now() };
                             setStationAccepted(rec);
-                            setDirty(true);
-                            setChatThread(th => [...th, {
-                              role: 'jarvis',
-                              text: `${name.trim() || 'This station'} is accepted and banked. Code for the whole machine generates once every station is accepted — or generate this station alone below for testing.`,
-                              at: Date.now(),
-                            }]);
+                            persistDraftNow({ stationAccepted: rec });
+                            showTransientToast(`${name.trim() || 'Station'} accepted — banked for the machine build. Add the next station here.`);
+                            if (!linkedSmId) clearActiveFreshDraft(); // no auto-resume; the home card reopens it
+                            store.closeNewSmModal();
+                            useV2Shell.getState().setSheetLinkedSmId(null);
+                            useV2Shell.getState().openProjectHome();
                           }}
                           style={{
                             ...chipBase, cursor: 'pointer', fontSize: 12, fontWeight: 800, padding: '5px 14px',
                             color: '#2f6b3c', background: '#e9f5ec', border: '1px solid #7fb08c',
                           }}
-                        >✓ Accept station — move to the next</button>
+                        >✓ Accept Station — build with the machine later</button>
                         <span style={{ fontSize: 11, color: C.muted }}>
-                          or build this station's code now (testing):
+                          or build this station's code now:
                         </span>
                       </div>
                     )}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
-                      {[
-                        { id: 'standard', label: 'Full station — standard' },
-                        { id: 'proving', label: 'Just the sequence & recovery — quick check' },
-                      ].map(o => {
-                        const on = (genLevel === o.id) || (o.id === 'standard' && genLevel !== 'proving');
-                        return (
-                          <button
-                            key={o.id}
-                            type="button"
-                            data-testid={`generate-scope-${o.id}`}
-                            onClick={() => setGenLevel(o.id)}
-                            style={{
-                              ...chipBase, fontSize: 11.5, padding: '4px 12px', cursor: 'pointer',
-                              color: on ? '#fff' : C.muted,
-                              background: on ? 'var(--color-primary)' : 'var(--color-sidebar)',
-                              border: `1px solid ${on ? 'var(--color-primary)' : C.border}`,
-                            }}
-                          >{o.label}</button>
-                        );
-                      })}
-                    </div>
                     <DictatedTextarea
                       value={purpose}
                       onChange={v => setPurpose(v.replace(/\n/g, ' '))}
@@ -10545,7 +10558,7 @@ export function CreateStationPage({ embedded = false }) {
                       style={{ width: '100%', boxSizing: 'border-box', fontSize: 12, resize: 'none', lineHeight: 1.5, paddingTop: 6, paddingBottom: 6, paddingLeft: 10 }}
                     />
                     <div style={{ fontSize: 10.5, color: C.light, marginTop: 4 }}>
-                      Then hit {linkedSmId ? '“Rebuild station”' : '“Build Station”'} below — the scope rides into the build.
+                      Then hit {linkedSmId ? '“Rebuild station code”' : '“Build Station Code”'} below — the note rides into the build.
                     </div>
                   </div>
                 )}
@@ -10671,7 +10684,7 @@ export function CreateStationPage({ embedded = false }) {
                         >
                           {/* The mental model (Dan, Aug 24): the sheet is the
                               source of truth; Rebuild pushes it downstream. */}
-                          {linkedSmId ? 'Rebuild station code — apply the sheet' : 'Build Station'}
+                          {linkedSmId ? 'Rebuild Station Code — apply the sheet' : 'Build Station Code'}
                         </button>
                         )}
                       </>

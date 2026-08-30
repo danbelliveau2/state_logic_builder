@@ -345,10 +345,10 @@ export function ProjectHomePage() {
                   <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--color-text)' }}>
                     {draftLabel(d)}
                   </div>
-                  <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', margin: '2px 0 6px' }}>
-                    draft · {draftCascadeStepNote(d)} · {timeAgo(d.savedAt)}
+                  <div style={{ fontSize: 11.5, color: d.stationAccepted ? '#2f6b3c' : 'var(--color-text-muted)', margin: '2px 0 6px' }}>
+                    {d.stationAccepted ? '✓' : 'draft ·'} {draftCascadeStepNote(d)} · {timeAgo(d.savedAt)}
                   </div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-primary)' }}>Continue →</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-primary)' }}>{d.stationAccepted ? 'Open sheet →' : 'Continue →'}</div>
                 </button>
               ))}
             </div>

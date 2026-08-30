@@ -342,7 +342,7 @@ function unmatchedWaits(machines = []) {
       const partner = ms.find((x) => x !== m && (keysMatch(nk(w.from), x.key) || keysMatch(x.key, nk(w.from))));
       if (!partner) continue;
       if (!partner.events.some((e) => e.type === 'set' && keysMatch(e.sig, w.sig))) {
-        out.push(`${m.name} waits for "${w.line}" but ${partner.name} never signals it — that wait hangs forever`);
+        out.push(`${m.name}'s "${w.line}" can never be satisfied — ${partner.name} never signals it; the station would fault on timeout every cycle`);
       }
     }
   }

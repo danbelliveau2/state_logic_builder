@@ -127,7 +127,7 @@ const STAGES = [
       think: 'A study pass reads everything before a line is written — the plan for every state on the SDC number grid, every transition condition, waits, retries, cross-machine signals, recovery. Then the code is written once against that plan, not iterated into shape. Every structural choice cites the SDC template pattern it follows or declares itself an extension.',
       check: 'Internal review rounds walk the output against Jason’s process — each finding traces to the step it violates — and the file is validated for import before you ever see it.',
       back: 'The diagram and the L5X, plus the record of how it was planned. Anything only you can know — positions, mechanical intent — was asked during the walk, not invented here.',
-      moves: 'Take the build, or send corrections. Corrections at this stage are analyzed into lessons, not just patched.',
+      moves: 'Two lanes: Accept Station banks the sheet and returns you to the machine homepage to add the next station — code for the whole machine builds at the end; or Build Station Code builds this station alone now. Corrections after a build are analyzed into lessons, not just patched.',
     },
   },
   {

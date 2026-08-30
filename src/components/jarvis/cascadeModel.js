@@ -133,7 +133,27 @@ export function checkHandshakes(machines = []) {
     return { name: m.name, key: nk(m.name), events, recovery: (m.faultRecovery ?? []).map(String) };
   });
   const findings = [];
-  const allSetters = ms.flatMap((m) => m.events.filter((e) => e.type === 'set').map((e) => ({ ...e, by: m.name })));
+  // SPEAK WHAT THE ME SEES (Dan, 2026-08-30): findings reference the wait's
+  // flow name ("Wait — Part-Gripped") and its neighboring visible steps —
+  // NEVER internal step indices (waits render as edge labels, so "step 10"
+  // matches nothing on his screen). And SDC truth: standard code gives every
+  // wait a fault timeout — nothing "waits forever"; an unsatisfiable wait
+  // faults on timeout every cycle.
+  const flowName = (raw) => {
+    let mm = String(raw).match(/^wait\s+for\s+.+?['’]s\s+(.+?)\s*(?:signal)?\s*$/i);
+    if (!mm) mm = String(raw).match(/^wait\s+(?:for\s+)?(.+?)\s*(?:signal)?\s*$/i);
+    return (mm ? mm[1] : String(raw)).trim();
+  };
+  const near = (m, i) => {
+    let p = i - 1; while (p >= 0 && m.events[p].type === 'wait') p--;
+    let n = i + 1; while (n < m.events.length && m.events[n].type === 'wait') n++;
+    const before = p >= 0 ? m.events[p].line : null;
+    const after = n < m.events.length ? m.events[n].line : null;
+    if (before && after) return `between "${before}" and "${after}"`;
+    if (after) return `before "${after}"`;
+    if (before) return `after "${before}"`;
+    return 'in its flow';
+  };
   // 1+2: unmatched waits / setters (cross-machine only).
   for (const m of ms) {
     for (const w of m.events.filter((e) => e.type === 'wait')) {
@@ -143,7 +163,7 @@ export function checkHandshakes(machines = []) {
       if (!setter) {
         findings.push({
           kind: 'unmatched-wait',
-          plain: `${m.name} waits for "${w.line.replace(/^Wait for /i, '')}" (step ${w.i + 1}), but ${partner.name} never signals it — that wait can hang forever.`,
+          plain: `${m.name}'s "Wait — ${flowName(w.line)}" (${near(m, w.i)}) can never be satisfied — ${partner.name} never signals it. The station would fault on timeout every cycle.`,
           proposal: `Add the matching Signal step to ${partner.name}'s sequence, or drop the wait.`,
         });
       }
@@ -155,7 +175,7 @@ export function checkHandshakes(machines = []) {
       if (!waiter) {
         findings.push({
           kind: 'unused-set',
-          plain: `${m.name} signals "${s.line.replace(/^Signal /i, '')}" (step ${s.i + 1}) but ${partner.name} never waits on it — dead signal or a missing wait.`,
+          plain: `${m.name}'s "${s.line}" (${near(m, s.i)}) is never waited on by ${partner.name} — a dead signal, or ${partner.name} is missing the wait.`,
           proposal: `Add the wait on ${partner.name}'s side, or remove the signal step.`,
         });
       }
@@ -184,14 +204,14 @@ export function checkHandshakes(machines = []) {
       if (allDone) break;
       if (!progressed) {
         const blocked = ms.filter((m, mi) => ptr[mi] < m.events.length)
-          .map((m, _, __) => {
+          .map((m) => {
             const mi = ms.indexOf(m);
             const ev = m.events[ptr[mi]];
-            return `${m.name} is stuck at step ${ev.i + 1} ("${ev.line}")`;
+            return `${m.name} at its "${ev.type === 'wait' ? `Wait — ${flowName(ev.line)}` : ev.line}" (${near(m, ev.i)})`;
           });
         findings.push({
           kind: 'deadlock',
-          plain: `The machines deadlock running their cycles in order: ${blocked.join('; ')} — each is waiting on a signal the other hasn't reached yet.`,
+          plain: `The machines deadlock running their cycles in order: ${blocked.join('; ')} — each is waiting on a signal the other hasn't reached yet. Every cycle would fault on timeout there.`,
           proposal: 'Reorder the waits/signals so each wait\'s setter runs earlier in the counterpart\'s cycle.',
         });
         break;
@@ -199,30 +219,18 @@ export function checkHandshakes(machines = []) {
       if (++guard > 500) break;
     }
   }
-  // 4: fault-window hangs — a wait whose setter's machine can fault into
-  // recovery without ever re-signaling.
-  for (const m of ms) {
-    for (const w of m.events.filter((e) => e.type === 'wait')) {
-      const partner = ms.find((x) => x !== m && (keysMatch(nk(w.from), x.key) || keysMatch(x.key, nk(w.from))));
-      if (!partner || !partner.recovery.length) continue;
-      const setter = partner.events.find((e) => e.type === 'set' && keysMatch(e.sig, w.sig));
-      if (!setter) continue;
-      const recovered = partner.recovery.some((l) => keysMatch(sigKey(String(l).replace(/^.*?:\s*/, '')), w.sig) || /rejoin/i.test(l));
-      if (!recovered) {
-        findings.push({
-          kind: 'fault-window',
-          plain: `If ${partner.name} faults before its step ${setter.i + 1} ("${setter.line}"), ${m.name} waits forever at its step ${w.i + 1} — ${partner.name}'s recovery never re-signals and doesn't rejoin the flow before that point.`,
-          proposal: `Have ${partner.name}'s recovery re-signal (or rejoin the cycle before step ${setter.i + 1}), or give ${m.name}'s wait a fault path.`,
-        });
-      }
-    }
-  }
+  // (The former rule 4 "fault-window" class is DELETED — Dan, 2026-08-30:
+  //  SDC standard code gives every wait a fault timeout, faults run the
+  //  recovery, and the cycle restart re-establishes the handshakes. The
+  //  standard pattern handles a partner faulting mid-handshake — it is not
+  //  a finding. Only unsatisfiable waits and ordering deadlocks are real.)
   return findings;
 }
 
 /** Home/tree label for an unfinished draft: where its cascade sits (Dan,
  *  2026-08-26: "MidBaseLoad — draft · at step 1 · Continue"). */
 export function draftCascadeStepNote(draft) {
+  if (draft?.stationAccepted) return 'accepted — banks for the machine build';
   if (!draft || draft.phase !== 'summary' || !draft.summary) return 'still explaining';
   const recs = draft.cascadeLocal?.steps ?? {};
   const n = Object.values(recs).filter((r) => r?.approved === true && r?.reconfirm !== true).length;

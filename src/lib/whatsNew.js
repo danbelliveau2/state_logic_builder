@@ -10,12 +10,21 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.34';
+export const UI_BUILD = 'v2.6.35';
 
 export const BUILT_AT = '2026-08-30';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.35',
+    date: '2026-08-30',
+    items: [
+      'THE BUILD CARD IS TWO BUTTONS — "Build Station Code" (this station alone, now) or "✓ Accept Station — build with the machine later" (banks the sheet and returns you to the machine homepage to add the next station; the home card shows ✓ accepted and reopens the sheet). The Full-station/Quick-check toggle is gone — one standard build; the optional note stays',
+      'SIGNAL FINDINGS LIVE IN THE WALK — a handshake that can never be satisfied blocks its own sequence/interactions approval as a numbered chat question; the step cannot check off while it\'s open. The Build card then shows one green line ("signal handshakes check clean") or nothing — the amber essay is gone (a red guard remains only if a finding somehow appears post-approval)',
+      'FINDINGS SPEAK SDC TRUTH — nothing "waits forever": an unsatisfiable wait "faults on timeout every cycle"; finding text names the wait as you see it on the flow ("Wait — Part-Gripped, between Extend EscapementShuttle and Disengage ShuttleGripper"), never internal step numbers. The fault-mid-handshake advisory is deleted outright — SDC standard timeouts + recovery + cycle restart already handle it',
+    ],
+  },
   {
     version: 'v2.6.34',
     date: '2026-08-30',
