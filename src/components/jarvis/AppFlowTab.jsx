@@ -231,6 +231,47 @@ export function AppFlowTab() {
           chat's turns: roughly 25¢ to $1.50 each (capped at $2), on the top
           reasoning tier — correctness over cost, his call. One session per
           draft, so the thread genuinely remembers.
+          {' '}The growth loop is audited to stay ONE store: questions and
+          answers land in the questions queue, rulings in the standing-laws
+          file, code-fix lessons in the concept docs — one writer each; every
+          engine door (chat, split gate, corrections, codegen) reads the same
+          three, plus the same precedent digest through the same loader. The
+          intake queues (pending laws, app suggestions) and the build ledger
+          are queues and metrics, not knowledge — nothing thinks from them.
+        </div>
+      </div>
+
+      {/* ONE ENGINE, EVERY DOOR — the honest version map (Phase 3) */}
+      <div
+        data-testid="appflow-engines"
+        style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: '12px 16px', marginBottom: 10 }}
+      >
+        <div style={{ fontSize: 12.5, fontWeight: 800, color: C.text, marginBottom: 6 }}>One engine, every door — what runs on what</div>
+        <div style={{ fontSize: 12, color: C.text, lineHeight: 1.65 }}>
+          <b>Draft chat</b> — the embedded Claude Code engine (Agent SDK), one
+          session per draft, station tools only.{' '}
+          <b>The machine split</b> — the same engine as a decompose gate: the
+          split arrives as a typed proposal with an identity lock (approved
+          machine names survive corrections verbatim) and its own domain
+          reviewer.{' '}
+          <b>Built-station corrections</b> — the same engine; the built sheet
+          rides in as the machines it describes and the edits land back on it.{' '}
+          <b>Code generation</b> — the same engine writes the code, with
+          read-only eyes on the real reference folders: the standard templates,
+          the engineer-verified exemplars, the concept lessons, the shipped
+          files. Every objective gate is unchanged and non-negotiable: the edit
+          plan schema, the deterministic template merge, byte-level validation
+          with a full import simulation, the cross-check against your approved
+          sequence, and one adversarial internal review before anything is
+          called ready.{' '}
+          <b>Still one-shot by design</b> — the first "Done explaining"
+          extraction and the Resubmit of in-place sheet edits: mechanical
+          restatements, not conversations.{' '}
+          <b>Studying ahead</b> — from your devices approval onward, every
+          approval quietly runs the pre-write study on the sheet so far;
+          anything the code will need surfaces as a numbered question DURING
+          the walk, so Generate starts with nothing left to ask. No code is
+          written until you hit Generate.
         </div>
       </div>
 

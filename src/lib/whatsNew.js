@@ -10,12 +10,22 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.32';
+export const UI_BUILD = 'v2.6.33';
 
 export const BUILT_AT = '2026-08-30';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.33',
+    date: '2026-08-30',
+    items: [
+      'CODE GENERATION RUNS ON THE FULL ENGINE — the writer is now the same Claude Code engine as the chat, with read-only eyes on the real reference folders (standard templates, engineer-verified exemplars, concept lessons, shipped files) while it writes. Every objective gate is unchanged: plan schema, deterministic template merge, byte-level validation with full import simulation, cross-check against your approved sequence, one adversarial internal review',
+      'STUDYING AHEAD DURING YOUR WALK — from the devices approval onward, every step you approve quietly runs the pre-write study on the sheet so far; anything the code will need surfaces as a numbered question right then, so Generate starts with zero questions left. No code is written until you hit Generate',
+      'BUILT-STATION CORRECTIONS ON THE FULL ENGINE — chat on a linked sheet now runs the same engine as fresh drafts: your correction edits the built sheet directly (split machines or the station sequence/recovery), lands in the change log, and the old one-shot corrections path is deleted',
+      'One engine, every door — the honest map of what runs on what is on the Jarvis page > App flow, along with the audited one-store growth loop',
+    ],
+  },
   {
     version: 'v2.6.32',
     date: '2026-08-30',

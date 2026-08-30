@@ -3963,13 +3963,14 @@ function splitSeqLine(txt, tagged) {
 // (FlowMini family DELETED — SheetFlow (src/v2/SheetFlow.jsx) renders the
 // sheet flows in the REAL v1 visual language. Dan, 2026-08-30.)
 const BRANCH_LABEL_STYLE_UNUSED = null; // (kept name-free; branch styling lives in SheetFlow)
-/** A wait line → its EDGE-CONDITION phrase ("when Part Gripped"). */
+/** A wait line → its EDGE-CONDITION phrase ("Wait — Part Gripped").
+ *  Wording is Dan's (2026-08-30): "Wait — …", not "when …". */
 function condPhraseOf(line) {
   const t = normalizeSeqLine(line);
   let m = t.match(/^wait\s+for\s+.+?['’]s\s+(.+?)\s*(?:signal)?\s*$/i);
-  if (m) return `when ${titleCaseName(m[1])}`;
+  if (m) return `Wait — ${titleCaseName(m[1])}`;
   m = t.match(/^wait\s+(?:for\s+)?(.*?)(?:\s+—.*)?$/i);
-  return m ? `when ${titleCaseName(m[1])}` : null;
+  return m ? `Wait — ${titleCaseName(m[1])}` : null;
 }
 /**
  * V1 CONVENTIONS (Dan, 2026-08-30): actions on nodes, conditions on edges.
@@ -6926,6 +6927,62 @@ export function CreateStationPage({ embedded = false }) {
         }
       } catch (e) { console.warn('[handshake-check] skipped:', e.message); }
     }
+    // CONTINUOUS STUDY (Phase 3, Dan 2026-08-30): from the devices step
+    // onward, every approval runs the pre-write readiness study on the sheet
+    // SO FAR — codegen-blocking questions surface as numbered questions
+    // DURING the walk, so Generate starts with zero questions left. Fire and
+    // forget: his walk never waits on it. No code is written.
+    if (['devices', 'sequence', 'recovery', 'interactions'].includes(step.kind) && !studiedStepsRef.current.has(step.key)) {
+      studiedStepsRef.current.add(step.key);
+      (async () => {
+        try {
+          const ms = smProposal?.stateMachines ?? [];
+          const sheetText = [
+            `Devices: ${(summary?.devices ?? []).map(d => `${d.name}${d.type ? ` (${d.type})` : ''}`).join(', ') || '(none)'}`,
+            ...ms.map(m => [
+              `## ${m.name}`,
+              'Sequence:', ...(m.sequence ?? []).map((l, i) => `${i + 1}. ${l}`),
+              ...(m.faultRecovery?.length ? ['Recovery:', ...m.faultRecovery.map(l => `- ${l}`)] : []),
+            ].join('\n')),
+          ].join('\n\n');
+          const priorQuestions = [
+            ...[...agreedNeeds],
+            ...Object.values(jarvisCoverage ?? {}).flatMap(sec => (sec?.needs ?? []).map(n => n.question)),
+            ...qaHistory.flatMap(h => h.questions ?? []),
+          ].map(String).filter(Boolean);
+          const r = await fetch('/api/jarvis/study-step', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ station: name, stepLabel: step.label, sheetText, priorQuestions }),
+          });
+          if (!r.ok) return;
+          const d = await r.json();
+          const fresh = (d.questions ?? []).slice(0, 3);
+          if (!fresh.length) return;
+          const covKey = step.kind === 'recovery' ? 'failures' : step.kind;
+          setJarvisCoverage(cov => {
+            const next = { ...(cov ?? {}) };
+            next[covKey] = { ...(next[covKey] ?? {}) };
+            next[covKey].needs = [
+              ...(next[covKey].needs ?? []),
+              ...fresh.map(q => ({
+                question: String(q.question ?? ''),
+                proposedSolution: String(q.proposedSolution ?? ''),
+                evidence: 'Pre-write study on the approved sheet — asked now so Generate starts with nothing open.',
+                blocking: false,
+              })),
+            ];
+            return next;
+          });
+          setChatThread(t => [...t, {
+            role: 'jarvis',
+            text: `Studying ahead for the code while you walk — ${fresh.length === 1 ? 'one thing' : `${fresh.length} things`} I'll need before Generate:\n`
+              + fresh.map((q, i) => `Q${i + 1}. ${q.question}${q.proposedSolution ? `\n   My proposal: ${q.proposedSolution}` : ''}`).join('\n')
+              + '\n\nAgree on the cards, or answer here.',
+            at: Date.now(),
+          }]);
+        } catch (e) { console.warn('[continuous-study] skipped:', e.message); }
+      })();
+    }
   }
 
   /** A content edit under an approved step re-opens it and marks every
@@ -7003,6 +7060,8 @@ export function CreateStationPage({ embedded = false }) {
   // active step's machine, and an Approve scrolls the next step's section
   // into view — the cascade advances immediately, one surface at a time.
   const advanceRef = useRef(false);
+  // CONTINUOUS STUDY: step keys already studied this session (one run each).
+  const studiedStepsRef = useRef(new Set());
   const prevStepKeyRef = useRef(null);
   useEffect(() => {
     // (phase-based live check — `cascadeLive` is declared further down.)

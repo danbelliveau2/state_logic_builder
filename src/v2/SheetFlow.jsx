@@ -133,7 +133,9 @@ function SFEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, target
               display: 'inline-flex', alignItems: 'center', gap: 5,
               background: '#fff', border: '1px solid var(--color-border, #d5dbe3)', borderRadius: 5,
               padding: '1px 7px', fontSize: 10.5, color: 'var(--color-text-muted, #5a6a7e)',
-              whiteSpace: 'nowrap', pointerEvents: 'none', maxWidth: 230, overflow: 'hidden',
+              // FULL CONDITION, ALWAYS READABLE (Dan, 2026-08-30: the cutoff
+              // was the complaint) — the band grows to its content; no cap.
+              whiteSpace: 'nowrap', pointerEvents: 'none',
               fontWeight: data?.branch ? 800 : 500,
               ...(data?.branch ? (/^(yes|on|pass|true)$/i.test(data.text)
                 ? { color: '#2f6b3c', borderColor: '#7fb08c', background: '#e9f5ec' }
@@ -142,7 +144,7 @@ function SFEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, target
             }}
             title={data.full ?? data.text}
           >
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{data.text}</span>
+            <span>{data.text}</span>
             {data.tag && (
               <span style={{
                 fontSize: 9, fontWeight: 700, borderRadius: 4, padding: '0 5px', flexShrink: 0,
@@ -267,7 +269,7 @@ function deriveGraph(model, mode, lane) {
   if (model.repeat && nodes.length > 1 && prev) {
     const first = nodes.find((n) => n.type === 'sfState');
     if (first && first.id !== prev) {
-      edge(prev, first.id, { sh: 'out-left', th: 'in-left', dotted: true, text: model.endCond ? `when ${model.endCond}` : null });
+      edge(prev, first.id, { sh: 'out-left', th: 'in-left', dotted: true, text: model.endCond ? `Wait — ${model.endCond}` : null });
     }
   }
   return { nodes, edges };

@@ -2114,6 +2114,63 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     return result;
   }
 
+  /** POST /api/jarvis/study-step — CONTINUOUS STUDY (Phase 3). Body:
+   *  { station, stepLabel, template?, sheetText, priorQuestions: [string] }.
+   *  Runs preWriteStudy.readinessCheck against the sheet-so-far with the
+   *  closest exemplar as study context; returns ONLY questions that would
+   *  block correct code and aren't already asked/answered. Cheap fast-model
+   *  call; never writes code; questions are returned (the client folds them
+   *  into the walk's numbered questions), not persisted here. */
+  async function handleJarvisStudyStep(req, res) {
+    let study;
+    try {
+      study = require('./src/lib/agentGenerator/preWriteStudy.js');
+    } catch (e) {
+      return sendJson(res, 503, { error: 'Study module not available: ' + e.message });
+    }
+    try {
+      const body = JSON.parse(await readBody(req) || '{}');
+      const sheetText = String(body.sheetText ?? '').trim();
+      if (!sheetText) return sendJson(res, 400, { error: 'sheetText is required' });
+      const prior = (Array.isArray(body.priorQuestions) ? body.priorQuestions : []).map(String);
+      let studyText = '';
+      try {
+        const ctx = study.assembleStudyContext({
+          projectJson: null, sm: null,
+          templateName: String(body.template || 'SDCStandardPNP'),
+          exemplarCharBudget: 60000,
+        });
+        studyText = ctx?.text || '';
+      } catch { /* study optional — readiness still runs on the sheet alone */ }
+      const planText = [
+        `# STATION SHEET SO FAR — "${String(body.station ?? 'station')}" (walk in progress; the`,
+        `# engineer just approved: ${String(body.stepLabel ?? 'a step')}). Judge ONLY what is`,
+        '# already approved — sections not yet walked are NOT gaps.',
+        sheetText,
+        '',
+        '# ALREADY ASKED OR ANSWERED — never re-ask any of these',
+        prior.length ? prior.map((q) => `- ${q}`).join('\n') : '(none)',
+      ].join('\n');
+      const releaseAi = beginAiWork_('study-step', null, body.station || null, { register: false });
+      let r;
+      try {
+        r = await study.readinessCheck({ planText, studyText });
+      } finally { releaseAi(); }
+      // Server-side dedupe against the prior list (term overlap).
+      const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter((w) => w.length > 3);
+      const priorSets = prior.map((q) => new Set(norm(q)));
+      const fresh = (r.questions ?? []).filter((q) => {
+        const qs = norm(q.question ?? '');
+        if (!qs.length) return false;
+        return !priorSets.some((ps) => qs.filter((w) => ps.has(w)).length / qs.length >= 0.6);
+      });
+      sendJson(res, 200, { ok: true, questions: fresh, meta: { model: r.model, costUSD: r.costUSD ?? 0, error: r.error ?? null } });
+    } catch (e) {
+      if (e && e.code === 'AI_NOT_CONFIGURED') return sendJson(res, 503, { error: e.message });
+      sendJson(res, 500, { error: e.message });
+    }
+  }
+
   // (handleJarvisDecompose DELETED — Phase 2, Dan 2026-08-30: the decompose
   //  gate runs through the SDK engine (/api/jarvis/agent-turn/stream with
   //  gate:'decompose' → propose_split). One door; old one-shots die same
@@ -3459,6 +3516,16 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
 
     if (pathname === '/api/jarvis/diagram') {
       if (method === 'POST') return handleJarvisDiagram(req, res);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    // CONTINUOUS STUDY (Phase 3, Dan 2026-08-30: "are you asking those
+    // questions now so when everything's approved you're not going to have
+    // any more?"): per approved walk step, run the pre-write readiness study
+    // incrementally so codegen-blocking questions surface DURING the walk —
+    // target zero questions left at Generate. No code is written here.
+    if (pathname === '/api/jarvis/study-step') {
+      if (method === 'POST') return handleJarvisStudyStep(req, res);
       return sendJson(res, 405, { error: 'Method not allowed' });
     }
 
