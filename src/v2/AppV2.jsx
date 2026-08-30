@@ -87,6 +87,34 @@ class ErrorBoundary extends Component {
   }
 }
 
+// SCOPED BOUNDARY (Dan's shell crash, 2026-08-30): a render exception in ONE
+// surface must never take the whole shell down — the sheet shows an inline
+// error card, the rest of the app keeps working, HIS DRAFT DATA IS SAFE
+// (drafts persist on every change; a crash loses nothing).
+class SurfaceBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  componentDidCatch(error, info) { console.error(`[${this.props.label}] render crash:`, error, info); }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div style={{ padding: 24, maxWidth: 560, margin: '40px auto', fontFamily: 'system-ui, sans-serif', border: '1px solid #d4a0a0', borderRadius: 8, background: '#fdf7f7' }}>
+        <div style={{ fontWeight: 800, color: '#b83c3c', fontSize: 15 }}>This page hit a rendering error</div>
+        <div style={{ fontSize: 12.5, color: '#5a6a7e', margin: '6px 0 12px' }}>
+          Your draft is saved — nothing is lost. Reload to pick up where you left off.
+        </div>
+        <button
+          onClick={() => window.location.reload()}
+          style={{ padding: '7px 18px', background: '#1574C4', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}
+        >Reload</button>
+        <pre style={{ marginTop: 12, padding: 10, background: '#1e293b', color: '#f87171', borderRadius: 6, fontSize: 11, overflow: 'auto', maxHeight: 160 }}>
+          {String(this.state.error)}
+        </pre>
+      </div>
+    );
+  }
+}
+
 // (The view switcher, Spec Sheet|Diagram toggle, Normal|Recovery, and the
 //  star all live in the persistent StationBanner now — Dan: "on a banner
 //  that STAYS no matter what you're looking at". See StationBanner.jsx.)
@@ -288,7 +316,7 @@ export function AppV2() {
                     sheet flip to another station) force-remounts the page so
                     its component state can never leak across either boundary. */}
                 {showNewSmModal && sheetLinkedSmId && (
-                  <CreateStationPage embedded key={`sheet:${currentFilename ?? ''}:${sheetLinkedSmId}`} />
+                  <SurfaceBoundary label="sheet"><CreateStationPage embedded key={`sheet:${currentFilename ?? ''}:${sheetLinkedSmId}`} /></SurfaceBoundary>
                 )}
               </div>
             </>
@@ -305,7 +333,7 @@ export function AppV2() {
         {/* Full-viewport create page — ONLY for fresh "+ New" drafts; a
             built station's sheet renders embedded below the banner above. */}
         {showNewSmModal && !home && !sheetLinkedSmId && (
-          <CreateStationPage key={`fresh:${currentFilename ?? ''}`} />
+          <SurfaceBoundary label="create"><CreateStationPage key={`fresh:${currentFilename ?? ''}`} /></SurfaceBoundary>
         )}
         {(showAddDeviceModal || showEditDeviceModal) && <AddDeviceModal />}
         {showActionModal && <ActionModal />}

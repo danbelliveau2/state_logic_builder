@@ -3480,23 +3480,47 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       const abort = new AbortController();
       let clientGone = false;
       req.on('close', () => { clientGone = true; abort.abort(); });
+      // Keepalive pings so the client watchdog can tell "long model call"
+      // from "dead turn" (stuck-forever is impossible either way now).
+      const keepalive = setInterval(() => send('ping', { t: Date.now() }), 10000);
       const releaseAi = beginAiWork_('agent-turn', null, body.draft?.name || null, { register: false });
       try {
-        const result = await loop.runAgentTurn({
+        const runOnce = () => loop.runAgentTurn({
           draft: body.draft ?? {},
           message: String(body.message),
           cascadePosition: body.cascadePosition ?? null,
           signal: abort.signal,
-          onEvent: (label) => send('state', { label }),
+          // Two event shapes: {reading} = the model's spoken reading of the
+          // request (a chat turn, streamed early); a string = activity state.
+          onEvent: (ev) => {
+            if (ev && typeof ev === 'object' && ev.reading) send('reading', { text: ev.reading });
+            else send('state', { label: String(ev) });
+          },
         });
+        let result;
+        try {
+          result = await runOnce();
+        } catch (e1) {
+          const retriable = !clientGone && e1?.name !== 'AbortError' && e1?.name !== 'APIUserAbortError'
+            && e1?.code !== 'AI_NOT_CONFIGURED';
+          if (!retriable) throw e1;
+          // RETRY, DON'T RE-TYPE (Dan, 2026-08-30): transient/transcript
+          // errors repair by rerunning the whole turn once on a fresh
+          // working copy — the engineer never sees raw API JSON.
+          console.warn('[agent-turn] first attempt failed, retrying once:', e1.message);
+          send('state', { label: 'hit a snag on my side — retrying…' });
+          result = await runOnce();
+        }
         send('done', { ok: true, ...result });
       } catch (e) {
         if (clientGone || (e && (e.name === 'AbortError' || e.name === 'APIUserAbortError'))) {
           // client cancelled
         } else {
-          send('error', { error: e.message || String(e) });
+          console.error('[agent-turn] failed after retry:', e.message);
+          send('error', { error: 'an internal error on my side — the retry failed too' });
         }
       } finally {
+        clearInterval(keepalive);
         releaseAi();
       }
       return res.end();

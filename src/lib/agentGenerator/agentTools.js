@@ -136,6 +136,14 @@ function pushDiff(state, entry) {
 }
 
 // ── knowledge access (THE one access layer — ONE BRAIN) ────────────────────
+/** Append learned facts via the ONE writer (meKnowledge.js). */
+function fileToMeKnowledgeShared(facts, sourceName) {
+  const { appendLearnedFacts } = require('./meKnowledge.js');
+  return appendLearnedFacts(
+    (Array.isArray(facts) ? facts : [facts]).map((f) => ({ fact: `${String(f).trim()} [source: ${sourceName}]`, scope: 'sdc-standard' })),
+    { who: 'ME' }
+  );
+}
 function readKnowledge(name) {
   if (!name || name === 'laws' || name === 'meKnowledge') return loadMeKnowledge();
   const p = path.join(ROOT, 'jarvis-knowledge', 'concepts', `${String(name).replace(/[^a-z0-9-]/gi, '')}.md`);
@@ -399,18 +407,18 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'apply_edit',
-    description: 'Apply ONE typed edit to the working draft. Returns the real diff (or an error). Ops: device.remove {device} (atomic: row + questions + record) · device.add {name,type?,machine?} · device.rename {device,newName} · device.reassign {device,machine,evidence?} · machine.rename {machine,newName} (rejected for approved machines) · sequence.insert {machine, afterLine?, step:{action,target,detail?,counterpart?}} · sequence.remove {machine,line} · sequence.reword {machine,line,step} · sequence.set_tag {machine,line,counterpart} · sequence.clear_tag {machine,line} (tag ops touch the counterpart ONLY) · recovery.insert/remove/reword {machine,...} · value.set {device,field,value}. Line refs: 1-based number or the line\'s text. Action vocabulary: Extend/Retract, Engage/Disengage (grippers), Servo Move, Index, Wait, Signal, Home, Repeat.',
+    description: 'Apply typed edits to the working draft. Returns the real diff(s) (or errors). BATCH related edits: pass `ops: [ {op, ...}, ... ]` to apply a whole set in ONE call (e.g. drafting a 5-line recovery = one call with 5 recovery.insert ops) — never one call per line. Single-edit form (top-level op) still works. Ops: device.remove {device} (atomic: row + questions + record) · device.add {name,type?,machine?} · device.rename {device,newName} · device.reassign {device,machine,evidence?} · machine.rename {machine,newName} (rejected for approved machines) · sequence.insert {machine, afterLine?, step:{action,target,detail?,counterpart?}} · sequence.remove {machine,line} · sequence.reword {machine,line,step} · sequence.set_tag {machine,line,counterpart} · sequence.clear_tag {machine,line} (tag ops touch the counterpart ONLY) · recovery.insert/remove/reword {machine,...} · value.set {device,field,value}. Line refs: 1-based number or the line\'s text. Action vocabulary: Extend/Retract, Engage/Disengage (grippers), Servo Move, Index, Wait, Signal, Home, Repeat.',
     input_schema: {
       type: 'object',
       properties: {
         op: { type: 'string' },
+        ops: { type: 'array', items: { type: 'object' }, description: 'batch form: a list of op objects applied in order' },
         device: { type: 'string' }, name: { type: 'string' }, newName: { type: 'string' },
         machine: { type: 'string' }, evidence: { type: 'string' },
         line: {}, afterLine: { type: 'number' },
         step: {}, counterpart: { type: 'string' },
         field: { type: 'string' }, value: {}, type: { type: 'string' },
       },
-      required: ['op'],
       additionalProperties: false,
     },
   },
@@ -421,14 +429,24 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'ask_engineer',
-    description: 'File a question for the engineer on the active step. Only for what no precedent, standard, or shipped file answers — and say you searched. Mechanical/geometry questions are his; controls decisions are yours.',
+    description: 'File a question for the engineer on the active step. SEARCH FIRST — behavior/sequence/recovery questions require search_shipped_code / search_precedents BEFORE asking. `evidence` is REQUIRED: what the search found ("In our shipped bowl-feeder escapements — S05_ServoPNP, FlexFeeder — starved feed waits on part-present, no fault") or the explicit \'I searched our shipped work and standards — no example of X\'. A question without it is rejected. Mechanical/geometry questions are his; controls decisions are yours.',
     input_schema: {
       type: 'object',
       properties: {
         covKey: { type: 'string', enum: ['devices', 'sequence', 'failures', 'interactions'] },
         question: { type: 'string' }, proposedSolution: { type: 'string' },
+        evidence: { type: 'string', description: 'what the shipped-work search found, cited — or the explicit found-nothing sentence' },
       },
-      required: ['question'], additionalProperties: false,
+      required: ['question', 'evidence'], additionalProperties: false,
+    },
+  },
+  {
+    name: 'file_knowledge',
+    description: 'File a GENERAL SDC pattern the engineer just taught you ("loads are verified at the next check station when one exists") into the standing knowledge — dated, cited to him. Only for durable, general rules he states; never for one-station specifics (those live in the draft).',
+    input_schema: {
+      type: 'object',
+      properties: { fact: { type: 'string' }, citedTo: { type: 'string', description: 'who taught it (default: the engineer)' } },
+      required: ['fact'], additionalProperties: false,
     },
   },
   {
@@ -492,8 +510,14 @@ function executeTool(state, name, input) {
       return { text: searchPrecedents(input?.query) };
     case 'search_shipped_code':
       return searchShippedCode(input?.query, Math.min(Number(input?.maxResults) || 15, 30));
-    case 'apply_edit':
+    case 'apply_edit': {
+      // BATCH FORM (Dan's cost-cap turn, 2026-08-30): a whole recovery drafts
+      // in ONE call — each op returns its own real diff, in order.
+      if (Array.isArray(input?.ops) && input.ops.length) {
+        return { results: input.ops.slice(0, 40).map((one) => applyEdit(state, one)) };
+      }
       return applyEdit(state, input);
+    }
     case 'close_question': {
       const want = normKey(input?.question);
       const hit = openNeeds(state).find((n) => normKey(n.question).includes(want) || want.includes(normKey(n.question)));
@@ -505,14 +529,33 @@ function executeTool(state, name, input) {
     }
     case 'ask_engineer': {
       const covKey = ['devices', 'sequence', 'failures', 'interactions'].includes(input?.covKey) ? input.covKey : 'devices';
-      const q = { question: String(input?.question ?? '').trim(), proposedSolution: String(input?.proposedSolution ?? '').trim(), blocking: false };
+      const q = {
+        question: String(input?.question ?? '').trim(),
+        proposedSolution: String(input?.proposedSolution ?? '').trim(),
+        evidence: String(input?.evidence ?? '').trim(),
+        blocking: false,
+      };
       if (!q.question) return { error: 'ask_engineer needs a question' };
+      // SEARCH BEFORE ASK (Dan, 2026-08-30) — structural, not advisory.
+      if (!q.evidence) {
+        return { error: 'REJECTED: evidence is required — search the shipped work first and cite what you found, or state explicitly that the search found nothing.' };
+      }
       const cov = state.draft.jarvisCoverage ?? (state.draft.jarvisCoverage = {});
       cov[covKey] = cov[covKey] ?? {};
       cov[covKey].needs = [...(cov[covKey].needs ?? []), q];
       state.asks.push({ covKey, ...q });
       pushDiff(state, { op: 'question.ask', covKey, after: q.question, before: null });
       return { filed: q.question };
+    }
+    case 'file_knowledge': {
+      const fact = String(input?.fact ?? '').trim();
+      if (!fact) return { error: 'file_knowledge needs a fact' };
+      try {
+        const who = String(input?.citedTo ?? '').trim() || 'the engineer, in the station chat';
+        const r = fileToMeKnowledgeShared([`${fact} (taught by ${who})`], 'station chat');
+        pushDiff(state, { op: 'knowledge.file', after: fact, before: null });
+        return { filed: r?.recorded?.length ? 'meKnowledge.md' : 'duplicate — already known' };
+      } catch (e) { return { error: `filing failed: ${e.message}` }; }
     }
     case 'note_to_engineer': {
       const text = String(input?.text ?? '').trim();

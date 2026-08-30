@@ -1776,7 +1776,7 @@ function DecisionLine({ text, review, onReview }) {
             >✓</button>
             <button
               disabled={busy}
-              title="Deny — tell Jarvis why (he learns from it)"
+              title="Deny — say why (Jarvis learns from it)"
               onClick={() => setDenying(d => !d)}
               style={{ background: '#fdecec', border: `1px solid ${C.danger}`, color: C.danger, borderRadius: 5, width: 26, height: 22, fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }}
             >✗</button>

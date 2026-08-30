@@ -804,7 +804,7 @@ function flashSummaryRows(rows) {
 /** One turn in the Corrections chat (Dan, Aug 24: corrections is a chat with
  *  Jarvis — the same layer that generates the code). ME turns right-aligned
  *  SDC-blue; Jarvis turns left with the computed what-changed bullets. */
-function ChatTurn({ turn, idx }) {
+function ChatTurn({ turn, idx, onRetry = null }) {
   const me = turn?.role === 'me';
   return (
     <div
@@ -817,12 +817,27 @@ function ChatTurn({ turn, idx }) {
           ? { background: C.primaryBg, border: `1px solid ${C.primaryBorder}`, color: C.text }
           : turn?.error
             ? { background: '#fef2f2', border: '1px solid #fca5a5', color: '#991b1b' }
-            : { background: '#f4faf4', border: '1px solid #b7d9b0', color: C.text }),
+            : turn?.reading
+              // The spoken READING — visibly lighter than a receipt (it lands
+              // before the edits do; Dan can catch a misread here).
+              ? { background: '#f6f8fb', border: '1px dashed #b8c4d0', color: C.muted, fontStyle: 'italic' }
+              : { background: '#f4faf4', border: '1px solid #b7d9b0', color: C.text }),
       }}>
         <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', color: me ? C.primary : '#2f6b2f', marginBottom: 2 }}>
           {me ? 'You' : 'Jarvis'}
         </div>
         <div style={{ whiteSpace: 'pre-wrap' }}>{turn?.text}</div>
+        {!me && turn?.error && turn?.retryText && onRetry && (
+          <button
+            type="button"
+            data-testid={`chat-retry-${idx}`}
+            onClick={onRetry}
+            style={{
+              marginTop: 5, cursor: 'pointer', fontSize: 11.5, fontWeight: 800,
+              color: '#fff', background: '#b91c1c', border: 'none', borderRadius: 5, padding: '3px 14px',
+            }}
+          >Retry</button>
+        )}
         {!me && (turn?.items?.length ?? 0) > 0 && (
           <div style={{ marginTop: 4 }}>
             {turn.items.map((c, i) => (
@@ -1585,26 +1600,45 @@ async function summarizeRequest(payload, onProgress) {
 /** THE AGENT LOOP transport (Dan approved 2026-08-28): POSTs the turn, streams
  *  `state` activity labels live, resolves with the `done` payload
  *  { reply, diffs, draft, asks, notes, capped, meta }. */
-async function agentTurnRequest(payload, onState) {
-  const res = await fetch('/api/jarvis/agent-turn/stream', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  const isSse = res.ok && (res.headers.get('content-type') || '').includes('text/event-stream') && !!res.body;
-  if (!isSse) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || `Agent turn failed (${res.status}${res.ok ? ' — non-stream response; restart the API server' : ''})`);
+async function agentTurnRequest(payload, onState, onReading) {
+  // STUCK-FOREVER IS IMPOSSIBLE (Dan's 0%-forever crash, 2026-08-30): the
+  // server pings every 10s; silence for 45s = the turn is dead → honest
+  // failure with Retry. Every turn ends in receipt | reading | failure.
+  const ctrl = new AbortController();
+  let lastEvent = Date.now();
+  const watchdog = setInterval(() => {
+    if (Date.now() - lastEvent > 45000) { clearInterval(watchdog); ctrl.abort(); }
+  }, 5000);
+  let res;
+  try {
+    res = await fetch('/api/jarvis/agent-turn/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: ctrl.signal,
+    });
+    const isSse = res.ok && (res.headers.get('content-type') || '').includes('text/event-stream') && !!res.body;
+    if (!isSse) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Agent turn failed (${res.status}${res.ok ? ' — non-stream response; restart the API server' : ''})`);
+    }
+    let result = null; let err = null;
+    await readSse(res, (event, data) => {
+      lastEvent = Date.now();
+      if (event === 'state') onState?.(data.label);
+      else if (event === 'reading') onReading?.(data.text); // his catch-the-misread-early moment
+      else if (event === 'done') result = data;
+      else if (event === 'error') err = new Error(data.error || 'Agent turn failed');
+    });
+    if (err) throw err;
+    if (!result || !result.ok) throw new Error(result?.error || 'Agent turn ended without a result');
+    return result;
+  } catch (e) {
+    if (e?.name === 'AbortError') throw new Error('that turn went quiet and died on my side');
+    throw e;
+  } finally {
+    clearInterval(watchdog);
   }
-  let result = null; let err = null;
-  await readSse(res, (event, data) => {
-    if (event === 'state') onState?.(data.label);
-    else if (event === 'done') result = data;
-    else if (event === 'error') err = new Error(data.error || 'Agent turn failed');
-  });
-  if (err) throw err;
-  if (!result || !result.ok) throw new Error(result?.error || 'Agent turn ended without a result');
-  return result;
 }
 
 /** RECEIPT FROM DIFFS ONLY (the law): one plain line composed from the typed
@@ -1613,15 +1647,21 @@ function receiptFromAgentDiffs(diffs = []) {
   if (!diffs.length) return '';
   const parts = [];
   const byMachine = new Map();
-  let tagOnly = 0;
+  const recByMachine = new Map(); // recovery is ITS OWN clause — the P0 where
+  let tagOnly = 0;                // "11 changes to the sequence" were recovery
   for (const d of diffs) {
-    if (/^(sequence|recovery)\./.test(d.op)) {
+    if (/^recovery\./.test(d.op)) {
+      recByMachine.set(d.machine, (recByMachine.get(d.machine) ?? 0) + 1);
+    } else if (/^sequence\./.test(d.op)) {
       byMachine.set(d.machine, (byMachine.get(d.machine) ?? 0) + 1);
       if (/set_tag|clear_tag/.test(d.op)) tagOnly += 1;
     }
   }
   for (const [m, n] of byMachine) {
     parts.push(`${n} change${n === 1 ? '' : 's'} to ${m}'s sequence${tagOnly && n === tagOnly ? ' (tags only — no lines touched)' : ''}, shown on its card`);
+  }
+  for (const [m, n] of recByMachine) {
+    parts.push(`${m}'s fault recovery updated (${n} line${n === 1 ? '' : 's'}) — shown in its FAULT RECOVERY panel`);
   }
   const removed = diffs.filter(d => d.op === 'device.remove');
   for (const d of removed) {
@@ -3445,7 +3485,7 @@ function SmDecompositionSection({ decomp, approval, expectedPills, expectationRa
           data-testid="sm-split-edit-chat"
           onClick={onEditViaChat}
           style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10.5, color: C.primary, textDecoration: 'underline' }}
-        >move, merge, or split by telling Jarvis in Corrections</button>
+        >move, merge, or split by describing it in the chat</button>
         {approved ? ' · any change re-opens approval.' : '.'}
       </div>
     </div>
@@ -3972,14 +4012,23 @@ function StepQuestionsPanel({ step, needs = [], valueAsks = [], onAgreeNeed, onF
           >Q{i + 1}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 11.5, color: '#6b5513', lineHeight: 1.45 }}>{n.question}</div>
+            {/* THE GRID Dan described (2026-08-30): Question | what the
+                shipped-work search found | the proposal | Agree. */}
+            {n.evidence && (
+              <div data-testid={`cascade-q-evidence-${step.key}-${i + 1}`} style={{ fontSize: 11, color: '#0f4c81', lineHeight: 1.4, marginTop: 2 }}>
+                <b style={{ fontSize: 9.5, letterSpacing: '0.04em', textTransform: 'uppercase' }}>From our shipped examples: </b>
+                {n.evidence}
+              </div>
+            )}
             {n.proposedSolution && (
-              <div style={{ fontSize: 11, fontStyle: 'italic', color: C.muted, lineHeight: 1.4 }}>
-                Jarvis proposes: {n.proposedSolution}
+              <div style={{ fontSize: 11, fontStyle: 'italic', color: C.muted, lineHeight: 1.4, marginTop: 2 }}>
+                <b style={{ fontSize: 9.5, letterSpacing: '0.04em', textTransform: 'uppercase', fontStyle: 'normal' }}>My proposal: </b>
+                {n.proposedSolution}
               </div>
             )}
             {n.unattributed && (
               <div data-testid={`cascade-q-unattributed-${step.key}-${i + 1}`} style={{ fontSize: 10, color: C.light, lineHeight: 1.4 }}>
-                which machine? — couldn't tell, so it waits here on the last one; answer names it
+                not sure which machine this belongs to — your answer will tell me.
               </div>
             )}
           </div>
@@ -4361,6 +4410,17 @@ export function CreateStationPage({ embedded = false }) {
   // EDITABLE EXPLANATION (Dan, 2026-08-28): re-enterable after the cascade
   // starts; applying an edit is a gate event through the same engine.
   const [explEditing, setExplEditing] = useState(false);
+  // EXPLANATION LAYERS (Dan, 2026-08-30, the change-order model): additions
+  // are dated LAYERS under the original — "Layer 2: what we're adding" —
+  // never inline rewrites. Each layer is a gate event; the stack reads as
+  // history (original intent, then each change-order in order).
+  const [explLayers, setExplLayers] = useState(() => (Array.isArray(draft?.explanationLayers) ? draft.explanationLayers : []));
+  const [explAddingLayer, setExplAddingLayer] = useState(false);
+  const [explLayerDraft, setExplLayerDraft] = useState('');
+  const fullExplanation = useMemo(() => [
+    description,
+    ...explLayers.map((L, i) => `\n\n--- CHANGE-ORDER LAYER ${i + 2} (added ${new Date(L.at).toISOString().slice(0, 10)}) ---\n${L.text}`),
+  ].join(''), [description, explLayers]);
   const [explDraft, setExplDraft] = useState('');
   // NO UNASSIGNED, EVER (Dan, 2026-08-27: "you know what goes to what —
   // assign them and I'll tell you if it's right or wrong"). Jarvis COMMITS a
@@ -4418,6 +4478,7 @@ export function CreateStationPage({ embedded = false }) {
     ...(localCascade ? { cascadeLocal: localCascade } : {}),
     ...(smProposal ? { smProposal } : {}),
     ...(stationAccepted ? { stationAccepted } : {}),
+    ...(explLayers.length ? { explanationLayers: explLayers } : {}),
     ...(Object.keys(deviceAssignments ?? {}).length ? { deviceAssignments } : {}),
     ...(absorbedIdsRef.current.length ? { absorbedDraftIds: absorbedIdsRef.current } : {}),
     ...(linkedSmId ? { smId: linkedSmId } : {}),
@@ -4647,6 +4708,7 @@ export function CreateStationPage({ embedded = false }) {
     setSheetAhead(false); setApplyReceipt(null); setLocalCascade(null);
     setSmProposal(null); setProposeRun(null);
     setDeviceAssignments({}); setStationAccepted(null);
+    setExplLayers([]); setExplAddingLayer(false); setExplLayerDraft('');
     setQaRounds(0); setQaHistory([]); setLearnedNotes([]);
     setSummarizeCost(0); setError(null); setDraftImagesDropped(0);
     setOtherDrafts(loadDrafts(draftKey).filter(d => d.draftId !== draftIdRef.current && (!d.smId || !smExists(d.smId))));
@@ -4701,6 +4763,8 @@ export function CreateStationPage({ embedded = false }) {
     // stored thread, silently WIPING the draft's chat history on resume.
     setChatThread(Array.isArray(d.chatThread) ? d.chatThread : []);
     setStationAccepted(d.stationAccepted ?? null);
+    setExplLayers(Array.isArray(d.explanationLayers) ? d.explanationLayers : []);
+    setExplAddingLayer(false); setExplLayerDraft('');
     reconciledDraftRef.current = null; // re-run the load reconcile for this draft
     setOtherDrafts(loadDrafts(draftKey).filter(x => x.draftId !== d.draftId && (!x.smId || !smExists(x.smId))));
     setPhase(d.phase === 'summary' && s ? 'summary' : 'input');
@@ -5810,7 +5874,8 @@ export function CreateStationPage({ embedded = false }) {
   async function kickProposal(descOverride = null) {
     // (descOverride: an explanation edit re-thinks against the NEW text
     // before the state update lands — Dan, 2026-08-28.)
-    const descText = String(descOverride ?? description).trim();
+    // Layers ride every gate round: original + each dated change-order.
+    const descText = String(descOverride ?? fullExplanation).trim();
     if (busy || applying || proposeRun?.stage === 'compile') return;
     if (!descText) {
       setProposeRun({ stage: 'error', msg: 'There is no explanation yet — describe the station first' });
@@ -6066,11 +6131,14 @@ export function CreateStationPage({ embedded = false }) {
    *  draft chat): sends the message + draft snapshot; the server agent reads
    *  through tools, applies typed diff-returning edits, gets checked, and the
    *  applied draft comes back. Receipt is composed from the diffs HERE. */
-  async function runAgentChatTurn(msg) {
+  async function runAgentChatTurn(msg, { isRetry = false } = {}) {
     if (applying) return;
-    console.log('[chat] dispatched: agent loop');
+    console.log('[chat] dispatched: agent loop' + (isRetry ? ' (retry)' : ''));
     const oldMachines = (smProposal?.stateMachines ?? []).map(m => ({ name: m.name, sequence: [...(m.sequence ?? [])] }));
-    setChatThread(t => [...t, { role: 'me', text: msg, at: Date.now() }]);
+    // OPTIMISTIC, ALWAYS (Dan, 2026-08-30: box-refill "looks like an unsent
+    // draft"): his message lives in the chat from the moment he sends; a
+    // retry re-runs THAT message without duplicating it.
+    if (!isRetry) setChatThread(t => [...t, { role: 'me', text: msg, at: Date.now() }]);
     setChanges('');
     setApplying(true);
     setAgentState('thinking…');
@@ -6081,7 +6149,7 @@ export function CreateStationPage({ embedded = false }) {
       const d = await agentTurnRequest({
         message: msg,
         draft: {
-          name: name.trim(), description: description.trim(),
+          name: name.trim(), description: fullExplanation.trim(),
           summary, smProposal, jarvisCoverage,
           agreedNeeds: [...agreedNeeds], deviceAssignments,
           chatThread: chatThread.slice(-24).map(t => ({ role: t.role, text: String(t.text ?? '').slice(0, 300) })),
@@ -6091,7 +6159,11 @@ export function CreateStationPage({ embedded = false }) {
           approved: cascade.steps.filter(s => s.status === 'approved').map(s => s.label),
           approvedMachineNames,
         } : { approvedMachineNames },
-      }, label => setAgentState(label));
+      }, label => setAgentState(label),
+      // THE READING, LIVE (Dan, 2026-08-30): the model's one-sentence reading
+      // of his request posts to the chat BEFORE the edits land — the
+      // catch-the-misread-early moment.
+      readingText => setChatThread(t => [...t, { role: 'jarvis', text: readingText, reading: true, at: Date.now() }]));
       // Land the applied draft — the server edited a working copy through
       // typed ops; the client stays the storage authority.
       if (d.draft) {
@@ -6120,14 +6192,30 @@ export function CreateStationPage({ embedded = false }) {
       for (const noteText of (d.notes ?? [])) {
         setChatThread(t => [...t, { role: 'jarvis', text: noteText, at: Date.now() }]);
       }
+      // ONE COMMUNICATION STREAM (Dan, 2026-08-30): questions live in the
+      // chat too — the history holds them AND their answers. The step panel
+      // keeps the compact cards with Agree; both are views of the SAME
+      // question objects.
+      for (const a of (d.asks ?? [])) {
+        setChatThread(t => [...t, {
+          role: 'jarvis',
+          text: `Question for you: ${a.question}`
+            + (a.evidence ? `\nFrom our shipped examples: ${a.evidence}` : '')
+            + (a.proposedSolution ? `\nMy proposal: ${a.proposedSolution}` : '')
+            + '\nAgree on the step card, or just answer here.',
+          at: Date.now(),
+        }]);
+      }
       setSummarizeCost(c => Number((c + (Number(d.meta?.costUSD) || 0)).toFixed(4)));
     } catch (e) {
-      // Honest failure — his text goes back in the box (send-path law).
-      setChanges(msg);
+      // HONEST FAILURE, RETRY IN PLACE (Dan, 2026-08-30): his message stays
+      // in the chat; the failure line sits under it with a Retry that
+      // re-runs THAT message. The box never repopulates. Raw API JSON never
+      // renders — the server already translated it to plain words.
       setChatThread(t => [...t, {
         role: 'jarvis',
-        text: `That didn't go through — ${e.message}. Your text is back in the box — hit Send to retry.`,
-        error: true, at: Date.now(),
+        text: `That didn't go through — ${e.message}.`,
+        error: true, retryText: msg, at: Date.now(),
       }]);
     } finally {
       setApplying(false);
@@ -6450,7 +6538,10 @@ export function CreateStationPage({ embedded = false }) {
       key: normKey(m.name), smId: null,
       name: m.name, oneLiner: m.oneLiner ?? '', why: m.why ?? '',
       deviceNames: m.ownedDeviceNames ?? [], sequence: m.sequence ?? [],
-      faultRecovery: [], handshakes: [],
+      // THE FINGER-RECOVERY P0 (Dan, 2026-08-30): this was hardcoded [] — the
+      // engine drafted his recovery into smProposal and the panel never saw
+      // it. The proposal's per-machine recovery IS the panel's data.
+      faultRecovery: m.faultRecovery ?? [], handshakes: [],
     }));
   }, [smProposal]);
   // Fresh drafts record the breakup approval in the cascade state itself
@@ -7090,6 +7181,32 @@ export function CreateStationPage({ embedded = false }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, smProposal, draftKey]);
 
+  // ONE COMMUNICATION STREAM (Dan, 2026-08-30): when a step's questions
+  // surface, they ALSO post into the chat as one Jarvis turn — the history
+  // holds question and answer together. The step cards stay (same objects).
+  const postedStepQsRef = useRef(new Set());
+  useEffect(() => {
+    // NOTE: `cascadeLive` is declared further down — referencing it here (or
+    // in the deps) is a TDZ render crash (took the shell down 2026-08-30).
+    if (phase !== 'summary' || !cascade.steps.length || !cascade.activeStep) return;
+    const step = cascade.activeStep;
+    if (postedStepQsRef.current.has(step.key)) return;
+    let needs = [];
+    try { needs = needsForStep(step); } catch (_) { return; }
+    if (!needs.length) return;
+    postedStepQsRef.current.add(step.key);
+    const q1 = String(needs[0].question ?? '').slice(0, 60);
+    const text = `Questions on ${step.label}:\n`
+      + needs.map((n, i) => `Q${i + 1}. ${n.question}`
+        + (n.evidence ? `\n   From our shipped examples: ${n.evidence}` : '')
+        + (n.proposedSolution ? `\n   My proposal: ${n.proposedSolution}` : '')).join('\n')
+      + '\n\nAgree on the cards, or just answer here ("1 — yes; 2 — …").';
+    setChatThread(t => (q1 && t.some(x => String(x?.text ?? '').includes(q1))
+      ? t
+      : [...t, { role: 'jarvis', text, at: Date.now() }]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, cascade.activeStep?.key, jarvisCoverage, agreedNeeds]);
+
   function openSectionEdit(key) {
     if (sectionEditKey === key) { setSectionEditKey(null); setSectionProposal(null); return; }
     setSectionEditKey(key);
@@ -7649,7 +7766,7 @@ export function CreateStationPage({ embedded = false }) {
     >
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
         <label className="form-label" style={{ marginTop: 0, color: C.primary, fontSize: 12.5, fontWeight: 800, flex: 1 }}>
-          Chat with Jarvis
+          Chat with SDC Engineer
           <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: C.muted, marginLeft: 8 }}>
             ask, correct, change — he applies it and shows what actually changed
           </span>
@@ -7674,7 +7791,12 @@ export function CreateStationPage({ embedded = false }) {
             style={threadExpanded ? {} : { maxHeight: 300, overflowY: 'auto', paddingRight: 4 }}
           >
             {chatThread.map((t, i) => (
-              <ChatTurn key={`t-${i}`} turn={t} idx={i} />
+              <ChatTurn
+                key={`t-${i}`} turn={t} idx={i}
+                onRetry={t?.retryText && !applying && i === chatThread.length - 1
+                  ? () => runAgentChatTurn(t.retryText, { isRetry: true })
+                  : null}
+              />
             ))}
           </div>
           {chatThread.length > 2 && (
@@ -8240,16 +8362,32 @@ export function CreateStationPage({ embedded = false }) {
                           reconciles — approved steps stand unless the new
                           text contradicts them, shown as diffs, never a
                           silent rebuild. */}
-                      {!explEditing && (
-                        <button
-                          type="button"
-                          data-testid="explanation-edit-btn"
-                          onClick={() => { setExplDraft(description); setExplEditing(true); }}
-                          style={{
-                            ...chipBase, cursor: 'pointer', color: '#fff',
-                            background: 'rgba(255,255,255,0.16)', border: '1px solid rgba(255,255,255,0.5)',
-                          }}
-                        >✎ edit</button>
+                      {!explEditing && !explAddingLayer && (
+                        <>
+                          {/* CHANGE-ORDER LAYERS (Dan, 2026-08-30): adding to
+                              a station is a dated LAYER under the original —
+                              like a change quote on a job — never an inline
+                              rewrite. The primary action. */}
+                          <button
+                            type="button"
+                            data-testid="explanation-add-layer-btn"
+                            onClick={() => { setExplLayerDraft(''); setExplAddingLayer(true); }}
+                            style={{
+                              ...chipBase, cursor: 'pointer', fontWeight: 800, color: '#0f4c81',
+                              background: '#fff', border: '1px solid #fff',
+                            }}
+                          >+ Add a layer</button>
+                          <button
+                            type="button"
+                            data-testid="explanation-edit-btn"
+                            title="fix typos or dictation slips in the original — additions belong in a layer"
+                            onClick={() => { setExplDraft(description); setExplEditing(true); }}
+                            style={{
+                              ...chipBase, cursor: 'pointer', color: '#fff',
+                              background: 'rgba(255,255,255,0.16)', border: '1px solid rgba(255,255,255,0.5)',
+                            }}
+                          >✎ fix wording</button>
+                        </>
                       )}
                     </div>
                     {explEditing ? (
@@ -8306,6 +8444,82 @@ export function CreateStationPage({ embedded = false }) {
                     ) : (
                       <div style={{ padding: '8px 14px 10px', fontSize: 12, color: C.text, lineHeight: 1.6, whiteSpace: 'pre-wrap', maxWidth: 900, overflowWrap: 'anywhere' }}>
                         {description}
+                      </div>
+                    )}
+                    {/* THE LAYER STACK — readable history: original intent,
+                        then each change-order in order (Dan, 2026-08-30). */}
+                    {explLayers.map((L, li) => (
+                      <div key={li} data-testid={`explanation-layer-${li + 2}`} style={{ borderTop: `1px solid ${C.border}` }}>
+                        <div style={{ background: '#eef3f8', padding: '3px 14px', fontSize: 10, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', color: '#0f4c81' }}>
+                          Layer {li + 2} — added {new Date(L.at).toLocaleDateString()}
+                        </div>
+                        <div style={{ padding: '6px 14px 8px', fontSize: 12, color: C.text, lineHeight: 1.6, whiteSpace: 'pre-wrap', maxWidth: 900, overflowWrap: 'anywhere' }}>
+                          {L.text}
+                        </div>
+                      </div>
+                    ))}
+                    {explAddingLayer && (
+                      <div style={{ borderTop: `1px solid ${C.border}`, padding: '8px 14px 10px', maxWidth: 900 }}>
+                        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', color: '#0f4c81', marginBottom: 4 }}>
+                          Layer {explLayers.length + 2} — what are we adding or changing?
+                        </div>
+                        <DictatedTextarea
+                          value={explLayerDraft}
+                          onChange={setExplLayerDraft}
+                          rows={5}
+                          data-testid="explanation-layer-input"
+                          micTestId="explanation-layer-mic"
+                          className="form-input"
+                          placeholder="describe the addition or change — like a change order on the job"
+                          style={{ width: '100%', boxSizing: 'border-box', fontSize: 12.5, lineHeight: 1.6 }}
+                        />
+                        <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                          <button
+                            type="button"
+                            data-testid="explanation-layer-apply"
+                            disabled={applying || !explLayerDraft.trim()}
+                            onClick={async () => {
+                              const tail = document.querySelector('[data-testid="explanation-layer-input"]')?.__flushDictation?.() ?? '';
+                              const text = `${explLayerDraft.trim()}${tail ? ` ${tail}` : ''}`.trim();
+                              if (!text) { setExplAddingLayer(false); return; }
+                              const layerNo = explLayers.length + 2;
+                              const nextLayers = [...explLayers, { text, at: Date.now() }];
+                              setExplLayers(nextLayers);
+                              setExplAddingLayer(false); setExplLayerDraft('');
+                              setDirty(true);
+                              setChatThread(th => [...th, { role: 'me', text: `(added change-order Layer ${layerNo}) ${text}`, at: Date.now() }]);
+                              if (smProposal?.stateMachines?.length) {
+                                // GATE (the add-features mechanism): think the
+                                // DELTA the layer describes; approved content
+                                // stands unless the layer touches it.
+                                reviewingKeyRef.current = cascade.activeStep?.smKey ?? null;
+                                splitCounterRef.current =
+                                  `The engineer added CHANGE-ORDER LAYER ${layerNo} — a dated addition on top of the original `
+                                  + 'explanation (the full layered text is above). Think the DELTA: apply exactly what the layer '
+                                  + 'adds or changes, reopen/edit only what it touches, carry everything else — including all '
+                                  + 'approved content — forward verbatim.';
+                                console.log('[chat] dispatched: change-order layer → decompose gate');
+                                const nextFull = [description,
+                                  ...nextLayers.map((L, i) => `\n\n--- CHANGE-ORDER LAYER ${i + 2} (added ${new Date(L.at).toISOString().slice(0, 10)}) ---\n${L.text}`)].join('');
+                                setApplying(true);
+                                try { await kickProposal(nextFull); } finally { setApplying(false); }
+                              }
+                            }}
+                            style={{
+                              background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 6,
+                              fontSize: 12, fontWeight: 700, padding: '5px 16px', cursor: 'pointer',
+                            }}
+                          >Add Layer {explLayers.length + 2} — Jarvis thinks the delta</button>
+                          <button
+                            type="button"
+                            data-testid="explanation-layer-cancel"
+                            onClick={() => { setExplAddingLayer(false); setExplLayerDraft(''); }}
+                            style={{
+                              background: 'none', border: `1px solid ${C.border}`, borderRadius: 6,
+                              fontSize: 12, color: C.muted, padding: '5px 12px', cursor: 'pointer',
+                            }}
+                          >Cancel</button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -8992,7 +9206,7 @@ export function CreateStationPage({ embedded = false }) {
                                           <div data-testid={`recovery-empty-${e.key}`} style={{ marginTop: 8 }}>
                                             <SubHead color="#b45309">Fault recovery</SubHead>
                                             <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>
-                                              Nothing drafted yet — tell Jarvis how {e.name || 'this machine'} gets
+                                              Nothing drafted yet — describe in the chat how {e.name || 'this machine'} gets
                                               home safe from a mid-cycle fault (part in the gripper vs empty), or
                                               Approve to accept none.
                                             </div>

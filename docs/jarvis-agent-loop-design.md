@@ -111,22 +111,25 @@ receipt or a stated reading · internals never print.
   with the turn, the agent edits the server copy through the tools, and the
   client applies the returned diff list — the render never depends on the
   model, and the client remains the storage authority.
-- Model: sonnet for the loop (fast, cheap, good tool use); opus reserved for
-  the Generate-step study pass (unchanged). Prompt caching on the system
-  prompt + knowledge (the big static block) makes multi-step turns barely
-  more expensive than one-shots.
+- Model: **opus for the loop** (Dan, 2026-08-30: "act and answer questions
+  correctly — that's all I care about"; upgraded from the original sonnet
+  design call). The checker stays on the cheap tier (bounded verification).
+  Prompt caching on the system prompt + knowledge block keeps the multi-step
+  overhead down; batched `apply_edit` ops keep call counts low. Per-turn
+  caps: $2.00 / 90s / 25 tool calls.
 
 ## 9. Cost and speed, honestly
 
-| Turn type | Today (one-shot) | Agent loop |
+| Turn type | Today (one-shot, sonnet) | Agent loop (opus) |
 |---|---|---|
-| Simple chat correction | ~$0.03–0.08, 8–20s | ~$0.10–0.25, 10–25s (3–8 tool steps) |
-| Multi-edit round (device + sequence + question) | ~$0.15–0.30, 20–40s — and propagation bugs | ~$0.25–0.50, 20–45s — verified, atomic |
-| Gate event (split revision) | ~$0.20–0.35, 25–60s | ~$0.30–0.60, 30–60s |
+| Simple chat correction | ~$0.03–0.08, 8–20s | ~$0.25–0.60, 12–30s |
+| Multi-edit round (device + sequence + question) | ~$0.15–0.30, 20–40s — and propagation bugs | ~$0.50–1.20, 25–60s — verified, atomic |
+| Gate event (split revision) | ~$0.20–0.35, 25–60s | ~$0.60–1.50, 30–75s |
 
-Roughly 2× the cost per turn for turns that verify themselves. Dan accepted
-the trade explicitly: fewer wrong turns is cheaper than cheap wrong turns —
-one misapply costs more engineer time than a month of the delta.
+Roughly 2–3× the sonnet-loop cost for the top reasoning tier — Dan's explicit
+call (2026-08-30): "act and answer questions correctly — that's all I care
+about." Fewer wrong turns is cheaper than cheap wrong turns — one misapply
+costs more engineer time than a month of the delta. Cap $2.00/turn.
 
 ## 10. Migration — one door at a time, old doors deleted
 

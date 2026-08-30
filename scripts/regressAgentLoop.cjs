@@ -126,6 +126,40 @@ const check = (name, ok, extra = '') => results.push({ name, ok, extra });
     console.log(`C done — $${r.meta.costUSD}, ${r.meta.toolCalls} calls, ${r.meta.ms}ms${r.meta.bounced ? ', bounced' : ''}`);
   }
 
+  // ── D. parallel/batched edits — transcript validity under multi-tool turns
+  //    (the malformed-transcript 400 Dan hit, 2026-08-30) ────────────────────
+  {
+    const r = await runAgentTurn({
+      draft: freshDraft(), cascadePosition: CASCADE,
+      message: 'three things at once: clear the tag on line 1, clear the tag on line 6, and rename the Shuttle Gripper to Nest Gripper',
+    });
+    check('D: multi-edit turn completed (no 400)', true);
+    check('D: all three edits applied',
+      r.diffs.filter((d) => d.op === 'sequence.clear_tag').length === 2
+      && r.diffs.some((d) => d.op === 'device.rename' && /nest gripper/i.test(d.after ?? '')),
+      r.diffs.map((d) => d.op).join(','));
+    console.log(`D done — $${r.meta.costUSD}, ${r.meta.toolCalls} calls, ${r.meta.ms}ms${r.meta.bounced ? ', bounced' : ''}`);
+  }
+  // ── E. Dan's recovery sentence: recovery drafts, sequence untouched ───────
+  {
+    const draft = freshDraft();
+    const seqBefore = JSON.stringify(draft.smProposal.stateMachines[0].sequence);
+    const r = await runAgentTurn({
+      draft,
+      // His sentence is the PnP's recovery (Z + place/pick) — walk there.
+      cascadePosition: { ...CASCADE, activeStep: { kind: 'recovery', smKey: 'midbasepickandplace', label: 'Mid-Base Pick and Place recovery' } },
+      message: 'recovery is always retract z, then check gripper status if gripped move to place if not move to pick',
+    });
+    const esc = r.draft.smProposal.stateMachines[0];
+    const recovered = r.draft.smProposal.stateMachines.find(m => (m.faultRecovery?.length ?? 0) >= 3);
+    check('E: fault recovery drafted', !!recovered, recovered ? `${recovered.name}: ${recovered.faultRecovery.length} lines` : '0 lines everywhere');
+    check('E: recovery ops used (not sequence ops)',
+      r.diffs.some((d) => /^recovery\./.test(d.op)) && !r.diffs.some((d) => /^sequence\.(insert|remove|reword)$/.test(d.op)),
+      r.diffs.map((d) => d.op).join(','));
+    check('E: sequence untouched', JSON.stringify(esc.sequence) === seqBefore);
+    console.log(`E done — $${r.meta.costUSD}, ${r.meta.toolCalls} calls, ${r.meta.ms}ms${r.meta.bounced ? ', bounced' : ''}`);
+  }
+
   let fail = 0;
   for (const x of results) {
     if (!x.ok) fail++;

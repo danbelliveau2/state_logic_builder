@@ -223,6 +223,9 @@ export function AppFlowTab() {
           the same single knowledge base — a lesson from a code fix rides
           the next sheet conversation, and a ruling you file on the sheet
           rides the next build. There is no sheet-side copy of anything.
+          The conversation runs on the top reasoning tier — the same class of
+          model behind the chat Dan compares it to — at roughly 25¢ to $1.50
+          a turn (capped at $2): correctness over cost, his call.
         </div>
       </div>
 

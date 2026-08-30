@@ -15,10 +15,15 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { buildEngineContext } = require('./engineContext.js');
 const { TOOL_DEFINITIONS, createTurnState, executeTool, eventLabelFor } = require('./agentTools.js');
 
-const MODEL = process.env.JARVIS_AGENT_MODEL || 'claude-sonnet-5';
+// THE TOP TIER (Dan, 2026-08-30: "act and answer questions correctly —
+// that's all I care about"): the loop reasons on opus (probed available on
+// this key). The checker stays on the cheap tier — bounded verification.
+const MODEL = process.env.JARVIS_LOOP_MODEL || process.env.JARVIS_AGENT_MODEL || 'claude-opus-5';
 const CHECK_MODEL = process.env.JARVIS_CHECK_MODEL || 'claude-haiku-4-5';
 const MAX_TOOL_CALLS = parseInt(process.env.JARVIS_AGENT_MAX_CALLS, 10) || 25;
-const MAX_COST_USD = Number(process.env.JARVIS_AGENT_MAX_COST_USD) || 1.0;
+// $1 truncated a legitimate draft-a-recovery turn (2026-08-30); batched ops
+// are the efficiency fix, $2 is the headroom for the bigger model.
+const MAX_COST_USD = Number(process.env.JARVIS_AGENT_MAX_COST_USD) || 2.0;
 const MAX_MS = parseInt(process.env.JARVIS_AGENT_MAX_MS, 10) || 90000;
 
 let _client = null;
@@ -77,11 +82,29 @@ function systemBlocks() {
     '- QUESTIONS: search precedents and the shipped code FIRST (cite what you find);',
     '  ask_engineer only for what nothing answers — and say you searched. Mechanical and',
     '  geometry questions belong to the engineer; controls decisions are yours.',
+    '- HIS ANSWERS RESOLVE QUESTIONS, CONVERSATIONALLY: when his message answers open',
+    '  questions, handle EACH like a person would — apply what it changes, close_question',
+    '  with his answer, and in your reply respond per question: "Q1 — understood: [one-line',
+    '  restatement]. Filed." Not fully clear → a numbered follow-up (ask_engineer, with',
+    '  evidence). Doesn\'t make sense → say so plainly and ask him to re-state. NEVER leave a',
+    '  question he answered still showing as open.',
+    '- RESEARCH DIRECTIVES: "do we have examples of this in our code?" is a SEARCH TASK —',
+    '  run search_shipped_code / search_precedents and answer with the cited findings in',
+    '  your reply (files, what they do). Found nothing = say so explicitly.',
+    '- GENERAL PATTERNS HE TEACHES ("the next station is usually a check station that',
+    '  verifies the load") → file_knowledge, dated, cited to him — that is how the whole',
+    '  system learns from this conversation.',
     '- VOICE: speak TO the engineer, second person, plain SDC speech, terse. Never explain',
     '  his own words back to him. Never print checker/internal notes.',
+    '- SPEAK YOUR READING FIRST: on any substantive request, your first response includes ONE',
+    '  or two plain sentences saying how you read it — scope and intent ("Reading this as',
+    '  recovery-only for the Escapement: two branches on gripper state. Drafting that now.")',
+    '  — alongside your first tool calls, BEFORE any edit applies. The engineer sees it live',
+    '  and catches a misread early. Skip it for trivial value-sets and agrees.',
     '- YOUR FINAL MESSAGE: at most two short sentences. The receipt of what changed is',
     '  computed from your edits automatically — do NOT enumerate your edits; add only what',
-    '  the diffs cannot say (an answer, a citation, a genuine question).',
+    '  the diffs cannot say: an answer, a genuine question, and WHEN YOU MADE A JUDGMENT CALL,',
+    '  the why in one clause (the precedent or reasoning behind it).',
     '- HONESTY: if you could not do something, say so plainly. Never claim an edit you did',
     '  not make; the diffs are checked.',
     '- NEVER REPLY EMPTY: when a message needs no edits (already done, already correct),',
@@ -127,6 +150,38 @@ async function runAgentTurn({ draft, message, cascadePosition = null, signal = n
   let bounced = false;
   let capReason = null;
   let finalText = '';
+  let readingSpoken = false;
+
+  // TRANSCRIPT VALIDITY (Dan's 400 P0, 2026-08-30): every tool_use in an
+  // assistant message MUST be answered by tool_results in THE ONE next user
+  // message. Assert before every API call; auto-repair (synthetic results)
+  // instead of sending a malformed transcript.
+  const assertTranscriptValid = () => {
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i];
+      if (m.role !== 'assistant' || !Array.isArray(m.content)) continue;
+      const ids = m.content.filter((b) => b.type === 'tool_use').map((b) => b.id);
+      if (!ids.length) continue;
+      const next = messages[i + 1];
+      const answered = new Set(
+        (next && next.role === 'user' && Array.isArray(next.content))
+          ? next.content.filter((b) => b.type === 'tool_result').map((b) => b.tool_use_id)
+          : []
+      );
+      const missing = ids.filter((id) => !answered.has(id));
+      if (!missing.length) continue;
+      console.error('[agent-loop] transcript repair: synthesizing tool_results for', missing.length, 'dangling tool_use block(s)');
+      const synth = missing.map((id) => ({
+        type: 'tool_result', tool_use_id: id, is_error: true,
+        content: 'not executed — the turn moved on before this call ran',
+      }));
+      if (next && next.role === 'user' && Array.isArray(next.content)) {
+        next.content = [...synth, ...next.content];
+      } else {
+        messages.splice(i + 1, 0, { role: 'user', content: synth });
+      }
+    }
+  };
 
   for (;;) {
     if (signal?.aborted) { const e = new Error('aborted'); e.name = 'AbortError'; throw e; }
@@ -137,10 +192,12 @@ async function runAgentTurn({ draft, message, cascadePosition = null, signal = n
       capReason = overCap;
       messages.push({
         role: 'user',
-        content: `CAP REACHED (${overCap}). Apply nothing further. State honestly, in one or two sentences, what you did and did not get to.`,
+        content: `CAP REACHED (${overCap}). Apply nothing further. State honestly, in one or two sentences, `
+          + 'what applied and what did NOT — never claim completion for anything you did not finish.',
       });
     }
-    emit(calls === 0 ? 'thinking…' : 'thinking…');
+    emit('thinking…');
+    assertTranscriptValid();
     const response = await client.messages.create(
       {
         model: MODEL, max_tokens: 3000, system,
@@ -158,6 +215,31 @@ async function runAgentTurn({ draft, message, cascadePosition = null, signal = n
     const toolUses = response.content.filter((b) => b.type === 'tool_use');
     finalText = response.content.filter((b) => b.type === 'text').map((b) => b.text).join(' ').trim();
 
+    // THE READING, SPOKEN FIRST (Dan, 2026-08-30: "I should see the thinking
+    // like I do here") — the model's first prose on a substantive turn is its
+    // one-sentence reading of the request, streamed to the chat BEFORE the
+    // edits land so a misread is visible immediately.
+    if (!readingSpoken && finalText && toolUses.length) {
+      readingSpoken = true;
+      try { onEvent?.({ reading: finalText }); } catch { /* display only */ }
+    }
+
+    // Truncated tool calls (max_tokens mid-block) are never executed and
+    // never re-sent dangling: answer them synthetically and ask for a redo.
+    if (response.stop_reason === 'max_tokens' && toolUses.length) {
+      messages.push({ role: 'assistant', content: response.content });
+      messages.push({
+        role: 'user',
+        content: [
+          ...toolUses.map((tu) => ({
+            type: 'tool_result', tool_use_id: tu.id, is_error: true,
+            content: 'not executed — your message was truncated mid-call; issue the calls again, fewer at a time',
+          })),
+        ],
+      });
+      continue;
+    }
+
     if (response.stop_reason !== 'tool_use' || !toolUses.length || capReason) {
       // The model finished speaking. Checker-over-diffs (one bounce).
       if (!bounced && !capReason) {
@@ -166,7 +248,9 @@ async function runAgentTurn({ draft, message, cascadePosition = null, signal = n
         if (chk) cost += chk.cost;
         if (chk && chk.verdict === 'fix' && chk.violations.length) {
           bounced = true;
-          messages.push({ role: 'assistant', content: response.content });
+          // Push ONLY prose — any stray tool_use block here would orphan
+          // (the exact malformed-transcript 400 Dan hit).
+          messages.push({ role: 'assistant', content: finalText || '(no reply)' });
           messages.push({
             role: 'user',
             content: 'REVIEW FOUND PROBLEMS with this turn — fix them now via the tools, then reply again:\n'
@@ -191,6 +275,8 @@ async function runAgentTurn({ draft, message, cascadePosition = null, signal = n
         ...(out && out.error ? { is_error: true } : {}),
       });
     }
+    // ONE user message answering EVERY tool_use, order-matched (the law the
+    // 400 was violating in the edge paths above).
     messages.push({ role: 'user', content: results });
   }
 
@@ -222,6 +308,8 @@ async function checkTurn({ client, message, state, signal }) {
     '   line\'s interaction/tag never authorizes deleting the line).',
     '3. New waits have their setter side (both-sides rule) when the message implies one.',
     '4. Sequence lines use the SDC vocabulary (Engage/Disengage for grippers, never Open/Close).',
+    '5. Every question asked carries evidence: what a shipped-work search found (cited) or an',
+    '   explicit found-nothing sentence — a question with neither is a violation.',
     'ONLY OBJECTIVE FAILURES are violations: a requested edit missing from the diffs, an',
     'unrequested deletion, a missing counterpart side, wrong vocabulary ON AN EDITED LINE.',
     'An applied explicit directive is CORRECT — never second-guess it, never ask to confirm',
