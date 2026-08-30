@@ -3504,10 +3504,9 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       return sendJson(res, 405, { error: 'Method not allowed' });
     }
 
-    if (pathname === '/api/jarvis/decompose') {
-      if (method === 'POST') return handleJarvisDecompose(req, res);
-      return sendJson(res, 405, { error: 'Method not allowed' });
-    }
+    // (/api/jarvis/decompose is DELETED — Phase 2, one-door law: the
+    // decompose gate runs the embedded SDK engine at /agent-turn/stream
+    // with gate:'decompose'. Dan, 2026-08-30.)
 
     // THE RELOAD BAR's version source (Dan, 2026-08-30 — ported from the SDC
     // Scheduler's new-build watcher): the UI_BUILD currently on disk, read
@@ -3581,6 +3580,9 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
           speaker: String(body.speaker ?? 'Dan').slice(0, 60),
           // Session continuity: one SDK session per draft.
           draftId: body.draftId ? String(body.draftId) : null,
+          // PHASE 2: gate turns (decompose) ride the same engine with the
+          // gate's doctrine block + domain checker.
+          gate: body.gate === 'decompose' ? 'decompose' : null,
           signal: abort.signal,
           // Two event shapes: {reading} = the model's spoken reading of the
           // request (a chat turn, streamed early); a string = activity state.

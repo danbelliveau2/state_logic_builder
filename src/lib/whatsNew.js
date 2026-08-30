@@ -10,12 +10,20 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.31';
+export const UI_BUILD = 'v2.6.32';
 
 export const BUILT_AT = '2026-08-30';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.32',
+    date: '2026-08-30',
+    items: [
+      'FLOW LOOKS LIKE V1 NOW — sequence and recovery diagrams render with the real v1 canvas language: the actual state-node cards (step number, header, action rows), the purple decision pill, real edges with condition labels ("when Part-Gripped") and Yes/No branch labels, counterpart tags riding the edges. Read-only, auto-laid-out, fits the card. Same content rules as before: no wait/home/signal boxes — waits live on the edges, exactly like the v1 canvas',
+      'DESCRIBE-A-STATION SPLIT NOW RUNS ON THE FULL ENGINE — the moment you finish explaining, the same Claude Code engine that handles chat proposes the machine split (with its own reviewer pass and identity lock: approved machine names survive corrections verbatim). One brain end to end; the old one-shot splitter is deleted',
+    ],
+  },
   {
     version: 'v2.6.31',
     date: '2026-08-30',

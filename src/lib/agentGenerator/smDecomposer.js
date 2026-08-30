@@ -629,4 +629,4 @@ async function checkProposal({ kind, payload, description = '', signal = null })
   };
 }
 
-module.exports = { decompose, assignDevices, checkProposal, normalizeStep, stepText, flattenRecoveryItems, normalizeRecoveryItems };
+module.exports = { decompose, assignDevices, checkProposal, normalizeStep, stepText, flattenRecoveryItems, normalizeRecoveryItems, normalizeMachine };

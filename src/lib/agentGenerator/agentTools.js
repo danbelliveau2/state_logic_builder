@@ -30,8 +30,8 @@ const keysMatch = (a, b) => {
   return !!ka && !!kb && (ka === kb || ka.includes(kb) || kb.includes(ka));
 };
 
-// Recovery-as-branching-flow helpers live in smDecomposer (one source).
-const { flattenRecoveryItems, normalizeRecoveryItems } = require('./smDecomposer.js');
+// Recovery-as-branching-flow + machine normalization live in smDecomposer.
+const { flattenRecoveryItems, normalizeRecoveryItems, normalizeMachine } = require('./smDecomposer.js');
 
 // Parse a canonical prose line back into a structured step (legacy strings).
 function parseStepText(t) {
@@ -495,6 +495,18 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: 'propose_split',
+    description: 'THE DECOMPOSE GATE (structured output — never raw JSON in prose): propose or revise the station\'s state-machine split in ONE call. Pass the COMPLETE proposal: every machine with name (natural SDC speech, spaces), oneLiner, ownedDeviceNames (every sheet device owned somewhere), why (the asynchrony reason), sequence (structured steps; decisions allowed), faultRecovery (branching flow). On a REVISION, carry everything the feedback does not touch verbatim — approved machine names are identity-locked and cannot change. Also pass reasoning (1-2 sentences TO the engineer).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        stateMachines: { type: 'array', items: { type: 'object' } },
+        reasoning: { type: 'string' },
+      },
+      required: ['stateMachines'], additionalProperties: false,
+    },
+  },
+  {
     name: 'file_law',
     description: 'TIER 2 — DOCTRINE: the engineer stated a RULE about how Jarvis should think or behave ("sequences must always use real device names", a naming convention, a question format). File it as a standing law, dated + attributed. Laws from Dan activate immediately; anyone else\'s go to a pending queue for Dan\'s approval (say which happened in your reply). Only for durable rules about JARVIS\'s behavior — station facts use file_knowledge; app changes use suggest_app_change.',
     input_schema: {
@@ -663,6 +675,35 @@ function executeTool(state, name, input) {
         pushDiff(state, { op: 'knowledge.file', after: fact, before: null });
         return { filed: r?.recorded?.length ? 'meKnowledge.md' : 'duplicate — already known' };
       } catch (e) { return { error: `filing failed: ${e.message}` }; }
+    }
+    case 'propose_split': {
+      // PHASE 2 (Dan: "Why not? What are we waiting for?"): the decompose
+      // gate is a typed tool call — normalized machines, identity lock
+      // enforced structurally, diffed like every other write.
+      const machines = (Array.isArray(input?.stateMachines) ? input.stateMachines : [])
+        .map(normalizeMachine).filter((m) => m.name);
+      if (!machines.length) return { error: 'propose_split needs stateMachines: [{name, oneLiner, ownedDeviceNames, why, sequence, faultRecovery}]' };
+      const approved = (state.cascadePosition?.approvedMachineNames ?? []).map(normKey).filter(Boolean);
+      const prior = machinesOf(state);
+      if (approved.length && prior.length) {
+        // IDENTITY LOCK: approved machines keep their EXACT names; a revision
+        // may not rename or drop them.
+        for (const name of state.cascadePosition.approvedMachineNames) {
+          const hit = machines.find((m) => normKey(m.name) === normKey(name));
+          if (!hit) {
+            return { error: `IDENTITY LOCK: "${name}" is approved — the revision must keep it (carry it forward verbatim unless the engineer's feedback explicitly restructures the split).` };
+          }
+          hit.name = String(name); // exact prior spelling survives drift
+        }
+      }
+      const before = prior.map((m) => m.name);
+      state.draft.smProposal = { ...(state.draft.smProposal ?? {}), stateMachines: machines, reasoning: String(input?.reasoning ?? '').trim(), at: Date.now() };
+      return pushDiff(state, {
+        op: 'split.propose',
+        before: before.length ? before.join(', ') : null,
+        after: machines.map((m) => m.name).join(', '),
+        machines: machines.length,
+      });
     }
     case 'file_law': {
       // TIER 2 (Dan's boundary design, 2026-08-30): rules about how JARVIS

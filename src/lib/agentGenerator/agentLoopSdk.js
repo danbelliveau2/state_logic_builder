@@ -106,6 +106,7 @@ function buildStationServer(state) {
         question: z.string(), proposedSolution: z.string().optional(), evidence: z.string(),
       }, wrap('ask_engineer')),
       tool('file_knowledge', descOf('file_knowledge'), { fact: z.string(), citedTo: z.string().optional() }, wrap('file_knowledge')),
+      tool('propose_split', descOf('propose_split'), { stateMachines: z.array(loose), reasoning: z.string().optional() }, wrap('propose_split')),
       tool('file_law', descOf('file_law'), { rule: z.string() }, wrap('file_law')),
       tool('suggest_app_change', descOf('suggest_app_change'), { ask: z.string(), reading: z.string() }, wrap('suggest_app_change')),
       tool('note_to_engineer', descOf('note_to_engineer'), { text: z.string() }, wrap('note_to_engineer')),
@@ -131,7 +132,28 @@ function audienceBlock(audience) {
   ].join('\n');
 }
 
-function systemPromptFor(audience) {
+// THE DECOMPOSE GATE's extra contract (Phase 2, Dan 2026-08-30): the same
+// doctrine the one-shot decomposer carried, now spoken to the agent.
+const DECOMPOSE_GATE_BLOCK = [
+  '',
+  'THIS TURN IS A DECOMPOSE GATE: read the explanation (and the current proposal when one',
+  'rides along), search precedents/concepts as needed, then produce or revise the split via',
+  'ONE propose_split call. The doctrine:',
+  '- THE ASYNCHRONY TEST: a purely sequential station is ONE machine; a second machine must',
+  '  be justified by real overlap in time (its "why" says so, to the engineer).',
+  '- Machine names are natural SDC speech with spaces ("Mid Base Escapement"), SPECIFIC to',
+  '  what they handle — never a generic mechanism word alone, never PascalCase.',
+  '- Every sheet device is owned by exactly one machine; sequences use structured steps',
+  '  (device links, canonical shapes, decisions allowed); faultRecovery is a branching flow',
+  '  on the shipped home pattern. Sequence lines: NO parenthetical annotations, ever.',
+  '- CORRECTION ROUNDS: the current proposal rides along COMPLETE — the feedback edits IT;',
+  '  everything untouched carries forward VERBATIM. Approved machine names are identity-',
+  '  locked (the tool enforces it). Dictated feedback resolves against the REAL names.',
+  '- After propose_split, your final message is the reasoning spoken to the engineer plus',
+  '  the guide line (what to look at, what to approve next).',
+].join('\n');
+
+function systemPromptFor(audience, gate = null) {
   const contract = [
     "You are JARVIS, SDC Automation's controls engineer, working an engineer's station",
     'draft as an AGENT: read what you need, edit through the typed tools, verify, then',
@@ -214,7 +236,7 @@ function systemPromptFor(audience) {
     '- HONESTY: never claim an edit you did not make; the diffs are checked.',
   ].join('\n');
   const laws = buildEngineContext(['meKnowledge']);
-  return `${contract}\n\n${laws || ''}`;
+  return `${contract}${gate === 'decompose' ? `\n${DECOMPOSE_GATE_BLOCK}` : ''}\n\n${laws || ''}`;
 }
 
 // ── the checker-over-diffs (our post-turn gate — unchanged discipline) ──────
@@ -293,7 +315,7 @@ async function checkTurn({ message, state, signal }) {
 /** Same contract as the old loop: {draft, message, cascadePosition, audience,
  *  draftId?, signal, onEvent} → {reply, diffs, asks, notes, closedQuestions,
  *  draft, capped, meta}. onEvent gets strings (activity) or {reading}. */
-async function runAgentTurn({ draft, message, cascadePosition = null, audience = 'ME', speaker = 'Dan', draftId = null, signal = null, onEvent = null }) {
+async function runAgentTurn({ draft, message, cascadePosition = null, audience = 'ME', speaker = 'Dan', gate = null, draftId = null, signal = null, onEvent = null }) {
   fs.mkdirSync(WORK_DIR, { recursive: true });
   const state = createTurnState(draft, cascadePosition, { speaker });
   const t0 = Date.now();
@@ -332,7 +354,7 @@ async function runAgentTurn({ draft, message, cascadePosition = null, audience =
     const q = query({
       prompt,
       options: {
-        systemPrompt: systemPromptFor(audience),
+        systemPrompt: systemPromptFor(audience, gate),
         model: MODEL,
         maxTurns: MAX_TURNS,
         maxBudgetUsd: MAX_BUDGET_USD,
@@ -386,17 +408,41 @@ async function runAgentTurn({ draft, message, cascadePosition = null, audience =
     emit('thinking…');
     await runQuery(promptText, priorSession);
 
-    // OUR GATE stays: checker-over-diffs before anything renders; one bounce.
+    // OUR GATE stays: checker before anything renders; one bounce. Decompose
+    // gates use the DOMAIN checker (asynchrony, naming, feedback-applied,
+    // identity lock); everything else the diff checker.
     if (!capped) {
       emit('checking the work…');
-      const chk = await checkTurn({ message, state, signal: abort.signal }).catch(() => null);
-      if (chk) costUSD += chk.cost;
-      if (chk && chk.verdict === 'fix' && chk.violations.length) {
+      let violations = [];
+      if (gate === 'decompose' && state.diffs.some((d) => d.op === 'split.propose')) {
+        try {
+          const { checkProposal } = require('./smDecomposer.js');
+          const chk = await checkProposal({
+            kind: 'decomposition',
+            payload: {
+              stateMachines: state.draft.smProposal?.stateMachines ?? [],
+              reasoning: state.draft.smProposal?.reasoning ?? '',
+              correctionRound: (state.cascadePosition?.approvedMachineNames?.length ?? 0) > 0,
+            },
+            description: String(state.draft?.description ?? message ?? ''),
+            signal: abort.signal,
+          });
+          costUSD += chk.meta?.costUSD ?? 0;
+          if (chk.verdict === 'fix') violations = chk.violations ?? [];
+        } catch { /* checker unavailable — surface the turn as-is */ }
+      } else {
+        const chk = await checkTurn({ message, state, signal: abort.signal }).catch(() => null);
+        if (chk) costUSD += chk.cost;
+        if (chk && chk.verdict === 'fix') violations = chk.violations ?? [];
+      }
+      if (violations.length) {
         bounced = true;
         emit('fixing what the review found…');
         await runQuery(
-          'REVIEW FOUND PROBLEMS with that turn — fix them now via the tools, then give your final message again:\n'
-          + chk.violations.map((v) => `- ${v}`).join('\n'),
+          'REVIEW FOUND PROBLEMS with that turn — fix them now via the tools'
+          + (gate === 'decompose' ? ' (re-issue propose_split with the corrections; approved names stay exact)' : '')
+          + ', then give your final message again:\n'
+          + violations.map((v) => `- ${v}`).join('\n'),
           sessionId ?? priorSession
         );
       }
