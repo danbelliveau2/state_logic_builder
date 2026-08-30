@@ -10,9 +10,13 @@
  *   - the real interactions keep theirs (part-ready signal, part-gripped
  *     wait, gripper-open signal, part-clear wait)
  *
- * Run: node scripts/regressTagFeedback.cjs   (costs one decompose round)
+ * Run: node -r dotenv/config scripts/regressTagFeedback.cjs   (one paid turn)
+ *
+ * Phase 2 (Dan, 2026-08-30): the one-shot decomposer is deleted — this now
+ * runs the same correction through the SDK engine's decompose gate.
  */
-const { decompose } = require('../src/lib/agentGenerator/smDecomposer.js');
+const { runAgentTurn } = require('../src/lib/agentGenerator/agentLoopSdk.js');
+const { normalizeMachine } = require('../src/lib/agentGenerator/smDecomposer.js');
 
 const DAN_TRANSCRIPT = 'for your interactions with the sequence I like number one being in the '
   + "home position I don't think you need to interact with the pick and place and then for like "
@@ -70,12 +74,25 @@ const DESCRIPTION = 'Mid-base load station on the dial machine: a track feeds mi
   + 'the shuttle nest and places it on the dial. The two run concurrently.';
 
 (async () => {
-  const feedback = `(the engineer is reviewing "Mid-Base Escapement interactions") ${DAN_TRANSCRIPT}`;
-  const out = await decompose({
-    description: `${DESCRIPTION}\n\n# CORRECTION ROUND — the engineer's feedback on the proposal\n${feedback}`,
-    currentProposal: PROPOSAL,
-    sheetDevices: PROPOSAL.flatMap((m) => m.ownedDeviceNames.map((n) => ({ name: n }))),
+  const draft = {
+    name: 'MidBaseLoad',
+    description: DESCRIPTION,
+    summary: {
+      devices: PROPOSAL.flatMap((m) => m.ownedDeviceNames.map((n) => ({ name: n.replace(/\s+/g, '') }))),
+      sequence: [], failureHandling: [], interactions: [],
+    },
+    smProposal: { stateMachines: PROPOSAL.map(normalizeMachine) },
+    agreedNeeds: [], chatThread: [],
+  };
+  const r = await runAgentTurn({
+    draft,
+    cascadePosition: {
+      activeStep: { kind: 'interactions', smKey: 'midbaseescapement', label: 'Mid-Base Escapement interactions' },
+      approved: [], approvedMachineNames: ['Mid-Base Escapement', 'Mid-Base Pick and Place'],
+    },
+    message: DAN_TRANSCRIPT,
   });
+  const out = { stateMachines: r.draft.smProposal.stateMachines, meta: r.meta, checked: { verdict: r.meta?.bounced ? 'fix' : 'pass' } };
   const esc = out.stateMachines.find((m) => /escapement/i.test(m.name));
   const seq = esc?.sequence ?? [];
   const steps = esc?.sequenceSteps ?? [];

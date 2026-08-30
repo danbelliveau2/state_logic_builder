@@ -6340,23 +6340,44 @@ export function CreateStationPage({ embedded = false }) {
    *  draft chat): sends the message + draft snapshot; the server agent reads
    *  through tools, applies typed diff-returning edits, gets checked, and the
    *  applied draft comes back. Receipt is composed from the diffs HERE. */
-  async function runAgentChatTurn(msg, { isRetry = false } = {}) {
-    if (applying) return;
-    console.log('[chat] dispatched: agent loop' + (isRetry ? ' (retry)' : ''));
-    const oldMachines = (smProposal?.stateMachines ?? []).map(m => ({
+  async function runAgentChatTurn(msg, { isRetry = false, displayText = null, qList = null } = {}) {
+    if (applying) return false;
+    console.log('[chat] dispatched: agent loop' + (isRetry ? ' (retry)' : '') + (linkedSmId ? ' (linked sheet)' : ''));
+    // LINKED SHEETS RIDE THE SAME LOOP (Phase 2, Dan 2026-08-30): a built
+    // station's sheet corrections run the SDK engine too. The sheet's split
+    // (machineSpec.smSplit) — or, unsplit, the station sequence/recovery —
+    // rides as a pseudo-proposal so the same typed ops edit it; results map
+    // back below. The one-shot summarize-corrections dispatch is deleted.
+    const linkedSplit = linkedSmId ? (linkedSm?.machineSpec?.smSplit ?? null) : null;
+    const proposalForTurn = !linkedSmId ? smProposal : {
+      stateMachines: (Array.isArray(linkedSplit) && linkedSplit.length
+        ? linkedSplit.map(e => ({
+            name: e?.name ?? '', oneLiner: e?.oneLiner ?? '', why: e?.why ?? '',
+            ownedDeviceNames: [...(e?.deviceNames ?? [])],
+            sequence: [...(e?.sequence ?? [])], faultRecovery: [...(e?.faultRecovery ?? [])],
+          }))
+        : [{
+            name: (name ?? '').trim() || 'Station', oneLiner: '', why: '',
+            ownedDeviceNames: (summary?.devices ?? []).map(d => d?.name).filter(Boolean),
+            sequence: [...(summary?.sequence ?? [])], faultRecovery: [...(summary?.failureHandling ?? [])],
+          }]),
+    };
+    const oldMachines = (proposalForTurn?.stateMachines ?? []).map(m => ({
       name: m.name, sequence: [...(m.sequence ?? [])], faultRecovery: [...(m.faultRecovery ?? [])],
     }));
     // OPTIMISTIC, ALWAYS (Dan, 2026-08-30: box-refill "looks like an unsent
     // draft"): his message lives in the chat from the moment he sends; a
     // retry re-runs THAT message without duplicating it.
-    if (!isRetry) setChatThread(t => [...t, { role: 'me', text: msg, at: Date.now() }]);
+    if (!isRetry) setChatThread(t => [...t, { role: 'me', text: displayText ?? msg, ...(qList?.length ? { questions: qList } : {}), at: Date.now() }]);
     setChanges('');
     setApplying(true);
     setAgentState('thinking…');
     try {
-      const approvedMachineNames = cascade.steps.find(s => s.kind === 'smSplit')?.status === 'approved'
-        ? (smProposal?.stateMachines ?? []).map(m => m.name)
-        : [];
+      const approvedMachineNames = linkedSmId
+        ? (smApproval?.approved ? (proposalForTurn?.stateMachines ?? []).map(m => m.name) : [])
+        : (cascade.steps.find(s => s.kind === 'smSplit')?.status === 'approved'
+          ? (smProposal?.stateMachines ?? []).map(m => m.name)
+          : []);
       const d = await agentTurnRequest({
         message: msg,
         audience, // ME (default) | CE — the loop's voice contract
@@ -6398,13 +6419,44 @@ export function CreateStationPage({ embedded = false }) {
       // typed ops; the client stays the storage authority.
       if (d.draft) {
         if (d.draft.summary) setSummary(withSheetPrefill(d.draft.summary));
-        if (d.draft.smProposal?.stateMachines) {
+        if (!linkedSmId && d.draft.smProposal?.stateMachines) {
           setSmProposal(p => ({ ...(p ?? {}), stateMachines: d.draft.smProposal.stateMachines, at: Date.now() }));
         }
         if (d.draft.jarvisCoverage) setJarvisCoverage(normCoverage(d.draft.jarvisCoverage));
         if (Array.isArray(d.draft.agreedNeeds)) setAgreedNeeds(new Set(d.draft.agreedNeeds));
         if (d.draft.deviceAssignments) setDeviceAssignments(d.draft.deviceAssignments);
         setDirty(true);
+      }
+      // LINKED SHEET MAP-BACK (Phase 2): the pseudo-proposal's edits land in
+      // the built station's real home — machineSpec.smSplit when the sheet is
+      // split, the station sequence/recovery otherwise. Manual store edits
+      // stay the ME's; this writes only what the turn's diffs changed.
+      if (linkedSmId && d.draft?.smProposal?.stateMachines?.length) {
+        const ms = d.draft.smProposal.stateMachines;
+        const smNow = useDiagramStore.getState().project?.stateMachines?.find(x => x.id === linkedSmId);
+        const spec = smNow?.machineSpec;
+        if (smNow && Array.isArray(spec?.smSplit) && spec.smSplit.length) {
+          const byName = new Map(ms.map(m => [String(m.name ?? '').trim().toLowerCase(), m]));
+          const nextSplit = spec.smSplit.map(e => {
+            const m = byName.get(String(e?.name ?? '').trim().toLowerCase());
+            return m ? {
+              ...e,
+              name: m.name,
+              ...(Array.isArray(m.ownedDeviceNames) ? { deviceNames: m.ownedDeviceNames } : {}),
+              sequence: [...(m.sequence ?? [])],
+              ...(m.faultRecovery?.length ? { faultRecovery: [...m.faultRecovery] } : {}),
+            } : e;
+          });
+          store.updateStateMachine(linkedSmId, { machineSpec: { ...spec, smSplit: nextSplit } });
+        } else if (ms.length === 1) {
+          const m = ms[0];
+          setSummary(s => withSheetPrefill({
+            ...(d.draft.summary ?? s),
+            sequence: [...(m.sequence ?? [])],
+            failureHandling: [...(m.faultRecovery ?? [])],
+          }));
+        }
+        markSheetAhead();
       }
       // Live marks — the loop contract's RED, on every artifact the turn
       // touched (sequence, recovery, devices), until "✓ got it".
@@ -6421,6 +6473,16 @@ export function CreateStationPage({ embedded = false }) {
       // receipt (from the diffs, unfakeable) attaches as the folded change
       // list under it — ground truth adjacent, never recited.
       const receipt = receiptFromAgentDiffs(d.diffs ?? []);
+      // The change log stays the built station's version-control view: one
+      // line per applied turn (was the summarize path's job pre-Phase 2).
+      if (linkedSmId && receipt) {
+        appendChangeLog(linkedSmId, {
+          what: receipt,
+          class: (d.diffs ?? []).some(x => x.op === 'split.propose') ? 'replan'
+            : (d.diffs ?? []).some(x => /^(sequence|recovery)\./.test(x.op)) ? 'section' : 'value',
+          costUSD: Number(d.meta?.costUSD) || null,
+        });
+      }
       const spoken = String(d.reply ?? '').trim()
         || (receipt ? 'Done — the changes are on the cards below.' : '');
       setChatThread(t => [...t, {
@@ -6457,10 +6519,12 @@ export function CreateStationPage({ embedded = false }) {
         text: `That didn't go through — ${e.message}.`,
         error: true, retryText: msg, at: Date.now(),
       }]);
+      return false;
     } finally {
       setApplying(false);
       setAgentState(null);
     }
+    return true;
   }
 
   async function handleApplyChanges() {
@@ -6652,85 +6716,25 @@ export function CreateStationPage({ embedded = false }) {
    *  runs summarize with the correction text, records Q&A, threads the
    *  turn, and computes the receipt. `rawText` is what the ME said (shown in
    *  the thread); `corrections` is the framed pipeline text. */
+  /** ONE DOOR (Phase 2, Dan 2026-08-30): every corrections round — fresh
+   *  draft or built station — runs the SDK agent loop. This wrapper keeps the
+   *  historical signature for its callers (question answers, split counters,
+   *  cascade talkback) and adds the Q&A-round bookkeeping the summarize path
+   *  used to do. The one-shot summarize-corrections dispatch is DELETED;
+   *  callSummarize survives only for initial extraction and Resubmit-edits
+   *  (mechanical restatements, not conversations). */
   async function sendCorrections(corrections, rawText, qList, onApplied) {
     if (applying) return false;
     if (overSummarizeBudget) { setError(budgetMessage); return false; }
     setError(null);
-    setApplying(true);
-    // Record this round's Q&A BEFORE the call so the prompt's history and
-    // round budget include it (state updates land for the next render;
-    // the payload uses the local values below).
-    const answered = { questions: qList, answer: corrections };
     setApplyReceipt(null); // the incoming apply replaces the last receipt
-    // The ME's message lands in the thread immediately (chat semantics).
-    setChatThread(t => [...t, { role: 'me', text: rawText, questions: qList, at: Date.now() }]);
-    try {
-      // SHEET-ONLY, always: Apply changes runs the summarize pipeline and
-      // nothing else — it NEVER draws/rebuilds the diagram or code. That is
-      // Rebuild's job, once, when the sheet is right.
-      const applied = await callSummarize({
-        priorSummary: summaryToText(summary),
-        corrections,
-      });
-      setQaHistory(h => [...h, answered]);
+    const ok = await runAgentChatTurn(corrections, { displayText: rawText, qList: qList ?? [] });
+    if (ok) {
+      setQaHistory(h => [...h, { questions: qList, answer: corrections }]);
       setQaRounds(n => n + 1);
       onApplied?.();
-      const items = receiptAfterApply(applied);
-      // Jarvis's reply: his own words when the server returned any
-      // (chatReply — clarify/answer modes), plus the COMPUTED diff bullets
-      // (a lying reply is impossible by construction — the bullets are
-      // measured against the sheet that actually landed).
-      const reply = String(applied.data?.chatReply ?? '').trim();
-      // Checker/reviewer notes are layer-INTERNAL — the user sees only the
-      // (already corrected) result, never the machinery (Dan, 2026-08-28).
-      setChatThread(t => [...t, {
-        role: 'jarvis',
-        text: reply || (items.length ? 'Done — here is what actually changed:' : 'Nothing changed — the sheet already matched that.'),
-        items,
-        at: Date.now(),
-      }]);
-      // The change log is Dan's version control view: one line per applied
-      // change. The server-side classifier's routing names the class when it
-      // ran (server.js routeCorrectionRound_); the diff shape is the fallback.
-      const routing = applied.data?.routing ?? null;
-      if (linkedSmId && items.length) {
-        appendChangeLog(linkedSmId, {
-          what: items.length === 1 ? items[0].text : `${items[0].text} (+${items.length - 1} more)`,
-          class: routing?.class === 'structural-sm' || routing?.class === 'decomposition' ? 'replan'
-            : routing?.class === 'value' ? 'value'
-            : routing?.class === 'section' ? 'section'
-            : items.every(c => /updated$/.test(String(c.text))) ? 'value' : 'section',
-          replanned: routing?.class === 'structural-sm' ? (routing.machine ?? null)
-            : routing?.class === 'decomposition' ? 'all machines' : null,
-          costUSD: Number(applied.data?.meta?.costUSD) || null,
-        });
-      }
-      // STRUCTURAL routing (the classifier says SM boundaries / a machine's
-      // plan changed): the sheet is updated, but the PROPOSAL lives in the
-      // compile — open the compile modal PRE-FILLED at its explicit-start
-      // step so the round actually ends in a NEW displayed proposal (Dan's
-      // 4-SM counter produced agreeing prose and an unchanged split — never
-      // again a round that agrees and changes nothing).
-      if (linkedSmId && routing?.recompile) {
-        setChatThread(t => [...t, {
-          role: 'jarvis',
-          text: routing.recompile.scope === 'machine'
-            ? `That changes the ${routing.machine ?? 'affected'} machine's plan — opening Re-compile (explicit start) so the proposal updates.`
-            : 'That changes the state-machine boundaries — opening Re-compile (explicit start) so the new decomposition is actually proposed.',
-          at: Date.now(),
-        }]);
-        useV2Shell.getState().openCompile(linkedSmId, rawText);
-      }
-      return true;
-    } catch (e) {
-      setError(e.message);
-      // Failure NEVER eats the ME's words: the input keeps them (callers only
-      // clear on success) and the thread carries the error line.
-      setChatThread(t => [...t, { role: 'jarvis', text: `That didn't go through — ${e.message}. Your text is still in the box — hit Send to retry.`, error: true, at: Date.now() }]);
-      return false;
-    } finally {
-      setApplying(false);
     }
+    return ok;
   }
 
   /** Sticky-bar Resubmit: re-run summarize with the in-place edits sent as

@@ -2114,42 +2114,10 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     return result;
   }
 
-  /** POST /api/jarvis/decompose — STEP 1 of the create cascade (Dan,
-   *  2026-08-26): explanation (+ refs + the ME's expectation) -> ONLY the
-   *  state-machine breakup proposal. No diagram build, no compile — those
-   *  run at the Generate step after every approval. Cheap tier, ~30s. */
-  async function handleJarvisDecompose(req, res) {
-    let decomposer;
-    try {
-      decomposer = require('./src/lib/agentGenerator/smDecomposer.js');
-    } catch (e) {
-      return sendJson(res, 503, { error: 'Decomposer not available: ' + e.message });
-    }
-    try {
-      const body = JSON.parse(await readBody(req) || '{}');
-      if (!body.description || !String(body.description).trim()) {
-        return sendJson(res, 400, { error: 'description is required' });
-      }
-      const releaseAi = beginAiWork_('decompose', null, body.smName || null, { register: false });
-      let result;
-      try {
-        result = await decomposer.decompose({
-          description: String(body.description),
-          images: Array.isArray(body.images) ? body.images : [],
-          expectedStateMachines: typeof body.expectedStateMachines === 'string' ? body.expectedStateMachines : '',
-          otherSms: Array.isArray(body.otherSms) ? body.otherSms : [],
-          // Correction rounds carry the proposal being revised (one engine)
-          // and the sheet's real device names (dictation resolves on them).
-          currentProposal: Array.isArray(body.currentProposal) ? body.currentProposal : null,
-          sheetDevices: Array.isArray(body.sheetDevices) ? body.sheetDevices : [],
-        });
-      } finally { releaseAi(); }
-      sendJson(res, 200, { ok: true, ...result });
-    } catch (e) {
-      if (e && e.code === 'AI_NOT_CONFIGURED') return sendJson(res, 503, { error: e.message });
-      sendJson(res, 500, { error: e.message });
-    }
-  }
+  // (handleJarvisDecompose DELETED — Phase 2, Dan 2026-08-30: the decompose
+  //  gate runs through the SDK engine (/api/jarvis/agent-turn/stream with
+  //  gate:'decompose' → propose_split). One door; old one-shots die same
+  //  release.)
 
   /** POST /api/jarvis/summarize — body: { description, images, checklist,
    *  sm, otherSms, priorSummary, corrections }. Cheap "Done explaining"

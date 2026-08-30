@@ -75,9 +75,13 @@ const CASCADE = {
 const results = [];
 const check = (name, ok, extra = '') => results.push({ name, ok, extra });
 
+// FIXTURES=H,I node -r dotenv/config scripts/regressAgentLoop.cjs → run a subset
+const ONLY = (process.env.FIXTURES ?? '').split(',').map((s) => s.trim().toUpperCase()).filter(Boolean);
+const want = (id) => ONLY.length === 0 || ONLY.includes(id);
+
 (async () => {
   // ── A. the tag-misapply transcript ────────────────────────────────────────
-  {
+  if (want('A')) {
     const r = await runAgentTurn({
       draft: freshDraft(), cascadePosition: CASCADE,
       message: "for your interactions with the sequence I like number one being in the home position I don't think you need to interact with the pick and place and then for like number seven your signaling part ready so number 6 or you also need to interact they can please I don't think so all the other ones look good",
@@ -92,7 +96,7 @@ const check = (name, ok, extra = '') => results.push({ name, ok, extra });
     console.log(`A done — $${r.meta.costUSD}, ${r.meta.toolCalls} calls, ${r.meta.ms}ms${r.meta.bounced ? ', bounced' : ''}`);
   }
   // ── B. atomic device removal ──────────────────────────────────────────────
-  {
+  if (want('B')) {
     const r = await runAgentTurn({
       draft: freshDraft(),
       cascadePosition: { ...CASCADE, activeStep: { kind: 'devices', smKey: 'midbaseescapement', label: 'Mid-Base Escapement devices' } },
@@ -110,7 +114,7 @@ const check = (name, ok, extra = '') => results.push({ name, ok, extra });
     }
   }
   // ── C. answer a question from shipped work, with citation ────────────────
-  {
+  if (want('C')) {
     const r = await runAgentTurn({
       draft: freshDraft(),
       cascadePosition: { ...CASCADE, activeStep: { kind: 'devices', smKey: 'midbaseescapement', label: 'Mid-Base Escapement devices' } },
@@ -130,7 +134,7 @@ const check = (name, ok, extra = '') => results.push({ name, ok, extra });
 
   // ── D. parallel/batched edits — transcript validity under multi-tool turns
   //    (the malformed-transcript 400 Dan hit, 2026-08-30) ────────────────────
-  {
+  if (want('D')) {
     const r = await runAgentTurn({
       draft: freshDraft(), cascadePosition: CASCADE,
       message: 'three things at once: clear the tag on line 1, clear the tag on line 6, and rename the Shuttle Gripper to Nest Gripper',
@@ -143,7 +147,7 @@ const check = (name, ok, extra = '') => results.push({ name, ok, extra });
     console.log(`D done — $${r.meta.costUSD}, ${r.meta.toolCalls} calls, ${r.meta.ms}ms${r.meta.bounced ? ', bounced' : ''}`);
   }
   // ── E. Dan's recovery sentence: recovery drafts, sequence untouched ───────
-  {
+  if (want('E')) {
     const draft = freshDraft();
     const seqBefore = JSON.stringify(draft.smProposal.stateMachines[0].sequence);
     const r = await runAgentTurn({
@@ -164,7 +168,7 @@ const check = (name, ok, extra = '') => results.push({ name, ok, extra });
 
   // ── F. Dan's two-part answer (2026-08-30): EVERY open question walks the
   //    WHOLE message; the reply is the speaking layer (no mechanics). ───────
-  {
+  if (want('F')) {
     const draft = freshDraft();
     draft.jarvisCoverage = {
       failures: {
@@ -192,7 +196,7 @@ const check = (name, ok, extra = '') => results.push({ name, ok, extra });
   // ── G. multi-intent message (Dan's dropped Escapement recovery,
   //    2026-08-30): recovery description + open questions in ONE message —
   //    EVERY intent lands; nothing silently dropped. ─────────────────────────
-  {
+  if (want('G')) {
     const draft = freshDraft();
     draft.jarvisCoverage = {
       failures: { needs: [{ question: 'What happens if no part feeds into the nest?', proposedSolution: 'Sit and wait on part-present.' }] },
@@ -209,6 +213,93 @@ const check = (name, ok, extra = '') => results.push({ name, ok, extra });
     check('G: the question in the SAME message also closed', (r.draft.agreedNeeds ?? []).some((k) => /no part feeds/i.test(k)));
     check('G: sequence untouched', !r.diffs.some((d) => /^sequence\.(insert|remove|reword)$/.test(d.op)));
     console.log(`G done — $${r.meta.costUSD}, ${r.meta.toolCalls} calls, ${r.meta.ms}ms${r.meta.bounced ? ', bounced' : ''}`);
+  }
+
+  // ── H. THE DECOMPOSE GATE (Phase 2, Dan 2026-08-30): his MidBaseLoad
+  //    explanation VERBATIM → the gate proposes a 2-machine split via
+  //    propose_split, domain-checked. ─────────────────────────────────────────
+  const MIDBASE_EXPLANATION = "Okay, so this station loads a plastic component called a mid-base. Mid-base is fed through a vibratory feeder bowl, a Belco feeder. It's fed to the end of the track. We have an escapement, pneumatic escapement, and then ultimately it's a pick-and-place that places it onto a dial. So for the pick-and-place, as you can see from the picture, it's a servo X-axis and then a pneumatic Z, and then there's a gripper assembly on the end. The pneumatic Z is just an MXS slide, standard SDC slide. It's a pretty long one. It's 150 millimeter stroke, so let's say it's going to take— there's a retract sensor only, so when we do extend, we plan on it taking a second. The gripper on the end has no sensors. This timer is 250 milliseconds. And then obviously the servo X works, you know, just like any other servo that we've used. In this case, you know, we would want to use all our standard servo moves for the X-axis of a pick-and-place. As far as the escapement, it's a little bit of a complicated escapement. So there's two kind of like eightment stops on the end of the track, and then there's a gripper and a shuttle down below. So basically you have this another MXS slide on the bottom, and when it's extended— well, I guess we'll say when it's retracted, although it's technically the extended state of the cylinder, you can see it lines up with the track and both the escapement fingers from the track are up and out of the way. Part feeds through into the dead nest that is on our shuttle, escapement shuttle down below, and once it feeds in, there's a sensor that reads it, and then the gripper closes, and then once the gripper closes, escapement finger number one would extend, and then at that point, you would extend your bottom shuttle to get the part away from the track, and your escapement finger one is holding back the parts in the inline, and then you would move away. You'd set a command, say, Hey, now I'm ready for pick. You know, the pick-and-place would come down, pick that part up. The gripper would— the sequence there would be the gripper would grab the part, pick-and-place gripper would grab the part, then the shuttle gripper would open, pull it up, and once you're pulled up out of the way, then the shuttle can go back and get the next one. And then once you're back in position with the shuttle escapement shuttle, then you would retract the track escapement fingers so that the next part could feed out. Once it's fed out, sensor sees it, grab it, escapement fingers come back down. You pull it back out again, and off you go. For the pick-and-place too, you are loading into the dial. So once you grab the part, you retract up, wait for the dial to be ready, and then you zip over, come down, and drop the part off. My thinking here is you have two state machines, one for the pick-and-place and one for the escapement. But I'd like to hear your ideas or thoughts, and once you look at this, what you think is the best approach here.";
+  if (want('H')) {
+    const draft = { name: 'MidBaseLoad', description: MIDBASE_EXPLANATION, summary: { devices: [], sequence: [], failureHandling: [], interactions: [] }, agreedNeeds: [], chatThread: [] };
+    const r = await runAgentTurn({
+      draft, gate: 'decompose',
+      cascadePosition: { approvedMachineNames: [] },
+      message: 'Propose the machine split for this station from my explanation.',
+    });
+    const ms = r.draft.smProposal?.stateMachines ?? [];
+    check('H: propose_split used', r.diffs.some((d) => d.op === 'split.propose'), r.diffs.map((d) => d.op).join(','));
+    check('H: 2 machines', ms.length === 2, ms.map((m) => m.name).join(' | '));
+    check('H: pick-and-place + escapement identified',
+      ms.some((m) => /pick.?(and|&|n).?place|pnp/i.test(m.name)) && ms.some((m) => /escapement/i.test(m.name)),
+      ms.map((m) => m.name).join(' | '));
+    check('H: both machines carry sequences', ms.every((m) => (m.sequence?.length ?? 0) >= 5),
+      ms.map((m) => `${m.name}:${m.sequence?.length ?? 0}`).join(' | '));
+    check('H: handshakes both sides (gripped/clear signals paired)',
+      ms.every((m) => (m.sequenceSteps ?? []).some((s) => String(s.counterpart ?? '').length > 0)),
+      'counterpart tags per machine');
+    console.log(`H done — $${r.meta.costUSD}, ${r.meta.toolCalls} calls, ${r.meta.ms}ms${r.meta.bounced ? ', bounced' : ''}`);
+  }
+  // ── I. IDENTITY LOCK on correction rounds: approved machine names survive
+  //    a split correction VERBATIM (exact spelling). ─────────────────────────
+  if (want('I')) {
+    const draft = freshDraft();
+    draft.description = MIDBASE_EXPLANATION;
+    const r = await runAgentTurn({
+      draft, gate: 'decompose',
+      cascadePosition: { approvedMachineNames: ['Mid-Base Escapement', 'Mid-Base Pick and Place'] },
+      message: 'On the split: the shuttle gripper interactions feel thin — re-propose with the pick handshake spelled out (part ready, part gripped, part clear) on both machines. Keep it two machines.',
+    });
+    const ms = r.draft.smProposal?.stateMachines ?? [];
+    const names = ms.map((m) => m.name);
+    check('I: still 2 machines', ms.length === 2, names.join(' | '));
+    check('I: approved names survive EXACT', names.includes('Mid-Base Escapement') && names.includes('Mid-Base Pick and Place'), names.join(' | '));
+    check('I: correction landed (handshake spelled out on both)',
+      ms.every((m) => (m.sequence ?? []).filter((l) => /grip|ready|clear/i.test(l)).length >= 2),
+      ms.map((m) => `${m.name}:${(m.sequence ?? []).filter((l) => /grip|ready|clear/i.test(l)).length}`).join(' | '));
+    console.log(`I done — $${r.meta.costUSD}, ${r.meta.toolCalls} calls, ${r.meta.ms}ms${r.meta.bounced ? ', bounced' : ''}`);
+  }
+
+  // ── J. LINKED-SHEET CORRECTION (Phase 2): a built station's sheet rides as
+  //    a single-machine pseudo-proposal (name = station, sequence/recovery
+  //    from the sheet). Corrections must edit THAT shape through the same
+  //    typed ops — no machine invention, devices intact. ─────────────────────
+  if (want('J')) {
+    const draft = {
+      name: 'MidBaseLoad',
+      description: 'Built station: mid-base load. The sheet is the living spec.',
+      summary: {
+        devices: [
+          { name: 'EscapementFinger1' }, { name: 'ShuttleGripper' },
+          { name: 'NestPartPresent', type: 'DigitalSensor' },
+        ],
+        sequence: [], failureHandling: [], interactions: [],
+      },
+      smProposal: {
+        stateMachines: [{
+          name: 'MidBaseLoad', oneLiner: '', why: '',
+          ownedDeviceNames: ['Escapement Finger 1', 'Shuttle Gripper', 'Nest Part Present'],
+          sequence: ESC_STEPS.map(stepText), sequenceSteps: JSON.parse(JSON.stringify(ESC_STEPS)),
+          faultRecovery: [],
+        }],
+      },
+      agreedNeeds: [], deviceAssignments: {}, chatThread: [],
+    };
+    const r = await runAgentTurn({
+      draft,
+      cascadePosition: { approvedMachineNames: ['MidBaseLoad'] },
+      message: 'On the built sheet: the shuttle gripper should engage only AFTER escapement finger 1 extends to stop the next part — swap those two steps. Everything else stays.',
+    });
+    const m = r.draft.smProposal.stateMachines[0];
+    const idxEngage = (m.sequence ?? []).findIndex((l) => /engage.*gripper/i.test(l));
+    // (no detail-clause law: pneumatic lines may be just "Extend Escapement Finger 1")
+    const idxFinger = (m.sequence ?? []).findIndex((l) => /extend.*finger 1/i.test(l));
+    check('J: still one machine, name intact', r.draft.smProposal.stateMachines.length === 1 && m.name === 'MidBaseLoad',
+      r.draft.smProposal.stateMachines.map((x) => x.name).join(' | '));
+    check('J: the swap landed (finger extend before gripper engage)', idxFinger >= 0 && idxEngage > idxFinger,
+      `finger@${idxFinger} engage@${idxEngage}`);
+    check('J: line count unchanged', (m.sequence ?? []).length === 13, `got ${(m.sequence ?? []).length}`);
+    check('J: devices untouched', r.draft.summary.devices.length === 3 && !r.diffs.some((d) => /^device\.(remove|rename)/.test(d.op)));
+    console.log(`J done — $${r.meta.costUSD}, ${r.meta.toolCalls} calls, ${r.meta.ms}ms${r.meta.bounced ? ', bounced' : ''}`);
   }
 
   let fail = 0;

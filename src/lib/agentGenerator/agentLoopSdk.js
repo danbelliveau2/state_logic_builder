@@ -138,7 +138,10 @@ const DECOMPOSE_GATE_BLOCK = [
   '',
   'THIS TURN IS A DECOMPOSE GATE: read the explanation (and the current proposal when one',
   'rides along), search precedents/concepts as needed, then produce or revise the split via',
-  'ONE propose_split call. The doctrine:',
+  'ONE propose_split call. propose_split is MANDATORY this turn — even when the engineer asks',
+  'for your ideas or open questions remain: THE PROPOSAL IS your answer, the concrete thing',
+  'he reviews. File genuine blockers with ask_engineer IN ADDITION, never instead. A decompose',
+  'turn that ends without propose_split is a failed turn. The doctrine:',
   '- THE ASYNCHRONY TEST: a purely sequential station is ONE machine; a second machine must',
   '  be justified by real overlap in time (its "why" says so, to the engineer).',
   '- Machine names are natural SDC speech with spaces ("Mid Base Escapement"), SPECIFIC to',
@@ -414,7 +417,13 @@ async function runAgentTurn({ draft, message, cascadePosition = null, audience =
     if (!capped) {
       emit('checking the work…');
       let violations = [];
-      if (gate === 'decompose' && state.diffs.some((d) => d.op === 'split.propose')) {
+      if (gate === 'decompose' && !state.diffs.some((d) => d.op === 'split.propose')) {
+        // OBJECTIVE FAILURE (fixture H, 2026-08-30): a decompose turn that
+        // never proposed. No judgment call — bounce straight to the tool.
+        violations = ['This is a DECOMPOSE GATE and no propose_split call was made. Produce the '
+          + 'full split proposal NOW via ONE propose_split call — the proposal is the deliverable; '
+          + 'keep any questions you filed, but the turn cannot end without a proposal.'];
+      } else if (gate === 'decompose' && state.diffs.some((d) => d.op === 'split.propose')) {
         try {
           const { checkProposal } = require('./smDecomposer.js');
           const chk = await checkProposal({
