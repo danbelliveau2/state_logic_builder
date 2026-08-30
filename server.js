@@ -613,6 +613,47 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     } catch (e) {
       console.warn('[generate] auto-save failed:', e.message);
     }
+    // REVIEWER COVER NOTE (Dan at Generate, 2026-08-30): every build lands
+    // with the JARVIS Deliveries cover-note pattern (v7/v8) next to the file —
+    // what the station is, what standards were applied, what was verified,
+    // red pen invited. Plain text sidecar; a reviewer reads it first.
+    if (savedPath) {
+      try {
+        const m = result.meta ?? {};
+        const rv = result.internalReview;
+        const states = (result.ir?.states ?? []).filter(s => Number.isInteger(s.stateNumber));
+        const note = [
+          `${path.basename(savedPath)} — Cover Note`,
+          `From JARVIS (v${m.jarvisVersion ?? '?'}), ${new Date().toISOString().slice(0, 10)}. For review before anything ships.`,
+          '',
+          '# What this station is',
+          `${m.smName ?? result.ir?.smName ?? 'Station'} — station ${m.stationNumber ?? '?'} of ${projectJson.name ?? 'the project'};`
+          + ` ${states.length} states on the SDC step grid${m.mode === 'translation' ? ' compiled from the engineer-approved sequence (translation mode)' : ''}.`,
+          '',
+          '# What standards were applied',
+          `- Template: ${m.template ?? '(selected at build)'}${m.templateReason ? ` — ${m.templateReason}` : ''}`,
+          ...(m.study?.exemplar ? [`- Exemplar studied before writing: ${m.study.exemplar.name} (${m.study.exemplar.kind})`] : []),
+          `- Standing laws and concept lessons rode the write (engine: ${m.engine ?? m.model ?? 'JARVIS'})`,
+          ...(Array.isArray(result.structuralChanges) && result.structuralChanges.length
+            ? ['- DECLARED deviations from the approved sequence (each needs your approve):',
+              ...result.structuralChanges.map(c => `    • ${c.text}`)] : []),
+          '',
+          '# What was verified',
+          `- Byte-level L5X validation incl. full Studio-import simulation: ${result.validation?.ok ? 'PASS' : `FAIL (${(result.validation?.errors ?? []).length} error(s))`}`,
+          `- Cross-check against the approved ${m.mode === 'translation' ? 'compiled sequence' : 'diagram'}: ${result.validation?.ok ? 'PASS' : 'see errors'}`,
+          `- Internal review (adversarial, against the template): ${rv ? (rv.verdict ?? 'did not run') : 'did not run'}`
+          + (rv?.findings?.length ? ` — ${rv.findings.length} finding(s) listed below` : ''),
+          ...(rv?.findings?.length ? rv.findings.slice(0, 10).map(f => `    • ${typeof f === 'string' ? f : (f.text ?? f.finding ?? JSON.stringify(f)).slice(0, 200)}`) : []),
+          ...(result.writingNotes?.length ? ['', '# Notes from the write', ...result.writingNotes.map(n => `- ${n.text}`)] : []),
+          '',
+          '# Red pen invited',
+          `Mark it up — every correction trains in permanently. Build: ${(m.attempts ?? []).length} attempt(s), $${m.costEstimate?.totalUSD ?? '?'}; first-pass ship: ${result.firstPassShip === null ? 'review pending' : result.firstPassShip}.`,
+        ].join('\n');
+        fs.writeFileSync(savedPath.replace(/\.L5X$/i, '__CoverNote.txt'), note, 'utf8');
+      } catch (e) {
+        console.warn('[generate] cover-note save failed:', e.message);
+      }
+    }
     if (savedPath && result.ir && result.ir.irVersion) {
       try {
         savedIrPath = savedPath.replace(/\.L5X$/i, '.ir.json');

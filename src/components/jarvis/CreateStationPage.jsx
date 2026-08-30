@@ -3858,7 +3858,7 @@ function CascadeGuide({ steps, hasExplanation, allApproved, onJump }) {
           testId: `cascade-guide-${s.key}`,
         }))}
       {row('generate', allApproved ? '●' : '○', allApproved ? tone.active : tone.pending,
-        'Generate — diagram & code', allApproved ? 'everything agreed — go' : 'unlocks when every step is agreed',
+        'Build code', allApproved ? 'everything agreed — go' : 'unlocks when every step is agreed',
         { bold: allApproved })}
     </div>
   );
@@ -6878,6 +6878,23 @@ export function CreateStationPage({ embedded = false }) {
     });
   }
 
+  // PRE-BUILD SIGNAL CHECK (P0, 2026-08-30 — SUPREME LAW: never knowingly
+  // emit hanging code without a blocking question). The can-hang-forever
+  // class (unmatched cross-machine waits, deadlocks) BLOCKS the build by
+  // default; "build anyway" is the explicit secondary. Advisory classes
+  // (dead signal, fault-window) stay carry-as-is.
+  const pregenFindings = useMemo(() => {
+    if ((smProposal?.stateMachines?.length ?? 0) < 2) return { hang: [], advisory: [] };
+    try {
+      const all = checkHandshakes(smProposal.stateMachines)
+        .filter(f => ![...agreedNeeds].some(k => String(k).includes(f.plain.slice(0, 60))));
+      return {
+        hang: all.filter(f => f.kind === 'unmatched-wait' || f.kind === 'deadlock').slice(0, 4),
+        advisory: all.filter(f => f.kind !== 'unmatched-wait' && f.kind !== 'deadlock').slice(0, 4),
+      };
+    } catch { return { hang: [], advisory: [] }; }
+  }, [smProposal, agreedNeeds]);
+
   /** Approve the active step — it LOCKS into the outputs (✓-stamped,
    *  changelogged) and the cascade advances. SM breakup rides the existing
    *  approveSmSplit path (one approval artifact, never two). */
@@ -7547,6 +7564,56 @@ export function CreateStationPage({ embedded = false }) {
         setChatThread(th => [...th, {
           role: 'jarvis',
           text: 'Your Escapement recovery from earlier is on its FAULT RECOVERY panel now — gripped with a part: finish forward to the load position and hold ready; no part or not gripped: gripper open, shuttle back to the feeder bowl, finger down — which is also home. The starved-feed handling stays. (That message got dropped when its resend went to the two questions — fixed on my side.)',
+          at: Date.now(),
+        }]);
+      }
+    }
+    // OUTGOING-SIGNAL RESTORE (P0, 2026-08-30): the 11-change rewrite of the
+    // Pick and Place sequence dropped its outgoing handshake signals — the
+    // part-gripped signal lost its counterpart pairing (unpairable phrasing)
+    // and the part-clear signal step vanished entirely. Both machines
+    // deadlock: PnP stuck on the gripper-open wait, Escapement on
+    // part-gripped. SIGNALS ARE LEGAL DATA STEPS even though the flow render
+    // doesn't draw them as nodes. Tightly fingerprinted; restores his
+    // approved shape and red-marks the card.
+    {
+      const pnp = smProposal.stateMachines.find(m => /pick.?and.?place/i.test(m?.name ?? ''));
+      const esc2 = smProposal.stateMachines.find(m => /escapement/i.test(m?.name ?? ''));
+      const seqP = (pnp?.sequence ?? []).map(String);
+      const grippedIdx = seqP.findIndex(l => /^signal\s+escapement:?\s*part\s*gripped\s*$/i.test(l));
+      const clearMissing = esc2 && (esc2.sequence ?? []).some(l => /part-?\s*clear/i.test(String(l)))
+        && !seqP.some(l => /^signal\b.*part\s*-?\s*clear/i.test(l));
+      if (pnp && esc2 && grippedIdx >= 0 && clearMissing) {
+        const escName = esc2.name;
+        const lines = [...seqP];
+        const steps = (pnp.sequenceSteps ?? []).map(s => (s && typeof s === 'object' ? { ...s } : s));
+        // 1. Re-pair the part-gripped signal (canonical interaction shape —
+        //    "Signal X to <machine>" is what the deadlock check pairs on).
+        lines[grippedIdx] = `Signal part gripped to ${escName}`;
+        if (steps[grippedIdx]) steps[grippedIdx] = { ...steps[grippedIdx], action: 'Signal', target: 'part gripped', detail: '', counterpart: escName };
+        // 2. Restore the part-clear signal right after the clear-height
+        //    retract (first Retract after the gripper-open wait).
+        const waitIdx = lines.findIndex(l => /^wait\b/i.test(l) && /gripper\s*open/i.test(l));
+        let retractIdx = -1;
+        for (let i = Math.max(waitIdx, 0); i < lines.length; i++) { if (/^retract\b/i.test(lines[i])) { retractIdx = i; break; } }
+        const insertAt = (retractIdx >= 0 ? retractIdx : Math.max(waitIdx, grippedIdx)) + 1;
+        lines.splice(insertAt, 0, `Signal part clear to ${escName}`);
+        steps.splice(insertAt, 0, { action: 'Signal', target: 'part clear', detail: '', counterpart: escName });
+        const oldMs2 = smProposal.stateMachines.map(m => ({ name: m.name, sequence: [...(m.sequence ?? [])], faultRecovery: [...(m.faultRecovery ?? [])] }));
+        const patched = smProposal.stateMachines.map(m => (m === pnp ? { ...m, sequence: lines, sequenceSteps: steps } : m));
+        setSmProposal(p => ({
+          ...p,
+          stateMachines: (p.stateMachines ?? []).map(m => (/pick.?and.?place/i.test(m?.name ?? '') ? { ...m, sequence: lines, sequenceSteps: steps } : m)),
+          at: Date.now(),
+        }));
+        try {
+          const byKey = computeProposalSeqDiff(oldMs2, patched, 'sequence');
+          if (Object.keys(byKey).length) setSeqDiff({ byKey, at: Date.now() });
+        } catch { /* red marks are best-effort */ }
+        setDirty(true);
+        setChatThread(th => [...th, {
+          role: 'jarvis',
+          text: `Restored ${pnp.name}'s two outgoing handshake signals that an earlier rewrite dropped: "Signal part gripped to ${escName}" right after the grip, and "Signal part clear to ${escName}" right after the retract to clear height. Without them ${escName} waits forever at its part-gripped and part-clear steps. Marked red on the card — hit ✓ got it once you've looked.`,
           at: Date.now(),
         }]);
       }
@@ -10377,31 +10444,27 @@ export function CreateStationPage({ embedded = false }) {
                     }}
                   >
                     <div style={{ fontSize: 10.5, fontWeight: 800, color: C.primary, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 5 }}>
-                      Generate — diagram &amp; code
+                      Build station code
                     </div>
-                    {/* PRE-GENERATE HANDSHAKE CHECK (coordinator, 2026-08-30):
-                        computed signal-graph findings surface HERE before any
-                        code spends — plain words, one per line. */}
-                    {(() => {
-                      if ((smProposal?.stateMachines?.length ?? 0) < 2) return null;
-                      let fs2 = [];
-                      try {
-                        fs2 = checkHandshakes(smProposal.stateMachines)
-                          .filter(f => ![...agreedNeeds].some(k => String(k).includes(f.plain.slice(0, 60))))
-                          .slice(0, 4);
-                      } catch { return null; }
-                      if (!fs2.length) return null;
-                      return (
-                        <div data-testid="pregen-handshake-findings" style={{
-                          background: '#fdf6e3', border: '1px solid #e6d9a8', borderRadius: 6,
-                          padding: '7px 11px', marginBottom: 8, fontSize: 11.5, color: '#6b5513', lineHeight: 1.5,
-                        }}>
-                          <b>Signal check before generating:</b>
-                          {fs2.map((f, i) => <div key={i}>• {f.plain}</div>)}
-                          <div style={{ color: C.muted, marginTop: 2 }}>Answer in the chat (or Agree on the step cards) — generating anyway is allowed, the code will carry these as-is.</div>
+                    {/* PRE-BUILD SIGNAL CHECK: can-hang findings BLOCK by
+                        default (SUPREME LAW); advisory ones carry as-is. */}
+                    {(pregenFindings.hang.length > 0 || pregenFindings.advisory.length > 0) && (
+                      <div data-testid="pregen-handshake-findings" style={{
+                        background: pregenFindings.hang.length ? '#fdf2f2' : '#fdf6e3',
+                        border: `1px solid ${pregenFindings.hang.length ? '#d4a0a0' : '#e6d9a8'}`, borderRadius: 6,
+                        padding: '7px 11px', marginBottom: 8, fontSize: 11.5,
+                        color: pregenFindings.hang.length ? '#8a3b3b' : '#6b5513', lineHeight: 1.5,
+                      }}>
+                        <b>Signal check before building:</b>
+                        {pregenFindings.hang.map((f, i) => <div key={`h${i}`}>• {f.plain}</div>)}
+                        {pregenFindings.advisory.map((f, i) => <div key={`a${i}`} style={{ color: '#6b5513' }}>• {f.plain}</div>)}
+                        <div style={{ color: C.muted, marginTop: 2 }}>
+                          {pregenFindings.hang.length
+                            ? 'The red ones can hang the machine forever, so the build is held — answer in the chat (or Agree on the step cards), or build anyway below and the code carries them as-is.'
+                            : 'Answer in the chat (or Agree on the step cards) — building anyway is allowed, the code will carry these as-is.'}
                         </div>
-                      );
-                    })()}
+                      </div>
+                    )}
                     {/* STATION ACCEPT (Dan, 2026-08-28): his real workflow —
                         stations are accepted one after another; code
                         generates for the WHOLE MACHINE at the end. Two
@@ -10445,7 +10508,7 @@ export function CreateStationPage({ embedded = false }) {
                           }}
                         >✓ Accept station — move to the next</button>
                         <span style={{ fontSize: 11, color: C.muted }}>
-                          or generate this station's code now (testing):
+                          or build this station's code now (testing):
                         </span>
                       </div>
                     )}
@@ -10531,7 +10594,7 @@ export function CreateStationPage({ embedded = false }) {
                     if (cascadeLive && !cascade.allApproved) {
                       return (
                         <span data-testid="build-gated-note" style={{ fontSize: 11, color: C.muted }}>
-                          Generate (diagram &amp; code) unlocks when every step is agreed — {cascade.approvedCount} of {cascade.steps.length} agreed.
+                          Build code unlocks when every step is agreed — {cascade.approvedCount} of {cascade.steps.length} agreed.
                         </span>
                       );
                     }
@@ -10562,6 +10625,32 @@ export function CreateStationPage({ embedded = false }) {
                             ))}
                           </div>
                         )}
+                        {/* THE HANG GATE (SUPREME LAW): can-hang findings make
+                            the primary "Fix these first"; build-anyway is the
+                            explicit secondary. */}
+                        {ready && pregenFindings.hang.length > 0 ? (
+                          <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+                            <button
+                              className="btn btn--primary"
+                              data-testid="build-station-btn"
+                              onClick={() => document.querySelector('[data-testid="pregen-handshake-findings"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                              disabled={applying}
+                              title="The signal check found waits that can hang forever — fix or Agree them first"
+                              style={{ fontSize: 14, padding: '9px 22px', background: '#8a3b3b', borderColor: '#8a3b3b' }}
+                            >
+                              Fix these first — {pregenFindings.hang.length} signal finding{pregenFindings.hang.length === 1 ? '' : 's'}
+                            </button>
+                            <button
+                              type="button"
+                              data-testid="build-anyway-btn"
+                              onClick={handleBuildClick}
+                              disabled={applying}
+                              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 11, color: C.muted, textDecoration: 'underline' }}
+                            >
+                              build anyway — the code carries these as-is
+                            </button>
+                          </span>
+                        ) : (
                         <button
                           className="btn btn--primary"
                           data-testid="build-station-btn"
@@ -10582,8 +10671,9 @@ export function CreateStationPage({ embedded = false }) {
                         >
                           {/* The mental model (Dan, Aug 24): the sheet is the
                               source of truth; Rebuild pushes it downstream. */}
-                          {linkedSmId ? 'Rebuild station — apply sheet to diagram & code' : 'Build Station'}
+                          {linkedSmId ? 'Rebuild station code — apply the sheet' : 'Build Station'}
                         </button>
+                        )}
                       </>
                     );
                   })()}

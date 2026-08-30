@@ -112,6 +112,8 @@ export function deriveInteractionLines(sequence, { selfName = '', sameMachines =
  * the machines round-robin. Pure, instant, no model. Findings in plain
  * words; the caller turns them into numbered questions.
  */
+// NOTE: agentLoopSdk.js carries a minimal CJS mirror of rule 1 (unmatchedWaits)
+// as the engine's can-hang guard — keep the two parsers in step.
 export function checkHandshakes(machines = []) {
   const NUMW = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
   const sigKey = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '').replace(/[0-9]/g, (c) => NUMW[+c])

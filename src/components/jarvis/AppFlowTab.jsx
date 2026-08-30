@@ -120,9 +120,9 @@ const STAGES = [
     },
   },
   {
-    n: '8', title: 'Generate — diagram and code',
+    n: '8', title: 'Build station code',
     rows: {
-      do: 'You hit Generate. The approved flow IS the diagram — this stage compiles the state numbering, tags, and init pattern from the same structured steps you approved on the cards; nothing new is invented here.',
+      do: 'You hit Build Station. The approved flow IS the diagram (already on the sheet) — this stage is only about code: it compiles the state numbering, tags, and init pattern from the same structured steps you approved on the cards; nothing new is invented here.',
       loads: 'Everything: the approved spec in full, standing knowledge, precedents, the verified exemplar library, and the SDC template patterns.',
       think: 'A study pass reads everything before a line is written — the plan for every state on the SDC number grid, every transition condition, waits, retries, cross-machine signals, recovery. Then the code is written once against that plan, not iterated into shape. Every structural choice cites the SDC template pattern it follows or declares itself an extension.',
       check: 'Internal review rounds walk the output against Jason’s process — each finding traces to the step it violates — and the file is validated for import before you ever see it.',

@@ -314,6 +314,41 @@ async function checkTurn({ message, state, signal }) {
   };
 }
 
+// ── the can-hang guard (P0, 2026-08-30: a rewrite culled Pick-and-Place's
+// outgoing part-gripped/part-clear signals and deadlocked both machines) ────
+// Minimal mirror of cascadeModel.checkHandshakes rule 1 (that file is ESM /
+// client-side; keep the two parsers in step). Cross-machine waits whose
+// partner never signals = the can-hang-forever class. A turn may never
+// INTRODUCE one: signals are legal data steps even though the flow render
+// doesn't draw them — culling them is an objective failure, bounced.
+function unmatchedWaits(machines = []) {
+  const NUMW = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+  const sigKey = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '').replace(/[0-9]/g, (c) => NUMW[+c]).replace(/signal$/, '');
+  const nk = (x) => String(x ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const keysMatch = (a, b) => !!a && !!b && (a === b || a.includes(b) || b.includes(a));
+  const ms = (machines ?? []).map((m) => ({
+    name: m?.name, key: nk(m?.name),
+    events: (m?.sequence ?? []).map(String).map((t) => {
+      let mm = t.match(/^wait\s+for\s+(.+?)['’]s\s+(.+?)\s*(?:signal)?\s*$/i);
+      if (mm) return { type: 'wait', from: mm[1], sig: sigKey(mm[2]), line: t };
+      mm = t.match(/^(?:signal|set)\s+(.+?)\s+to\s+([A-Za-z0-9 '’.&-]+?)\s*$/i);
+      if (mm) return { type: 'set', to: mm[2], sig: sigKey(mm[1]), line: t };
+      return { type: 'other', line: t };
+    }),
+  }));
+  const out = [];
+  for (const m of ms) {
+    for (const w of m.events.filter((e) => e.type === 'wait')) {
+      const partner = ms.find((x) => x !== m && (keysMatch(nk(w.from), x.key) || keysMatch(x.key, nk(w.from))));
+      if (!partner) continue;
+      if (!partner.events.some((e) => e.type === 'set' && keysMatch(e.sig, w.sig))) {
+        out.push(`${m.name} waits for "${w.line}" but ${partner.name} never signals it — that wait hangs forever`);
+      }
+    }
+  }
+  return out;
+}
+
 // ── one turn through the embedded harness ───────────────────────────────────
 /** Same contract as the old loop: {draft, message, cascadePosition, audience,
  *  draftId?, signal, onEvent} → {reply, diffs, asks, notes, closedQuestions,
@@ -407,6 +442,11 @@ async function runAgentTurn({ draft, message, cascadePosition = null, audience =
     }
   };
 
+  // Can-hang baseline BEFORE the turn (only NEW findings bounce — standing
+  // ones are the engineer's open questions, not this turn's fault).
+  let hangBaseline = [];
+  try { hangBaseline = unmatchedWaits(draft?.smProposal?.stateMachines); } catch { /* guard optional */ }
+
   try {
     emit('thinking…');
     await runQuery(promptText, priorSession);
@@ -444,6 +484,19 @@ async function runAgentTurn({ draft, message, cascadePosition = null, audience =
         if (chk) costUSD += chk.cost;
         if (chk && chk.verdict === 'fix') violations = chk.violations ?? [];
       }
+      // THE CAN-HANG GUARD: objective, no judgment call — a turn that
+      // introduced a new forever-wait (culled/orphaned an outgoing signal
+      // step) gets it back before anything renders.
+      try {
+        const nowHangs = unmatchedWaits(state.draft?.smProposal?.stateMachines);
+        const introduced = nowHangs.filter((h) => !hangBaseline.includes(h));
+        if (introduced.length) {
+          violations.push(...introduced.map((h) => `THIS TURN INTRODUCED A DEADLOCK: ${h}. `
+            + 'Outgoing Signal steps are legal sequence steps (data, even though the flow render does not '
+            + 'draw them as nodes) — restore the culled/orphaned Signal step in the canonical '
+            + '"Signal <name> to <machine>" shape rather than removing the wait.'));
+        }
+      } catch { /* guard optional */ }
       if (violations.length) {
         bounced = true;
         emit('fixing what the review found…');

@@ -10,12 +10,23 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.33';
+export const UI_BUILD = 'v2.6.34';
 
 export const BUILT_AT = '2026-08-30';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.34',
+    date: '2026-08-30',
+    items: [
+      'DEADLOCK REPAIR — the Pick and Place\'s two outgoing handshake signals (part gripped, part clear) that an earlier rewrite dropped are restored in their canonical shape and re-paired; both machines\' signal graph is green. The engine now treats introducing a forever-wait as an objective failure — a turn that culls or orphans an outgoing Signal step gets bounced and must restore it (signals are legal steps in the data even though the flow doesn\'t draw them)',
+      'THE SIGNAL CHECK NOW BLOCKS THE BUILD for can-hang-forever findings (a wait no one ever signals, a circular deadlock): the button becomes "Fix these first", with "build anyway — the code carries these as-is" as the explicit secondary. Advisory findings (dead signal, fault-window) stay carry-as-is',
+      'BUILD STATION CODE — the Generate card is renamed and is only about code now (the diagram already lives on the sheet): same two lanes (Accept station — move to the next / build this station\'s code now), same optional scope note',
+      'REVIEWER COVER NOTE — every build lands with a cover note next to the file, in the JARVIS Deliveries pattern: what the station is, what standards and exemplar were applied, what was verified (import simulation, sequence cross-check, internal review findings), declared deviations, red pen invited',
+      'Flow edge conditions read "Wait — Part-Gripped" and never truncate — the band grows to the full text',
+    ],
+  },
   {
     version: 'v2.6.33',
     date: '2026-08-30',
