@@ -434,6 +434,39 @@ export const INVARIANTS = [
         : {};
     },
   },
+  {
+    id: 'chat-widget-opens-at-bottom',
+    what: 'The chat widget is pinned to the BOTTOM (latest turn) whenever it is open (Dan, 2026-08-31)',
+    run() {
+      const panel = document.querySelector('[data-testid="chat-panel"]');
+      if (!panel || !vis(panel)) return { skip: 'chat widget not open' };
+      const scrollers = [...panel.querySelectorAll('*')]
+        .filter((el) => el.scrollHeight > el.clientHeight + 8);
+      const bad = scrollers.filter((el) =>
+        el.scrollTop + el.clientHeight < el.scrollHeight - 40);
+      return bad.length
+        ? { fail: `chat scroller ${bad.length} container(s) not pinned to bottom (latest turn hidden)` }
+        : {};
+    },
+  },
+  {
+    id: 'chat-pill-single-state',
+    what: 'The chat pill shows exactly ONE closed-widget state — questions > unread > thinking (Dan, 2026-08-31)',
+    run() {
+      const pill = document.querySelector('[data-testid="chat-pill"]');
+      if (!pill || !vis(pill)) return { skip: 'chat pill not on screen' };
+      const q = pill.querySelector('[data-testid="chat-pill-count"]');
+      const u = pill.querySelector('[data-testid="chat-pill-unread"]');
+      const t = pill.querySelector('[data-testid="chat-pill-thinking"]');
+      const shown = [q, u, t].filter(Boolean).length;
+      if (shown > 1) return { fail: 'chat pill shows more than one state at once' };
+      const st = pill.dataset.state;
+      if (q && st !== 'questions') return { fail: `questions badge visible but data-state="${st}"` };
+      if (u && st !== 'unread') return { fail: `unread badge visible but data-state="${st}"` };
+      if (t && st !== 'thinking') return { fail: `thinking dot visible but data-state="${st}"` };
+      return {};
+    },
+  },
 ];
 
 /** Run every invariant against the CURRENT DOM (async — some checks read the

@@ -1565,5 +1565,175 @@
       "TLP requires separate power+feedback cables; VPL uses a single hybrid cable (Lutze preferred); motion axes need high-flex cable.",
       "CIP Motion-enabled PLC selection scales with axis count: CompactLogix up to 16 axes, ControlLogix beyond that."
     ]
+  },
+  {
+    "id": "inbox-a86d1a27",
+    "name": "Claude_Project_Instructions_Field.md",
+    "location": "\\\\…\\Electrical Dept\\SDC Engineer\\Drop Files Here\\Templates\\Claude_Project_Instructions_Field.md",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "This is tooling/process boilerplate for a different AI assistant (ME-facing Claude Project), not controls or PLC knowledge",
+      "Describes session protocol: read SDC_Default_ME_Instructions.md, a per-project AI_Context.md, and a SharePoint Project Binder (FunctionalSpec/RiskLog/Breakdown sheets) each session",
+      "Includes a conflict-detection save pattern (check Last Updated/Updated By before overwriting) to avoid clobbering concurrent edits",
+      "No mechanisms, standards, or judgment about machine building or PLC code content — nothing here changes how SDC designs or programs machines"
+    ]
+  },
+  {
+    "id": "inbox-643318e8",
+    "name": "~TEMPLATES_Index_and_Use.md",
+    "location": "\\\\…\\Electrical Dept\\SDC Engineer\\Drop Files Here\\Templates\\~TEMPLATES_Index_and_Use.md",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "Describes a separate mechanical-engineering AI workflow (Claude Projects) for generating Functional Specs, Risk Logs, Breakdown/Sequence/IO List tabs — not JARVIS's controls domain",
+      "Covers file management/versioning for ME templates (context files, instructions fields, MWI work instructions) with no mechanism, standard, or judgment relevant to PLC code or machine control",
+      "No new device types, motion patterns, alarm/fault handling, or naming/structure conventions are introduced",
+      "Purely administrative/tooling documentation (file locations, build scripts, revision numbers) — boilerplate per the filing instructions"
+    ]
+  },
+  {
+    "id": "inbox-8843bc41",
+    "name": "MWI_AI_Project_Setup.md",
+    "location": "\\\\…\\Electrical Dept\\SDC Engineer\\Drop Files Here\\Templates\\MWI_AI_Project_Setup.md",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "Describes an unrelated AI tool workflow (Claude.ai Projects) used by System Architects/ME Leads for project documentation and decision logging",
+      "No mechanical, controls, PLC, or machine-building content — purely process/admin instructions for a different team's tooling",
+      "Nothing here changes how SDC builds machines or writes PLC code, so nothing qualifies for JARVIS's concept files or standing facts"
+    ]
+  },
+  {
+    "id": "inbox-495da2a7",
+    "name": "XXXX_AI_Context_Template.md",
+    "location": "\\\\…\\Electrical Dept\\SDC Engineer\\Drop Files Here\\Templates\\XXXX_AI_Context_Template.md",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "Pure administrative template — every field is a placeholder, no actual mechanism, standard, or judgment content to distill",
+      "Defines a project documentation convention (Sections 1-8: snapshot, machine overview, station design, open items, decisions log, commercial components, project-specific requirements, source documents) but this governs project management, not controls/mechanical engineering practice",
+      "Nothing here deepens how SDC builds machines or writes PLC code — it's boilerplate scaffolding for tracking a project's lifecycle",
+      "No mechanism, no standard, no judgment call embedded — skip per the librarian's mandate"
+    ]
+  },
+  {
+    "id": "inbox-3847b560",
+    "name": "SDC_New_Project_AI_Setup_Guide.md",
+    "location": "\\\\…\\Electrical Dept\\SDC Engineer\\Drop Files Here\\Templates\\SDC_New_Project_AI_Setup_Guide.md",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "Describes an administrative Claude AI workflow for mechanical engineering project management (proposal → kickoff → design), unrelated to PLC code, controls architecture, or machine mechanisms.",
+      "No servo, pneumatic, sequencing, alarm, or station-archetype content — nothing about how machines are built or programmed.",
+      "Covers Claude Project setup, AI_Context.md file conventions, and session-to-session conflict handling for ME documentation, which is outside JARVIS's controls-engineering knowledge domain.",
+      "Nothing here changes or deepens SDC's engineering standards, device taxonomy, or code-generation judgment."
+    ]
+  },
+  {
+    "id": "inbox-e06fd0b0",
+    "name": "MWI_AI_Project_Setup.pdf",
+    "location": "\\\\…\\Electrical Dept\\SDC Engineer\\Drop Files Here\\Templates\\MWI_AI_Project_Setup.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "Describes a separate AI tool (Claude Projects) used by System Architects/ME Leads during concept/design phase, not JARVIS's controls domain.",
+      "Covers project setup mechanics, file paths, and interview prompts for building an AI Context file — administrative process, no mechanism/PLC content.",
+      "No mechanical, controls, or PLC-standard information present that deepens JARVIS's knowledge of machines or code.",
+      "Session conflict detection (re-read file, compare Last Updated/Updated By, refuse overwrite) is a document-versioning pattern, not a controls pattern JARVIS uses.",
+      "Nothing here contradicts or extends any current standing knowledge in JARVIS's domain."
+    ]
+  },
+  {
+    "id": "inbox-d94b0757",
+    "name": "MWI_AI_Project_Setup.docx",
+    "location": "\\\\…\\Electrical Dept\\SDC Engineer\\Drop Files Here\\Templates\\MWI_AI_Project_Setup.docx",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "Describes an administrative workflow (Claude Project setup, N-drive file conventions, interview-driven context file generation) for the Mechanical Engineering team, not a controls/PLC standard",
+      "No mechanisms, device behavior, motion patterns, IO, or state-machine content relevant to how JARVIS builds machines or writes PLC code",
+      "Concurrent-save conflict detection is a document-versioning process for the AI Context file, unrelated to PLC alarm/fault handling",
+      "Nothing here deepens or contradicts any existing concept file (alarms, servo-motion, station-archetypes, etc.)",
+      "This belongs to the ME design-process/tooling domain, outside JARVIS's controls-engineering knowledge scope"
+    ]
+  },
+  {
+    "id": "inbox-2d1a1beb",
+    "name": "SDC_ME_Claude_Instructions.md",
+    "location": "\\\\…\\Electrical Dept\\SDC Engineer\\Samples\\Ruane\\SDC_ME_Claude_Instructions.md",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "Bulk of the document is ME-internal CAD/drafting standards (part numbering, tolerances, materials, guarding/HMI mount dimensions, brand guide) with no bearing on PLC code or controls judgment.",
+      "Flex Chassis V3 is SDC's proprietary rotary indexer platform: three hubs (P&P, press/verify, shot pin) are driven off ONE camshaft via modified-sine cam profiles, so hub position is a mechanical function of cam angle rather than independently PLC-sequenced axes.",
+      "On the Flex Chassis, dial-index safety is guaranteed by cam profile design (shot pin fully retracted for the entire index window) rather than by a PLC interlock check — other hubs are intentionally allowed to begin their upstroke during the tail end of the index by design.",
+      "Corporate identity standard: the company is always 'Steven Douglas Corp.' or 'SDC' — 'SDC Automation' is explicitly not the company name.",
+      "No content here contradicts existing controls/PLC standing knowledge; nothing deepens alarms, recipe-handler, vision, servo-motion, or pneumatics beyond what's already known."
+    ]
+  },
+  {
+    "id": "inbox-b9385a3f",
+    "name": "SDC_ME_Claude_Project_Instructions.md",
+    "location": "\\\\…\\Electrical Dept\\SDC Engineer\\Samples\\Ruane\\SDC_ME_Claude_Project_Instructions.md",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "This is a tooling/config doc for a different AI assistant (ME-side Claude project), not controls engineering content",
+      "No mechanisms, standards, or judgment about how SDC builds machines or writes PLC code are present",
+      "Lists MWI document names/numbers (mechanical work instructions) that JARVIS could reference by name if ever asked, but contains no substantive content from them",
+      "Nothing here contradicts or deepens JARVIS's existing standing knowledge — it's entirely about a separate assistant's search/citation/memory workflow"
+    ]
+  },
+  {
+    "id": "inbox-66b0ddfe",
+    "name": "Robot Preship Doc 2026.docx",
+    "location": "\\\\…\\Electrical Dept\\Tasks Templates\\Robot Preship Doc 2026.docx",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "This is a project-specific shipping/FAT record, not engineering content — job number, customer, dates, and a single robot's checklist status",
+      "No mechanisms, standards, or judgment calls are described — just a table of yes/no confirmations for one FR#/model",
+      "Nothing here deepens PLC code, machine design, or controls practice",
+      "Boilerplate contact/revision-style document — matches the 'skip boilerplate' filter"
+    ]
+  },
+  {
+    "id": "inbox-051ea7a8",
+    "name": "WI-ETO-BOM-001_Work_Instruction.docx",
+    "location": "\\\\…\\Electrical Dept\\Pending Documents\\WI-ETO-BOM-001_Work_Instruction.docx",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "Pure procurement/ETO workflow (BOM macro, assembly holds, status values, release process) — no machine mechanism, PLC logic, or controls-engineering judgment content.",
+      "Does not touch device taxonomy, sequencing, motion, IO, or any station-building concern Jarvis owns.",
+      "Nothing here deepens or contradicts any existing concept file or standing knowledge fact."
+    ]
+  },
+  {
+    "id": "inbox-bffb908a",
+    "name": "SDC Tech Note Template.docx",
+    "location": "\\\\…\\Electrical Dept\\SDC Knowledgebase\\SDC Tech Notes\\SDC Tech Note Template.docx",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "This is an empty document template, not a filled-out technical note",
+      "No problem, solution, or lessons-learned content is present to extract",
+      "Nothing here changes or deepens SDC's controls/mechanical build knowledge"
+    ]
+  },
+  {
+    "id": "inbox-44150895",
+    "name": "TN-02172026-Job1125-MotorCommutation-IG.docx",
+    "location": "\\\\…\\Electrical Dept\\SDC Knowledgebase\\SDC Tech Notes\\TN-02172026-Job1125-MotorCommutation-IG.docx",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "Older projects built in Studio 5000 V33 sometimes have manually-entered Commutation Alignment/Offset values because Rockwell had no motor profile for that motor at the time.",
+      "Copying those legacy manual commutation values into a V37 project (which already includes the motor's profile/library) breaks commutation and throws Kinetix 5500 FLT S04 'commutation not configured'.",
+      "Symptom progression: servo won't jog at all first, then after touching commutation params to 'match' other axes, it throws FLT S04.",
+      "Fix: delete the drive from both the IO tree and the motion axis, re-add the same module under the original name, let it use the auto-detected motor profile's commutation settings (don't manually re-enter the old values), then redownload.",
+      "When migrating/replicating a servo config across machines or Studio 5000 versions, don't blindly copy commutation parameters between projects on different Studio 5000/motor-profile versions — verify whether the motor has a native profile first."
+    ]
   }
 ]

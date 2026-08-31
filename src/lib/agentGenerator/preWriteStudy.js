@@ -454,8 +454,102 @@ async function readinessCheck({ planText, studyText, signal }) {
   }
 }
 
+/**
+ * ANSWERS-EXIST LAW (Dan, 2026-08-31 — the gripper re-ask): before ANY
+ * pre-write question may hold the build, check whether its answer already
+ * exists — in standing doctrine (meKnowledge), in previously ANSWERED
+ * queue questions, or on the sheet itself (planText carries the approved
+ * sequence + fault recovery). A question doctrine answers is a DECISION,
+ * not a hold. Deterministic answered-queue match runs first ($0); ONE cheap
+ * fast-model pass decides the rest. Fails open to ASKING — a question this
+ * check cannot decide is never silently dropped.
+ *
+ * @returns {{ decided: [{question, answer, citation}], open: [q...], costUSD }}
+ */
+async function decideFromDoctrine({ questions, planText = '', signal }) {
+  const open = [...(questions ?? [])];
+  const decided = [];
+  if (!open.length) return { decided, open, costUSD: 0 };
+
+  // 1. Deterministic: a question the engineers already ANSWERED (token
+  //    overlap against the answered queue) is decided at $0.
+  let answeredQs = [];
+  try {
+    const qs = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'jarvis-knowledge', 'questions.json'), 'utf8'));
+    answeredQs = (Array.isArray(qs) ? qs : []).filter(q => q?.status === 'answered' && q.answer);
+  } catch { /* no queue */ }
+  const tok = (s) => String(s).toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 3);
+  for (let i = open.length - 1; i >= 0; i--) {
+    const qw = tok(open[i].question);
+    const hit = answeredQs.find(a => {
+      const t = `${a.question} ${a.answer}`.toLowerCase();
+      const hits = qw.filter(w => t.includes(w)).length;
+      return qw.length && hits / qw.length >= 0.6;
+    });
+    if (hit) {
+      decided.push({ question: open[i].question, answer: hit.answer, citation: `already answered by ${hit.answeredBy || 'engineer'} (${hit.id})` });
+      open.splice(i, 1);
+    }
+  }
+  if (!open.length || !process.env.ANTHROPIC_API_KEY) return { decided, open, costUSD: 0 };
+
+  // 2. Semantic: one cheap call against doctrine + prior answers + the sheet.
+  try {
+    const { buildEngineContext } = require('./engineContext');
+    const Anthropic = require('@anthropic-ai/sdk');
+    const client = new Anthropic();
+    const recentAnswers = answeredQs.slice(-60)
+      .map(a => `- Q: ${String(a.question).slice(0, 200)}\n  A (${a.answeredBy || 'engineer'}): ${String(a.answer).slice(0, 300)}`).join('\n');
+    const resp = await client.beta.messages.create({
+      model: READINESS_MODEL,
+      max_tokens: READINESS_MAX_TOKENS,
+      system: [
+        'You are the SDC Engineer running the ANSWERS-EXIST check. For each',
+        'candidate hold question below, decide whether the answer ALREADY',
+        'EXISTS in (a) the standing doctrine, (b) a prior engineer answer, or',
+        '(c) the sheet/plan text itself. Mark a question decided ONLY when a',
+        'source genuinely dictates the answer — a plausible guess is NOT a',
+        'decision; leave those open. Respond ONLY with JSON:',
+        '{"decided":[{"index":0,"answer":"...","citation":"which source dictates it"}],"open":[1,2]}',
+        buildEngineContext(['meKnowledge']),
+      ].join('\n'),
+      messages: [{
+        role: 'user',
+        content: [{ type: 'text', text: [
+          '# PRIOR ENGINEER ANSWERS (law)',
+          recentAnswers || '(none)',
+          '',
+          '# THE SHEET / PLAN',
+          String(planText).slice(0, 60000),
+          '',
+          '# CANDIDATE HOLD QUESTIONS',
+          ...open.map((q, i) => `${i}. ${q.question}`),
+          '',
+          'Run the answers-exist check. JSON only.',
+        ].join('\n') }],
+      }],
+    }, signal ? { signal } : undefined);
+    const text = resp.content.filter(b => b.type === 'text').map(b => b.text).join('');
+    const costUSD = resp.usage ? Number(costOfUsage(resp.usage, READINESS_MODEL).toFixed(4)) : 0;
+    const parsed = extractJson(text);
+    if (!parsed) return { decided, open, costUSD };
+    const decidedIdx = new Set();
+    for (const d of (Array.isArray(parsed.decided) ? parsed.decided : [])) {
+      const i = Number(d?.index);
+      if (Number.isInteger(i) && open[i] && String(d?.answer ?? '').trim()) {
+        decided.push({ question: open[i].question, answer: String(d.answer).trim(), citation: String(d.citation ?? '').trim() || 'standing doctrine' });
+        decidedIdx.add(i);
+      }
+    }
+    return { decided, open: open.filter((_, i) => !decidedIdx.has(i)), costUSD };
+  } catch (e) {
+    if (e && (e.name === 'AbortError' || e.name === 'APIUserAbortError')) throw e;
+    return { decided, open, costUSD: 0, error: e.message || String(e) }; // fail open to asking
+  }
+}
+
 module.exports = {
-  assembleStudyContext, readinessCheck,
+  assembleStudyContext, readinessCheck, decideFromDoctrine,
   findClosestExemplar, renderExemplarStudy, templateFamily, exemplarFamily,
   collectReferenceLessons, collectBuildDecisions,
   READINESS_MODEL,

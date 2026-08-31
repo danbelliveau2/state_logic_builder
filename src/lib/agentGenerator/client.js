@@ -594,19 +594,7 @@ async function generateL5X(projectJson, smId, options = {}) {
       const specMachines = smObj?.machineSpec?.smSplit ?? null;
       if (Array.isArray(specMachines) && specMachines.length) {
         const cov = checkInitCoverage({ machines: specMachines, devices: smObj?.devices ?? [] });
-        // An ANSWERED policy question covers its scenario — never re-hold on
-        // something the engineer already ruled (answers-exist law).
-        let answered = [];
-        try {
-          const qs = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'jarvis-knowledge', 'questions.json'), 'utf8'));
-          answered = (Array.isArray(qs) ? qs : (qs.questions ?? [])).filter(q => q?.status === 'answered').map(q => String(q.question).toLowerCase());
-        } catch { /* no queue — nothing answered */ }
-        const tok = (s) => String(s).toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 3);
-        const isAnswered = (q) => {
-          const qw = tok(q);
-          return answered.some(a => { const hits = qw.filter(w => a.includes(w)).length; return qw.length && hits / qw.length >= 0.6; });
-        };
-        covQuestions = (cov.uncovered ?? []).filter(u => !isAnswered(u.question)).map(u => ({
+        covQuestions = (cov.uncovered ?? []).map(u => ({
           question: u.question,
           proposedSolution: `${u.proposedSolution}${u.citation ? ` [${u.citation}]` : ''}`,
           domain: 'mechanical', addressee: 'ME',
@@ -625,6 +613,29 @@ async function generateL5X(projectJson, smId, options = {}) {
     if (covQuestions.length) {
       readiness.questions = [...covQuestions, ...(readiness.questions ?? [])];
       readiness.ready = false;
+    }
+    // ANSWERS-EXIST LAW (Dan, 2026-08-31 — the gripper re-ask): EVERY
+    // candidate hold question — model-raised and init-coverage alike — is
+    // checked against standing doctrine (meKnowledge), prior engineer
+    // answers, and the sheet itself BEFORE it may hold the build. A question
+    // doctrine answers is a DECISION, not a hold; only genuinely open
+    // questions reach a human.
+    if ((readiness.questions ?? []).length) {
+      try {
+        const { decideFromDoctrine } = require('./preWriteStudy');
+        const dd = await decideFromDoctrine({ questions: readiness.questions, planText: jobText, signal: abortSignal });
+        if (dd.decided.length) {
+          readiness.decisions = [...(readiness.decisions ?? []), ...dd.decided.map(x => ({
+            decision: `${x.question} → ${x.answer}`,
+            citation: `answers-exist: ${x.citation}`,
+          }))];
+          onProgress(13.8, 'readiness', `${dd.decided.length} question(s) decided from standing doctrine/prior answers — not asked`);
+        }
+        readiness.questions = dd.open;
+        readiness.ready = readiness.questions.length === 0;
+      } catch (e) {
+        onProgress(13.8, 'readiness', 'Answers-exist check unavailable (questions stand): ' + (e.message || e));
+      }
     }
     if (readiness.error) {
       onProgress(14, 'readiness', 'Readiness check unavailable (build proceeds): ' + readiness.error);

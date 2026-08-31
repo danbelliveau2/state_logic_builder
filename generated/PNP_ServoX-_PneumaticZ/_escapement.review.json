@@ -1,0 +1,71 @@
+{
+  "verdict": "fix",
+  "findings": [
+    {
+      "severity": "blocker",
+      "routine": "R01_Inputs",
+      "finding": "Rung 7 puts a delay timer on the SENSOR-CONFIRMED direction of the gripper: ShuttleGripperClosed = XIC(i_ShuttleGripperClosed) XIC(q_Engage) XIO(q_Disengage) TON(ShuttleGripperEngageDelay) XIC(.DN). ShuttleGripper is a 1-sensor (Closed only) device, so the closed direction is governed by the sensor and carries NO timer; only the sensorless disengage direction gets the three-leg TON (rung 6, which is correct). This delays the confirm, delays every downstream transition, and stretches the Alarm[7] engage window. Fix: drop the TON from rung 7 — XIC(i_ShuttleGripperClosed) XIC(q_EngageShuttleGripper) XIO(q_DisengageShuttleGripper) OTE(ShuttleGripperClosed).",
+      "templateEvidence": "S01_PartLoad R01 rungs 2 and 4 — sensored directions are sensor+outputs only, no timer; rung 1 (the sensorless extend of the retract-sensor-only Z) is the only one carrying a TON. Reinforced by PLC Std §18 and Dan 2026-08-31: a delay whose direction has a sensor is inactive, the sensor governs."
+    },
+    {
+      "severity": "blocker",
+      "routine": "R01_Inputs",
+      "finding": "Rung 14 Initialized declares only the EMPTY rest posture (shuttle retracted + finger retracted + gripper opened). The init block itself produces a second, legitimate rest posture — init 106 → 124 leaves the station shuttle retracted, Escapement_Finger_1 EXTENDED, Shuttle_Gripper CLOSED (carrying) — and that posture is never Initialized, so a station standing safely with a mid-base in the gripper reports Auto Idle NOT Ready and re-runs the init block on every cycle start instead of resting at state 3. Fix: make Initialized the two-posture OR the template shows — XIO(PartStarted) XIC(EscapementShuttleRetracted) [ XIC(EscapementFinger1Retracted) XIC(ShuttleGripperOpened) , XIC(EscapementFinger1Extended) XIC(ShuttleGripperClosed) ].",
+      "templateEvidence": "S01_PartLoad R01 rung 14: XIO(PartStarted) XIC(i_ZAxisRetracted) [XIC(GripperOpened) XIC(i_XAxisRetracted) XIO(i_XAxisExtended) , XIC(GripperClosed) XIC(i_XAxisExtended) XIO(i_XAxisRetracted)] — empty posture OR carrying posture. coordination.md: 'Initialized is a POSTURE statement with two legitimate rest postures … narrow it to the empty posture only and a machine standing safely with a part in the gripper is declared not initialized forever.'"
+    },
+    {
+      "severity": "blocker",
+      "routine": "R02_StateTransitions",
+      "finding": "Rung 2 (state 3) inherits the template's state-19 cycle-stop exit without re-deriving it for this sequence. In the template state 19 is 'Wait For Index Complete' — the carrying REST posture (Z retracted, X extended) that Initialized recognizes. Here state 19 is 'Signal part ready for pick' with the shuttle EXTENDED and a part gripped, which is not a rest posture under any Initialized branch: a cycle stop at 19 drops the station to state 3 and immediately back to state 2 (rung 1, not Initialized). The template state numbers must be mapped to THIS sequence's meanings: the legitimate cycle-stopped exits here are 4, 31 and 124 — remove the State[19] branch (states 19/25 are mid-handoff partner waits, not stopping points).",
+      "templateEvidence": "S01_PartLoad R02 rung 2 lists [4 , 19 , 31 & XAxisRetracted , 124] — all Initialized-true rest postures for that station's sequence; §16 controlled stop expects the station to sit at a known position, not flicker 3→2."
+    },
+    {
+      "severity": "style",
+      "routine": "R20_Alarms",
+      "finding": "Rung 9's comment justifies the implementation choice ('Severity 1 warning - the station is holding a good part while the partner is late, so it pauses and holds instead of faulting') and R02 rung 7's comment explains why two branches exist. Template comments name the state's physical action/destination only ('Extend x axis', 'Waiting For X Axis To Extend'); justification prose goes stale the moment the design changes.",
+      "templateEvidence": "S01_PartLoad R20 rung comments: 'Waiting For Part Present', 'Waiting For X Axis To Extend'; R02: 'State 16: Extend x axis'. Jason 2026-08-25: comments name the physical action, never justify implementation choices."
+    },
+    {
+      "severity": "note",
+      "routine": "R03_StateLogic",
+      "finding": "Rung 5 changes the template's PartStarted seal-in from XIO(GripperClosed) to XIC(ShuttleGripperClosed). Functionally this is what the resume concept requires (PartStarted must persist while a part is held so R02 rung 7's restart branch can fire), but it is a deliberate departure from template boilerplate — filed as a standards question below rather than silently accepted.",
+      "templateEvidence": "S01_PartLoad R03 rung 5: [XIC(Status.State[13]) , XIC(PartStarted) XIO(Status.State[28]) XIO(g_MachineBasic.PowerUpCP) XIO(GripperClosed)] OTE(PartStarted)."
+    },
+    {
+      "severity": "note",
+      "routine": "R02_StateTransitions",
+      "finding": "The Attempt latch (rung 6) and the Success latch (rung 11) are not gated by CycleStationA/CycleStationB the way the template gates them, and no PartLoaded latch is written. Machine-level part tracking is out of scope for this build, but the template's station tracking block is emitted, so the gating should be reproduced (or the latches deliberately left for machine-level generate) rather than partially adapted.",
+      "templateEvidence": "S01_PartLoad R02 rung 9: XIC(CycleStationA) … OTL(...Station[StaNum].Attempt); rung 11: OTL(...PartLoaded), OTL(...Success)."
+    },
+    {
+      "severity": "note",
+      "routine": "R02_StateTransitions",
+      "finding": "The two partner waits (19→22 on part-gripped, 25→28 on part-clear) are stubbed with XIC(g_MachineBasic.AlwaysOff) plus a *Replace comment naming the exact intended reference (\\S02_MidBasePickAndPlace.p_PartGripped / p_PartClear), with a DryRun bypass branch and Alarm[9] (Severity 1 → q_Pause) covering both waits. That is the sanctioned standalone stub for this build's scope; machine-level generate must replace both with the direct \\Program.p_ references and confirm the producer side exists in the partner program.",
+      "templateEvidence": "S01_PartLoad R01 rung 8 / R03 rung 0 '*Replace always off bits with real conditions'; R02 rung 18 restart logic gated by g_MachineBasic.AlwaysOff."
+    }
+  ],
+  "standardsQuestions": [
+    {
+      "topic": "PartStarted seal-in polarity",
+      "question": "The station template seals PartStarted with the gripper-closed contact NEGATED (XIO), which drops the flag the moment a part is actually held — should the seal be the gripper-closed contact ASSERTED so PartStarted survives a stop while carrying, or is the template's polarity intentional and PartStarted meant to exist only during the pickup state?",
+      "proposedSolution": "I wrote the seal as XIC(<gripper closed>) so PartStarted stays latched while a part is held and the init-entry gate plus the carrying restart branch behave as the standard describes. Do you like that, or should the template be reproduced literally?",
+      "addressee": "CE",
+      "domain": "controls",
+      "kind": "question"
+    }
+  ],
+  "missingVsTemplate": [
+    "R01 rung 14: the second (carrying) posture branch of the Initialized rung is absent.",
+    "R01 rung 7: template's sensored-direction confirm shape (no delay timer) replaced by a timed confirm.",
+    "R02 rung 6/11: CycleStationA/B gating on the part-tracking Attempt/Success latches, and the PartLoaded latch, are not reproduced."
+  ],
+  "summary": "Structure, ordering, init graph and device set are right — R02 is ascending 4→31 with the override block in template order, the init block re-enters correctly (empty → state 4, carrying → state 16 after 106 extends the finger), every wait has alarm coverage, the partner waits are Severity-1 warnings feeding q_Pause, and no template baggage (X/Z axis) survived the rename. Three things bounce it: the gripper's engage confirm carries a delay timer on a direction that HAS a sensor (only the sensorless direction gets a TON), Initialized was narrowed to the empty posture so the carrying rest posture init itself produces is never recognized, and the state-3 rung inherited the template's state-19 cycle-stop exit even though 19 here is a part-holding, shuttle-extended handoff wait. Fix those three, tighten the two justification-prose comments, and answer the PartStarted seal question so we stop guessing at that template rung.",
+  "questionIds": [],
+  "heldStatus": null,
+  "template": "S01_PartLoad.L5X",
+  "scope": "full",
+  "model": "claude-opus-5",
+  "costUSD": 1.484,
+  "durationS": 250,
+  "at": "2026-08-31T18:31:33.883Z"
+}

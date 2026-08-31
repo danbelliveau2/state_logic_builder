@@ -1,7 +1,6 @@
 {
   "networkRoot": "\\\\stevendouglas.local\\dfs\\Company\\Engineering\\Electrical Dept",
   "networkEngineerRoot": "SDC Engineer",
-  "networkDropFolder": "SDC Engineer\\Drop Files Here",
   "watchAll": true,
   "exclude": [
     "ARCHIVE",

@@ -215,14 +215,48 @@ function compileMachineSm(machine, devices, { stationNumber }) {
 }
 
 // ── L5X merge: append the other file's Program + dedupe controller scope ────
+/** The file's TARGET program name — the real emitted name (usually
+ *  S{nn}_{Name}, NOT the bare SM name; the 2026-08-31 merge bug grabbed a
+ *  Use="Context" program because it searched by bare name). */
+function targetProgramNameOf(xml, hint) {
+  // Parse opening tags and read attributes individually — a combined regex
+  // here once matched MainRoutineName="R00_Main" as the Name (2026-08-31).
+  const tags = [...xml.matchAll(/<Program\s[^>]*>/g)].map((m) => m[0]);
+  const nameOf = (t) => (t.match(/\sName="([^"]+)"/) || [])[1] || null;
+  const targets = tags.filter((t) => /\sUse="Target"/.test(t)).map(nameOf).filter(Boolean);
+  const pool = targets.length ? targets
+    : tags.filter((t) => !/\sUse="Context"/.test(t)).map(nameOf).filter(Boolean);
+  return pool.find((n) => hint && nk(n).includes(nk(hint))) ?? pool[0] ?? null;
+}
+/** ASCII-fold characters Studio 5000 rejects (engine-injected IR labels can
+ *  carry em-dashes — fold them here, at merge time, for EVERY program). */
+function asciiFoldL5x(xml) {
+  return xml
+    .replace(/[—–]/g, '-')
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/…/g, '...')
+    .replace(/×/g, 'x');
+}
 function mergePrograms(baseXml, otherXml, otherProgramName) {
   let out = baseXml;
   const grab = (xml, re) => { const m = xml.match(re); return m ? m[0] : null; };
-  // 1. The other file's <Program ...>...</Program> (its own program only).
-  const progRe = new RegExp(`<Program\\s+[^>]*Name="${otherProgramName}"[\\s\\S]*?</Program>`);
-  const progBlock = grab(otherXml, progRe) ?? grab(otherXml, /<Program\s[\s\S]*?<\/Program>/);
-  if (!progBlock) throw new Error(`Merged file: could not find program "${otherProgramName}" in the second L5X`);
+  // 1. The other file's TARGET <Program> block — by its REAL emitted name.
+  const realName = targetProgramNameOf(otherXml, otherProgramName);
+  if (!realName) throw new Error(`Merged file: no <Program> found in the second L5X (looking for "${otherProgramName}")`);
+  const progRe = new RegExp(`<Program\\s+[^>]*Name="${realName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[\\s\\S]*?</Program>`);
+  const progBlock = grab(otherXml, progRe);
+  if (!progBlock) throw new Error(`Merged file: could not extract program "${realName}" from the second L5X`);
   out = out.replace(/<\/Programs>/, `${progBlock}\n</Programs>`);
+  otherProgramName = realName; // scheduling + checks use the real name
+  // 1b. CONTEXT programs the other file references but the base lacks (its
+  //     template family may differ — S01_PartLoad carries an HMI context
+  //     program the S05 base does not): carry them over, deduped by name.
+  const baseProgNames = new Set([...out.matchAll(/<Program\b[^>]*\bName="([^"]+)"/g)].map((m) => m[1]));
+  const ctxBlocks = [...otherXml.matchAll(/<Program Use="Context"[^>]*\bName="([^"]+)"(?:(?!<Program[\s>])[\s\S])*?<\/Program>/g)]
+    .filter((m) => !baseProgNames.has(m[1]))
+    .map((m) => m[0]);
+  if (ctxBlocks.length) out = out.replace(/<\/Programs>/, `${ctxBlocks.join('\n')}\n</Programs>`);
   // 2. Controller-scope Tags dedupe-by-name.
   const nameOf = (tag) => (tag.match(/Name="([^"]+)"/) ?? [])[1];
   const baseCtrlTags = new Set([...out.matchAll(/<Tag\s+[^>]*Name="([^"]+)"/g)].map((m) => m[1]));
@@ -297,7 +331,23 @@ async function generateStationPrograms(projectJson, smId, options = {}) {
       onProgress: (pct, stage, detail) => onProgress(base + (span * Math.min(pct, 100)) / 100, stage, `[${machine.name}] ${detail ?? stage}`),
     });
     totalCost.v += Number(r.meta?.costEstimate?.totalUSD) || 0;
-    programs.push({ machine: machine.name, programName: vsm.name, ok: r.ok, held: r.held ?? null, validation: r.validation, internalReview: r.internalReview ?? null, meta: r.meta, ir: r.ir });
+    // The REAL emitted program name (S{nn}_… — not the bare SM name); all
+    // merge/schedule/handshake checks run against it.
+    const emittedName = (r.l5x && targetProgramNameOf(r.l5x, vsm.name)) || vsm.name;
+    programs.push({ machine: machine.name, programName: emittedName, ok: r.ok, held: r.held ?? null, validation: r.validation, internalReview: r.internalReview ?? null, meta: r.meta, ir: r.ir });
+    // PER-PROGRAM SIDECAR (2026-08-31 merge-bug lesson): each program's L5X
+    // survives on disk so a failed merge is recoverable without re-paying
+    // for the programs.
+    if (r.l5x) {
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const dir = path.join(__dirname, '..', '..', '..', 'generated', '_programs');
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, `${String(sm.name).replace(/[^A-Za-z0-9_-]+/g, '_')}__${emittedName}__${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '')}.L5X`), r.l5x, 'utf8');
+      } catch (_) { /* sidecar is best-effort */ }
+    }
+    if (r.l5x) r.l5x = asciiFoldL5x(r.l5x); // Studio imports are ASCII-only
     if (r.held) {
       // A hold in ANY machine stops the whole build — surface its questions.
       return { ...r, meta: { ...r.meta, engine: 'claude-agent-sdk', multiProgram: true, heldMachine: machine.name, programs, costEstimate: { totalUSD: Number(totalCost.v.toFixed(4)) } } };
@@ -305,16 +355,20 @@ async function generateStationPrograms(projectJson, smId, options = {}) {
     if (!r.ok || !r.l5x) {
       return { ...r, meta: { ...r.meta, engine: 'claude-agent-sdk', multiProgram: true, failedMachine: machine.name, programs, costEstimate: { totalUSD: Number(totalCost.v.toFixed(4)) } } };
     }
-    mergedXml = mergedXml == null ? r.l5x : mergePrograms(mergedXml, r.l5x, vsm.name);
+    mergedXml = mergedXml == null ? r.l5x : mergePrograms(mergedXml, r.l5x, emittedName);
   }
 
   onProgress(92, 'merge', `Merging ${split.length} programs into one controller file`);
   const wf = XMLValidator.validate(mergedXml);
   const mergedErrors = [];
   if (wf !== true) mergedErrors.push(`Merged L5X not well-formed: ${wf.err?.msg}`);
+  // Program-target exports (our templates) carry no <Tasks>/<ScheduledPrograms>
+  // section — Studio schedules at import. Require scheduling only when the
+  // merged file actually has the section (controller-target exports).
+  const hasSchedule = /<ScheduledPrograms>/.test(mergedXml);
   for (const pr of programs) {
     if (!new RegExp(`<Program\\s+[^>]*Name="${pr.programName}"`).test(mergedXml)) mergedErrors.push(`Program ${pr.programName} missing from the merged file`);
-    if (!new RegExp(`<ScheduledProgram\\s+Name="${pr.programName}"`).test(mergedXml)) mergedErrors.push(`Program ${pr.programName} not scheduled in the task`);
+    if (hasSchedule && !new RegExp(`<ScheduledProgram\\s+Name="${pr.programName}"`).test(mergedXml)) mergedErrors.push(`Program ${pr.programName} not scheduled in the task`);
   }
   for (const p of pairs) {
     if (!mergedXml.includes(p.tag)) mergedErrors.push(`Handshake tag ${p.tag} missing from the merged file`);
@@ -359,4 +413,4 @@ async function generateStationPrograms(projectJson, smId, options = {}) {
   };
 }
 
-module.exports = { generateStationPrograms, handshakePairsOf, devicesForMachine, assignDevices, compileMachineSm, mergePrograms };
+module.exports = { generateStationPrograms, handshakePairsOf, devicesForMachine, assignDevices, compileMachineSm, mergePrograms, targetProgramNameOf, asciiFoldL5x };

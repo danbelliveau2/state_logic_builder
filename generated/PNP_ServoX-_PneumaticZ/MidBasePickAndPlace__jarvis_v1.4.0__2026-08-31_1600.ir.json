@@ -1,0 +1,550 @@
+{
+  "irVersion": 1,
+  "smId": "sm_mpmtheo67ey",
+  "smName": "MidBasePickAndPlace",
+  "displayName": "Mid-Base Pick and Place",
+  "stationNumber": 1,
+  "description": "",
+  "devices": [
+    {
+      "id": "id_59564e47-2804-482d-be1d-e6e8553d9236",
+      "type": "ServoAxis",
+      "name": "XAxis",
+      "displayName": "X_Axis",
+      "extras": {
+        "sensorArrangement": "",
+        "homePosition": "ServoMove",
+        "axisNumber": 1,
+        "motionType": "linear",
+        "positions": [
+          {
+            "name": "Pick",
+            "defaultValue": 200,
+            "moveType": "Pos",
+            "isHome": true,
+            "isRecipe": false,
+            "type": "position",
+            "value": 200
+          },
+          {
+            "name": "Place",
+            "defaultValue": 50,
+            "moveType": "Pos",
+            "isHome": false,
+            "isRecipe": false,
+            "type": "position",
+            "value": 50
+          }
+        ],
+        "speedProfiles": [
+          {
+            "name": "Fast",
+            "speed": 1000,
+            "accel": 10000,
+            "decel": 10000
+          },
+          {
+            "name": "Slow",
+            "speed": 100,
+            "accel": 1000,
+            "decel": 1000
+          }
+        ],
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "timerMs": 1000,
+        "homePositionName": "Pick"
+      }
+    },
+    {
+      "id": "id_db1ea571-0243-4947-8175-095a08cf5e65",
+      "type": "PneumaticLinearActuator",
+      "name": "VerticalSlide",
+      "displayName": "Vertical_Slide",
+      "extras": {
+        "sensorArrangement": "1-sensor (Ret only)",
+        "homePosition": "Retract",
+        "extTimerMs": 1000,
+        "retTimerMs": 5000,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "timerMs": 1000,
+        "strokeMm": 150
+      }
+    },
+    {
+      "id": "id_cd77d437-62b6-4be6-b1f5-6a4c95516967",
+      "type": "PneumaticGripper",
+      "name": "PNPGripper",
+      "displayName": "PNP_Gripper",
+      "extras": {
+        "sensorArrangement": "No sensors",
+        "homePosition": "Disengage",
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "timerMs": 1000
+      }
+    }
+  ],
+  "states": [
+    {
+      "nodeId": "n_mpmtheo67e1",
+      "type": "stateNode",
+      "label": "Home / Initial",
+      "stateNumber": 4,
+      "isInitial": true,
+      "isComplete": false,
+      "actions": [],
+      "entryFrom": []
+    },
+    {
+      "nodeId": "n_mpmtheo67e2",
+      "type": "stateNode",
+      "label": "Extend Vertical_Slide",
+      "stateNumber": 7,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Extend",
+          "deviceId": "id_db1ea571-0243-4947-8175-095a08cf5e65",
+          "deviceName": "VerticalSlide",
+          "device": "Vertical_Slide",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        4
+      ]
+    },
+    {
+      "nodeId": "n_mpmtheo67e5",
+      "type": "stateNode",
+      "label": "Close PNP_Gripper",
+      "stateNumber": 10,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Engage",
+          "deviceId": "id_cd77d437-62b6-4be6-b1f5-6a4c95516967",
+          "deviceName": "PNPGripper",
+          "device": "PNP_Gripper",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        7
+      ]
+    },
+    {
+      "nodeId": "n_mpmtheo67e8",
+      "type": "stateNode",
+      "label": "Signal part gripped",
+      "stateNumber": 13,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [],
+      "entryFrom": [
+        10
+      ]
+    },
+    {
+      "nodeId": "n_mpmtheo67ea",
+      "type": "stateNode",
+      "label": "Retract Vertical_Slide",
+      "stateNumber": 16,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Retract",
+          "deviceId": "id_db1ea571-0243-4947-8175-095a08cf5e65",
+          "deviceName": "VerticalSlide",
+          "device": "Vertical_Slide",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        13
+      ]
+    },
+    {
+      "nodeId": "n_mpmtheo67ed",
+      "type": "stateNode",
+      "label": "Signal part clear",
+      "stateNumber": 19,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [],
+      "entryFrom": [
+        16
+      ]
+    },
+    {
+      "nodeId": "n_mpmtheo67ef",
+      "type": "stateNode",
+      "label": "Servo Move X_Axis — Place Position",
+      "stateNumber": 22,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_59564e47-2804-482d-be1d-e6e8553d9236",
+          "deviceName": "XAxis",
+          "device": "X_Axis",
+          "params": {
+            "positionName": "Place Position"
+          },
+          "detail": "positionName=\"Place Position\""
+        }
+      ],
+      "entryFrom": [
+        19
+      ]
+    },
+    {
+      "nodeId": "n_mpmtheo67ei",
+      "type": "stateNode",
+      "label": "Extend Vertical_Slide",
+      "stateNumber": 25,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Extend",
+          "deviceId": "id_db1ea571-0243-4947-8175-095a08cf5e65",
+          "deviceName": "VerticalSlide",
+          "device": "Vertical_Slide",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        22
+      ]
+    },
+    {
+      "nodeId": "n_mpmtheo67el",
+      "type": "stateNode",
+      "label": "Open PNP_Gripper",
+      "stateNumber": 28,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Disengage",
+          "deviceId": "id_cd77d437-62b6-4be6-b1f5-6a4c95516967",
+          "deviceName": "PNPGripper",
+          "device": "PNP_Gripper",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        25
+      ]
+    },
+    {
+      "nodeId": "n_mpmtheo67eo",
+      "type": "stateNode",
+      "label": "Retract Vertical_Slide",
+      "stateNumber": 31,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Retract",
+          "deviceId": "id_db1ea571-0243-4947-8175-095a08cf5e65",
+          "deviceName": "VerticalSlide",
+          "device": "Vertical_Slide",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        28
+      ]
+    },
+    {
+      "nodeId": "n_mpmtheo67er",
+      "type": "stateNode",
+      "label": "Servo Move X_Axis — Pick Position",
+      "stateNumber": 34,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_59564e47-2804-482d-be1d-e6e8553d9236",
+          "deviceName": "XAxis",
+          "device": "X_Axis",
+          "params": {
+            "positionName": "Pick Position"
+          },
+          "detail": "positionName=\"Pick Position\""
+        }
+      ],
+      "entryFrom": [
+        31
+      ]
+    },
+    {
+      "nodeId": "n_mpmtheo67eu",
+      "type": "stateNode",
+      "label": "Signal Cycle Complete",
+      "stateNumber": 37,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [],
+      "entryFrom": [
+        34
+      ]
+    },
+    {
+      "nodeId": "n_mpmtheo67ew",
+      "type": "stateNode",
+      "label": "Cycle Complete",
+      "stateNumber": 40,
+      "isInitial": false,
+      "isComplete": true,
+      "actions": [],
+      "entryFrom": [
+        37
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "fromLabel": "Home / Initial",
+      "toLabel": "Extend Vertical_Slide",
+      "fromState": 4,
+      "toState": 7,
+      "from": 4,
+      "to": 7,
+      "conditionType": "custom",
+      "label": "Wait — part-ready (Mid-Base Escapement)",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Wait — part-ready (Mid-Base Escapement)",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Extend Vertical_Slide",
+      "toLabel": "Close PNP_Gripper",
+      "fromState": 7,
+      "toState": 10,
+      "from": 7,
+      "to": 10,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Close PNP_Gripper",
+      "toLabel": "Signal part gripped",
+      "fromState": 10,
+      "toState": 13,
+      "from": 10,
+      "to": 13,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Signal part gripped",
+      "toLabel": "Retract Vertical_Slide",
+      "fromState": 13,
+      "toState": 16,
+      "from": 13,
+      "to": 16,
+      "conditionType": "custom",
+      "label": "Wait — shuttle gripper open (Escapement)",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Wait — shuttle gripper open (Escapement)",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Retract Vertical_Slide",
+      "toLabel": "Signal part clear",
+      "fromState": 16,
+      "toState": 19,
+      "from": 16,
+      "to": 19,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Signal part clear",
+      "toLabel": "Servo Move X_Axis — Place Position",
+      "fromState": 19,
+      "toState": 22,
+      "from": 19,
+      "to": 22,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Servo Move X_Axis — Place Position",
+      "toLabel": "Extend Vertical_Slide",
+      "fromState": 22,
+      "toState": 25,
+      "from": 22,
+      "to": 25,
+      "conditionType": "custom",
+      "label": "Wait — ready (dial)",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Wait — ready (dial)",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Extend Vertical_Slide",
+      "toLabel": "Open PNP_Gripper",
+      "fromState": 25,
+      "toState": 28,
+      "from": 25,
+      "to": 28,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Open PNP_Gripper",
+      "toLabel": "Retract Vertical_Slide",
+      "fromState": 28,
+      "toState": 31,
+      "from": 28,
+      "to": 31,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Retract Vertical_Slide",
+      "toLabel": "Servo Move X_Axis — Pick Position",
+      "fromState": 31,
+      "toState": 34,
+      "from": 31,
+      "to": 34,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Servo Move X_Axis — Pick Position",
+      "toLabel": "Signal Cycle Complete",
+      "fromState": 34,
+      "toState": 37,
+      "from": 34,
+      "to": 37,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Signal Cycle Complete",
+      "toLabel": "Cycle Complete",
+      "fromState": 37,
+      "toState": 40,
+      "from": 37,
+      "to": 40,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    }
+  ],
+  "waits": [],
+  "stateRanges": {
+    "reserved": {
+      "powerup": 0,
+      "sdc": [
+        1,
+        2,
+        3
+      ]
+    },
+    "sequence": {
+      "from": 4,
+      "to": 40
+    },
+    "lockout": 99,
+    "init": {
+      "from": 100,
+      "to": 127,
+      "cycleReady": 127
+    }
+  },
+  "machineSpec": {
+    "purpose": "Owns the X Axis, Z Slide, and Mid-Base Gripper; picks a singulated mid-base from the Escapement's shuttle nest and places it onto the dial.",
+    "expectedStateMachines": "",
+    "devicePurposes": [],
+    "sequence": [],
+    "outcomeRules": [],
+    "relationships": [],
+    "approvedDeviations": [],
+    "controlsNotes": [],
+    "partnerDeclarations": []
+  },
+  "generationScope": {
+    "generate": [
+      "station sequence logic",
+      "servo motion commands",
+      "device commands & verification",
+      "state transitions",
+      "basic sequence faults/retries needed for the sequence"
+    ],
+    "notYet": [
+      "machine-level part tracking",
+      "upstream/downstream coordination beyond defined IO",
+      "overall machine initialization",
+      "machine-wide fault manager",
+      "production/OEE logic",
+      "supervisor sequencing outside this station"
+    ]
+  },
+  "warnings": [],
+  "text": "# Intermediate Representation — MidBasePickAndPlace (Mid-Base Pick and Place)\nStation number: 1\n\n## Devices\n(HOME= is the ME-declared home — Home Conditions, init, and recovery MUST use it, never infer a different home.)\n- [ServoAxis] XAxis \"X_Axis\" HOME=Pick sensorArrangement=\"\" axisNumber=1 motionType=\"linear\" positions=[{\"name\":\"Pick\",\"defaultValue\":200,\"moveType\":\"Pos\",\"isHome\":true,\"isRecipe\":false,\"type\":\"position\",\"value\":200},{\"name\":\"Place\",\"defaultValue\":50,\"moveType\":\"Pos\",\"isHome\":false,\"isRecipe\":false,\"type\":\"position\",\"value\":50}] speedProfiles=[{\"name\":\"Fast\",\"speed\":1000,\"accel\":10000,\"decel\":10000},{\"name\":\"Slow\",\"speed\":100,\"accel\":1000,\"decel\":1000}] extTimerMs=500 retTimerMs=500 engageTimerMs=250 disengageTimerMs=250 timerMs=1000\n- [PneumaticLinearActuator] VerticalSlide \"Vertical_Slide\" HOME=Retract sensorArrangement=\"1-sensor (Ret only)\" extTimerMs=1000 retTimerMs=5000 engageTimerMs=250 disengageTimerMs=250 timerMs=1000 strokeMm=150\n- [PneumaticGripper] PNPGripper \"PNP_Gripper\" HOME=Disengage sensorArrangement=\"No sensors\" extTimerMs=500 retTimerMs=500 engageTimerMs=250 disengageTimerMs=250 timerMs=1000\n\n## States (assigned state numbers — these are FINAL, use them as-is)\n- State 4 [node n_mpmtheo67e1]: \"Home / Initial\" {INITIAL}\n- State 7 [node n_mpmtheo67e2]: \"Extend Vertical_Slide\"\n    action: Extend -> VerticalSlide\n- State 10 [node n_mpmtheo67e5]: \"Close PNP_Gripper\"\n    action: Engage -> PNPGripper\n- State 13 [node n_mpmtheo67e8]: \"Signal part gripped\"\n- State 16 [node n_mpmtheo67ea]: \"Retract Vertical_Slide\"\n    action: Retract -> VerticalSlide\n- State 19 [node n_mpmtheo67ed]: \"Signal part clear\"\n- State 22 [node n_mpmtheo67ef]: \"Servo Move X_Axis — Place Position\"\n    action: ServoMove -> XAxis (positionName=\"Place Position\")\n- State 25 [node n_mpmtheo67ei]: \"Extend Vertical_Slide\"\n    action: Extend -> VerticalSlide\n- State 28 [node n_mpmtheo67el]: \"Open PNP_Gripper\"\n    action: Disengage -> PNPGripper\n- State 31 [node n_mpmtheo67eo]: \"Retract Vertical_Slide\"\n    action: Retract -> VerticalSlide\n- State 34 [node n_mpmtheo67er]: \"Servo Move X_Axis — Pick Position\"\n    action: ServoMove -> XAxis (positionName=\"Pick Position\")\n- State 37 [node n_mpmtheo67eu]: \"Signal Cycle Complete\"\n- State 40 [node n_mpmtheo67ew]: \"Cycle Complete\" {CYCLE-COMPLETE}\n\n## Transitions\n- [4] \"Home / Initial\" -> [7] \"Extend Vertical_Slide\" (type=custom label=\"Wait — part-ready (Mid-Base Escapement)\")\n- [7] \"Extend Vertical_Slide\" -> [10] \"Close PNP_Gripper\" (type=trigger)\n- [10] \"Close PNP_Gripper\" -> [13] \"Signal part gripped\" (type=trigger)\n- [13] \"Signal part gripped\" -> [16] \"Retract Vertical_Slide\" (type=custom label=\"Wait — shuttle gripper open (Escapement)\")\n- [16] \"Retract Vertical_Slide\" -> [19] \"Signal part clear\" (type=trigger)\n- [19] \"Signal part clear\" -> [22] \"Servo Move X_Axis — Place Position\" (type=trigger)\n- [22] \"Servo Move X_Axis — Place Position\" -> [25] \"Extend Vertical_Slide\" (type=custom label=\"Wait — ready (dial)\")\n- [25] \"Extend Vertical_Slide\" -> [28] \"Open PNP_Gripper\" (type=trigger)\n- [28] \"Open PNP_Gripper\" -> [31] \"Retract Vertical_Slide\" (type=trigger)\n- [31] \"Retract Vertical_Slide\" -> [34] \"Servo Move X_Axis — Pick Position\" (type=trigger)\n- [34] \"Servo Move X_Axis — Pick Position\" -> [37] \"Signal Cycle Complete\" (type=trigger)\n- [37] \"Signal Cycle Complete\" -> [40] \"Cycle Complete\" (type=trigger)\n\n## MACHINE SPEC (mechanical intent — compile the coordination)\nThis section is AUTHORITATIVE intent authored by the mechanical engineer.\nSynthesize the signals, waits, exits, and cross-station handshakes that\nrealize it. EVERY wait you create must have an exit for every partner\nfailure mode listed here PLUS a timeout — no exitless waits.\n\nStation purpose: Owns the X Axis, Z Slide, and Mid-Base Gripper; picks a singulated mid-base from the Escapement's shuttle nest and places it onto the dial.\n\n## GENERATION SCOPE (contract — what this build covers vs not)\nBUILD PURPOSE (from the ME — let it shape your approach): Owns the X Axis, Z Slide, and Mid-Base Gripper; picks a singulated mid-base from the Escapement's shuttle nest and places it onto the dial.\nTHIS BUILD GENERATES: station sequence logic; servo motion commands; device commands & verification; state transitions; basic sequence faults/retries needed for the sequence.\nNOT IN THIS BUILD (machine-level extras deferred until the station joins a machine): machine-level part tracking; upstream/downstream coordination beyond defined IO; overall machine initialization; machine-wide fault manager; production/OEE logic; supervisor sequencing outside this station.\nScope law: NEVER ask about, flag, or apologize for NOT-IN-THIS-BUILD items.\nWhere the sequence touches one (e.g. a partner/supervisor signal outside the\ndefined IO), stub it quietly per the SDC standalone pattern (*Replace rung\ncomment) and move on — that is your own decision, not a question. A\nstandalone sequence terminates cleanly in \"Sequence Complete / Ready for\nnext command\".\nThe station-level template pieces ALWAYS emit regardless of scope: init\nblock, lockout, R01 inputs, station part-tracking block, alarms — the full\nstation file, never a reduced one.",
+  "generatedAt": "2026-08-31T16:00:05.028Z",
+  "jarvisVersion": "1.4.0",
+  "l5xFile": "MidBasePickAndPlace__jarvis_v1.4.0__2026-08-31_1600.L5X",
+  "validationOk": false
+}

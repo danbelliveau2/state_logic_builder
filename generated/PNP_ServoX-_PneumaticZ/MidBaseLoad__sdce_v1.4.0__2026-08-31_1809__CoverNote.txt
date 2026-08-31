@@ -1,0 +1,30 @@
+MidBaseLoad__sdce_v1.4.0__2026-08-31_1809.L5X — Cover Note
+From the SDC Engineer (v1.4.0), 2026-08-31. For review before anything ships.
+
+# What this station is
+MidBaseLoad — station 1 of PNP_ServoX- PneumaticZ; 10 states on the SDC step grid.
+
+# What standards were applied
+- Template: S01_PartLoad.L5X — pneumatic-only station
+- Standing laws and concept lessons rode the write (engine: claude-agent-sdk)
+
+# What was verified
+- Byte-level L5X validation incl. full Studio-import simulation: FAIL (4 error(s))
+- Cross-check against the approved diagram: see errors
+- Internal review (adversarial, against the template): fix — 14 finding(s) listed below
+    • The two intra-station signals from the sibling machine (Mid-Base Escapement) are stubbed with g_MachineBasic.AlwaysOff: rung 4 (state 4 -> 7, 'part ready at nest') and rung 7 (state 13 -> 16, 'shuttle
+    • Init scenario coverage is not exhaustive for this sensorless gripper. GripperOpened/GripperClosed are derived from the OTE command bits (R01 rungs 4/5) which are non-retentive, so on power-up (or any 
+    • The X quickstop reason (rung 2) is not the exact complement of the permissive. The permissive (R04 rung 2) is XIC(VerticalSlideRetractedDebounce.On) XIO(q_ExtendVerticalSlide); the reason branch tests
+    • Carrying-memory bit is inconsistent: rung 7 (resume branch) and rung 10 (init 124 -> 25 carrying re-entry) test the raw output q_CloseGripper, while R01 rung 12 (Initialized) and R02 rung 19 (init 106
+    • The X quickstop kept the two-axis template's ServoAlarm[4]/ServoAlarmList[4] slot, leaving indices 2 and 3 (the deleted Z axis's drive-fault and loss-of-reference alarms) as dead slots. Renumber the q
+    • CycleStationA is still computed (rung 17) but no longer referenced anywhere — the Attempt latch moved to the state-10 transition without its part-tracking gate (R02 rung 5, flagged in the junior's own
+    • State 22 is partitioned across two alarm rungs (rung 3 destination-arrival, 3000 ms, gated XIO(XAxisPlace.InPos); rung 9 dial-ready warning, 10000 ms Severity 1, gated XIC(XAxisPlace.InPos)). Each run
+    • Rungs 9 and 11 — the two partner waits (state 19 → 22 on Pick and Place's part-gripped signal, state 25 → 28 on its part-clear signal) are conditioned on XIC(g_MachineBasic.AlwaysOff). In auto (non-dr
+    • Rung 8 — the manual Escapement Shuttle permissive is gated on XIC(EscapementFinger1Retracted). That contradicts the station's own sequence: state 13 extends Finger 1 and state 16 then extends the Shut
+    • Rung 8 carries the template's comment verbatim: "X Axis Control". This station has no X axis. Rung comments are generated from the station's device/state map, never inherited — a leaked template label
+
+# Notes from the write
+- Multi-program emission: 2 programs (MidBasePickAndPlace, MidBaseEscapement), 4 handshake signals wired (p_PartGripped, p_PartClear, p_PartReadyForPick, p_ShuttleGripperOpen).
+
+# Red pen invited
+Mark it up — every correction trains in permanently. Build: 2 attempt(s), $19.2279; first-pass ship: review pending.

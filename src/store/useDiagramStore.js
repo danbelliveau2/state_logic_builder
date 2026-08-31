@@ -2033,12 +2033,20 @@ export const useDiagramStore = create(
       addDevice(smId, deviceData) {
         get()._pushHistory();
         const device = { id: uid(), ...deviceData };
+        // A human deliberately re-adding a device CLEARS its tombstone —
+        // explicit ME action outranks the tombstone rule (see deleteDevice).
+        const nk = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const names = [nk(device.name), nk(device.displayName)].filter(Boolean);
         set(s => ({
-          project: _updateProject(s, sms => sms.map(sm =>
-              sm.id === smId
-                ? { ...sm, devices: [...sm.devices, device] }
-                : sm
-            )),
+          project: _updateProject(s, sms => sms.map(sm => {
+              if (sm.id !== smId) return sm;
+              let machineSpec = sm.machineSpec;
+              const tombs = machineSpec?.deviceTombstones;
+              if (Array.isArray(tombs) && tombs.some(t => names.includes(nk(t?.name)) || names.includes(nk(t?.displayName)))) {
+                machineSpec = { ...machineSpec, deviceTombstones: tombs.filter(t => !(names.includes(nk(t?.name)) || names.includes(nk(t?.displayName)))) };
+              }
+              return { ...sm, devices: [...sm.devices, device], ...(machineSpec !== sm.machineSpec ? { machineSpec } : {}) };
+            })),
         }));
         // After adding a VisionSystem device, sync vision PT fields
         if (deviceData.type === 'VisionSystem') {
@@ -2085,11 +2093,23 @@ export const useDiagramStore = create(
       deleteDevice(smId, deviceId) {
         get()._pushHistory();
         set(s => ({
-          project: _updateProject(s, sms => sms.map(sm =>
-              sm.id === smId
-                ? { ...sm, devices: sm.devices.filter(d => d.id !== deviceId) }
-                : sm
-            )),
+          project: _updateProject(s, sms => sms.map(sm => {
+              if (sm.id !== smId) return sm;
+              // TOMBSTONE RULE (Dan, 2026-08-31): an ME-deleted device may
+              // NEVER re-enter from a stale artifact (old spec text, an old
+              // snapshot, re-extraction). Record the name so every automated
+              // add path (spec proposals etc.) skips it forever; a human
+              // re-adding by hand clears it (see addDevice).
+              const dead = sm.devices.find(d => d.id === deviceId);
+              const machineSpec = dead ? {
+                ...(sm.machineSpec || {}),
+                deviceTombstones: [
+                  ...((sm.machineSpec || {}).deviceTombstones || []),
+                  { name: dead.name, displayName: dead.displayName ?? dead.name, deletedAt: new Date().toISOString(), by: 'ME' },
+                ],
+              } : sm.machineSpec;
+              return { ...sm, devices: sm.devices.filter(d => d.id !== deviceId), ...(machineSpec ? { machineSpec } : {}) };
+            })),
         }));
       },
 

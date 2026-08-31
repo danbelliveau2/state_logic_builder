@@ -2364,7 +2364,23 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
   // Queue lives in <repo>/jarvis-knowledge/questions.json.
 
   // Finished agent-turn results, held per draft for client reconnects.
+  // WRITE-THROUGH TO DISK (Dan, 2026-08-31 — his "remove finger 2" turn died
+  // when a restart wiped this map mid-reconnect): a completed turn must land
+  // on the client even across a server restart. In-flight turns are tracked
+  // too so a reconnecting client can tell "still running" from "dead".
   const agentTurnResults_ = new Map();
+  const activeAgentTurns_ = new Set(); // draftIds with a turn in flight NOW
+  const AGENT_TURNS_FILE_ = path.join(__dirname, 'jarvis-knowledge', 'agent-runtime', 'agent-turn-results.json');
+  try {
+    const saved = JSON.parse(fs.readFileSync(AGENT_TURNS_FILE_, 'utf8'));
+    for (const [k, v] of Object.entries(saved || {})) agentTurnResults_.set(k, v);
+  } catch { /* first run / no saved turns */ }
+  function persistAgentTurns_() {
+    try {
+      fs.mkdirSync(path.dirname(AGENT_TURNS_FILE_), { recursive: true });
+      fs.writeFileSync(AGENT_TURNS_FILE_, JSON.stringify(Object.fromEntries(agentTurnResults_)), 'utf8');
+    } catch (e) { console.warn('[agent-turn] persist failed:', e.message); }
+  }
   const SERVER_STARTED_AT_ = Date.now();
   const JARVIS_QUESTIONS_DIR_  = path.join(__dirname, 'jarvis-knowledge');
   const JARVIS_QUESTIONS_FILE_ = path.join(JARVIS_QUESTIONS_DIR_, 'questions.json');
@@ -3645,7 +3661,11 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     if (pathname === '/api/jarvis/agent-turn/last') {
       const draftId = String(query?.draftId ?? '');
       const hit = agentTurnResults_.get(draftId);
-      return sendJson(res, 200, hit ? { ok: true, at: hit.at, result: hit.result } : { ok: false });
+      // `running` lets a reconnecting client tell "still working — keep
+      // polling" from "that turn is dead — say so and offer Retry NOW".
+      return sendJson(res, 200, hit
+        ? { ok: true, at: hit.at, result: hit.result, running: activeAgentTurns_.has(draftId) }
+        : { ok: false, running: activeAgentTurns_.has(draftId) });
     }
 
     // THE AGENT LOOP (Dan approved 2026-08-28 — docs/jarvis-agent-loop-design.md):
@@ -3686,6 +3706,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       // from "dead turn" (stuck-forever is impossible either way now).
       const keepalive = setInterval(() => send('ping', { t: Date.now() }), 5000);
       const releaseAi = beginAiWork_('agent-turn', null, body.draft?.name || null, { register: false });
+      if (body.draftId) activeAgentTurns_.add(String(body.draftId));
       try {
         const runOnce = () => loop.runAgentTurn({
           draft: body.draft ?? {},
@@ -3727,6 +3748,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         if (body.draftId) {
           agentTurnResults_.set(String(body.draftId), { at: Date.now(), result: { ok: true, ...result } });
           if (agentTurnResults_.size > 20) agentTurnResults_.delete(agentTurnResults_.keys().next().value);
+          persistAgentTurns_(); // survives a restart — the reconnect always lands
           // SERVER IS THE SOURCE OF TRUTH (Dan, 2026-08-30): the turn's
           // applied draft lands in the store HERE — every subscribed page
           // sees it within ~1s whether or not the requesting tab survives.
@@ -3746,6 +3768,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       } finally {
         clearInterval(keepalive);
         releaseAi();
+        if (body.draftId) activeAgentTurns_.delete(String(body.draftId));
       }
       return res.end();
     }

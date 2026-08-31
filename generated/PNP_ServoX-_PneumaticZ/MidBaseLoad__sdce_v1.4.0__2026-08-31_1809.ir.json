@@ -1,0 +1,427 @@
+{
+  "irVersion": 1,
+  "smId": "sm_mpmthj8tgn1o",
+  "smName": "MidBaseEscapement",
+  "displayName": "Mid-Base Escapement",
+  "stationNumber": 1,
+  "description": "",
+  "devices": [
+    {
+      "id": "id_0db60da9-69c8-4fae-beee-cc0ac86ca4a3",
+      "type": "PneumaticLinearActuator",
+      "name": "EscapementFinger1",
+      "displayName": "Escapement_Finger_1",
+      "extras": {
+        "sensorArrangement": "1-sensor (Ret only)",
+        "homePosition": "Retract",
+        "extTimerMs": 1000,
+        "retTimerMs": 1000,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "timerMs": 1000
+      }
+    },
+    {
+      "id": "id_86e822a7-2558-42ab-8f23-ae2186d2f502",
+      "type": "PneumaticLinearActuator",
+      "name": "EscapementShuttle",
+      "displayName": "Escapement_Shuttle",
+      "extras": {
+        "sensorArrangement": "1-sensor (Ret only)",
+        "homePosition": "Retract",
+        "extTimerMs": 1000,
+        "retTimerMs": 1000,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "timerMs": 1000
+      }
+    },
+    {
+      "id": "id_b0c06e14-498c-46d6-9976-9e5e8081c2c7",
+      "type": "PneumaticGripper",
+      "name": "ShuttleGripper",
+      "displayName": "Shuttle_Gripper",
+      "extras": {
+        "sensorArrangement": "1-sensor (Closed only)",
+        "homePosition": "Disengage",
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "timerMs": 1000
+      }
+    },
+    {
+      "id": "id_76c8f2cf-5d1c-4884-9417-e9b7d41598af",
+      "type": "DigitalSensor",
+      "name": "NestPartPresent",
+      "displayName": "Nest_Part_Present",
+      "extras": {
+        "sensorArrangement": "",
+        "homePosition": "",
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "timerMs": 1000
+      }
+    }
+  ],
+  "states": [
+    {
+      "nodeId": "n_mpmthj8tgmz",
+      "type": "stateNode",
+      "label": "Home / Initial",
+      "stateNumber": 4,
+      "isInitial": true,
+      "isComplete": false,
+      "actions": [],
+      "entryFrom": []
+    },
+    {
+      "nodeId": "n_mpmthj8tgm10",
+      "type": "stateNode",
+      "label": "Retract Escapement_Finger_1",
+      "stateNumber": 7,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Retract",
+          "deviceId": "id_0db60da9-69c8-4fae-beee-cc0ac86ca4a3",
+          "deviceName": "EscapementFinger1",
+          "device": "Escapement_Finger_1",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        4
+      ]
+    },
+    {
+      "nodeId": "n_mpmthj8tgn13",
+      "type": "stateNode",
+      "label": "Engage Shuttle_Gripper",
+      "stateNumber": 10,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Engage",
+          "deviceId": "id_b0c06e14-498c-46d6-9976-9e5e8081c2c7",
+          "deviceName": "ShuttleGripper",
+          "device": "Shuttle_Gripper",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        7
+      ]
+    },
+    {
+      "nodeId": "n_mpmthj8tgn16",
+      "type": "stateNode",
+      "label": "Extend Escapement_Finger_1",
+      "stateNumber": 13,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Extend",
+          "deviceId": "id_0db60da9-69c8-4fae-beee-cc0ac86ca4a3",
+          "deviceName": "EscapementFinger1",
+          "device": "Escapement_Finger_1",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        10
+      ]
+    },
+    {
+      "nodeId": "n_mpmthj8tgn19",
+      "type": "stateNode",
+      "label": "Extend Escapement_Shuttle",
+      "stateNumber": 16,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Extend",
+          "deviceId": "id_86e822a7-2558-42ab-8f23-ae2186d2f502",
+          "deviceName": "EscapementShuttle",
+          "device": "Escapement_Shuttle",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        13
+      ]
+    },
+    {
+      "nodeId": "n_mpmthj8tgn1c",
+      "type": "stateNode",
+      "label": "Signal part ready for pick to Mid-Base Pick and Place",
+      "stateNumber": 19,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [],
+      "entryFrom": [
+        16
+      ]
+    },
+    {
+      "nodeId": "n_mpmthj8tgn1e",
+      "type": "stateNode",
+      "label": "Disengage Shuttle_Gripper",
+      "stateNumber": 22,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Disengage",
+          "deviceId": "id_b0c06e14-498c-46d6-9976-9e5e8081c2c7",
+          "deviceName": "ShuttleGripper",
+          "device": "Shuttle_Gripper",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        19
+      ]
+    },
+    {
+      "nodeId": "n_mpmthj8tgn1h",
+      "type": "stateNode",
+      "label": "Signal shuttle gripper open to Mid-Base Pick and Place",
+      "stateNumber": 25,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [],
+      "entryFrom": [
+        22
+      ]
+    },
+    {
+      "nodeId": "n_mpmthj8tgn1j",
+      "type": "stateNode",
+      "label": "Retract Escapement_Shuttle",
+      "stateNumber": 28,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Retract",
+          "deviceId": "id_86e822a7-2558-42ab-8f23-ae2186d2f502",
+          "deviceName": "EscapementShuttle",
+          "device": "Escapement_Shuttle",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        25
+      ]
+    },
+    {
+      "nodeId": "n_mpmthj8tgn1m",
+      "type": "stateNode",
+      "label": "Cycle Complete",
+      "stateNumber": 31,
+      "isInitial": false,
+      "isComplete": true,
+      "actions": [],
+      "entryFrom": [
+        28
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "fromLabel": "Home / Initial",
+      "toLabel": "Retract Escapement_Finger_1",
+      "fromState": 4,
+      "toState": 7,
+      "from": 4,
+      "to": 7,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Retract Escapement_Finger_1",
+      "toLabel": "Engage Shuttle_Gripper",
+      "fromState": 7,
+      "toState": 10,
+      "from": 7,
+      "to": 10,
+      "conditionType": "custom",
+      "label": "Wait — NestPartPresent",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Wait — NestPartPresent",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Engage Shuttle_Gripper",
+      "toLabel": "Extend Escapement_Finger_1",
+      "fromState": 10,
+      "toState": 13,
+      "from": 10,
+      "to": 13,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Extend Escapement_Finger_1",
+      "toLabel": "Extend Escapement_Shuttle",
+      "fromState": 13,
+      "toState": 16,
+      "from": 13,
+      "to": 16,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Extend Escapement_Shuttle",
+      "toLabel": "Signal part ready for pick to Mid-Base Pick and Place",
+      "fromState": 16,
+      "toState": 19,
+      "from": 16,
+      "to": 19,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Signal part ready for pick to Mid-Base Pick and Place",
+      "toLabel": "Disengage Shuttle_Gripper",
+      "fromState": 19,
+      "toState": 22,
+      "from": 19,
+      "to": 22,
+      "conditionType": "custom",
+      "label": "Wait — Mid-Base Pick and Place's part-gripped signal",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Wait — Mid-Base Pick and Place's part-gripped signal",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Disengage Shuttle_Gripper",
+      "toLabel": "Signal shuttle gripper open to Mid-Base Pick and Place",
+      "fromState": 22,
+      "toState": 25,
+      "from": 22,
+      "to": 25,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Signal shuttle gripper open to Mid-Base Pick and Place",
+      "toLabel": "Retract Escapement_Shuttle",
+      "fromState": 25,
+      "toState": 28,
+      "from": 25,
+      "to": 28,
+      "conditionType": "custom",
+      "label": "Wait — Mid-Base Pick and Place's part-clear signal",
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "Wait — Mid-Base Pick and Place's part-clear signal",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Retract Escapement_Shuttle",
+      "toLabel": "Cycle Complete",
+      "fromState": 28,
+      "toState": 31,
+      "from": 28,
+      "to": 31,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    }
+  ],
+  "waits": [],
+  "stateRanges": {
+    "reserved": {
+      "powerup": 0,
+      "sdc": [
+        1,
+        2,
+        3
+      ]
+    },
+    "sequence": {
+      "from": 4,
+      "to": 31
+    },
+    "lockout": 99,
+    "init": {
+      "from": 100,
+      "to": 127,
+      "cycleReady": 127
+    }
+  },
+  "machineSpec": {
+    "purpose": "Owns Escapement Finger 1, the Escapement Shuttle, Shuttle Gripper, and Nest Part Present sensor — singulates one mid-base at a time off the feeder track and presents it to Pick and Place.",
+    "expectedStateMachines": "",
+    "devicePurposes": [],
+    "sequence": [],
+    "outcomeRules": [],
+    "relationships": [],
+    "approvedDeviations": [],
+    "controlsNotes": [],
+    "partnerDeclarations": []
+  },
+  "generationScope": {
+    "generate": [
+      "station sequence logic",
+      "servo motion commands",
+      "device commands & verification",
+      "state transitions",
+      "basic sequence faults/retries needed for the sequence"
+    ],
+    "notYet": [
+      "machine-level part tracking",
+      "upstream/downstream coordination beyond defined IO",
+      "overall machine initialization",
+      "machine-wide fault manager",
+      "production/OEE logic",
+      "supervisor sequencing outside this station"
+    ]
+  },
+  "warnings": [],
+  "text": "# Intermediate Representation — MidBaseEscapement (Mid-Base Escapement)\nStation number: 1\n\n## Devices\n(HOME= is the ME-declared home — Home Conditions, init, and recovery MUST use it, never infer a different home.)\n- [PneumaticLinearActuator] EscapementFinger1 \"Escapement_Finger_1\" HOME=Retract sensorArrangement=\"1-sensor (Ret only)\" extTimerMs=1000 retTimerMs=1000 engageTimerMs=250 disengageTimerMs=250 timerMs=1000\n- [PneumaticLinearActuator] EscapementShuttle \"Escapement_Shuttle\" HOME=Retract sensorArrangement=\"1-sensor (Ret only)\" extTimerMs=1000 retTimerMs=1000 engageTimerMs=250 disengageTimerMs=250 timerMs=1000\n- [PneumaticGripper] ShuttleGripper \"Shuttle_Gripper\" HOME=Disengage sensorArrangement=\"1-sensor (Closed only)\" extTimerMs=500 retTimerMs=500 engageTimerMs=250 disengageTimerMs=250 timerMs=1000\n- [DigitalSensor] NestPartPresent \"Nest_Part_Present\" sensorArrangement=\"\" extTimerMs=500 retTimerMs=500 engageTimerMs=250 disengageTimerMs=250 timerMs=1000\n\n## States (assigned state numbers — these are FINAL, use them as-is)\n- State 4 [node n_mpmthj8tgmz]: \"Home / Initial\" {INITIAL}\n- State 7 [node n_mpmthj8tgm10]: \"Retract Escapement_Finger_1\"\n    action: Retract -> EscapementFinger1\n- State 10 [node n_mpmthj8tgn13]: \"Engage Shuttle_Gripper\"\n    action: Engage -> ShuttleGripper\n- State 13 [node n_mpmthj8tgn16]: \"Extend Escapement_Finger_1\"\n    action: Extend -> EscapementFinger1\n- State 16 [node n_mpmthj8tgn19]: \"Extend Escapement_Shuttle\"\n    action: Extend -> EscapementShuttle\n- State 19 [node n_mpmthj8tgn1c]: \"Signal part ready for pick to Mid-Base Pick and Place\"\n- State 22 [node n_mpmthj8tgn1e]: \"Disengage Shuttle_Gripper\"\n    action: Disengage -> ShuttleGripper\n- State 25 [node n_mpmthj8tgn1h]: \"Signal shuttle gripper open to Mid-Base Pick and Place\"\n- State 28 [node n_mpmthj8tgn1j]: \"Retract Escapement_Shuttle\"\n    action: Retract -> EscapementShuttle\n- State 31 [node n_mpmthj8tgn1m]: \"Cycle Complete\" {CYCLE-COMPLETE}\n\n## Transitions\n- [4] \"Home / Initial\" -> [7] \"Retract Escapement_Finger_1\" (type=trigger)\n- [7] \"Retract Escapement_Finger_1\" -> [10] \"Engage Shuttle_Gripper\" (type=custom label=\"Wait — NestPartPresent\")\n- [10] \"Engage Shuttle_Gripper\" -> [13] \"Extend Escapement_Finger_1\" (type=trigger)\n- [13] \"Extend Escapement_Finger_1\" -> [16] \"Extend Escapement_Shuttle\" (type=trigger)\n- [16] \"Extend Escapement_Shuttle\" -> [19] \"Signal part ready for pick to Mid-Base Pick and Place\" (type=trigger)\n- [19] \"Signal part ready for pick to Mid-Base Pick and Place\" -> [22] \"Disengage Shuttle_Gripper\" (type=custom label=\"Wait — Mid-Base Pick and Place's part-gripped signal\")\n- [22] \"Disengage Shuttle_Gripper\" -> [25] \"Signal shuttle gripper open to Mid-Base Pick and Place\" (type=trigger)\n- [25] \"Signal shuttle gripper open to Mid-Base Pick and Place\" -> [28] \"Retract Escapement_Shuttle\" (type=custom label=\"Wait — Mid-Base Pick and Place's part-clear signal\")\n- [28] \"Retract Escapement_Shuttle\" -> [31] \"Cycle Complete\" (type=trigger)\n\n## MACHINE SPEC (mechanical intent — compile the coordination)\nThis section is AUTHORITATIVE intent authored by the mechanical engineer.\nSynthesize the signals, waits, exits, and cross-station handshakes that\nrealize it. EVERY wait you create must have an exit for every partner\nfailure mode listed here PLUS a timeout — no exitless waits.\n\nStation purpose: Owns Escapement Finger 1, the Escapement Shuttle, Shuttle Gripper, and Nest Part Present sensor — singulates one mid-base at a time off the feeder track and presents it to Pick and Place.\n\n## GENERATION SCOPE (contract — what this build covers vs not)\nBUILD PURPOSE (from the ME — let it shape your approach): Owns Escapement Finger 1, the Escapement Shuttle, Shuttle Gripper, and Nest Part Present sensor — singulates one mid-base at a time off the feeder track and presents it to Pick and Place.\nTHIS BUILD GENERATES: station sequence logic; servo motion commands; device commands & verification; state transitions; basic sequence faults/retries needed for the sequence.\nNOT IN THIS BUILD (machine-level extras deferred until the station joins a machine): machine-level part tracking; upstream/downstream coordination beyond defined IO; overall machine initialization; machine-wide fault manager; production/OEE logic; supervisor sequencing outside this station.\nScope law: NEVER ask about, flag, or apologize for NOT-IN-THIS-BUILD items.\nWhere the sequence touches one (e.g. a partner/supervisor signal outside the\ndefined IO), stub it quietly per the SDC standalone pattern (*Replace rung\ncomment) and move on — that is your own decision, not a question. A\nstandalone sequence terminates cleanly in \"Sequence Complete / Ready for\nnext command\".\nThe station-level template pieces ALWAYS emit regardless of scope: init\nblock, lockout, R01 inputs, station part-tracking block, alarms — the full\nstation file, never a reduced one.",
+  "generatedAt": "2026-08-31T18:09:45.228Z",
+  "jarvisVersion": "1.4.0",
+  "l5xFile": "MidBaseLoad__sdce_v1.4.0__2026-08-31_1809.L5X",
+  "validationOk": false
+}

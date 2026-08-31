@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "stage": "readiness",
+  "smId": "sm_mpmthi3b5ay",
+  "smName": "MidBasePickAndPlace",
+  "mode": "authoring",
+  "template": "S05_ServoPNP.L5X",
+  "attemptCount": 0,
+  "lastEditPlan": null,
+  "lastL5xDraft": null,
+  "persistentFindings": [],
+  "validationReport": "(held before writing — no draft exists yet)",
+  "projectFilename": "PNP_ServoX-_PneumaticZ.json",
+  "heldAt": "2026-08-31T17:17:27.701Z",
+  "reason": "pre-write readiness found 1 unresolved item(s) — held before any write",
+  "questions": [
+    {
+      "id": "q_help_mthi43yr_sw07kc",
+      "question": "Power-up with PNP_Gripper closed and no way to know if it holds a part — treat as carrying (finish to place), or open at safe height and treat as empty?",
+      "proposedSolution": "The shipped init templates branch on a KNOWN gripper state (SDCStandardPNP 100→106 carrying / 100→103 empty); closed-with-unknown-part is not in them. Common safe default: open at safe height over a scrap-safe spot, run the empty path — your call. [SDCStandardPNP 100/103/106 — known carry/empty only]",
+      "addressee": "ME"
+    }
+  ]
+}

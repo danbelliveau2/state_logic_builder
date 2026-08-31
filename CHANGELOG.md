@@ -5,6 +5,13 @@ All notable changes to this project. Most recent first.
 ---
 
 ## Unreleased
+- ONE MASTER KNOWLEDGE FILE on the share: `SDC Engineer\Knowledge\SDC-Engineer-Knowledge.md` — meKnowledge laws, all concept docs, precedents, standards extracts, template patterns in one file; auto-regenerated each librarian run; `## Engineer additions` section preserved verbatim and ingested back (attributed, top tier, rides buildEngineContext)
+- Share minimalism (Dan): SDC Engineer folder = `CLAUDE.md` + `Knowledge\` (one file) + `Examples\` (Jason owns structure); drop-folder/README/category scaffolding and the questions-for-ce.md push retired — nothing auto-creates share structure anymore
+- ANSWERS-EXIST LAW: every pre-write hold question (readiness + init coverage) is checked against standing doctrine, prior engineer answers, and the sheet before it may hold — decided questions become pre-write decisions, not asks (the gripper re-ask)
+- Device TOMBSTONES: an ME-deleted device never re-enters from a stale artifact (spec re-extraction, re-summarize, agent turn); deliberate manual re-add clears the tombstone (the Escapement_Finger_2 resurrection)
+- STUCK = LOUD: a held build announces itself instantly — banner under the top bar + Questions badge; agent-turn results persist to disk (a server restart can no longer eat a finished turn) and reconnect fetch-and-renders or fails fast with Retry
+- Chat widget: always opens pinned to the latest turn; chat pill closed-widget states (unread badge + pulse, questions badge priority, thinking spinner); new layout invariants gate all three
+- Two-program station build (MidBaseLoad → PickAndPlace + Escapement): resumed with Dan's gripper ruling as doctrine; merged multi-program L5X validated via import simulation
 - JARVIS Inbox librarian: local drops + network watch folders (X:\Electrical Dept via UNC, read in place) classified and distilled into the one knowledge store; daily run, on-start scan, and "Learn now" on the Jarvis Knowledge tab; every read ledgered in `JARVIS Inbox\_learned\LEDGER.md`; conflicts filed as questions
 - Docs folder created: architecture, decisions, known-issues, roadmap
 - CLAUDE.md restructured to reference docs/ sub-files

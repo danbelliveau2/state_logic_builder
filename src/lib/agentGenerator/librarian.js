@@ -72,7 +72,9 @@ const DEFAULT_CONFIG = {
   // The SDC Engineer's home folder on the share (README, CLAUDE.md for
   // Jason's Claude Code sessions, Knowledge\ memory files, _learned\).
   networkEngineerRoot: 'SDC Engineer',
-  networkDropFolder: 'SDC Engineer\\Drop Files Here',
+  // networkDropFolder RETIRED (Dan, 2026-08-31): the share holds EXACTLY
+  // Knowledge\ + Samples\ — no drop folder, no auto-created structure.
+  // watchAll covers the whole SDC Engineer tree, so drops anywhere learn.
   // WATCH EVERYTHING (Dan, 2026-08-28: "learn everything in the electrical
   // department folder") — the whole dept share, recursively, minus the
   // judgment-call noise below. The backlog counter tells the story.
@@ -767,6 +769,10 @@ function walkNetworkFolder(dir, out, depth = 0, exclude = []) {
       // Visible, editable exclusions (inbox-sources.json "exclude") — the
       // judgment-call noise: ARCHIVE, EPLAN binaries, backups.
       if (exclude.some(x => x.toLowerCase() === e.name.toLowerCase())) continue;
+      // SDC Engineer\Knowledge is a two-way CHANNEL, not drop material:
+      // ceBridge.js + masterKnowledge.js ingest it verbatim (attributed, top
+      // tier) — the generic distiller must never double-read it.
+      if (e.name.toLowerCase() === 'knowledge' && /sdc engineer$/i.test(dir)) continue;
       walkNetworkFolder(fp, out, depth + 1, exclude);
       continue;
     }
@@ -786,32 +792,21 @@ function walkNetworkFolder(dir, out, depth = 0, exclude = []) {
   }
 }
 
-function ensureNetworkDropFolder(cfg, state) {
-  const drop = path.join(cfg.networkRoot, cfg.networkDropFolder);
-  try {
-    if (!fs.existsSync(drop)) {
-      fs.mkdirSync(drop);
-      state.network.dropFolderCreated = nowIso();
-      appendLedger(`${nowIso().slice(0, 16).replace('T', ' ')} · created the team drop folder \`${drop}\` (README inside) — anyone on the network can now feed Jarvis.`);
-    }
-    // README kept current (the etiquette changed when the form landed).
-    const readmePath = path.join(drop, 'README.txt');
-    const current = fs.existsSync(readmePath) ? fs.readFileSync(readmePath, 'utf8') : '';
-    if (current !== NETWORK_README) fs.writeFileSync(readmePath, NETWORK_README, 'utf8');
-    // The submission form template + category folders live in the drop root.
-    ensureCategoryFolders(drop);
-    const formSrc = path.join(LOCAL_INBOX, FORM_TEMPLATE_NAME);
-    const formDest = path.join(drop, FORM_TEMPLATE_NAME);
-    if (fs.existsSync(formSrc) && !fs.existsSync(formDest)) fs.copyFileSync(formSrc, formDest);
-  } catch (e) {
-    console.warn('[librarian] could not prepare network drop folder:', e.message);
-  }
+function ensureNetworkDropFolder(_cfg, _state) {
+  // RETIRED (Dan, 2026-08-31 — share minimalism): the SDC Engineer folder on
+  // the share holds EXACTLY Knowledge\ and Samples\, and NOTHING may ever
+  // auto-create additional folders or files there. There is no required
+  // structure: watchAll covers the whole SDC Engineer tree recursively, so a
+  // drop anywhere in it gets learned. Deliberately a no-op — do not revive.
 }
 
 /** Is a directory inside one of OUR writable folders (either inbox)? */
 function isWritableInboxDir(dir, cfg) {
-  const drop = path.join(cfg.networkRoot, cfg.networkDropFolder).toLowerCase();
   const d = String(dir).toLowerCase();
+  // No network drop folder anymore (share minimalism) — only the LOCAL inbox
+  // accepts our question docs; network-drop questions go to the app queue.
+  if (!cfg.networkDropFolder) return d.startsWith(LOCAL_INBOX.toLowerCase());
+  const drop = path.join(cfg.networkRoot, cfg.networkDropFolder).toLowerCase();
   return d.startsWith(drop) || d.startsWith(LOCAL_INBOX.toLowerCase());
 }
 
@@ -851,7 +846,7 @@ async function processNetworkSources(cfg, state, summaryLines) {
   const isForm = c => looksLikeSubmissionForm(c.name);
   // folder is the FIRST path segment under the root; a nested drop folder
   // ('SDC Engineer\Drop Files Here') matches on its first segment.
-  const dropTop = cfg.networkDropFolder.split(/[\\/]/)[0].toLowerCase();
+  const dropTop = String(cfg.networkDropFolder || ' none').split(/[\\/]/)[0].toLowerCase();
   const inDrop = c => c.folder.toLowerCase() === dropTop;
   const score = c =>
     (isForm(c) ? -2 : 0) + (inDrop(c) ? -1 : 0)
@@ -1034,6 +1029,12 @@ async function runLibrarian({ trigger = 'manual' } = {}) {
     // ce-knowledge entries as doctrine, post open questions, read answers.
     try { require('./ceBridge.js').syncCeBridge(cfg, state, summaryLines); }
     catch (e) { errors.push(`ce-bridge: ${e.message}`); }
+
+    // THE ONE MASTER FILE (Knowledge\SDC-Engineer-Knowledge.md): ingest
+    // engineer additions + any files saved into Knowledge\, then regenerate
+    // the auto sections from the store — everything learned this run lands.
+    try { require('./masterKnowledge.js').syncMasterKnowledge(cfg, state, summaryLines); }
+    catch (e) { errors.push(`master-knowledge: ${e.message}`); }
 
     state.lastRun = nowIso();
     state.lastTrigger = trigger;

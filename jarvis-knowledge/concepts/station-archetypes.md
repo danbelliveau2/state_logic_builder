@@ -76,3 +76,13 @@ handshake). Bowl control is auto-on while the station runs, off on
 fault/lockout — a bowl is part of the feeding state machine even when the ME
 mentions it while describing the pick. FlexFeeder is the shipped exemplar of
 feeder-side ownership (SDC voice: a device is "part of a state machine"; machines "own" devices; nothing is ever "commanded by a machine"); the same split held on every escapement station since.
+
+## Cam-driven multi-hub dial indexer (SDC Flex Chassis platform) (2026-08-31)
+
+SDC's Flex Chassis / SDChassis platform (e.g. Job 098) is a distinct station/machine archetype from the discrete pneumatic/servo stations JARVIS usually models: a single camshaft, turned by one servo (turret drive), simultaneously drives THREE hubs (P&P/upper, press-verify/middle, shot-pin/lower) via cam followers and lever linkages using Modified Sine cam profiles.
+
+Key implication for controls: hub position is NOT an independent PLC-commanded axis per hub — it is a mechanical function of camshaft angle. The PLC's role is to read camshaft angle (degree wheel + proximity sensor) and correlate it against known dwell/travel windows from the machine's timing diagram, not to issue separate extend/retract commands to each hub.
+
+Safety/interlock implication: whether it is safe to index is answered by the cam profile's design, not by a PLC permissive check on hub position — e.g. on the Normal Speed Flex Chassis, the shot pin (lower hub) is mechanically guaranteed fully retracted for the entire ~47°–111° dial-index window, while the upper and middle hubs are intentionally allowed to begin rising during the tail end of that same window (tooling clearances are designed around the overlap). When building/reviewing controls for a cam-driven chassis station, treat the mechanical timing diagram as authoritative for hub-vs-index safety, and ask the ME for it rather than inventing a software interlock the cam already enforces.
+
+_Source: SDC_ME_Claude_Instructions.md (network: SDC Engineer), ingested 2026-08-31 by the inbox librarian._

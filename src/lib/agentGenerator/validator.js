@@ -148,13 +148,17 @@ function extractRungs(xml) {
     : xml;
 
   const rungs = [];
-  // Track routine context for readable error messages.
-  const routineRe = /<Routine\b[^>]*\bName="([^"]+)"|<Text>\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*<\/Text>/g;
+  // Track program + routine context — multi-program files (one program per
+  // machine, Jason 2026-08-31) repeat routine names like R02_StateTransitions
+  // per program, and per-program rules must never mix the two.
+  const routineRe = /<Program\b[^>]*\bName="([^"]+)"|<Routine\b[^>]*\bName="([^"]+)"|<Text>\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*<\/Text>/g;
+  let currentProgram = '(unknown program)';
   let currentRoutine = '(unknown routine)';
   let m;
   while ((m = routineRe.exec(section)) !== null) {
-    if (m[1] !== undefined) currentRoutine = m[1];
-    else if (m[2] !== undefined) rungs.push({ routine: currentRoutine, text: m[2].trim() });
+    if (m[1] !== undefined) currentProgram = m[1];
+    else if (m[2] !== undefined) currentRoutine = m[2];
+    else if (m[3] !== undefined) rungs.push({ program: currentProgram, routine: currentRoutine, text: m[3].trim() });
   }
   return rungs;
 }
@@ -411,7 +415,19 @@ function checkExitlessWaits(rungs, warnings) {
 // last write to Control.StateReg wins the scan.
 
 function checkR02Order(rungs, errors) {
-  const r02 = rungs.filter(r => /R02/i.test(r.routine));
+  // PER PROGRAM: a multi-program file restarts its state sequence in each
+  // program — mixing the two R02s produced false "state 4 after state 40"
+  // errors (2026-08-31 two-program merge).
+  const byProgram = new Map();
+  for (const r of rungs.filter(r => /R02/i.test(r.routine))) {
+    const k = r.program ?? '(one)';
+    if (!byProgram.has(k)) byProgram.set(k, []);
+    byProgram.get(k).push(r);
+  }
+  for (const group of byProgram.values()) checkR02OrderOneProgram(group, errors);
+}
+
+function checkR02OrderOneProgram(r02, errors) {
   if (!r02.length) return;
 
   const seq = [];        // { n, idx } — targets 4..97

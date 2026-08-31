@@ -313,6 +313,15 @@ function normalizeResult(parsed, sm, otherSms) {
 
   const existingNames = new Set((sm?.devices || []).flatMap(d =>
     [d.name, d.displayName].filter(Boolean).map(s => String(s).toLowerCase())));
+  // TOMBSTONE RULE (Dan, 2026-08-31 — the Escapement_Finger_2 resurrection):
+  // an ME-DELETED device may NEVER re-enter from a stale artifact — old spec
+  // text, an old snapshot, a re-extraction. Deleted device names live in
+  // machineSpec.deviceTombstones (written by store.deleteDevice); a proposal
+  // matching one is dropped. Only a human re-adding the device by hand
+  // (store.addDevice clears the tombstone) brings it back.
+  const nkTomb = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const tombstones = new Set((sm?.machineSpec?.deviceTombstones || [])
+    .flatMap(t => [nkTomb(t?.name), nkTomb(t?.displayName)]).filter(Boolean));
   for (const p of Array.isArray(parsed.proposedDevices) ? parsed.proposedDevices : []) {
     if (!p || !p.name || !VALID_TYPES.has(p.type)) {
       if (p) fixups.push(`dropped proposed device "${p.name || '?'}" — invalid type "${p.type}"`);
@@ -321,6 +330,10 @@ function normalizeResult(parsed, sm, otherSms) {
     if (existingNames.has(String(p.name).toLowerCase())
       || existingNames.has(String(p.displayName || '').toLowerCase())) {
       fixups.push(`dropped proposed device "${p.name}" — already configured`);
+      continue;
+    }
+    if (tombstones.has(nkTomb(p.name)) || tombstones.has(nkTomb(p.displayName))) {
+      fixups.push(`dropped proposed device "${p.name}" — ME deleted this device (tombstone); it never re-enters from stale text`);
       continue;
     }
     const sheet = normalizeSheetFields(p);

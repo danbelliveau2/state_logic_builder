@@ -1173,10 +1173,29 @@ function inferredPositionsFor(d, sequence) {
 /** Pre-build the data-sheet rows and reconcile explicit ME statements —
  *  applied to EVERY summary before it reaches state (fresh, resumed, or
  *  re-summarized). Idempotent. */
+// TOMBSTONE RULE (Dan, 2026-08-31 — the Escapement_Finger_2 resurrection):
+// an ME-DELETED device may NEVER re-enter from a stale artifact — old spec
+// text, a re-summarize, an agent turn, coverage prose. Every summary pass
+// funnels through withSheetPrefill, so the filter lives here. The component
+// keeps the module list in sync with the draft's persisted tombstones.
+let _deviceTombstones = [];
+const _nkTomb = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+function _isTombstoned(d) {
+  if (!_deviceTombstones.length) return false;
+  const names = [_nkTomb(d?.displayName), _nkTomb(d?.name)].filter(Boolean);
+  return _deviceTombstones.some(t => names.includes(_nkTomb(t)));
+}
+function setActiveDeviceTombstones(list) {
+  _deviceTombstones = Array.isArray(list) ? list : [];
+}
+
 function withSheetPrefill(s) {
   if (!isStructuredSummary(s)) return s;
   let changed = false;
-  const devices = s.devices.map(d => {
+  const beforeTomb = s.devices.length;
+  const kept = s.devices.filter(d => !_isTombstoned(d));
+  if (kept.length !== beforeTomb) changed = true;
+  const devices = kept.map(d => {
     let next = d;
     const clone = () => { if (next === d) next = { ...d }; };
     // DEVICE LINKS (Dan, 2026-08-30): every device row carries a STABLE id
@@ -1658,17 +1677,33 @@ async function agentTurnRequest(payload, onState, onReading) {
     // Connection lost mid-turn — the turn is still running on the server.
     onState?.('connection lost — the turn is still running on the server; reconnecting…');
     if (payload.draftId) {
+      // FETCH-AND-RENDER ON RECONNECT (Dan, 2026-08-31: his turn sat
+      // "reconnecting…" for minutes after a server restart killed it): the
+      // result is now DISK-persisted server-side, and /last reports
+      // `running`. A completed-while-disconnected turn lands within seconds;
+      // a dead turn (not running, no result) fails fast with Retry — never
+      // an open-ended wait.
       const deadline = Date.now() + 150000;
+      let notRunningMisses = 0;
       while (Date.now() < deadline) {
-        await new Promise(ok => setTimeout(ok, 5000));
+        await new Promise(ok => setTimeout(ok, 3000));
         try {
           const r2 = await fetch(`/api/jarvis/agent-turn/last?draftId=${encodeURIComponent(payload.draftId)}`);
           const d2 = await r2.json().catch(() => null);
           if (d2?.ok && d2.at >= turnStart && d2.result?.ok) return d2.result;
+          if (d2 && d2.running === false) {
+            // Two consecutive confirmations (grace for the register race):
+            // the server says no turn is running and no fresh result exists
+            // — the turn is dead, say so NOW instead of burning the deadline.
+            if (++notRunningMisses >= 2) break;
+          } else {
+            notRunningMisses = 0;
+            onState?.('reconnected — the turn is still running on the server; waiting for it to finish…');
+          }
         } catch { /* keep polling until the deadline */ }
       }
     }
-    throw new Error('that turn died — the connection dropped and the result never landed');
+    throw new Error('that turn died — the server restarted or the turn was lost; your message was not applied. Hit Retry to run it again.');
   } finally {
     clearInterval(watchdog);
   }
@@ -4869,6 +4904,40 @@ export function CreateStationPage({ embedded = false }) {
   const [chatPanelOpen, setChatPanelOpen] = useState(() => {
     try { return localStorage.getItem('jarvis.chatPanelOpen') === '1'; } catch { return false; }
   });
+  // WIDGET OPENS AT BOTTOM (Dan, 2026-08-31 — gate invariant): the latest
+  // turn is why he opened it. Pins on open, on every thread change while
+  // open, and after a reattach lands a result.
+  const chatPanelBodyRef = useRef(null);
+  useEffect(() => {
+    if (!chatPanelOpen) return;
+    const pin = () => {
+      const b = chatPanelBodyRef.current;
+      if (b) b.scrollTop = b.scrollHeight;
+      if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight;
+    };
+    pin();
+    const t = setTimeout(pin, 80); // again after layout settles
+    return () => clearTimeout(t);
+  }, [chatPanelOpen, chatThread]);
+  // TOMBSTONE RULE state (Dan, 2026-08-31): names of ME-deleted devices —
+  // persisted on the draft, synced into the module-level filter that every
+  // withSheetPrefill pass applies.
+  const [deviceTombstones, setDeviceTombstones] = useState(() =>
+    Array.isArray(draft?.deviceTombstones) ? draft.deviceTombstones : []);
+  useEffect(() => { setActiveDeviceTombstones(deviceTombstones); }, [deviceTombstones]);
+  // iPHONE-STYLE PILL STATES (Dan, 2026-08-31): a turn that finishes while
+  // the widget is closed = UNREAD (badge + gentle pulse until opened).
+  const [unreadCount, setUnreadCount] = useState(0);
+  const _prevThreadLen = useRef(Array.isArray(draft?.chatThread) ? draft.chatThread.length : 0);
+  useEffect(() => {
+    const added = chatThread.length - _prevThreadLen.current;
+    _prevThreadLen.current = chatThread.length;
+    if (added > 0 && !chatPanelOpen) {
+      const fresh = chatThread.slice(-added).filter(t => t?.role === 'jarvis').length;
+      if (fresh) setUnreadCount(c => c + fresh);
+    }
+  }, [chatThread, chatPanelOpen]);
+  useEffect(() => { if (chatPanelOpen) setUnreadCount(0); }, [chatPanelOpen]);
   const setChatPanel = (on) => {
     setChatPanelOpen(on);
     try { localStorage.setItem('jarvis.chatPanelOpen', on ? '1' : '0'); } catch { /* private mode */ }
@@ -4921,6 +4990,7 @@ export function CreateStationPage({ embedded = false }) {
     ...(stationAccepted ? { stationAccepted } : {}),
     ...(explLayers.length ? { explanationLayers: explLayers } : {}),
     ...(Object.keys(deviceAssignments ?? {}).length ? { deviceAssignments } : {}),
+    ...(deviceTombstones.length ? { deviceTombstones } : {}),
     ...(absorbedIdsRef.current.length ? { absorbedDraftIds: absorbedIdsRef.current } : {}),
     ...(linkedSmId ? { smId: linkedSmId } : {}),
   });
@@ -5000,7 +5070,7 @@ export function CreateStationPage({ embedded = false }) {
     }, 1000);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, station, description, images, phase, summary, jarvisCoverage, questions, nonStandardFlags, summarizeCost, purpose, genLevel, expectedSms, referenceText, controlsNotes, builtSnapshot, agreedNeeds, sheetAhead, chatThread, localCascade, smProposal, deviceAssignments, draftKey, linkedSmId]);
+  }, [name, station, description, images, phase, summary, jarvisCoverage, questions, nonStandardFlags, summarizeCost, purpose, genLevel, expectedSms, referenceText, controlsNotes, builtSnapshot, agreedNeeds, sheetAhead, chatThread, localCascade, smProposal, deviceAssignments, deviceTombstones, draftKey, linkedSmId]);
 
   // ── Pictures persist FOREVER — hardened after the Aug 24 SECOND loss ─────
   // The server copy is authoritative and its merge is ADDITIVE (union by
@@ -5628,6 +5698,14 @@ export function CreateStationPage({ embedded = false }) {
   }
 
   function removeDevice(idx) {
+    // TOMBSTONE RULE (Dan, 2026-08-31): a deleted device's name is recorded
+    // so no stale artifact (re-summarize, agent turn, old prose) ever
+    // re-adds it. Only a deliberate re-add via addDevice clears it.
+    const dead = summary?.devices?.[idx];
+    if (dead) {
+      const nm = String(dead.displayName ?? dead.name ?? '').trim();
+      if (nm) setDeviceTombstones(ts => (ts.includes(nm) ? ts : [...ts, nm]));
+    }
     setSummary(s => withSheetPrefill({ ...s, devices: s.devices.filter((_, i) => i !== idx) }));
     setDirty(true);
     markSheetAhead();
@@ -5639,6 +5717,15 @@ export function CreateStationPage({ embedded = false }) {
     if (!t) return;
     const added = linesToSection('devices', t)
       .map(d => ({ ...d, name: capDeviceName(d.name) })); // SDC name style on entry
+    // A human re-adding a device by hand CLEARS its tombstone — explicit ME
+    // action outranks the rule.
+    const nk = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const addedKeys = added.flatMap(d => [nk(d.name), nk(d.displayName)]).filter(Boolean);
+    setDeviceTombstones(ts => {
+      const next = ts.filter(t2 => !addedKeys.includes(nk(t2)));
+      if (next.length !== ts.length) setActiveDeviceTombstones(next); // sync before prefill runs
+      return next;
+    });
     setSummary(s => withSheetPrefill({ ...s, devices: [...s.devices, ...added] }));
     setDirty(true);
     markSheetAhead();
@@ -6677,6 +6764,10 @@ export function CreateStationPage({ embedded = false }) {
       // Land the applied draft — the server edited a working copy through
       // typed ops; the client stays the storage authority.
       if (d.draft) {
+        if (Array.isArray(d.draft.deviceTombstones)) {
+          setDeviceTombstones(d.draft.deviceTombstones);
+          setActiveDeviceTombstones(d.draft.deviceTombstones); // before the prefill below
+        }
         if (d.draft.summary) setSummary(withSheetPrefill(d.draft.summary));
         if (!linkedSmId && d.draft.smProposal?.stateMachines) {
           setSmProposal(p => ({ ...(p ?? {}), stateMachines: d.draft.smProposal.stateMachines, at: Date.now() }));
@@ -9556,14 +9647,25 @@ export function CreateStationPage({ embedded = false }) {
             style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.85)', fontSize: 15, cursor: 'pointer', padding: 0, lineHeight: 1 }}
           >✕</button>
         </div>
-        <div style={{ minHeight: 0, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+        <div ref={chatPanelBodyRef} style={{ minHeight: 0, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
           {chatBlock}
         </div>
       </div>
     )}
+      {/* iPHONE-STYLE CLOSED-WIDGET STATES (Dan, 2026-08-31), priority order:
+          questions > unread > thinking. Questions = orange badge + its own
+          pulse ("answer something"); unread = red count + gentle yellow glow
+          ("new response", cleared on open); thinking = small spinner dot
+          (turn in flight, no badge yet). Pulse, not strobe. */}
       <button
         type="button"
         data-testid="chat-pill"
+        data-state={openQuestionCount > 0 ? 'questions' : (!chatPanelOpen && unreadCount > 0) ? 'unread' : busy ? 'thinking' : 'idle'}
+        className={
+          openQuestionCount > 0 ? 'sdc-chat-pill sdc-chat-pill--questions'
+          : (!chatPanelOpen && unreadCount > 0) ? 'sdc-chat-pill sdc-chat-pill--unread'
+          : 'sdc-chat-pill'
+        }
         onClick={() => setChatPanel(!chatPanelOpen)}
         title="Open the chat — ask, correct, change; questions live here too"
         style={{
@@ -9576,11 +9678,17 @@ export function CreateStationPage({ embedded = false }) {
         }}
       >
         Chat — SDC Engineer
-        {openQuestionCount > 0 && (
-          <span data-testid="chat-pill-count" style={{ background: '#dc2626', color: '#fff', borderRadius: 4, padding: '0 7px', fontSize: 11, fontWeight: 800 }}>
+        {openQuestionCount > 0 ? (
+          <span data-testid="chat-pill-count" style={{ background: '#ea580c', color: '#fff', borderRadius: 999, minWidth: 18, textAlign: 'center', padding: '1px 6px', fontSize: 11, fontWeight: 800 }}>
             {openQuestionCount}
           </span>
-        )}
+        ) : (!chatPanelOpen && unreadCount > 0) ? (
+          <span data-testid="chat-pill-unread" style={{ background: '#dc2626', color: '#fff', borderRadius: 999, minWidth: 18, textAlign: 'center', padding: '1px 6px', fontSize: 11, fontWeight: 800 }}>
+            {unreadCount}
+          </span>
+        ) : busy ? (
+          <span data-testid="chat-pill-thinking" className="sdc-chat-pill__spinner" aria-label="working" />
+        ) : null}
       </button>
     </>
   );

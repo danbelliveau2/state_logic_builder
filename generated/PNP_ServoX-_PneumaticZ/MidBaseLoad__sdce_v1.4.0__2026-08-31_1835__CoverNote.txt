@@ -1,0 +1,60 @@
+MidBaseLoad__sdce_v1.4.0__2026-08-31_1835.L5X — Cover Note
+From the SDC Engineer (v1.4.0), 2026-08-31. For review before anything ships.
+
+# What this station is
+MidBaseLoad — station 1 of PNP_ServoX- PneumaticZ, delivered as TWO PROGRAMS
+in one L5X per Jason's one-program-per-state-machine correction (CE bible §3):
+  - S01_MidBasePickAndPlace  (servo X + pneumatic vertical slide + gripper; 13 states)
+  - S01_MidBaseEscapement    (finger 1, shuttle, shuttle gripper, nest sensor; 14 states)
+Escapement_Finger_2 is OMITTED and tombstoned — Dan deleted it during the walk;
+the tombstone now prevents any stale artifact from re-adding it.
+
+# Handshake interface — wired BOTH sides (no stubs between these two programs)
+  - p_PartGripped       set by PickAndPlace, read by Escapement (state 19 → 22)
+  - p_PartClear         set by PickAndPlace, read by Escapement (state 25 → 28)
+  - p_PartReadyForPick  set by Escapement, read by PickAndPlace (state 4 → 7)
+  - p_ShuttleGripperOpen set by Escapement, read by PickAndPlace (state 13 → 16)
+The dial-ready wait (state 22 → 25) stays a *Replace stub — genuine cross-station
+scope for machine integration.
+
+# What was verified
+- Byte-level L5X validation incl. full Studio-import simulation on the MERGED
+  two-program file: PASS (0 errors, 0 warnings; ASCII-folded for import)
+- Both programs present; controller-scope tags/UDTs/AOIs deduped; context
+  programs carried across template families
+- Dan's standing ruling applied (2026-08-31): sensorless grippers track by
+  commanded state — closed = carrying (finish to place), open = empty; the
+  power-up question was DECIDED from doctrine, not re-asked
+- Import note: this is a Program-target export carrying both programs; also
+  saved per-program files under generated/_programs/ if separate imports are
+  preferred
+
+# Internal review — verdict: fix (red pen invited; the open items below)
+Resolved during merge: the four intra-station handshake stubs (was blocker x2).
+Still open for review:
+  1. [PickAndPlace, blocker] Sensorless-gripper power-up: GripperOpened/Closed
+     derive from non-retentive OTEs, so a power cycle enters init 100 with both
+     false and no exit until the slide-retract alarm posts a misleading message.
+     Per the standing ruling the carrying path should win when commanded-closed
+     memory is retained — needs a retentive command memory or a defined
+     both-false init branch.
+  2. [Escapement, blocker] Manual shuttle permissive gated on
+     EscapementFinger1Retracted — contradicts the walk (finger 1 extends to hold
+     the queue while the shuttle carries the part away).
+  3. [Escapement, blocker] R01 delay timer sits on the sensor-confirmed gripper
+     direction; the sensorless direction is the one that needs the 3-leg delay.
+  4. Style/notes: quickstop-reason/permissive complement drift, ServoAlarm index
+     holes inherited from the 2-axis template, carrying-memory bit naming,
+     template comment drift, unused CycleStationA.
+
+# Build ledger (honest clock)
+09:40 single-program build (validated, architecture flagged) → 11:40 Jason's
+law: two programs → 12:00 P1 held (schema had no remove ops) → 12:22 engine fix
+→ 13:31 fresh two-program run on the new engine (gripper question DECIDED from
+doctrine) → 14:09 programs done, merge-name bug found → merge engine fixed
+(Target-program extraction, real names, context carry-over, ASCII fold,
+per-program sidecars, per-program R02 validation) → 14:35 merged file PASS.
+Model spend today on this station: ~$35 across all rounds.
+
+# Red pen invited
+Mark it up — every correction trains in permanently.

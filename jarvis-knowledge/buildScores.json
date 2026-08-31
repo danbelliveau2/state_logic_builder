@@ -1102,5 +1102,191 @@
     "scoredBy": null,
     "scoreComment": null,
     "filePath": "C:\\SDC-StateLogic\\generated\\PNP_ServoX-_PneumaticZ\\MidBasePickAndPlace__jarvis_v1.4.0__2026-08-31_1600.L5X"
+  },
+  {
+    "id": "b_mthi43yt_4ioguy",
+    "at": "2026-08-31T17:17:27.701Z",
+    "project": "PNP_ServoX- PneumaticZ",
+    "sm": "MidBasePickAndPlace",
+    "jarvisVersion": "1.4.0",
+    "costUSD": 0.0604,
+    "durationS": 37,
+    "attempts": 0,
+    "validationOk": false,
+    "firstPassShip": null,
+    "roundsToShip": null,
+    "mode": "authoring",
+    "study": {
+      "exemplar": {
+        "name": "SDCServoPNP_JARVIS_v7__verified_by_Jason.L5X",
+        "kind": "engineer-verified",
+        "family": "servo",
+        "reason": "servo family match for template S05_ServoPNP.L5X; ranked engineer-verified (verified > corrected > delivered, newest first) of 8 family candidate(s)",
+        "complete": true
+      },
+      "studied": "studied: SDCServoPNP_JARVIS_v7__verified_by_Jason.L5X (engineer-verified, servo family match)"
+    },
+    "pretranslated": false,
+    "internalReview": null,
+    "writingNotes": [
+      {
+        "text": "Held before writing — readiness pass filed 1 question(s) (write cost $0)."
+      }
+    ],
+    "structuralChanges": [],
+    "help": {
+      "questions": [
+        {
+          "id": "q_help_mthi43yr_sw07kc",
+          "question": "Power-up with PNP_Gripper closed and no way to know if it holds a part — treat as carrying (finish to place), or open at safe height and treat as empty?",
+          "proposedSolution": "The shipped init templates branch on a KNOWN gripper state (SDCStandardPNP 100→106 carrying / 100→103 empty); closed-with-unknown-part is not in them. Common safe default: open at safe height over a scrap-safe spot, run the empty path — your call. [SDCStandardPNP 100/103/106 — known carry/empty only]",
+          "addressee": "ME"
+        }
+      ],
+      "status": "waiting"
+    },
+    "resumePath": "C:\\SDC-StateLogic\\generated\\PNP_ServoX-_PneumaticZ\\MidBasePickAndPlace__held__mthi43yt.resume.json",
+    "score": null,
+    "scoredBy": null,
+    "scoreComment": null,
+    "filePath": null
+  },
+  {
+    "id": "b_mthjzcwd_uem5jo",
+    "at": "2026-08-31T18:09:45.229Z",
+    "project": "PNP_ServoX- PneumaticZ",
+    "sm": "MidBaseLoad",
+    "jarvisVersion": "1.4.0",
+    "costUSD": 19.2279,
+    "durationS": 2290,
+    "attempts": 2,
+    "validationOk": false,
+    "firstPassShip": null,
+    "roundsToShip": null,
+    "mode": "authoring",
+    "study": {
+      "exemplar": null,
+      "studied": null
+    },
+    "pretranslated": false,
+    "internalReview": {
+      "verdict": "fix",
+      "findings": [
+        {
+          "severity": "blocker",
+          "routine": "R02_StateTransitions",
+          "finding": "The two intra-station signals from the sibling machine (Mid-Base Escapement) are stubbed with g_MachineBasic.AlwaysOff: rung 4 (state 4 -> 7, 'part ready at nest') and rung 7 (state 13 -> 16, 'shuttle gripper open'). This program already emits its own side of the conversation as parameters (R03 rungs 12/13, p_PartGripped and p_PartClear), so the handshake exists on the producer side and not on the consumer side — a one-sided handshake, and in auto the two waits are unsatisfiable (they can only be passed in Dry Run), so the cycle can never run. Same-station program-to-program signals are consumed by direct \\MidBaseEscapement.p_Signal reference (or an i_ input parameter), not by a permanently-false bit. The dial-ready stub in rung 10 is a genuine cross-station/out-of-scope stub and is fine; the escapement ones are not.",
+          "templateEvidence": "S05 R02 rung 9 consumes the partner program directly — XIC(\\S00_IndexerSP.q_WaitStationsComplete) — and CONTROLS #23 / the signal-scope doctrine: every handshake exists on BOTH sides, producer set/clear plus consumer wait/transition; AlwaysOff gating of live logic is anti-pattern #8."
+        },
+        {
+          "severity": "blocker",
+          "routine": "R02_StateTransitions",
+          "finding": "Init scenario coverage is not exhaustive for this sensorless gripper. GripperOpened/GripperClosed are derived from the OTE command bits (R01 rungs 4/5) which are non-retentive, so on power-up (or any power cycle mid-cycle) BOTH bits are false. Rung 17 then enters init 100 (PartStarted is also false), the slide retracts, and neither exit exists: rung 18 requires GripperOpened and rung 19 requires GripperClosed. The state machine sits in 100 until the R20 rung 6 slide-retract timer trips and posts 'Waiting For Vertical Slide To Retract' — a wrong message for an undefined init path. Per the standing state-based-tracking ruling (power-up with the gripper engaged is treated as CARRYING and runs the carrying init path), the carrying branch must be the default: condition init 106 on XIO(GripperOpened) (or make the gripper command memory retentive) so every power-up posture reaches a defined init path and a correct re-entry state.",
+          "templateEvidence": "S05 R02 rungs 15/16 (init 103 on GripperOpened, 106 on GripperClosed) plus the init-branch law: both postures must have a path in Initialized, in init, and out of state 2 — an uncovered combination on a sensorless gripper is a blocker, never silence."
+        },
+        {
+          "severity": "style",
+          "routine": "R20_Alarms",
+          "finding": "The X quickstop reason (rung 2) is not the exact complement of the permissive. The permissive (R04 rung 2) is XIC(VerticalSlideRetractedDebounce.On) XIO(q_ExtendVerticalSlide); the reason branch tests only XIO(VerticalSlideRetractedDebounce.On), so a quickstop caused by the extend command being asserted while the retract sensor is still made writes no fresh reason string and the operator reads a stale message.",
+          "templateEvidence": "Verified v7 rule (Jason, 2026-08-25): the R20 quickstop-reason condition is the exact complement of the permissive compare; S05 R20 rung 4 mirrors its permissive terms."
+        },
+        {
+          "severity": "style",
+          "routine": "R02_StateTransitions",
+          "finding": "Carrying-memory bit is inconsistent: rung 7 (resume branch) and rung 10 (init 124 -> 25 carrying re-entry) test the raw output q_CloseGripper, while R01 rung 12 (Initialized) and R02 rung 19 (init 106) test the derived GripperClosed. One derived posture bit should be used everywhere so 'the machine is carrying' means the same thing in every rung.",
+          "templateEvidence": "S05 R01 rung 11 and R02 rungs 6/8/16/17 all key the carrying posture on GripperClosed/GripperOpened, never on the q_ coil directly."
+        },
+        {
+          "severity": "style",
+          "routine": "R20_Alarms",
+          "finding": "The X quickstop kept the two-axis template's ServoAlarm[4]/ServoAlarmList[4] slot, leaving indices 2 and 3 (the deleted Z axis's drive-fault and loss-of-reference alarms) as dead slots. Renumber the quickstop to ServoAlarm[2] and confirm the ServoAlarmList[2]/[3] Z-axis message strings were deleted with the axis — a leftover Z string in tag data is template baggage from a device this station does not have.",
+          "templateEvidence": "S05 R20 rungs 2/3 are the Z alarms at indices 2/3 and rung 4 is the X quickstop at index 4; NO UNUSED DEVICES (Jason 2026-08-31) — the emitted device set, tags and alarm strings included, equals the sheet's device set exactly."
+        },
+        {
+          "severity": "note",
+          "routine": "R01_Inputs",
+          "finding": "CycleStationA is still computed (rung 17) but no longer referenced anywhere — the Attempt latch moved to the state-10 transition without its part-tracking gate (R02 rung 5, flagged in the junior's own *Replace comment). Acceptable as a machine-level deferral, but the attempt now latches on every pick regardless of nest status; reattach the gate at machine integration.",
+          "templateEvidence": "S05 R02 rung 9: XIC(\\S00_IndexerSP.q_WaitStationsComplete) XIC(CycleStationA) ... OTL(...Station[StaNum].Attempt)."
+        },
+        {
+          "severity": "note",
+          "routine": "R20_Alarms",
+          "finding": "State 22 is partitioned across two alarm rungs (rung 3 destination-arrival, 3000 ms, gated XIO(XAxisPlace.InPos); rung 9 dial-ready warning, 10000 ms Severity 1, gated XIC(XAxisPlace.InPos)). Each rung is single-purpose with its own FaultTime and the milestones are mutually exclusive, so this reads correctly — recorded as a decision, not a finding.",
+          "templateEvidence": "Verified v7 partition rule: two alarms per stroke by milestone, one wait per rung owning its own MOVE(n,Control.FaultTime); part-starvation-class waits are Severity 1 feeding q_Pause."
+        },
+        {
+          "severity": "blocker",
+          "routine": "R02_StateTransitions",
+          "finding": "Rungs 9 and 11 — the two partner waits (state 19 → 22 on Pick and Place's part-gripped signal, state 25 → 28 on its part-clear signal) are conditioned on XIC(g_MachineBasic.AlwaysOff). In auto (non-dry-run) the sequence can never leave state 19: it holds forever on a Severity-1 warning and the station never completes a cycle. Same-station inter-SM signals are consumed as a direct \\Program.p_Signal reference (\\MidBasePickAndPlace.p_PartGripped / p_PartClear), and this program already PRODUCES its two p_ signals in R03 rungs 15/16 — the handshake is real on one side and faked on the other. Write the real cross-program references; an AlwaysOff smother is the anti-pattern, not a stub.",
+          "templateEvidence": "S01_PartLoad R02 rung 9 waits on a real cross-program reference — XIC(\\S00_IndexerSP.q_WaitStationsComplete) — even though that program lives outside this file; AlwaysOff appears in the template only in the deliberately-disabled Restart Logic rung 18."
+        },
+        {
+          "severity": "blocker",
+          "routine": "R03_StateLogic",
+          "finding": "Rung 8 — the manual Escapement Shuttle permissive is gated on XIC(EscapementFinger1Retracted). That contradicts the station's own sequence: state 13 extends Finger 1 and state 16 then extends the Shuttle, so the shuttle's normal working posture is finger EXTENDED. As written, manual shuttle extend/retract is blocked in exactly the posture auto uses. This is the template's Z-retracted-before-X interference gate copied without re-deriving the interlock for these devices; either state the real interference condition or drop the gate.",
+          "templateEvidence": "S01_PartLoad R03 rung 8: XIC(Status.State[1])XIC(ZAxisRetracted)[...] — the gate is the genuine physical interference (Z must be up before X moves), consistent with that template's auto sequence which never moves X with Z extended."
+        },
+        {
+          "severity": "blocker",
+          "routine": "R03_StateLogic",
+          "finding": "Rung 8 carries the template's comment verbatim: \"X Axis Control\". This station has no X axis. Rung comments are generated from the station's device/state map, never inherited — a leaked template label naming a device that does not exist misleads every CE who opens the file. Re-issue it (\"Escapement Shuttle Manual Permissive\") and sweep the file for any other inherited label.",
+          "templateEvidence": "S01_PartLoad R03 rung 8 comment \"X Axis Control\" — correct there because the template station owns an X axis; the same string in an escapement program is stale-by-construction."
+        },
+        {
+          "severity": "style",
+          "routine": "R01_Inputs",
+          "finding": "Gripper vocabulary is mixed inside one file: tags are q_CloseShuttleGripper / q_OpenShuttleGripper / i_ShuttleGripperClosed / ShuttleGripperOpened (template's Close/Open family) while the R20 messages read \"Waiting For Shuttle Gripper To Engage / Disengage\" and the approved sequence actions are Engage/Disengage. Pick one family and use it in tags, sensor names, timers and messages. See the standards question filed with this review.",
+          "templateEvidence": "S01_PartLoad R01 rungs 6-7 / R03 rungs 13-14 use q_OpenGripper/q_CloseGripper and GripperOpened/GripperClosed throughout, with alarm text matching."
+        },
+        {
+          "severity": "note",
+          "routine": "R02_StateTransitions",
+          "finding": "Rung 6 latches \\Tracking...Station[StaNum].Attempt at state 13 without the template's XIC(CycleStationA) gate; CycleStationA is still computed in R01 rung 19 but is now referenced nowhere. Harmless while part tracking is out of build scope, but the gate is what keeps one attempt per nest.",
+          "templateEvidence": "S01_PartLoad R02 rung 9: XIC(\\S00_IndexerSP.q_WaitStationsComplete)XIC(CycleStationA)...OTL(...Attempt)."
+        },
+        {
+          "severity": "note",
+          "routine": "R03_StateLogic",
+          "finding": "q_ActuatorsSafe is tied to g_MachineBasic.AlwaysOn with a *Replace comment (rung 3), while rungs 6-7 still gate part tracking and q_StationComplete on \\S00_IndexerSP.q_WaitStationsComplete. If the escapement genuinely never enters the dial envelope, the always-safe declaration is a defensible per-station decision — just make sure the indexer coupling in rungs 6/7 is reconciled at machine integration.",
+          "templateEvidence": "S01_PartLoad R03 rung 3 derives q_ActuatorsSafe from real device postures; AlwaysOn is used in the template only for genuinely unconditional rungs (rung 0 q_StartOK, rung 15 StationPerformance)."
+        },
+        {
+          "severity": "note",
+          "routine": "R01_Inputs",
+          "finding": "Rung 5 debounces Nest_Part_Present at 500/500 ms where the template ships 100/100. Not wrong, but 500 ms on/off on the cycle-start sensor adds a full second of dead time per cycle — confirm that is intended rather than a value carried from the device sheet's generic timer fields.",
+          "templateEvidence": "S01_PartLoad R01 rung 5: AOI_Debounce(PartPresentDebounce,i_PartPresent,100,100)."
+        }
+      ],
+      "standardsQuestions": [
+        {
+          "topic": "Sensorless gripper memory across power cycles",
+          "question": "On a station whose gripper has no sensors, the carrying/empty posture is remembered only by the non-retentive q_Close/q_Open output coils, so after a power cycle neither posture bit is true and the init block's gripper branches both fail. How does SDC want that posture remembered?",
+          "proposedSolution": "Make the carrying branch the default — condition the carrying init path on XIO(GripperOpened) rather than XIC(GripperClosed), so an unknown gripper is treated as carrying and finishes to place, matching the state-based-tracking ruling. If you'd rather have real memory, I'd add a retentive latched CarryingPart bit set at gripper-engage and unlatched at release, and key Initialized and the init branches on it. Do you like the default-to-carrying answer, or should I add the latched bit as the standard?",
+          "addressee": "CE",
+          "domain": "controls",
+          "kind": "question"
+        }
+      ],
+      "questionIds": [],
+      "heldStatus": null,
+      "missingVsTemplate": [
+        "Consumer side of the two intra-station escapement signals (no i_/\\MidBaseEscapement.p_ reference anywhere) despite this program emitting p_PartGripped and p_PartClear.",
+        "An init exit path for the power-up posture where neither GripperOpened nor GripperClosed is true (state 100 dead-ends)."
+      ],
+      "summary": "Mid-Base Pick and Place: fix; Mid-Base Escapement: fix",
+      "costUSD": 1.4303
+    },
+    "writingNotes": [
+      {
+        "text": "Multi-program emission: 2 programs (MidBasePickAndPlace, MidBaseEscapement), 4 handshake signals wired (p_PartGripped, p_PartClear, p_PartReadyForPick, p_ShuttleGripperOpen)."
+      }
+    ],
+    "structuralChanges": [],
+    "help": null,
+    "resumePath": null,
+    "score": null,
+    "scoredBy": null,
+    "scoreComment": null,
+    "filePath": "C:\\SDC-StateLogic\\generated\\PNP_ServoX-_PneumaticZ\\MidBaseLoad__sdce_v1.4.0__2026-08-31_1809.L5X"
   }
 ]

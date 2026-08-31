@@ -55,15 +55,10 @@ function paths(cfg) {
   };
 }
 
-/** Append a line to the SHARE ledger (CE-bridge events only; the full
- *  drop-by-drop ledger stays in the local _learned\LEDGER.md). */
-function appendShareLedger(cfg, line) {
-  try {
-    const p = paths(cfg).shareLedger;
-    fs.mkdirSync(path.dirname(p), { recursive: true });
-    fs.appendFileSync(p, `- ${line}\r\n`, 'utf8');
-  } catch (_) { /* share unreachable — the local record still exists */ }
-}
+/** RETIRED (Dan, 2026-08-31 — share minimalism): the share holds EXACTLY
+ *  Knowledge\ + Samples\; nothing may auto-create folders/files there. The
+ *  full drop-by-drop ledger lives locally in _learned\LEDGER.md. No-op. */
+function appendShareLedger(_cfg, _line) {}
 
 // ── 1. ce-knowledge.md → meKnowledge (engineer-authored doctrine) ───────────
 
@@ -211,12 +206,17 @@ function readCeAnswers(cfg, summaryLines) {
   }
 }
 
-/** One call per librarian run. Never throws (share may be unreachable). */
+/** One call per librarian run. Never throws (share may be unreachable).
+ *  RETIRED 2026-08-31 (Dan's structure ruling): the questions-for-ce.md
+ *  mechanism is gone — Knowledge\ holds EXACTLY the one master file, and we
+ *  never push question files at Jason (his Claude conversations + drops are
+ *  how he teaches; open CE questions live in-app only). readCeAnswers still
+ *  runs so an old copy resurfacing ingests once; writeQuestionsForCe is
+ *  never called — do not revive it. */
 function syncCeBridge(cfg, state, summaryLines) {
   try {
     if (!fs.existsSync(paths(cfg).root)) return;
-    readCeAnswers(cfg, summaryLines);   // answers first — they may close questions
-    writeQuestionsForCe(cfg, summaryLines);
+    readCeAnswers(cfg, summaryLines);   // legacy answers doc, ingest-only
     ingestCeKnowledge(cfg, state, summaryLines);
   } catch (e) {
     summaryLines.push(`ce-bridge: FAILED (${e.message})`);

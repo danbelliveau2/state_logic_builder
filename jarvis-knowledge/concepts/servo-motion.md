@@ -742,3 +742,13 @@ _Source: EE Debug and Testing Process.docx (network: EE Process and Standards Do
 - **Design discipline**: minimize motor/drive type variation on a machine; reuse an already-used drive size for new axes where possible; consult electrical engineering before deviating from these defaults.
 
 _Source: SDC_Motors_Cables_Drives_Guildelines_Rev 2.docx (network: Standards - Elect Design), ingested 2026-08-31 by the inbox librarian._
+
+## Commutation config mismatch across Studio 5000 versions (Kinetix 5500) (2026-08-31)
+
+- If a legacy project (e.g. Studio 5000 V33) has manually-entered Commutation Alignment/Offset values, it's usually because Rockwell had no profile for that motor at the time — the values were entered by hand.
+- Newer projects (Studio 5000 V37+) may already include a library/profile for that same motor, making manual commutation entry unnecessary and unsafe to copy over.
+- Symptom of copying stale manual commutation values into a project with a native motor profile: Kinetix 5500 throws `FLT S04 commutation not configured`. Before that fix attempt, the drive may simply refuse to jog at all with a different fault.
+- Fix: delete the drive from both the IO tree and the motion axis, re-add the same module with the original name so it auto-detects/uses the motor's built-in profile for commutation, then redownload. Do not manually re-enter the legacy commutation values.
+- Lesson for machine replication: when copying a servo setup from an older sibling machine into a newer project, check whether the motor now has a native Studio 5000 profile before copying commutation parameters — don't assume identical setup across Studio 5000 versions.
+
+_Source: TN-02172026-Job1125-MotorCommutation-IG.docx (network: SDC Knowledgebase), ingested 2026-08-31 by the inbox librarian._
