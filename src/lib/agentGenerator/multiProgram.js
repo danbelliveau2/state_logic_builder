@@ -362,6 +362,17 @@ async function generateStationPrograms(projectJson, smId, options = {}) {
   const wf = XMLValidator.validate(mergedXml);
   const mergedErrors = [];
   if (wf !== true) mergedErrors.push(`Merged L5X not well-formed: ${wf.err?.msg}`);
+  // FULL IMPORT-SIM ON THE MERGED FILE (Jason's real-controller import,
+  // 2026-08-31: per-program validation passed while the MERGED file carried a
+  // dangling ParameterConnection, cross-scope-undefined handshake tags, and
+  // phantom q_ tags). The union of both machines' devices drives the
+  // tag-level audit; scope-aware resolution runs across all programs.
+  try {
+    const { validateL5X } = require('./validator.js');
+    const unionDevices = deviceSets.flat().map((d) => ({ name: d.displayName || d.name, type: d.type ?? '' }));
+    const mv = validateL5X(mergedXml, { deviceNames: unionDevices.map((d) => d.name), devices: unionDevices });
+    mergedErrors.push(...(mv.errors ?? []).map((e) => `[merged] ${e}`));
+  } catch (e) { mergedErrors.push(`Merged-file validation unavailable: ${e.message}`); }
   // Program-target exports (our templates) carry no <Tasks>/<ScheduledPrograms>
   // section — Studio schedules at import. Require scheduling only when the
   // merged file actually has the section (controller-target exports).

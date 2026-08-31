@@ -1,0 +1,37 @@
+MidBaseLoad__sdce_v1.4.1__2026-08-31_1845.L5X — Cover Note
+From the SDC Engineer (v1.4.1), 2026-08-31. Import-fix release for Jason's Studio 5000 import of v1.4.0 (1835).
+
+# What changed vs 1835 (both defects from your import, plus one you'd have hit next)
+1. DANGLING PARAMETER CONNECTION REMOVED: <ParameterConnection S01_MidBasePickAndPlace.iq_ZAxis <-> a04_S01PNPZAxis>
+   survived the phantom-Z purge with its parameter deleted — exactly your
+   "usage types are incompatible" cancel. The X-axis connection
+   (iq_XAxis <-> a03_S01PNPXAxis) is intact and verified against both endpoints.
+2. HANDSHAKE TAGS NOW DEFINED, CONTROLLER SCOPE, ONCE: p_PartGripped and
+   p_PartClear were defined inside the PickAndPlace program only — the
+   Escapement's references imported "Undefined" (your red flags). All four
+   handshake signals (p_PartGripped, p_PartClear, p_PartReadyForPick,
+   p_ShuttleGripperOpen) are now single controller-scope BOOLs (SM-output
+   pattern) — both programs read/write the same bit. The Escapement previously
+   also had program-scope SHADOWS of its two produced signals, which would have
+   made the handshake never pass in auto — removed.
+3. PHANTOM TAGS PURGED: q_ExtendZAxis / q_RetractZAxis (deleted Z axis) and
+   q_ExtendXAxis / q_RetractXAxis (a servo never gets pneumatic-style outputs)
+   existed in two scopes with zero rung references — all eight definitions gone.
+
+# Verification
+- Full offline import simulation: PASS (0 errors, 0 warnings)
+- NEW validator coverage from your two screenshots (both now permanent
+  regression fixtures): every ParameterConnection's endpoints must resolve with
+  compatible types, and every bare tag reference must resolve in ITS program's
+  scope or controller scope — your exact 1835 file now FAILS offline with your
+  exact errors; this file passes.
+
+# Import context noted
+You import into an existing controller project (its own motion group,
+a03/a04 axes present). The file's connections bind only to what the file
+declares; controller-context tags merge onto your existing ones by name.
+
+# Red pen invited
+The v1.4.0 cover note's open review items (gripper power-up memory, escapement
+manual-shuttle permissive, R01 delay-timer direction) still stand — nothing
+else was touched in this pass.

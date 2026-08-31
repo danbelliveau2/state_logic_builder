@@ -135,7 +135,22 @@ function harvestDeclarations(xml) {
   const programs = new Set(collectAll(/<Program\b[^>]*\bName="([^"]+)"/g, scopeXml));
   const routines = new Set(collectAll(/<Routine\b[^>]*\bName="([^"]+)"/g, scopeXml));
 
-  return { tags, aoiNames, programs, routines };
+  // SCOPE-AWARE TAGS (Jason's Import Configuration screenshot, 2026-08-31:
+  // p_PartGripped flagged "Undefined" — it was defined in ANOTHER program's
+  // scope, which Studio rightly does not see). A rung resolves a bare tag
+  // against ITS OWN program's tags + controller scope only — never a sibling
+  // program's. ctrlTags = everything declared before <Programs>; programTags
+  // = per-program declarations.
+  const progsStart = scopeXml.indexOf('<Programs');
+  const ctrlSlice = progsStart > 0 ? scopeXml.slice(0, progsStart) : scopeXml;
+  const ctrlTags = new Set(collectAll(/<Tag\b[^>]*\bName="([^"]+)"/g, ctrlSlice));
+  const programTags = new Map();
+  for (const m of scopeXml.matchAll(/<Program\s([^>]*)>([\s\S]*?)<\/Program>/g)) {
+    const name = (m[1].match(/\bName="([^"]+)"/) || [])[1];
+    if (name) programTags.set(name, new Set(collectAll(/<Tag\b[^>]*\bName="([^"]+)"/g, m[2])));
+  }
+
+  return { tags, aoiNames, programs, routines, ctrlTags, programTags };
 }
 
 // ── Rung extraction (Programs section only — never AOI logic) ───────────────
@@ -401,6 +416,82 @@ function checkExitlessWaits(rungs, warnings) {
         `${uncovered.slice(0, 3).join(', ')}${uncovered.length > 3 ? ', …' : ''} ` +
         `with no fault/timeout path — no R20_Alarms rung references Status.State[${srcStates[0]}] ` +
         'or the waited condition (Rule 11: no exitless waits)');
+    }
+  }
+}
+
+// ── ParameterConnections (Jason's real-controller import, 2026-08-31) ───────
+//
+// Studio 5000 validates every <ParameterConnection> at import: both endpoints
+// must exist and their usage/data types must be compatible. A connection left
+// behind after its parameter was deleted (the iq_ZAxis case) cancels the WHOLE
+// import. Checks, offline:
+//   1. "\Program.param" endpoints: the program exists AND declares that tag.
+//   2. Bare endpoints: a controller-scope tag of that name exists.
+//   3. The program-side tag is a real PARAMETER (has a Usage attribute).
+//   4. Data types match across the connection when both are known
+//      (InOut AXIS_CIP_DRIVE ↔ controller AXIS_CIP_DRIVE etc.).
+
+function parseTagDecls(sectionXml) {
+  const out = new Map(); // name → { dataType, usage }
+  for (const m of sectionXml.matchAll(/<Tag\s+([^>]*)\/?>/g)) {
+    const attrs = m[1];
+    const name = (attrs.match(/\bName="([^"]+)"/) || [])[1];
+    if (!name) continue;
+    out.set(name, {
+      dataType: (attrs.match(/\bDataType="([^"]+)"/) || [])[1] ?? null,
+      usage: (attrs.match(/\bUsage="([^"]+)"/) || [])[1] ?? null,
+    });
+  }
+  return out;
+}
+
+function checkParameterConnections(xml, errors) {
+  const conns = [...xml.matchAll(/<ParameterConnection\s+EndPoint1="([^"]+)"\s+EndPoint2="([^"]+)"\s*\/>/g)];
+  if (!conns.length) return;
+
+  // Controller-scope tags: the first <Tags> section before <Programs>.
+  const progsStart = xml.indexOf('<Programs');
+  const ctrlSlice = progsStart > 0 ? xml.slice(0, progsStart) : xml;
+  const ctrlTagsM = ctrlSlice.match(/<Tags(?:\s[^>]*)?>[\s\S]*?<\/Tags>/);
+  const ctrlTags = ctrlTagsM ? parseTagDecls(ctrlTagsM[0]) : new Map();
+
+  // Per-program tag maps (a program's <Tags> is its parameter+local list).
+  const progTags = new Map(); // programName → Map(tagName → decl)
+  const progRe = /<Program\s([^>]*)>([\s\S]*?)<\/Program>/g;
+  for (const m of xml.matchAll(progRe)) {
+    const name = (m[1].match(/\bName="([^"]+)"/) || [])[1];
+    if (!name) continue;
+    const tagsM = m[2].match(/<Tags(?:\s[^>]*)?>[\s\S]*?<\/Tags>/);
+    progTags.set(name, tagsM ? parseTagDecls(tagsM[0]) : new Map());
+  }
+
+  const resolve = (ep) => {
+    if (ep.startsWith('\\')) {
+      const dot = ep.indexOf('.');
+      const prog = dot > 0 ? ep.slice(1, dot) : ep.slice(1);
+      const tag = dot > 0 ? ep.slice(dot + 1).split('.')[0] : null;
+      if (!progTags.has(prog)) return { err: `program "${prog}" is not declared in the file` };
+      if (!tag) return { err: 'endpoint names a program but no parameter' };
+      const decl = progTags.get(prog).get(tag);
+      if (!decl) return { err: `program "${prog}" has no tag/parameter "${tag}" — the connection references a deleted or absent parameter` };
+      if (!decl.usage) return { err: `"${prog}.${tag}" is a local tag, not a program parameter (no Usage) — Studio rejects the connection` };
+      return { decl };
+    }
+    const root = ep.split('.')[0];
+    const decl = ctrlTags.get(root);
+    if (!decl) return { err: `controller tag "${root}" is not declared in the file` };
+    return { decl };
+  };
+
+  for (const [, ep1, ep2] of conns) {
+    const a = resolve(ep1);
+    const b = resolve(ep2);
+    const label = `ParameterConnection "${ep1}" <-> "${ep2}"`;
+    if (a.err) errors.push(`${label}: ${a.err} — Studio 5000 cancels the whole import on this`);
+    if (b.err) errors.push(`${label}: ${b.err} — Studio 5000 cancels the whole import on this`);
+    if (a.decl && b.decl && a.decl.dataType && b.decl.dataType && a.decl.dataType !== b.decl.dataType) {
+      errors.push(`${label}: incompatible data types (${a.decl.dataType} vs ${b.decl.dataType}) — Studio rejects the connection`);
     }
   }
 }
@@ -884,8 +975,16 @@ function validateL5X(xml, opts = {}) {
           }
         }
         for (const r of roots) {
-          if (decl.tags.has(r) || decl.aoiNames.has(r) || decl.routines.has(r)) continue;
-          if (!unresolved.has(r)) unresolved.set(r, `${rung.routine}: ${call.name}(${arg})`);
+          if (decl.aoiNames.has(r) || decl.routines.has(r)) continue;
+          // Scope-aware (Studio's "Undefined" import flag): a bare tag must
+          // exist in THIS program's scope or controller scope — a sibling
+          // program's tag does not count.
+          const progSet = decl.programTags.get(rung.program);
+          if (decl.ctrlTags.has(r) || (progSet ? progSet.has(r) : decl.tags.has(r))) continue;
+          if (!unresolved.has(r)) {
+            unresolved.set(r, `${rung.routine}: ${call.name}(${arg})`
+              + (decl.tags.has(r) ? ` — defined only in another program's scope (Studio imports it as Undefined)` : ''));
+          }
         }
       });
 
@@ -918,6 +1017,16 @@ function validateL5X(xml, opts = {}) {
   for (const [id, loc] of unresolved) {
     errors.push(`Undeclared identifier "${id}" — not a declared tag, AOI, or routine (first seen in ${loc})`);
   }
+
+  // 4b. PARAMETER CONNECTIONS (Jason's THIRD real-import failure, 2026-08-31:
+  //     "Unable to import parameterconnection \S01_MidBasePickAndPlace.iq_ZAxis
+  //     <-> a04_S01PNPZAxis — Tag or parameter usage types are incompatible."
+  //     The phantom-Z purge deleted the iq_ZAxis parameter but the
+  //     <ParameterConnection> element survived — a dangling connection our
+  //     import sim never looked at. Every connection's BOTH ends must resolve
+  //     to an existing program parameter / controller tag with compatible
+  //     types; Studio rejects the whole import otherwise.)
+  checkParameterConnections(xml, errors);
 
   // 5. L5K string LEN consistency
   checkL5kStrings(xml, errors);
@@ -986,6 +1095,40 @@ function validateL5X(xml, opts = {}) {
     for (const m of xml.matchAll(/Comment[^>]*>(?:<!\[CDATA\[)?([^<\]]{0,300})/g)) {
       if (/\bunused\b|\bdelete (the|this) routine\b|delete .* at (machine )?integration/i.test(m[1] ?? '')) {
         errors.push(`"Unused/delete-me" content shipped in a comment ("${String(m[1]).trim().slice(0, 80)}…") — anything unused is DELETED before emission, never annotated (Jason 2026-08-31).`);
+      }
+    }
+
+    // TAG-LEVEL DEVICE AUDIT (Jason's Import Configuration screenshot,
+    // 2026-08-31: q_ExtendZAxis shipped for the DELETED Z axis, and
+    // q_ExtendXAxis shipped for a SERVO — template leftovers from a template
+    // family whose cylinders happened to be named XAxis/ZAxis). Every
+    // directional q_ output must map to a sheet device of a pneumatic
+    // family; a q_ tag for a non-device or a servo is a phantom. Types ride
+    // in opts.devices when the caller has them.
+    {
+      const typed = Array.isArray(opts.devices)
+        ? opts.devices.map((d) => ({ k: nk(d.name), type: String(d.type ?? '') }))
+        : null;
+      const typeOf = (base) => {
+        if (!typed) return null;
+        const k = nk(base);
+        const hit = typed.find((d) => d.k === k || d.k.includes(k) || k.includes(d.k));
+        return hit ? hit.type : null;
+      };
+      const seenQ = new Set();
+      for (const m of xml.matchAll(/<Tag[^>]*\bName="q_(Extend|Retract|Engage|Disengage|Close|Open)([A-Za-z0-9_]+)"/g)) {
+        const key = m[1] + m[2];
+        if (seenQ.has(key)) continue;
+        seenQ.add(key);
+        const base = m[2];
+        if (!onSheet(base)) {
+          errors.push(`Phantom output tag q_${m[1]}${base}: "${base}" is not on the sheet's device list — delete it and every other artifact of the device that owned it (no unused devices, ever — Jason 2026-08-31).`);
+          continue;
+        }
+        const t = typeOf(base);
+        if (t && /servo|axis_cip/i.test(t)) {
+          errors.push(`Wrong tag family: q_${m[1]}${base} is a pneumatic-style directional output but "${base}" is a ${t} — servos are commanded through motion instructions, never q_ outputs (Jason 2026-08-31).`);
+        }
       }
     }
   }

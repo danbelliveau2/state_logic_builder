@@ -956,6 +956,10 @@ async function generateL5X(projectJson, smId, options = {}) {
               compiledIr: (mode === 'translation' && contractIr) ? contractIr : null,
               // NO UNUSED DEVICES (Jason, 2026-08-31): emitted set == sheet set.
               deviceNames: (ir.devices ?? []).map(d => d.displayName || d.name),
+              // TAG-LEVEL device audit (Jason's Import Config screenshot,
+              // 2026-08-31): types ride so q_/directional tags are checked
+              // against the owning device's FAMILY (servo vs pneumatic).
+              devices: (ir.devices ?? []).map(d => ({ name: d.displayName || d.name, type: d.type ?? '' })),
             });
             // In translation mode the APPROVED compiled sequence — not the
             // drawn diagram — is the approval contract: states/conditions the

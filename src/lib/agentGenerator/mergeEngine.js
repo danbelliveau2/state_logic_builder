@@ -835,6 +835,16 @@ function opRemoveTag(xml, prog, op, errors) {
   const tagRe = new RegExp('<Tag\\s+[^>]*Name="' + name + '"(?:[\\s\\S]*?</Tag>|[^>]*/>)\\s*', 'g');
   if (!tagRe.test(xml)) { errors.push('removeTag: tag "' + name + '" not found'); return xml; }
   xml = xml.replace(tagRe, '');
+  // PURGE RULE (Jason's real-controller import, 2026-08-31): removing a tag
+  // removes EVERY artifact of it — including any <ParameterConnection> whose
+  // endpoint references it. A dangling connection cancels the whole Studio
+  // import ("usage types are incompatible", the iq_ZAxis case).
+  const connRe = /<ParameterConnection\s+[^>]*\/>\s*/g;
+  xml = xml.replace(connRe, (blk) => {
+    const eps = [...blk.matchAll(/EndPoint\d="([^"]+)"/g)].map((m) => m[1]);
+    const hits = eps.some((ep) => ep === name || ep.endsWith('.' + name));
+    return hits ? '' : blk;
+  });
   return xml;
 }
 const OP_HANDLERS = {
