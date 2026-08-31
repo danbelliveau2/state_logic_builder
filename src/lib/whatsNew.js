@@ -10,12 +10,21 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.38';
+export const UI_BUILD = 'v2.6.39';
 
 export const BUILT_AT = '2026-08-30';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.39',
+    date: '2026-08-31',
+    items: [
+      'ALL section bars run the same full page width — no narrow odd-ones-out',
+      'ROLE COLORS: the INPUTS bar is SDC blue (mechanical engineers are blue), CONTROLS INFORMATION is SDC green (controls engineers are green); every other bar wears the dark/gray SDC tones so the two role colors read intentionally',
+      'Controls information expands properly now; empty it shows one quiet line — "enter information in the chat — it files here." A CE-toggle chat statement lands there end-to-end (verified), attributed and dated, and the receipt names the destination: "filed to Controls information — on the sheet"',
+    ],
+  },
   {
     version: 'v2.6.38',
     date: '2026-08-31',

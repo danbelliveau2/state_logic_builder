@@ -145,6 +145,42 @@ export const INVARIANTS = [
     },
   },
   {
+    id: 'bars-full-width',
+    what: 'Every section bar spans the same full content width — no narrow odd-one-out (Dan, 2026-08-31)',
+    run() {
+      const sel = ['[data-testid="inputs-band-header"]', '[data-testid="controls-notes-section"]', '[data-testid="corrections-block"]',
+        '[data-testid^="summary-section-"]', '[data-testid="changelog-section"]', '[data-testid="generate-scope-card"]'];
+      const bars = sel.flatMap((s) => q(s)).filter(vis);
+      if (bars.length < 3) return { skip: 'not enough bars on screen' };
+      const widths = bars.map((b) => b.getBoundingClientRect().width);
+      const min = Math.min(...widths); const max = Math.max(...widths);
+      return max - min > 24
+        ? { fail: `bar widths vary ${Math.round(min)}–${Math.round(max)}px (${bars[widths.indexOf(min)].dataset.testid} narrowest)` }
+        : {};
+    },
+  },
+  {
+    id: 'role-colored-bars',
+    what: 'INPUTS band is SDC blue (MEs are blue), CONTROLS INFORMATION is SDC green (CEs are green); the rest stay dark/gray so the role colors read intentionally (Dan, 2026-08-31)',
+    run() {
+      const bg = (sel) => { const el = q(sel).filter(vis)[0]; return el ? getComputedStyle(el.firstElementChild).backgroundColor : null; };
+      const bad = [];
+      const inputs = bg('[data-testid="inputs-band-header"]');
+      if (inputs && inputs !== 'rgb(21, 116, 196)') bad.push(`INPUTS band ${inputs} ≠ SDC blue`);
+      const ctrl = bg('[data-testid="controls-notes-section"]');
+      if (ctrl && ctrl !== 'rgb(90, 154, 72)') bad.push(`CONTROLS INFORMATION band ${ctrl} ≠ SDC green`);
+      // No OTHER bar may use the two role colors.
+      const others = ['[data-testid="corrections-block"]', '[data-testid^="summary-section-"]', '[data-testid="changelog-section"]', '[data-testid="generate-scope-card"]']
+        .flatMap((s) => q(s)).filter(vis);
+      for (const b of others) {
+        const c = getComputedStyle(b.firstElementChild).backgroundColor;
+        if (c === 'rgb(21, 116, 196)' || c === 'rgb(90, 154, 72)') bad.push(`${b.dataset.testid} wears a role color (${c})`);
+      }
+      if (!inputs && !ctrl) return { skip: 'role bars not on screen' };
+      return bad.length ? { fail: bad.join('; ') } : {};
+    },
+  },
+  {
     id: 'single-call-to-action',
     what: 'ONE call to action: the Build card is THE place — no banner build button, no resubmit footer on walked drafts (Dan, 2026-08-31)',
     run() {

@@ -1424,9 +1424,9 @@ function hydrateSummaryFromSm(s, sm) {
 // Jarvis, so it lives in the INPUT band above the review sections (Dan,
 // Aug 24 two-band restructure).
 const SUMMARY_SECTIONS = [
-  { key: 'interactions', covKey: 'interactions', title: 'Interactions', color: '#5a9a48', headerNote: 'signals with the machine’s other stations', editHint: 'one per line:  Station: the interaction' },
+  { key: 'interactions', covKey: 'interactions', title: 'Interactions', color: '#475569', headerNote: 'signals with the machine’s other stations', editHint: 'one per line:  Station: the interaction' },
   { key: 'devices', covKey: 'devices', title: 'Devices', color: '#061d39', headerNote: 'what the station actuates and senses', editHint: 'Name — what it is for' },
-  { key: 'sequence', covKey: 'sequence', title: 'Sequence', color: '#1574C4', headerNote: 'the cycle in order — and how it recovers', editHint: 'one step per line, in order' },
+  { key: 'sequence', covKey: 'sequence', title: 'Sequence', color: '#334155', headerNote: 'the cycle in order — and how it recovers', editHint: 'one step per line, in order' },
   { key: 'failureHandling', covKey: 'failures', title: 'Fault recovery', renderInside: 'sequence', editHint: 'one step per line, in order:  when → what to do' },
 ];
 
@@ -1705,6 +1705,8 @@ function receiptFromAgentDiffs(diffs = []) {
   for (const d of diffs.filter(x => x.op === 'value.set')) parts.push(`set ${d.device} ${d.field} = ${d.after}`);
   const closed = diffs.filter(x => x.op === 'question.close').length;
   if (closed) parts.push(`closed ${closed} question${closed === 1 ? '' : 's'}`);
+  const filedCtrl = diffs.filter(x => x.op === 'controls.note').length;
+  if (filedCtrl) parts.push(`filed ${filedCtrl === 1 ? 'it' : `${filedCtrl} notes`} to Controls information — on the sheet`);
   const asked = diffs.filter(x => x.op === 'question.ask').length;
   if (asked) parts.push(`${asked} new question${asked === 1 ? '' : 's'} for you`);
   return parts.length ? `Done — ${parts.join('; ')}.` : '';
@@ -2084,7 +2086,7 @@ function SectionLines({ sectionKey, items, onChange, editHint, preserveRich = fa
  *  bar with the SAME anatomy — dark SDC band, chevron, uppercase title,
  *  "N … — click to expand" when folded, status slot on the right. Built to
  *  match the DEVICES/SEQUENCE header he likes; no odd-one-out styling. */
-function SectionBar({ title, color = '#061d39', note = null, foldedNote = null, status = null, collapsed, onToggle, children, testId, maxWidth = 900, marginBottom = 10 }) {
+function SectionBar({ title, color = '#061d39', note = null, foldedNote = null, status = null, collapsed, onToggle, children, testId, maxWidth = undefined, marginBottom = 10 }) {
   return (
     <div data-testid={testId} style={{ maxWidth, marginBottom, border: `1px solid ${C.border}`, borderRadius: 8, background: '#fff', overflow: 'hidden' }}>
       <div
@@ -9010,7 +9012,7 @@ export function CreateStationPage({ embedded = false }) {
     <SectionBar
       testId="corrections-block"
       title="Chat"
-      color="#1574C4"
+      color="#475569"
       note="ask, correct, change — he applies it and shows what actually changed"
       foldedNote={`${chatThread.length} turn${chatThread.length === 1 ? '' : 's'}${allOpenNeeds.length ? ` · ${allOpenNeeds.length} open question${allOpenNeeds.length === 1 ? '' : 's'}` : ''} — click to expand`}
       collapsed={secFolded('chat')}
@@ -9662,7 +9664,7 @@ export function CreateStationPage({ embedded = false }) {
                   <SectionBar
                     testId="inputs-band-header"
                     title="Inputs"
-                    color="#061d39"
+                    color="#1574C4" /* SDC light blue — MEs are blue (Dan, 2026-08-31) */
                     foldedNote={`${images.length ? `${images.length} file${images.length === 1 ? '' : 's'} · ` : ''}explanation${explLayers.length ? ` · ${explLayers.length} layer${explLayers.length === 1 ? '' : 's'}` : ''} — click to expand`}
                     collapsed={inputsCollapsed}
                     onToggle={() => {
@@ -9902,14 +9904,17 @@ export function CreateStationPage({ embedded = false }) {
                 <SectionBar
                   testId="controls-notes-section"
                   title="Controls information"
+                  color="#5a9a48" /* SDC green — CEs are green (Dan, 2026-08-31) */
                   note="optional"
                   foldedNote={controlsNotes.length ? `${controlsNotes.length} note${controlsNotes.length === 1 ? '' : 's'} — click to expand` : 'optional'}
                   collapsed={secFolded('controlsNotes')}
                   onToggle={() => toggleSectionCollapse('controlsNotes')}
                 >
-                  {/* No explainer paragraph (Dan: "they know what's needed").
-                      Fills via chat with the CE toggle; empty = just the bar. */}
-                  {controlsNotes.length === 0 ? null : controlsNotes.map((n, i) => (
+                  {/* Empty state = ONE quiet line (Dan, 2026-08-31) — and a real
+                      body so the chevron visibly expands. */}
+                  {controlsNotes.length === 0 ? (
+                    <div data-testid='controls-notes-empty' style={{ fontSize: 11.5, color: C.light }}>enter information in the chat — it files here.</div>
+                  ) : controlsNotes.map((n, i) => (
                     <div key={i} data-testid={`controls-note-${i}`} style={{ fontSize: 12, color: C.text, lineHeight: 1.6, padding: '2px 0' }}>
                       {n.text}
                       <span style={{ fontSize: 10.5, color: C.light }}> — {n.by ?? 'CE'}, {String(n.at ?? '').slice(0, 10)}</span>
@@ -10134,7 +10139,7 @@ export function CreateStationPage({ embedded = false }) {
                   // whole Interactions card lines up with Level of code
                   // generation and Corrections (Dan's markup, Aug 24) instead
                   // of running the full monitor width.
-                  <div key={section.key} style={section.key === 'interactions' ? { maxWidth: 900 } : undefined}>
+                  <div key={section.key}>
                     {/* STRICT REVEAL (Dan, 2026-08-26): a section not reached
                         in the cascade is HIDDEN — not a preview. The data is
                         all extracted and kept; only the reveal is gated. */}
@@ -10953,7 +10958,7 @@ export function CreateStationPage({ embedded = false }) {
                   <SectionBar
                     testId="generate-scope-card"
                     title="Build station code"
-                    color="#1574C4"
+                    color="#061d39"
                     foldedNote="click to expand"
                     status={pregenFindings.hang.length === 0 && (smProposal?.stateMachines?.length ?? 0) >= 2 ? (
                       <span style={{ fontSize: 10, fontWeight: 700, color: '#2f6b3c', background: '#e9f5ec', border: '1px solid #7fb08c', borderRadius: 3, padding: '1px 8px' }}>ready</span>
