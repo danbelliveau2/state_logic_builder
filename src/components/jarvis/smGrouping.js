@@ -67,6 +67,11 @@ function normalizeSplitEntry(entry, smDevices) {
     deviceNames: deviceNamesOf(entry, smDevices),
     sequence: seq.map(lineOf).filter(Boolean),
     faultRecovery: fault.map(lineOf).filter(Boolean),
+    // STRUCTURED SHAPES CARRY VERBATIM (Dan, 2026-08-31: the recovery
+    // Y-branch flow degraded to a numbered list because this normalize
+    // dropped the structure — never serialize to prefixed strings).
+    ...(Array.isArray(entry.sequenceSteps) ? { sequenceSteps: entry.sequenceSteps } : {}),
+    ...(Array.isArray(entry.faultRecoverySteps) ? { faultRecoverySteps: entry.faultRecoverySteps } : {}),
     handshakes: arr(entry.handshakes).map((h) => ({
       signal: str(h?.signal), direction: str(h?.direction) || 'out',
       partner: str(h?.partner), purpose: str(h?.purpose),

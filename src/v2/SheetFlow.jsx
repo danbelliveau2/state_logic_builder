@@ -18,6 +18,9 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+// V1 ICONOGRAPHY ON FLOW NODES (Dan, 2026-08-31: "the color and the icon you
+// could take from the old version") — same set the device cards use.
+import { DeviceIcon, DEVICE_ICON_COLORS } from '../components/DeviceIcons.jsx';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -72,7 +75,12 @@ function SFStateNode({ data }) {
       </div>
       {(data.device || data.detail) && (
         <div className="state-node__body">
-          <div className="action-row" style={{ '--device-color': verbColor(data.verb), whiteSpace: 'nowrap', overflow: 'hidden' }} title={`${data.verb} ${data.device}${data.detail ? ` — ${data.detail}` : ''}`}>
+          <div className="action-row" style={{ '--device-color': verbColor(data.verb), whiteSpace: 'nowrap', overflow: 'hidden', display: 'flex', alignItems: 'center', gap: 4 }} title={`${data.verb} ${data.device}${data.detail ? ` — ${data.detail}` : ''}`}>
+            {data.devType ? (
+              <span style={{ display: 'inline-flex', flexShrink: 0, color: DEVICE_ICON_COLORS[data.devType] ?? '#64748b' }} title={data.devType}>
+                <DeviceIcon type={data.devType} size={13} color={DEVICE_ICON_COLORS[data.devType] ?? '#64748b'} />
+              </span>
+            ) : null}
             {data.device ? <span className="action-device">{data.device}</span> : null}
             {data.detail ? <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 11 }}>{data.detail}</span> : null}
           </div>
@@ -186,7 +194,7 @@ function deriveGraph(model, mode, lane) {
     stepNo += 1;
     nodes.push({
       id, type: 'sfState', position: { x, y }, draggable: false, connectable: false, selectable: false,
-      data: { n: stepNo, title: it.title, verb: it.verb, device: it.device, detail: it.detail, lane },
+      data: { n: stepNo, title: it.title, verb: it.verb, device: it.device, detail: it.detail, devType: it.devType ?? null, lane },
     });
     return id;
   };

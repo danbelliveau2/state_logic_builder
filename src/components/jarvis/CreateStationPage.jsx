@@ -3974,10 +3974,54 @@ function condPhraseOf(line) {
  * drawn (data intact for codegen + the deadlock check). Items carry parsed
  * {title, verb, device, detail} for the v1-shell nodes.
  */
-function buildFlowModel(structured, flatLines, composeStep, tagOf) {
+/** THE DEGRADE GUARD (Dan, 2026-08-31): recovery data that arrives as flat
+ *  prefixed strings ("◇ Gripper Engaged?", "Yes: …", "No: …") is parsed BACK
+ *  into the structured {decision, branches} shape — the Y flow must never
+ *  silently degrade to a numbered list. Deterministic: prefixes are ours. */
+function restructureRecoveryLines(lines) {
+  const ls = (lines ?? []).map(String).filter(Boolean);
+  if (!ls.some(l => /^◇/.test(l) || /^(yes|no)\s*:/i.test(l))) return null;
+  const items = [];
+  let i = 0;
+  while (i < ls.length) {
+    const l = ls[i];
+    if (/^◇/.test(l) || (/\?\s*$/.test(l) && /^(is|are|does|has|have|gripp|part|check)/i.test(l))) {
+      const decision = l.replace(/^◇\s*/, '').replace(/\?+\s*$/, '');
+      i++;
+      const branches = [];
+      while (i < ls.length) {
+        const m = ls[i].match(/^([A-Za-z][\w /-]{0,24})\s*:\s*(.+)$/);
+        if (!m) break;
+        let br = branches.find(b => b.label === m[1]);
+        if (!br) { br = { label: m[1], steps: [] }; branches.push(br); }
+        br.steps.push(m[2].trim());
+        i++;
+      }
+      if (branches.length) { items.push({ decision, branches }); continue; }
+      items.push(l); continue;
+    }
+    items.push(l);
+    i++;
+  }
+  return items.some(x => x && typeof x === 'object' && x.decision) ? items : null;
+}
+
+function buildFlowModel(structured, flatLines, composeStep, tagOf, devices = null) {
   const srcItems = (Array.isArray(structured) && structured.some(x => x && typeof x === 'object' && x.decision))
     ? structured
-    : (flatLines ?? []).map(String);
+    : (restructureRecoveryLines(flatLines) ?? (flatLines ?? []).map(String));
+  // DEVICE ICONS ON FLOW NODES (Dan, 2026-08-31): resolve each step's device
+  // type so the node can carry the v1 icon + type color.
+  const devList = Array.isArray(devices) ? devices : [];
+  const dk = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const devTypeOf = (deviceId, nameText) => {
+    let d = deviceId ? devList.find(x => x?.devId === deviceId) : null;
+    if (!d && nameText) {
+      const k = dk(nameText);
+      d = devList.find(x => { const xk = dk(x?.displayName ?? x?.name); return xk && (xk === k || xk.includes(k) || k.includes(xk)); });
+    }
+    return d?.type ?? null;
+  };
   const walk = (items) => {
     const out = { items: [], repeat: false, endCond: null };
     let cond = null; let tag = null;
@@ -3989,7 +4033,8 @@ function buildFlowModel(structured, flatLines, composeStep, tagOf) {
             cond, tag,
             branches: (raw.branches ?? []).map(b => {
               const lines = (b.steps ?? []).map(s => (typeof s === 'string' ? s : composeStep(s)));
-              const inner = walk(lines);
+              // Walk the RAW steps (objects keep deviceId for the icon).
+              const inner = walk(b.steps ?? []);
               return {
                 label: b.label,
                 items: inner.items,
@@ -4021,6 +4066,7 @@ function buildFlowModel(structured, flatLines, composeStep, tagOf) {
         device: String(dev0 ?? '').trim(),
         detail: dd.join(' — ').trim(),
         title: `${type} ${String(dev0 ?? '').trim()}`.trim(),
+        devType: devTypeOf(typeof raw === 'object' ? raw?.deviceId : null, String(dev0 ?? '').trim()),
       });
       cond = null; tag = null;
     }
@@ -7811,12 +7857,23 @@ export function CreateStationPage({ embedded = false }) {
             if (!m) return e;
             const needsRec = (m.faultRecovery?.length ?? 0) > 0 && !(e.faultRecovery?.length);
             const needsSteps = m.sequenceSteps && !e.sequenceSteps;
-            if (!needsRec && !needsSteps) return e;
+            // STRUCTURE, NOT PREFIXED STRINGS (Dan, 2026-08-31): recovery
+            // lines without the {decision, branches} shape degrade the Y
+            // flow to a list — carry/derive the structure whenever missing.
+            const needsRecSteps = !e.faultRecoverySteps
+              && (m.faultRecoverySteps?.some?.(x => x && typeof x === 'object' && x.decision)
+                || restructureRecoveryLines(e.faultRecovery ?? []));
+            if (!needsRec && !needsSteps && !needsRecSteps) return e;
             repaired++;
             return {
               ...e,
-              ...(needsRec ? { faultRecovery: [...m.faultRecovery], ...(m.faultRecoverySteps ? { faultRecoverySteps: m.faultRecoverySteps } : {}) } : {}),
+              ...(needsRec ? { faultRecovery: [...m.faultRecovery] } : {}),
               ...(needsSteps ? { sequenceSteps: m.sequenceSteps } : {}),
+              ...(needsRecSteps || needsRec ? {
+                faultRecoverySteps: (m.faultRecoverySteps?.some?.(x => x && typeof x === 'object' && x.decision)
+                  ? m.faultRecoverySteps
+                  : restructureRecoveryLines((needsRec ? m.faultRecovery : e.faultRecovery) ?? [])) ?? undefined,
+              } : {}),
             };
           });
           if (repaired) {
@@ -10474,7 +10531,7 @@ export function CreateStationPage({ embedded = false }) {
                                           only while marks are up, then the flow returns. */}
                                       {!seqDiff?.byKey?.[e.key] ? (
                                         <SheetFlow
-                                          model={buildFlowModel(e.sequenceSteps, e.sequence, composeStepClient, tagOfLine)}
+                                          model={buildFlowModel(e.sequenceSteps, e.sequence, composeStepClient, tagOfLine, summary?.devices)}
                                           mode="seq"
                                         />
                                       ) : (
@@ -10549,12 +10606,12 @@ export function CreateStationPage({ embedded = false }) {
                                             {/* RECOVERY IS A BRANCHING FLOW (Dan, 2026-08-30):
                                                 structured recoveries draw as a small branch
                                                 diagram; changes ring RED until ✓ got it. */}
-                                            {(e.faultRecoverySteps ?? []).some(x => x && typeof x === 'object' && x.decision) ? (
+                                            {((e.faultRecoverySteps ?? []).some(x => x && typeof x === 'object' && x.decision) || restructureRecoveryLines(e.faultRecovery)) ? (
                                               <div style={recDiff?.byKey?.[e.key]
                                                 ? { border: '2px solid #fca5a5', borderRadius: 8, padding: '6px 8px', background: '#fffafa' }
                                                 : undefined}>
                                                 <SheetFlow
-                                                  model={buildFlowModel(e.faultRecoverySteps, e.faultRecovery, composeStepClient, tagOfLine)}
+                                                  model={buildFlowModel(e.faultRecoverySteps, e.faultRecovery, composeStepClient, tagOfLine, summary?.devices)}
                                                   mode="recovery"
                                                   lane="recovery"
                                                 />
