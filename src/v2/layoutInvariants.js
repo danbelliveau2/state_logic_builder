@@ -121,6 +121,22 @@ export const INVARIANTS = [
     },
   },
   {
+    id: 'station-header-minimal',
+    what: 'The sheet header is station number + name, period — no badge, no sheet-updated pill (Dan, 2026-08-31)',
+    run() {
+      const title = q('[data-testid="station-header-title"]')[0];
+      if (!title || !vis(title)) return { skip: 'sheet header not on screen' };
+      const bad = [];
+      const body = document.body.innerText ?? '';
+      if (/Station data sheet — review/i.test(body)) bad.push('"review & fill" badge rendering');
+      if (q('[data-testid="sheet-ahead-chip"]').some(vis)) bad.push('sheet-updated pill rendering');
+      if (!/^S\d{2} — .+/.test(title.textContent?.trim() ?? '') && title.textContent?.trim() !== 'Station Sheet') {
+        bad.push(`header reads "${title.textContent?.trim()}"`);
+      }
+      return bad.length ? { fail: bad.join('; ') } : {};
+    },
+  },
+  {
     id: 'no-summarize-era-copy',
     what: 'No summarize-era surface copy reachable from the v2 shell ("clean summary", "resubmit to update the summary", "start blank instead") on walked/new-station views (Dan, 2026-08-31)',
     run() {

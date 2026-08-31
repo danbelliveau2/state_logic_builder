@@ -9445,36 +9445,14 @@ export function CreateStationPage({ embedded = false }) {
             just one sheet — station sheet". The flow IS on the sheet; the
             classic canvas stays reachable for v1-era stations via their
             own banner.) */}
-        <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>
-          {linkedSmId ? `Station Sheet — ${name.trim() || 'Station'}` : 'Station Sheet'}
+        {/* MINIMAL HEADER (Dan, 2026-08-31): station number + name, period.
+            The badge and the sheet-updated pill are DELETED — build state
+            lives in the Build section's history, never as header clutter. */}
+        <span data-testid="station-header-title" style={{ fontSize: 15, fontWeight: 700, color: C.text }}>
+          {linkedSmId
+            ? `S${String(Number(station) || linkedSm?.stationNumber || 1).padStart(2, '0')} — ${name.trim() || 'Station'}`
+            : (name.trim() ? `S${String(Number(station) || 1).padStart(2, '0')} — ${name.trim()}` : 'Station Sheet')}
         </span>
-        {inSummary && (
-          <span style={{
-            fontSize: 10, fontWeight: 700, color: C.primary, background: C.primaryBg,
-            border: `1px solid ${C.primaryBorder}`, borderRadius: 3, padding: '2px 9px',
-            letterSpacing: '0.04em', textTransform: 'uppercase',
-          }}>
-            Station data sheet — review &amp; fill
-          </span>
-        )}
-        {/* Quiet persistent STATE chip (Dan, Aug 24): the sheet iterates
-            freely; Rebuild happens once, when ready. No nagging — just the
-            fact that the sheet is ahead of the diagram & code. */}
-        {inSummary && linkedSmId && sheetAhead && (
-          <span
-            data-testid="sheet-ahead-chip"
-            title="Corrections/values changed on this sheet since the diagram & code were last built. Rebuild station (bottom of the sheet) pushes the sheet downstream when you're ready."
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              fontSize: 10.5, fontWeight: 600, color: '#6b5513',
-              background: '#fdf6e3', border: '1px solid #e6d9a8',
-              borderRadius: 12, padding: '2px 10px', whiteSpace: 'nowrap',
-            }}
-          >
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#d97706', flexShrink: 0 }} />
-            Sheet updated — Rebuild has Jarvis re-think with the new info
-          </span>
-        )}
         <span style={{
           marginLeft: 'auto', fontSize: 10, color: C.light,
           fontFamily: 'Consolas, monospace', whiteSpace: 'nowrap',
