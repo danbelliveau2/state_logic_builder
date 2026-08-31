@@ -2080,7 +2080,7 @@ function SectionLines({ sectionKey, items, onChange, editHint, preserveRich = fa
   );
 }
 
-function SummarySection({ section, items, cov, optional, onChange, agreedNeeds, onAgreeNeed, renderBody, savedTick, reviewBar, topPanel, dimmed = false, collapsed = false, onToggleCollapse = null }) {
+function SummarySection({ section, items, cov, optional, onChange, agreedNeeds, onAgreeNeed, renderBody, savedTick, reviewBar, topPanel, dimmed = false, collapsed = false, onToggleCollapse = null, onOpenQuestions = null }) {
   // SILENCE = COVERED (Dan, Aug 24: "if it's not covered, you're going to
   // ask — so of course it's covered"). No verdict chips at all — a section
   // shows real content, or real NEEDS as NeedRow questions. Nothing else.
@@ -2136,15 +2136,22 @@ function SummarySection({ section, items, cov, optional, onChange, agreedNeeds, 
       <div style={{ padding: '8px 14px 10px' }}>
       {topPanel}
 
-      {!optionalEmpty && needs.map((n, i) => (
-        <NeedRow
-          key={i}
-          need={n}
-          agreed={agreedNeeds?.has(`${section.covKey}:${n.question}`)}
-          onAgree={() => onAgreeNeed?.(section, n)}
-          testId={`summary-need-${section.key}-${i}`}
-        />
-      ))}
+      {/* QUESTIONS LIVE IN THE CHAT (Dan, 2026-08-31): no yellow cards on
+          sections — just a tiny chip that jumps to the chat's Questions tab. */}
+      {!optionalEmpty && needs.filter(n => !agreedNeeds?.has(`${section.covKey}:${n.question}`)).length > 0 && (
+        <button
+          type="button"
+          data-testid={`section-questions-chip-${section.key}`}
+          onClick={() => onOpenQuestions?.()}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 6,
+            background: 'none', border: `1px solid ${C.border}`, borderRadius: 4,
+            padding: '2px 10px', fontSize: 10.5, fontWeight: 700, color: C.muted, cursor: 'pointer',
+          }}
+        >
+          {needs.filter(n => !agreedNeeds?.has(`${section.covKey}:${n.question}`)).length} question{needs.filter(n => !agreedNeeds?.has(`${section.covKey}:${n.question}`)).length === 1 ? '' : 's'} — in the chat →
+        </button>
+      )}
 
       {optionalEmpty ? (
         noneEditing ? (
@@ -4638,6 +4645,8 @@ export function CreateStationPage({ embedded = false }) {
   const [stationAccepted, setStationAccepted] = useState(draft?.stationAccepted ?? null);
   // ONE collapsible chat (Dan, 2026-08-26): the thread tucks away on demand.
   const [chatCollapsed, setChatCollapsed] = useState(false);
+  // QUESTIONS LIVE IN THE CHAT (Dan, 2026-08-31): 'chat' | 'questions'.
+  const [chatTab, setChatTab] = useState('chat');
 
   // ── Live checklist — LOCAL heuristics, debounced ~1.5s (input phase) ─────
   const [coverage, setCoverage] = useState(() => assessCoverage(draft?.description ?? ''));
@@ -5564,6 +5573,9 @@ export function CreateStationPage({ embedded = false }) {
       name: e.name, oneLiner: e.oneLiner, deviceNames: e.deviceNames,
       sequence: e.sequence,
       ...(e.faultRecovery?.length ? { faultRecovery: e.faultRecovery } : {}),
+      // THE WALK IS THE SPEC (2026-08-31): structured steps carry verbatim.
+      ...(e.sequenceSteps ? { sequenceSteps: e.sequenceSteps } : {}),
+      ...(e.faultRecoverySteps ? { faultRecoverySteps: e.faultRecoverySteps } : {}),
       ...(e.why ? { why: e.why } : {}),
       ...(e.handshakes?.length ? { handshakes: e.handshakes } : {}),
     }));
@@ -6923,6 +6935,34 @@ export function CreateStationPage({ embedded = false }) {
     const list = sheetBlockers();
     const ready = list.length === 0;
     const right = align === 'right';
+    // CODE BUILD IN FLIGHT / DONE / FAILED — the turn contract's visible
+    // state (P0, 2026-08-31: a click must never be silent).
+    if (linkedSmId && codeBuild) {
+      if (codeBuild.error) {
+        return (
+          <div data-testid="code-build-error" style={{ fontSize: 12, color: '#8a3b3b' }}>
+            That didn't go through — {codeBuild.error}{' '}
+            <button type="button" data-testid="code-build-retry" onClick={handleBuildCode}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12, fontWeight: 700, color: 'var(--color-primary)', textDecoration: 'underline' }}>Retry</button>
+          </div>
+        );
+      }
+      if (!codeBuild.done) {
+        return (
+          <div data-testid="code-build-progress" style={{ fontSize: 12, color: C.text, minWidth: 260 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <b>Building station code — {Math.round(codeBuild.pct ?? 0)}%</b>
+              {codeBuild.stalled && <span style={{ fontSize: 10.5, color: '#6b5513' }}>quiet — the writer is reasoning; still connected</span>}
+            </div>
+            <div style={{ height: 5, background: 'var(--color-sidebar)', borderRadius: 3, margin: '4px 0' }}>
+              <div style={{ height: 5, width: `${Math.min(codeBuild.pct ?? 0, 100)}%`, background: 'var(--color-primary)', borderRadius: 3, transition: 'width 0.4s' }} />
+            </div>
+            <div style={{ fontSize: 11, color: C.muted }}>{codeBuild.detail ?? '…'}</div>
+          </div>
+        );
+      }
+      // done — one green line + the next action stays available below.
+    }
     return (
       <>
         {!ready && (
@@ -6976,11 +7016,12 @@ export function CreateStationPage({ embedded = false }) {
           <button
             className="btn btn--primary"
             data-testid="build-station-btn"
-            onClick={handleBuildClick}
+            onClick={linkedSmId ? handleBuildCode : handleBuildClick}
             disabled={applying}
             aria-disabled={!ready}
             title={ready
-              ? (allCovered ? undefined : 'Open needs go with their proposed answers, noted for review')
+              ? (linkedSmId ? 'Writes the station\'s L5X — validated, import-simulated, reviewed, cover-noted'
+                : allCovered ? undefined : 'Open needs go with their proposed answers, noted for review')
               : `Not ready yet: ${list.map(b => b.label).join(' · ')}`}
             style={{
               fontSize: 14, padding: '9px 22px',
@@ -6991,9 +7032,9 @@ export function CreateStationPage({ embedded = false }) {
               boxShadow: ready && !applying ? `0 0 0 3px ${C.primaryBg}` : 'none',
             }}
           >
-            {/* The mental model (Dan, Aug 24): the sheet is the source of
-                truth; Rebuild pushes it downstream. */}
-            {linkedSmId ? 'Rebuild Station Code — apply the sheet' : 'Build Station Code'}
+            {/* BUTTON TRUTH (Dan, 2026-08-31): "Rebuild" only after a real
+                code build with artifacts exists — never before. */}
+            {linkedSmId && hasCodeBuild ? 'Rebuild Station Code' : 'Build Station Code'}
           </button>
         )}
       </>
@@ -7752,6 +7793,43 @@ export function CreateStationPage({ embedded = false }) {
         }]);
       }
     }
+    // HANDOFF REPAIR (P0, Dan 2026-08-31): builds before today dropped the
+    // approved recoveries/steps on the draft→station handoff (the smSplit
+    // mapping carried only name/devices/sequence) — FAULT RECOVERY panels
+    // read "Nothing drafted yet" on a fully-walked station. Fingerprint: a
+    // linked station whose smSplit entry lacks recovery while the draft's
+    // matching machine has it → mirror the approved content in, verbatim.
+    if (linkedSmId) {
+      try {
+        const smNow = useDiagramStore.getState().project?.stateMachines?.find(x => x.id === linkedSmId);
+        const spec = smNow?.machineSpec;
+        if (smNow && Array.isArray(spec?.smSplit) && spec.smSplit.length) {
+          const byName = new Map(smProposal.stateMachines.map(m => [normKey(m?.name ?? ''), m]));
+          let repaired = 0;
+          const nextSplit = spec.smSplit.map(e => {
+            const m = byName.get(normKey(e?.name ?? ''));
+            if (!m) return e;
+            const needsRec = (m.faultRecovery?.length ?? 0) > 0 && !(e.faultRecovery?.length);
+            const needsSteps = m.sequenceSteps && !e.sequenceSteps;
+            if (!needsRec && !needsSteps) return e;
+            repaired++;
+            return {
+              ...e,
+              ...(needsRec ? { faultRecovery: [...m.faultRecovery], ...(m.faultRecoverySteps ? { faultRecoverySteps: m.faultRecoverySteps } : {}) } : {}),
+              ...(needsSteps ? { sequenceSteps: m.sequenceSteps } : {}),
+            };
+          });
+          if (repaired) {
+            store.updateStateMachine(linkedSmId, { machineSpec: { ...spec, smSplit: nextSplit } });
+            setChatThread(th => [...th, {
+              role: 'jarvis',
+              text: `Carried your approved fault recoveries onto the built station — the handoff had dropped them (${repaired} machine${repaired === 1 ? '' : 's'} repaired, content verbatim from what you approved). The FAULT RECOVERY panels read them now.`,
+              at: Date.now(),
+            }]);
+          }
+        }
+      } catch (e) { console.warn('[handoff-repair] skipped:', e.message); }
+    }
     // DEVICE-LINK MIGRATION (Dan, 2026-08-30: "Z"/"X" shorthand — "the
     // sequence can't be different names, it's got to be based on the
     // devices always"): every action line resolves to a REAL device row
@@ -8441,6 +8519,91 @@ export function CreateStationPage({ embedded = false }) {
     handleDoneExplaining();
   }
 
+  // ── BUILD STATION CODE — the REAL codegen (P0, Dan 2026-08-31: his click
+  // did nothing visible because this button never reached /api/generate;
+  // codegen only lived on the Diagram page cascade stations no longer have).
+  // Turn contract: immediate visible state, heartbeat, honest failure with
+  // retry — the same SSE progress machinery the pipeline already emits. ────
+  const [codeBuild, setCodeBuild] = useState(null); // {pct, stage, detail, error, done, stalled}
+  const codeBuildEsRef = useRef(null);
+  const [hasCodeBuild, setHasCodeBuild] = useState(false);
+  useEffect(() => {
+    if (!linkedSmId || !linkedSm?.name) return;
+    fetch('/api/jarvis/generations').then(r => (r.ok ? r.json() : null)).then(d => {
+      if (d) setHasCodeBuild((d.builds ?? []).some(b => b?.sm === linkedSm.name));
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedSmId]);
+  async function handleBuildCode() {
+    if (codeBuild && !codeBuild.error && !codeBuild.done) return; // one at a time
+    const smIdNow = linkedSmId;
+    if (!smIdNow) return;
+    // Never silent: a blocked click takes you to the first thing to fix.
+    if (usingJarvisVerdicts) {
+      const list = sheetBlockers();
+      if (list.length) { goToBlocker(list[0]); return; }
+    }
+    setCodeBuild({ pct: 1, stage: 'save', detail: 'building station code — saving the project…', error: null, done: null });
+    try {
+      // The generator reads the project FILE — push the live state first.
+      await useDiagramStore.getState().saveCurrentProject();
+    } catch { /* generator will still read the last save */ }
+    const filename = useDiagramStore.getState().currentFilename;
+    if (!filename) {
+      setCodeBuild({ pct: 0, stage: 'error', error: 'The project has no server file yet — save the project once, then retry.', done: null });
+      return;
+    }
+    setCodeBuild({ pct: 3, stage: 'start', detail: 'building station code — connecting to the writer…', error: null, done: null });
+    const es = new EventSource(`/api/generate/stream?filename=${encodeURIComponent(filename)}&smId=${encodeURIComponent(smIdNow)}`);
+    codeBuildEsRef.current = es;
+    let lastEvent = Date.now();
+    const watchdog = setInterval(() => {
+      const quiet = Date.now() - lastEvent;
+      if (quiet > 20000) setCodeBuild(c => (c && !c.done && !c.error ? { ...c, stalled: true } : c));
+      if (quiet > 90000) {
+        clearInterval(watchdog); es.close();
+        setCodeBuild(c => (c && !c.done ? { ...c, error: 'The build stream went quiet for 90 s — the server may have restarted. Retry to reconnect.' } : c));
+      }
+    }, 5000);
+    const bump = () => { lastEvent = Date.now(); };
+    es.addEventListener('ping', () => { bump(); setCodeBuild(c => (c ? { ...c, stalled: false } : c)); });
+    es.addEventListener('progress', (ev) => {
+      bump();
+      try {
+        const d = JSON.parse(ev.data);
+        setCodeBuild(c => ({ ...(c ?? {}), pct: d.pct ?? c?.pct ?? 0, stage: d.stage, detail: d.detail ?? c?.detail, stalled: false, error: null }));
+      } catch { /* keep last */ }
+    });
+    es.addEventListener('done', (ev) => {
+      clearInterval(watchdog); es.close(); codeBuildEsRef.current = null;
+      let d = {}; try { d = JSON.parse(ev.data); } catch { /* below */ }
+      const held = !!d.held;
+      setCodeBuild({ pct: 100, stage: 'done', done: d, error: null });
+      setHasCodeBuild(v => v || !held);
+      appendChangeLog(smIdNow, {
+        what: held ? `Code build HELD — ${d.held?.questions?.length ?? 0} question(s) for you`
+          : `Station code built${d.ok ? '' : ' — validation reported errors'}${d.internalReview?.verdict ? ` · review: ${d.internalReview.verdict}` : ''}`,
+        class: 'build', costUSD: Number(d.meta?.costEstimate?.totalUSD) || null,
+      });
+      setChatThread(t => [...t, {
+        role: 'jarvis',
+        text: held
+          ? `The code build is HELD — I need ${d.held?.questions?.length ?? 'a few'} answer(s) before it can finish:\n${(d.held?.questions ?? []).map((q, i) => `Q${i + 1}. ${q.question}${q.proposedSolution ? `\n   My proposal: ${q.proposedSolution}` : ''}`).join('\n')}`
+          : d.ok
+            ? `Station code is built${d.internalReview?.verdict === 'ship' ? ' — internal review says ship' : d.internalReview ? ` — internal review: ${d.internalReview.verdict}, findings listed in the cover note` : ''}. The L5X and its reviewer cover note are saved with the build record.`
+            : 'The code build finished but validation reported errors — the build record has the report. Nothing ships in this state.',
+        at: Date.now(),
+      }]);
+    });
+    es.addEventListener('error', (ev) => {
+      if (codeBuildEsRef.current !== es) return; // superseded
+      clearInterval(watchdog); es.close(); codeBuildEsRef.current = null;
+      let msg = 'Connection to the build server was lost.';
+      if (ev?.data) { try { msg = JSON.parse(ev.data).error || msg; } catch { /* transport */ } }
+      setCodeBuild(c => ({ ...(c ?? {}), error: msg, done: null }));
+    });
+  }
+
   // GENERATE — THE LAST STEP (Dan, 2026-08-26): this is the ONLY place a
   // diagram is ever drawn, and it is reachable ONLY after every cascade step
   // is agreed (the legacy build-first create path is DELETED, not disabled).
@@ -8546,9 +8709,16 @@ export function CreateStationPage({ embedded = false }) {
           // The cascade's APPROVED breakup + approvals ride into the station
           // (Dan, 2026-08-26: the split was agreed BEFORE anything was drawn).
           ...(draftSplitApproved && draftProposalEntries?.length ? {
+            // THE WALK IS THE SPEC (P0, Dan 2026-08-31): the ENTIRE approved
+            // content carries verbatim — recoveries and structured steps
+            // included. Dropping them here left built stations with empty
+            // FAULT RECOVERY panels.
             smSplit: draftProposalEntries.map(e => ({
               name: e.name, oneLiner: e.oneLiner, deviceNames: e.deviceNames,
               sequence: e.sequence, ...(e.why ? { why: e.why } : {}),
+              ...(e.faultRecovery?.length ? { faultRecovery: e.faultRecovery } : {}),
+              ...(e.sequenceSteps ? { sequenceSteps: e.sequenceSteps } : {}),
+              ...(e.faultRecoverySteps ? { faultRecoverySteps: e.faultRecoverySteps } : {}),
             })),
             smSplitAppliedAt: new Date().toISOString(),
             smSplitApproval: { approved: true, by: 'ME', at: new Date().toISOString() },
@@ -8597,12 +8767,19 @@ export function CreateStationPage({ embedded = false }) {
       setApplyReceipt(null);
       persistDraftNow({ smId, phase: usingJarvisVerdicts ? 'summary' : 'input', sheetAhead: false });
 
-      // ── 3. Extract the spec against the freshly inserted devices ────────
+      // ── 3. The spec — THE WALK IS THE SPEC (Dan, 2026-08-31): a walked
+      // draft's sheet was built by his approvals; re-deriving it from prose
+      // re-asked settled questions (Finger 2, starved feed…) — the same
+      // redundancy as the diagram redraw. Walked drafts skip the extraction
+      // entirely; the approved content rides in smSplit/cascadeState below.
       prog.jumpTo(3, 71);
       const drawnSteps = (drafted.nodes ?? [])
         .map(n => n.data?.label || '')
         .filter(Boolean);
       let sData = null;
+      if (compiledDraw) {
+        sData = { ok: true, questions: [], spec: { version: 1, source: 'walked-draft' } };
+      } else
       try {
         const sRes = await fetch('/api/jarvis/spec', {
           method: 'POST',
@@ -8640,9 +8817,16 @@ export function CreateStationPage({ embedded = false }) {
         machineSpec: {
           ...sData.spec, sourceDescription: desc,
           ...(draftSplitApproved && draftProposalEntries?.length ? {
+            // THE WALK IS THE SPEC (P0, Dan 2026-08-31): the ENTIRE approved
+            // content carries verbatim — recoveries and structured steps
+            // included. Dropping them here left built stations with empty
+            // FAULT RECOVERY panels.
             smSplit: draftProposalEntries.map(e => ({
               name: e.name, oneLiner: e.oneLiner, deviceNames: e.deviceNames,
               sequence: e.sequence, ...(e.why ? { why: e.why } : {}),
+              ...(e.faultRecovery?.length ? { faultRecovery: e.faultRecovery } : {}),
+              ...(e.sequenceSteps ? { sequenceSteps: e.sequenceSteps } : {}),
+              ...(e.faultRecoverySteps ? { faultRecoverySteps: e.faultRecoverySteps } : {}),
             })),
             smSplitAppliedAt: new Date().toISOString(),
             smSplitApproval: { approved: true, by: 'ME', at: new Date().toISOString() },
@@ -8737,12 +8921,30 @@ export function CreateStationPage({ embedded = false }) {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-        <label className="form-label" style={{ marginTop: 0, color: C.primary, fontSize: 12.5, fontWeight: 800, flex: 1 }}>
-          Chat with SDC Engineer
-          <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: C.muted, marginLeft: 8 }}>
+        {/* QUESTIONS LIVE IN THE CHAT (Dan, 2026-08-31): two tabs — the
+            thread, and the open questions (answer inline or by number). */}
+        <span style={{ display: 'inline-flex', gap: 2, flex: 1, alignItems: 'baseline' }}>
+          {[
+            { id: 'chat', label: 'Chat' },
+            { id: 'questions', label: `Questions (${allOpenNeeds.length})` },
+          ].map(tb => (
+            <button
+              key={tb.id}
+              type="button"
+              data-testid={`chat-tab-${tb.id}`}
+              onClick={() => setChatTab(tb.id)}
+              style={{
+                ...chipBase, cursor: 'pointer', fontWeight: 800, fontSize: 11.5, padding: '3px 12px',
+                color: chatTab === tb.id ? '#fff' : (tb.id === 'questions' && allOpenNeeds.length ? '#8a3b3b' : C.muted),
+                background: chatTab === tb.id ? 'var(--color-primary)' : 'var(--color-sidebar)',
+                border: `1px solid ${chatTab === tb.id ? 'var(--color-primary)' : C.border}`,
+              }}
+            >{tb.label}</button>
+          ))}
+          <span style={{ fontWeight: 400, fontSize: 11, color: C.muted, marginLeft: 8 }}>
             ask, correct, change — he applies it and shows what actually changed
           </span>
-        </label>
+        </span>
         {/* KNOW YOUR AUDIENCE (Dan, 2026-08-30): who's at the machine — the
             engineer speaks mechanical to an ME (no tags, no PLC-speak) and
             full controls to a CE. Per-browser, default ME. */}
@@ -8773,7 +8975,43 @@ export function CreateStationPage({ embedded = false }) {
           >{chatCollapsed ? `▸ history (${chatThread.length})` : '▾ hide history'}</button>
         )}
       </div>
-      {chatThread.length > 0 && !chatCollapsed && (
+      {/* QUESTIONS TAB — the ONE home for open questions: numbered, with the
+          proposal; Agree inline or answer by number in the box below.
+          Answered ones collapse into a done list. */}
+      {chatTab === 'questions' && (
+        <div data-testid="chat-questions-tab" style={{ marginBottom: 8 }}>
+          {allOpenNeeds.length === 0 ? (
+            <div style={{ fontSize: 12, color: C.muted }}>Nothing open — every question is answered or agreed.</div>
+          ) : allOpenNeeds.map((n, i) => (
+            <div key={i} data-testid={`chat-question-${i}`} style={{ padding: '5px 0', borderBottom: `1px dashed ${C.border}`, fontSize: 12, lineHeight: 1.55 }}>
+              <div><b>Q{i + 1}.</b> {n.question}</div>
+              {n.proposedSolution && <div style={{ color: C.muted }}>My proposal: {n.proposedSolution}</div>}
+              <div style={{ marginTop: 2, display: 'flex', gap: 10, alignItems: 'center' }}>
+                <button
+                  type="button"
+                  data-testid={`chat-question-agree-${i}`}
+                  onClick={() => agreeNeed({ covKey: n.covKey }, n)}
+                  style={{ ...chipBase, cursor: 'pointer', fontSize: 10.5, fontWeight: 700, padding: '2px 10px', color: '#2f6b3c', background: '#e9f5ec', border: '1px solid #7fb08c' }}
+                >✓ Agree — go with the proposal</button>
+                <span style={{ fontSize: 10.5, color: C.light }}>or answer in the box: “{i + 1} — your answer”</span>
+              </div>
+            </div>
+          ))}
+          {[...agreedNeeds].length > 0 && (
+            <details style={{ marginTop: 6 }}>
+              <summary style={{ fontSize: 11, color: C.muted, cursor: 'pointer' }}>
+                answered / agreed ({[...agreedNeeds].length})
+              </summary>
+              {[...agreedNeeds].map((k, i) => (
+                <div key={i} style={{ fontSize: 11, color: C.light, lineHeight: 1.5, padding: '1px 0' }}>
+                  ✓ {String(k).replace(/^[a-z]+:/i, '')}
+                </div>
+              ))}
+            </details>
+          )}
+        </div>
+      )}
+      {chatTab === 'chat' && chatThread.length > 0 && !chatCollapsed && (
         <div data-testid="corrections-thread" style={{ marginBottom: 8 }}>
           {/* THE SCROLL EXCEPTION (Dan, 2026-08-25): capped ~5-6 turns tall,
               internal scroll pinned to the newest; expandable below. */}
@@ -9842,6 +10080,10 @@ export function CreateStationPage({ embedded = false }) {
                       dimmed={sectionQueued(section.key)}
                       collapsed={!!collapsedSections[section.key]}
                       onToggleCollapse={() => toggleSectionCollapse(section.key)}
+                      onOpenQuestions={() => {
+                        setChatTab('questions');
+                        document.querySelector('[data-testid="corrections-block"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      }}
                       onChange={items => {
                         // withSheetPrefill keeps the device line, the device
                         // card, and the IO list agreeing (ME's words win).

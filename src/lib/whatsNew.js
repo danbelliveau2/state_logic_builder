@@ -10,12 +10,22 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.36';
+export const UI_BUILD = 'v2.6.37';
 
 export const BUILT_AT = '2026-08-30';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.37',
+    date: '2026-08-31',
+    items: [
+      'BUILD STATION CODE NOW BUILDS CODE — the button runs the real code writer with a live progress panel right in the card (percent, what it\'s writing, a heartbeat while the writer reasons, honest failure with Retry). "Rebuild" appears only after a real code build exists. Before this, the button never reached the code pipeline — that\'s why the click looked dead',
+      'YOUR APPROVED RECOVERIES CARRY INTO THE BUILT STATION — the handoff was dropping them (empty FAULT RECOVERY panels on a fully-walked station); the entire approved content now carries verbatim, and your Mid-Base station is repaired on reload',
+      'NO MORE RE-ASKED QUESTIONS AT BUILD — a walked draft skips the spec re-extraction entirely (the walk IS the spec: your fifteen approvals built it). The six re-asks it generated (Finger 2, starved feed, recoveries, the split…) are closed with your walk answers restated; only the feeder-bowl run/stop policy was genuinely new and stays open',
+      'QUESTIONS LIVE IN THE CHAT — the chat has two tabs now: Chat, and Questions (N) with each open question numbered, the proposal shown, Agree inline or answer by number. The yellow question cards on sheet sections are gone; a section shows a tiny "N questions — in the chat" chip that jumps there',
+    ],
+  },
   {
     version: 'v2.6.36',
     date: '2026-08-30',
