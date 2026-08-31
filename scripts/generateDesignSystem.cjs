@@ -321,6 +321,6 @@ XLSX.utils.book_append_sheet(wb, makeSheet(typoHeaders, typoRows, [28, 60, 45, 4
 XLSX.utils.book_append_sheet(wb, makeSheet(spacingHeaders, spacingRows, [28, 55, 40, 40]), 'Spacing & Layout');
 XLSX.utils.book_append_sheet(wb, makeSheet(condHeaders, condRows, [16, 14, 16, 12, 10, 28, 10, 50, 50]), 'Start Conditions');
 
-const outPath = path.join(__dirname, '..', 'Design_System_Reference.xlsx');
+const outPath = path.join(__dirname, '..', 'docs', 'Design_System_Reference.xlsx');
 XLSX.writeFile(wb, outPath);
 console.log(`✅ Design System Reference written to: ${outPath}`);

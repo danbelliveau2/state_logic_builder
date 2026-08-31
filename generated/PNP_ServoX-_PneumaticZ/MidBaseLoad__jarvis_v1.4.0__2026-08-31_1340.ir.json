@@ -1,0 +1,876 @@
+{
+  "irVersion": 1,
+  "smId": "id_mth4w6rl",
+  "smName": "MidBaseLoad",
+  "displayName": "MidBaseLoad",
+  "stationNumber": 1,
+  "description": "Feeder bowl / escapement feeds a mid-base into the shuttle dead nest; servo X + pneumatic Z pick-and-place transfers it to the dial.",
+  "devices": [
+    {
+      "id": "id_0db60da9-69c8-4fae-beee-cc0ac86ca4a3",
+      "type": "PneumaticLinearActuator",
+      "name": "EscapementFinger1",
+      "displayName": "Escapement_Finger_1",
+      "extras": {
+        "sensorArrangement": "1-sensor (Ret only)",
+        "homePosition": "Retract",
+        "extTimerMs": 1000,
+        "retTimerMs": 1000,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "timerMs": 1000
+      }
+    },
+    {
+      "id": "id_0637a4ae-b083-4bf4-bf73-c67e37b39d7c",
+      "type": "PneumaticLinearActuator",
+      "name": "EscapementFinger2",
+      "displayName": "Escapement_Finger_2",
+      "extras": {
+        "sensorArrangement": "No sensors",
+        "homePosition": "Retract",
+        "extTimerMs": 1000,
+        "retTimerMs": 1000,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "timerMs": 1000
+      }
+    },
+    {
+      "id": "id_86e822a7-2558-42ab-8f23-ae2186d2f502",
+      "type": "PneumaticLinearActuator",
+      "name": "EscapementShuttle",
+      "displayName": "Escapement_Shuttle",
+      "extras": {
+        "sensorArrangement": "1-sensor (Ret only)",
+        "homePosition": "Retract",
+        "extTimerMs": 1000,
+        "retTimerMs": 1000,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "timerMs": 1000
+      }
+    },
+    {
+      "id": "id_b0c06e14-498c-46d6-9976-9e5e8081c2c7",
+      "type": "PneumaticGripper",
+      "name": "ShuttleGripper",
+      "displayName": "Shuttle_Gripper",
+      "extras": {
+        "sensorArrangement": "1-sensor (Closed only)",
+        "homePosition": "Disengage",
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "timerMs": 1000
+      }
+    },
+    {
+      "id": "id_76c8f2cf-5d1c-4884-9417-e9b7d41598af",
+      "type": "DigitalSensor",
+      "name": "NestPartPresent",
+      "displayName": "Nest_Part_Present",
+      "extras": {
+        "sensorArrangement": "",
+        "homePosition": "",
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "timerMs": 1000
+      }
+    },
+    {
+      "id": "id_59564e47-2804-482d-be1d-e6e8553d9236",
+      "type": "ServoAxis",
+      "name": "XAxis",
+      "displayName": "X_Axis",
+      "extras": {
+        "sensorArrangement": "",
+        "homePosition": "ServoMove",
+        "axisNumber": 1,
+        "motionType": "linear",
+        "positions": [
+          {
+            "name": "Pick",
+            "defaultValue": 200,
+            "moveType": "Pos",
+            "isHome": true,
+            "isRecipe": false,
+            "type": "position",
+            "value": 200
+          },
+          {
+            "name": "Place",
+            "defaultValue": 50,
+            "moveType": "Pos",
+            "isHome": false,
+            "isRecipe": false,
+            "type": "position",
+            "value": 50
+          }
+        ],
+        "speedProfiles": [
+          {
+            "name": "Fast",
+            "speed": 1000,
+            "accel": 10000,
+            "decel": 10000
+          },
+          {
+            "name": "Slow",
+            "speed": 100,
+            "accel": 1000,
+            "decel": 1000
+          }
+        ],
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "timerMs": 1000,
+        "homePositionName": "Pick"
+      }
+    },
+    {
+      "id": "id_db1ea571-0243-4947-8175-095a08cf5e65",
+      "type": "PneumaticLinearActuator",
+      "name": "VerticalSlide",
+      "displayName": "Vertical_Slide",
+      "extras": {
+        "sensorArrangement": "1-sensor (Ret only)",
+        "homePosition": "Retract",
+        "extTimerMs": 1000,
+        "retTimerMs": 5000,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "timerMs": 1000,
+        "strokeMm": 150
+      }
+    },
+    {
+      "id": "id_cd77d437-62b6-4be6-b1f5-6a4c95516967",
+      "type": "PneumaticGripper",
+      "name": "PNPGripper",
+      "displayName": "PNP_Gripper",
+      "extras": {
+        "sensorArrangement": "No sensors",
+        "homePosition": "Disengage",
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "timerMs": 1000
+      }
+    }
+  ],
+  "states": [
+    {
+      "nodeId": "id_7cec92cd-d5b5-407b-89fe-42bc01c1302a",
+      "type": "stateNode",
+      "label": "Wait for Start",
+      "stateNumber": 4,
+      "isInitial": true,
+      "isComplete": false,
+      "actions": [],
+      "entryFrom": []
+    },
+    {
+      "nodeId": "id_4b4fb011-c5b8-43d4-b940-7092a31115e2",
+      "type": "stateNode",
+      "label": "Wait for Part In Shuttle Nest",
+      "stateNumber": 7,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "WaitOn",
+          "deviceId": "id_76c8f2cf-5d1c-4884-9417-e9b7d41598af",
+          "deviceName": "NestPartPresent",
+          "device": "Nest_Part_Present",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        4
+      ]
+    },
+    {
+      "nodeId": "id_dec07d27-a328-4bee-80b6-1943835f312f",
+      "type": "stateNode",
+      "label": "Engage Shuttle Gripper",
+      "stateNumber": 10,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Engage",
+          "deviceId": "id_b0c06e14-498c-46d6-9976-9e5e8081c2c7",
+          "deviceName": "ShuttleGripper",
+          "device": "Shuttle_Gripper",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        7
+      ]
+    },
+    {
+      "nodeId": "id_563dede6-bb98-4a37-9c7f-2d510f8e2a8c",
+      "type": "stateNode",
+      "label": "Extend Escapement Finger 1",
+      "stateNumber": 13,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Extend",
+          "deviceId": "id_0db60da9-69c8-4fae-beee-cc0ac86ca4a3",
+          "deviceName": "EscapementFinger1",
+          "device": "Escapement_Finger_1",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        10
+      ]
+    },
+    {
+      "nodeId": "id_1b491b13-1baa-4c99-94e3-cb3b695930bb",
+      "type": "stateNode",
+      "label": "Extend Escapement Shuttle To Pick",
+      "stateNumber": 16,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Extend",
+          "deviceId": "id_86e822a7-2558-42ab-8f23-ae2186d2f502",
+          "deviceName": "EscapementShuttle",
+          "device": "Escapement_Shuttle",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        13
+      ]
+    },
+    {
+      "nodeId": "id_c3a739a8-ab98-487f-8beb-affaff8cf119",
+      "type": "stateNode",
+      "label": "Extend Vertical Slide At Pick",
+      "stateNumber": 19,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Extend",
+          "deviceId": "id_db1ea571-0243-4947-8175-095a08cf5e65",
+          "deviceName": "VerticalSlide",
+          "device": "Vertical_Slide",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        16
+      ]
+    },
+    {
+      "nodeId": "id_e9567486-6a18-4f84-8823-757b17d7c8a0",
+      "type": "stateNode",
+      "label": "Engage PNP Gripper",
+      "stateNumber": 22,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Engage",
+          "deviceId": "id_cd77d437-62b6-4be6-b1f5-6a4c95516967",
+          "deviceName": "PNPGripper",
+          "device": "PNP_Gripper",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        19
+      ]
+    },
+    {
+      "nodeId": "id_893e3929-7ec3-4326-86f2-dca18b2ba9d5",
+      "type": "stateNode",
+      "label": "Disengage Shuttle Gripper",
+      "stateNumber": 25,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Disengage",
+          "deviceId": "id_b0c06e14-498c-46d6-9976-9e5e8081c2c7",
+          "deviceName": "ShuttleGripper",
+          "device": "Shuttle_Gripper",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        22
+      ]
+    },
+    {
+      "nodeId": "id_85269fcd-3dc8-4a6b-8de2-a52d7628d7f3",
+      "type": "stateNode",
+      "label": "Retract Vertical Slide",
+      "stateNumber": 28,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Retract",
+          "deviceId": "id_db1ea571-0243-4947-8175-095a08cf5e65",
+          "deviceName": "VerticalSlide",
+          "device": "Vertical_Slide",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        25
+      ]
+    },
+    {
+      "nodeId": "id_eeb0f50f-2225-4b60-b289-368e0cba4016",
+      "type": "stateNode",
+      "label": "Retract Escapement Shuttle To Track",
+      "stateNumber": 31,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Retract",
+          "deviceId": "id_86e822a7-2558-42ab-8f23-ae2186d2f502",
+          "deviceName": "EscapementShuttle",
+          "device": "Escapement_Shuttle",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        28
+      ]
+    },
+    {
+      "nodeId": "id_50241bd2-9885-4812-9eb8-941cf4e24ac5",
+      "type": "stateNode",
+      "label": "Retract Escapement Finger 1",
+      "stateNumber": 34,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Retract",
+          "deviceId": "id_0db60da9-69c8-4fae-beee-cc0ac86ca4a3",
+          "deviceName": "EscapementFinger1",
+          "device": "Escapement_Finger_1",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        31
+      ]
+    },
+    {
+      "nodeId": "id_eee6c613-3428-4051-93cf-97cb50575ba1",
+      "type": "stateNode",
+      "label": "Wait For Dial Ready",
+      "stateNumber": 37,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "deviceId": "_decision",
+          "deviceName": null,
+          "device": null,
+          "params": {
+            "nodeMode": "wait",
+            "signalName": "DialReady",
+            "signalSource": "Dial",
+            "signalType": "condition",
+            "conditionType": "sensorOn",
+            "exitCount": 1,
+            "exit1Label": "On",
+            "exit2Label": "Off"
+          },
+          "detail": "nodeMode=\"wait\" signalName=\"DialReady\" signalSource=\"Dial\" signalType=\"condition\" conditionType=\"sensorOn\" exitCount=1 exit1Label=\"On\" exit2Label=\"Off\""
+        }
+      ],
+      "entryFrom": [
+        34
+      ]
+    },
+    {
+      "nodeId": "id_87f9c567-5210-4c7f-97b3-c7bfa5c027d6",
+      "type": "stateNode",
+      "label": "Servo Move X Axis To Place",
+      "stateNumber": 40,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_59564e47-2804-482d-be1d-e6e8553d9236",
+          "deviceName": "XAxis",
+          "device": "X_Axis",
+          "params": {
+            "positionName": "Place",
+            "speedProfile": "Fast"
+          },
+          "detail": "positionName=\"Place\" speedProfile=\"Fast\""
+        }
+      ],
+      "entryFrom": [
+        37
+      ]
+    },
+    {
+      "nodeId": "id_07aea541-4ace-4d2e-bc78-fa59fc7908aa",
+      "type": "stateNode",
+      "label": "Extend Vertical Slide At Dial",
+      "stateNumber": 43,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Extend",
+          "deviceId": "id_db1ea571-0243-4947-8175-095a08cf5e65",
+          "deviceName": "VerticalSlide",
+          "device": "Vertical_Slide",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        40
+      ]
+    },
+    {
+      "nodeId": "id_db0dddaf-195c-405d-9055-04048ed26b27",
+      "type": "stateNode",
+      "label": "Disengage PNP Gripper",
+      "stateNumber": 46,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Disengage",
+          "deviceId": "id_cd77d437-62b6-4be6-b1f5-6a4c95516967",
+          "deviceName": "PNPGripper",
+          "device": "PNP_Gripper",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        43
+      ]
+    },
+    {
+      "nodeId": "id_afc0aa0c-43b5-4541-b0b0-117494aa92f0",
+      "type": "stateNode",
+      "label": "Retract Vertical Slide",
+      "stateNumber": 49,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "Retract",
+          "deviceId": "id_db1ea571-0243-4947-8175-095a08cf5e65",
+          "deviceName": "VerticalSlide",
+          "device": "Vertical_Slide",
+          "params": {},
+          "detail": ""
+        }
+      ],
+      "entryFrom": [
+        46
+      ]
+    },
+    {
+      "nodeId": "id_fc1de2d0-13b6-4032-b4cc-7f6dfbf485f7",
+      "type": "stateNode",
+      "label": "Servo Move X Axis To Pick",
+      "stateNumber": 52,
+      "isInitial": false,
+      "isComplete": false,
+      "actions": [
+        {
+          "operation": "ServoMove",
+          "deviceId": "id_59564e47-2804-482d-be1d-e6e8553d9236",
+          "deviceName": "XAxis",
+          "device": "X_Axis",
+          "params": {
+            "positionName": "Pick",
+            "speedProfile": "Fast"
+          },
+          "detail": "positionName=\"Pick\" speedProfile=\"Fast\""
+        }
+      ],
+      "entryFrom": [
+        49
+      ]
+    },
+    {
+      "nodeId": "id_192ab3b3-4b97-4ea2-9a5c-322f84c6ee0b",
+      "type": "stateNode",
+      "label": "Cycle Complete",
+      "stateNumber": 55,
+      "isInitial": false,
+      "isComplete": true,
+      "actions": [],
+      "entryFrom": [
+        52
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "fromLabel": "Wait for Start",
+      "toLabel": "Wait for Part In Shuttle Nest",
+      "fromState": 4,
+      "toState": 7,
+      "from": 4,
+      "to": 7,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Wait for Part In Shuttle Nest",
+      "toLabel": "Engage Shuttle Gripper",
+      "fromState": 7,
+      "toState": 10,
+      "from": 7,
+      "to": 10,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Engage Shuttle Gripper",
+      "toLabel": "Extend Escapement Finger 1",
+      "fromState": 10,
+      "toState": 13,
+      "from": 10,
+      "to": 13,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Extend Escapement Finger 1",
+      "toLabel": "Extend Escapement Shuttle To Pick",
+      "fromState": 13,
+      "toState": 16,
+      "from": 13,
+      "to": 16,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Extend Escapement Shuttle To Pick",
+      "toLabel": "Extend Vertical Slide At Pick",
+      "fromState": 16,
+      "toState": 19,
+      "from": 16,
+      "to": 19,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Extend Vertical Slide At Pick",
+      "toLabel": "Engage PNP Gripper",
+      "fromState": 19,
+      "toState": 22,
+      "from": 19,
+      "to": 22,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Engage PNP Gripper",
+      "toLabel": "Disengage Shuttle Gripper",
+      "fromState": 22,
+      "toState": 25,
+      "from": 22,
+      "to": 25,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Disengage Shuttle Gripper",
+      "toLabel": "Retract Vertical Slide",
+      "fromState": 25,
+      "toState": 28,
+      "from": 25,
+      "to": 28,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Retract Vertical Slide",
+      "toLabel": "Retract Escapement Shuttle To Track",
+      "fromState": 28,
+      "toState": 31,
+      "from": 28,
+      "to": 31,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Retract Escapement Shuttle To Track",
+      "toLabel": "Retract Escapement Finger 1",
+      "fromState": 31,
+      "toState": 34,
+      "from": 31,
+      "to": 34,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Retract Escapement Finger 1",
+      "toLabel": "Wait For Dial Ready",
+      "fromState": 34,
+      "toState": 37,
+      "from": 34,
+      "to": 37,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Wait For Dial Ready",
+      "toLabel": "Servo Move X Axis To Place",
+      "fromState": 37,
+      "toState": 40,
+      "from": 37,
+      "to": 40,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Servo Move X Axis To Place",
+      "toLabel": "Extend Vertical Slide At Dial",
+      "fromState": 40,
+      "toState": 43,
+      "from": 40,
+      "to": 43,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Extend Vertical Slide At Dial",
+      "toLabel": "Disengage PNP Gripper",
+      "fromState": 43,
+      "toState": 46,
+      "from": 43,
+      "to": 46,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Disengage PNP Gripper",
+      "toLabel": "Retract Vertical Slide",
+      "fromState": 46,
+      "toState": 49,
+      "from": 46,
+      "to": 49,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Retract Vertical Slide",
+      "toLabel": "Servo Move X Axis To Pick",
+      "fromState": 49,
+      "toState": 52,
+      "from": 49,
+      "to": 52,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    },
+    {
+      "fromLabel": "Servo Move X Axis To Pick",
+      "toLabel": "Cycle Complete",
+      "fromState": 52,
+      "toState": 55,
+      "from": 52,
+      "to": 55,
+      "conditionType": "trigger",
+      "label": null,
+      "outcomeLabel": null,
+      "branch": null,
+      "conditionText": "previous actions complete",
+      "kind": "sequence"
+    }
+  ],
+  "waits": [],
+  "stateRanges": {
+    "reserved": {
+      "powerup": 0,
+      "sdc": [
+        1,
+        2,
+        3
+      ]
+    },
+    "sequence": {
+      "from": 4,
+      "to": 55
+    },
+    "lockout": 99,
+    "init": {
+      "from": 100,
+      "to": 127,
+      "cycleReady": 127
+    }
+  },
+  "machineSpec": {
+    "purpose": "",
+    "expectedStateMachines": "",
+    "devicePurposes": [
+      {
+        "deviceName": "Escapement_Finger_1",
+        "purpose": "Escapement stop at the end of the track — extends to hold back the queued parts once a part is captured in the shuttle dead nest."
+      },
+      {
+        "deviceName": "Escapement_Finger_2",
+        "purpose": "Second escapement stop at the end of the track, working with finger 1 to release one mid-base at a time into the shuttle nest."
+      },
+      {
+        "deviceName": "Escapement_Shuttle",
+        "purpose": "MXS slide below the track carrying the dead nest — sits in line with the track to receive a part, then carries it away from the track to the pick position."
+      },
+      {
+        "deviceName": "Shuttle_Gripper",
+        "purpose": "Holds the mid-base in the shuttle dead nest while the shuttle carries it out to pick, releases after the PnP gripper has the part."
+      },
+      {
+        "deviceName": "Nest_Part_Present",
+        "purpose": "Confirms a mid-base has fed into the shuttle dead nest before the shuttle gripper closes."
+      },
+      {
+        "deviceName": "X_Axis",
+        "purpose": "Servo traverse of the pick-and-place between the pick position over the shuttle and the place position at the dial."
+      },
+      {
+        "deviceName": "Vertical_Slide",
+        "purpose": "MXS slide, 150 mm stroke, raising and lowering the PnP gripper at pick and at the dial; retract sensor only, about 1 second to extend."
+      },
+      {
+        "deviceName": "PNP_Gripper",
+        "purpose": "Grips the mid-base for the transfer from the shuttle nest to the dial; no sensors, 250 ms grip/release timer."
+      }
+    ],
+    "sequence": [],
+    "outcomeRules": [],
+    "relationships": [
+      {
+        "withSm": "Dial",
+        "kind": "custom",
+        "description": ""
+      }
+    ],
+    "approvedDeviations": [],
+    "controlsNotes": [],
+    "partnerDeclarations": []
+  },
+  "generationScope": {
+    "generate": [
+      "station sequence logic",
+      "servo motion commands",
+      "device commands & verification",
+      "state transitions",
+      "basic sequence faults/retries needed for the sequence"
+    ],
+    "notYet": [
+      "machine-level part tracking",
+      "upstream/downstream coordination beyond defined IO",
+      "overall machine initialization",
+      "machine-wide fault manager",
+      "production/OEE logic",
+      "supervisor sequencing outside this station"
+    ]
+  },
+  "warnings": [],
+  "text": "# Intermediate Representation — MidBaseLoad\nStation number: 1\nDescription: Feeder bowl / escapement feeds a mid-base into the shuttle dead nest; servo X + pneumatic Z pick-and-place transfers it to the dial.\n\n## Devices\n(HOME= is the ME-declared home — Home Conditions, init, and recovery MUST use it, never infer a different home.)\n- [PneumaticLinearActuator] EscapementFinger1 \"Escapement_Finger_1\" HOME=Retract sensorArrangement=\"1-sensor (Ret only)\" extTimerMs=1000 retTimerMs=1000 engageTimerMs=250 disengageTimerMs=250 timerMs=1000\n- [PneumaticLinearActuator] EscapementFinger2 \"Escapement_Finger_2\" HOME=Retract sensorArrangement=\"No sensors\" extTimerMs=1000 retTimerMs=1000 engageTimerMs=250 disengageTimerMs=250 timerMs=1000\n- [PneumaticLinearActuator] EscapementShuttle \"Escapement_Shuttle\" HOME=Retract sensorArrangement=\"1-sensor (Ret only)\" extTimerMs=1000 retTimerMs=1000 engageTimerMs=250 disengageTimerMs=250 timerMs=1000\n- [PneumaticGripper] ShuttleGripper \"Shuttle_Gripper\" HOME=Disengage sensorArrangement=\"1-sensor (Closed only)\" extTimerMs=500 retTimerMs=500 engageTimerMs=250 disengageTimerMs=250 timerMs=1000\n- [DigitalSensor] NestPartPresent \"Nest_Part_Present\" sensorArrangement=\"\" extTimerMs=500 retTimerMs=500 engageTimerMs=250 disengageTimerMs=250 timerMs=1000\n- [ServoAxis] XAxis \"X_Axis\" HOME=Pick sensorArrangement=\"\" axisNumber=1 motionType=\"linear\" positions=[{\"name\":\"Pick\",\"defaultValue\":200,\"moveType\":\"Pos\",\"isHome\":true,\"isRecipe\":false,\"type\":\"position\",\"value\":200},{\"name\":\"Place\",\"defaultValue\":50,\"moveType\":\"Pos\",\"isHome\":false,\"isRecipe\":false,\"type\":\"position\",\"value\":50}] speedProfiles=[{\"name\":\"Fast\",\"speed\":1000,\"accel\":10000,\"decel\":10000},{\"name\":\"Slow\",\"speed\":100,\"accel\":1000,\"decel\":1000}] extTimerMs=500 retTimerMs=500 engageTimerMs=250 disengageTimerMs=250 timerMs=1000\n- [PneumaticLinearActuator] VerticalSlide \"Vertical_Slide\" HOME=Retract sensorArrangement=\"1-sensor (Ret only)\" extTimerMs=1000 retTimerMs=5000 engageTimerMs=250 disengageTimerMs=250 timerMs=1000 strokeMm=150\n- [PneumaticGripper] PNPGripper \"PNP_Gripper\" HOME=Disengage sensorArrangement=\"No sensors\" extTimerMs=500 retTimerMs=500 engageTimerMs=250 disengageTimerMs=250 timerMs=1000\n\n## States (assigned state numbers — these are FINAL, use them as-is)\n- State 4 [node id_7cec92cd-d5b5-407b-89fe-42bc01c1302a]: \"Wait for Start\" {INITIAL}\n- State 7 [node id_4b4fb011-c5b8-43d4-b940-7092a31115e2]: \"Wait for Part In Shuttle Nest\"\n    action: WaitOn -> NestPartPresent\n- State 10 [node id_dec07d27-a328-4bee-80b6-1943835f312f]: \"Engage Shuttle Gripper\"\n    action: Engage -> ShuttleGripper\n- State 13 [node id_563dede6-bb98-4a37-9c7f-2d510f8e2a8c]: \"Extend Escapement Finger 1\"\n    action: Extend -> EscapementFinger1\n- State 16 [node id_1b491b13-1baa-4c99-94e3-cb3b695930bb]: \"Extend Escapement Shuttle To Pick\"\n    action: Extend -> EscapementShuttle\n- State 19 [node id_c3a739a8-ab98-487f-8beb-affaff8cf119]: \"Extend Vertical Slide At Pick\"\n    action: Extend -> VerticalSlide\n- State 22 [node id_e9567486-6a18-4f84-8823-757b17d7c8a0]: \"Engage PNP Gripper\"\n    action: Engage -> PNPGripper\n- State 25 [node id_893e3929-7ec3-4326-86f2-dca18b2ba9d5]: \"Disengage Shuttle Gripper\"\n    action: Disengage -> ShuttleGripper\n- State 28 [node id_85269fcd-3dc8-4a6b-8de2-a52d7628d7f3]: \"Retract Vertical Slide\"\n    action: Retract -> VerticalSlide\n- State 31 [node id_eeb0f50f-2225-4b60-b289-368e0cba4016]: \"Retract Escapement Shuttle To Track\"\n    action: Retract -> EscapementShuttle\n- State 34 [node id_50241bd2-9885-4812-9eb8-941cf4e24ac5]: \"Retract Escapement Finger 1\"\n    action: Retract -> EscapementFinger1\n- State 37 [node id_eee6c613-3428-4051-93cf-97cb50575ba1]: \"Wait For Dial Ready\"\n    action: undefined -> _decision (nodeMode=\"wait\" signalName=\"DialReady\" signalSource=\"Dial\" signalType=\"condition\" conditionType=\"sensorOn\" exitCount=1 exit1Label=\"On\" exit2Label=\"Off\")\n- State 40 [node id_87f9c567-5210-4c7f-97b3-c7bfa5c027d6]: \"Servo Move X Axis To Place\"\n    action: ServoMove -> XAxis (positionName=\"Place\" speedProfile=\"Fast\")\n- State 43 [node id_07aea541-4ace-4d2e-bc78-fa59fc7908aa]: \"Extend Vertical Slide At Dial\"\n    action: Extend -> VerticalSlide\n- State 46 [node id_db0dddaf-195c-405d-9055-04048ed26b27]: \"Disengage PNP Gripper\"\n    action: Disengage -> PNPGripper\n- State 49 [node id_afc0aa0c-43b5-4541-b0b0-117494aa92f0]: \"Retract Vertical Slide\"\n    action: Retract -> VerticalSlide\n- State 52 [node id_fc1de2d0-13b6-4032-b4cc-7f6dfbf485f7]: \"Servo Move X Axis To Pick\"\n    action: ServoMove -> XAxis (positionName=\"Pick\" speedProfile=\"Fast\")\n- State 55 [node id_192ab3b3-4b97-4ea2-9a5c-322f84c6ee0b]: \"Cycle Complete\" {CYCLE-COMPLETE}\n\n## Transitions\n- [4] \"Wait for Start\" -> [7] \"Wait for Part In Shuttle Nest\" (type=trigger)\n- [7] \"Wait for Part In Shuttle Nest\" -> [10] \"Engage Shuttle Gripper\" (type=trigger)\n- [10] \"Engage Shuttle Gripper\" -> [13] \"Extend Escapement Finger 1\" (type=trigger)\n- [13] \"Extend Escapement Finger 1\" -> [16] \"Extend Escapement Shuttle To Pick\" (type=trigger)\n- [16] \"Extend Escapement Shuttle To Pick\" -> [19] \"Extend Vertical Slide At Pick\" (type=trigger)\n- [19] \"Extend Vertical Slide At Pick\" -> [22] \"Engage PNP Gripper\" (type=trigger)\n- [22] \"Engage PNP Gripper\" -> [25] \"Disengage Shuttle Gripper\" (type=trigger)\n- [25] \"Disengage Shuttle Gripper\" -> [28] \"Retract Vertical Slide\" (type=trigger)\n- [28] \"Retract Vertical Slide\" -> [31] \"Retract Escapement Shuttle To Track\" (type=trigger)\n- [31] \"Retract Escapement Shuttle To Track\" -> [34] \"Retract Escapement Finger 1\" (type=trigger)\n- [34] \"Retract Escapement Finger 1\" -> [37] \"Wait For Dial Ready\" (type=trigger)\n- [37] \"Wait For Dial Ready\" -> [40] \"Servo Move X Axis To Place\" (type=trigger)\n- [40] \"Servo Move X Axis To Place\" -> [43] \"Extend Vertical Slide At Dial\" (type=trigger)\n- [43] \"Extend Vertical Slide At Dial\" -> [46] \"Disengage PNP Gripper\" (type=trigger)\n- [46] \"Disengage PNP Gripper\" -> [49] \"Retract Vertical Slide\" (type=trigger)\n- [49] \"Retract Vertical Slide\" -> [52] \"Servo Move X Axis To Pick\" (type=trigger)\n- [52] \"Servo Move X Axis To Pick\" -> [55] \"Cycle Complete\" (type=trigger)\n\n## MACHINE SPEC (mechanical intent — compile the coordination)\nThis section is AUTHORITATIVE intent authored by the mechanical engineer.\nSynthesize the signals, waits, exits, and cross-station handshakes that\nrealize it. EVERY wait you create must have an exit for every partner\nfailure mode listed here PLUS a timeout — no exitless waits.\n\n### Device purposes\n- Escapement_Finger_1: Escapement stop at the end of the track — extends to hold back the queued parts once a part is captured in the shuttle dead nest.\n- Escapement_Finger_2: Second escapement stop at the end of the track, working with finger 1 to release one mid-base at a time into the shuttle nest.\n- Escapement_Shuttle: MXS slide below the track carrying the dead nest — sits in line with the track to receive a part, then carries it away from the track to the pick position.\n- Shuttle_Gripper: Holds the mid-base in the shuttle dead nest while the shuttle carries it out to pick, releases after the PnP gripper has the part.\n- Nest_Part_Present: Confirms a mid-base has fed into the shuttle dead nest before the shuttle gripper closes.\n- X_Axis: Servo traverse of the pick-and-place between the pick position over the shuttle and the place position at the dial.\n- Vertical_Slide: MXS slide, 150 mm stroke, raising and lowering the PnP gripper at pick and at the dial; retract sensor only, about 1 second to extend.\n- PNP_Gripper: Grips the mid-base for the transfer from the shuttle nest to the dial; no sensors, 250 ms grip/release timer.\n\n### Relationships declared by this station\n- custom -> Dial: (no description)\n\n## GENERATION SCOPE (contract — what this build covers vs not)\nTHIS BUILD GENERATES: station sequence logic; servo motion commands; device commands & verification; state transitions; basic sequence faults/retries needed for the sequence.\nNOT IN THIS BUILD (machine-level extras deferred until the station joins a machine): machine-level part tracking; upstream/downstream coordination beyond defined IO; overall machine initialization; machine-wide fault manager; production/OEE logic; supervisor sequencing outside this station.\nScope law: NEVER ask about, flag, or apologize for NOT-IN-THIS-BUILD items.\nWhere the sequence touches one (e.g. a partner/supervisor signal outside the\ndefined IO), stub it quietly per the SDC standalone pattern (*Replace rung\ncomment) and move on — that is your own decision, not a question. A\nstandalone sequence terminates cleanly in \"Sequence Complete / Ready for\nnext command\".\nThe station-level template pieces ALWAYS emit regardless of scope: init\nblock, lockout, R01 inputs, station part-tracking block, alarms — the full\nstation file, never a reduced one.",
+  "generatedAt": "2026-08-31T13:40:38.537Z",
+  "jarvisVersion": "1.4.0",
+  "l5xFile": "MidBaseLoad__jarvis_v1.4.0__2026-08-31_1340.L5X",
+  "validationOk": true
+}

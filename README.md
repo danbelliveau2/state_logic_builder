@@ -6,6 +6,58 @@ Built by **Dan Belliveau** to eliminate manual PLC state logic authoring. Draw y
 
 ---
 
+## The Two Shells — v2 is the app, v1 is frozen
+
+| Shell | URL | Source | Status |
+|---|---|---|---|
+| **v2** (stations-first, Jarvis-driven) | `/` (default; `/v2.html` alias) | `src/v2/` | **Live — all new work happens here** |
+| **v1 classic** | `/classic.html` | `src/App.jsx` + classic components | **FROZEN — do not modify.** Dan's ruling (Aug 2026): v1 stays reachable exactly as it is while everything migrates into v2 |
+
+Both entries ship in the production build (`vite build`) and are served identically by the dev server, the built `dist/`, and Electron. V1 capabilities that don't yet have a v2 home are tracked in [`docs/V2_CAPABILITY_GAPS.md`](docs/V2_CAPABILITY_GAPS.md).
+
+---
+
+## Repo Map — what everything at the root is
+
+**Folders**
+
+| Folder | What it is |
+|---|---|
+| `src/` | The app's source code (React UI, store, L5X exporter, Jarvis agent) |
+| `docs/` | Project documentation — architecture, decisions, roadmap, analyses |
+| `projects/` | Your saved state-machine projects (the app reads/writes these) |
+| `jarvis-knowledge/` | Jarvis's brain — concepts, questions, build scores |
+| `generated/` | Every L5X file Jarvis has produced, one folder per project |
+| `plc-reference/` | SDC templates, standards documents, and training material (includes `SDC_PNP_Test/` reference L5X files) |
+| `standards/` | The team-shared standards library the app serves |
+| `benchmarks/` | Jarvis benchmark reports (the Track Record page reads these) |
+| `scripts/` | Utility scripts — benchmarks, smoke tests, seeding |
+| `electron/` | Desktop-app shell (Electron main process) |
+| `logs/` | Server logs (pm2 writes here — leave alone) |
+| `public/` | App icon and static assets served by Vite |
+| `build/` | Installer script for the Windows release (`installer.nsh`) |
+| `dist/` | Built copy of the app (`npm run build` output — regenerated) |
+| `release/` | Electron installer output (regenerated) |
+| `node_modules/` | Installed dependencies (`npm install`) |
+| `_archive/` | Old experiments, one-off files, and stale docs — safe to ignore |
+| `.claude/` / `.github/` | Claude Code config / GitHub Actions release workflow |
+
+**Files**
+
+| File | What it is |
+|---|---|
+| `START_APP.bat` | Double-click to run the app (starts API server + dev server, opens browser) |
+| `server.js` | The project API server (port 3000, runs under pm2 as `slb-api`) |
+| `index.html` / `v2.html` / `classic.html` | App entry pages — **v2 shell is the default at `/`** (`v2.html` kept as an alias); the **frozen v1 classic shell** lives at `/classic.html` (do not modify — kept reachable exactly as v1 was) |
+| `vite.config.js` | Dev server config (port 3131, proxies `/api` to 3000) |
+| `package.json` / `package-lock.json` | Project definition + dependencies. **Bumping the version publishes a release!** |
+| `CLAUDE.md` | Ground-truth instructions for AI-assisted development |
+| `README.md` / `CHANGELOG.md` | This file / release history |
+| `.env` | Local secrets (API key) — never commit |
+| `.gitignore` | What git ignores |
+
+---
+
 ## Download & Install
 
 Get the latest installer from the [**Releases page**](https://github.com/danbelliveau2/state_logic_builder/releases/latest).
@@ -145,11 +197,11 @@ Releases are fully automated via GitHub Actions. When the app is ready to ship:
 
 ## Local Build (for testing only)
 
-```bat
-BUILD_DESKTOP.bat
+```bash
+npm run electron:build
 ```
 
-Produces a ZIP of the app in `release/` for local testing. Does **not** publish to GitHub.
+Produces a portable build in `release/` for local testing. Does **not** publish to GitHub. (The old `BUILD_DESKTOP.bat` lives in `_archive/`.)
 
 ---
 

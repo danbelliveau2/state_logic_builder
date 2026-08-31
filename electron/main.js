@@ -189,6 +189,8 @@ app.whenReady().then(async () => {
     show: false,
   });
 
+  // `/` serves dist/index.html — the v2 shell (the live app). The frozen v1
+  // classic shell ships in the same build at /classic.html if ever needed.
   mainWindow.loadURL(`http://localhost:${PORT}`);
 
   mainWindow.once('ready-to-show', () => {

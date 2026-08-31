@@ -3,7 +3,7 @@
 > Source files:
 > - `C:\SDC-StateLogic\plc-reference\standard\S01_PartLoad.L5X` (export 2026-08-18, SoftwareRevision 37.00, controller context `SoftwareStandardization`)
 > - `C:\SDC-StateLogic\plc-reference\standard\S05_ServoPNP.L5X` (NEW, V4.2, export 2026-08-18)
-> - `C:\SDC-StateLogic\SDC_PNP_Test\S05_ServoPNP.L5X` (OLD, export 2026-04-23)
+> - `C:\SDC-StateLogic\plc-reference\SDC_PNP_Test\S05_ServoPNP.L5X` (OLD, export 2026-04-23)
 >
 > All rung text quoted verbatim from the L5X `<Text>` CDATA.
 
@@ -377,7 +377,7 @@ XIC(g_MachineBasic.AlwaysOn)StationPerformance(StationPerformance,\Tracking.p_Da
 
 # SECTION 2 — S05_ServoPNP V4.2 (NEW) vs Old Export: Semantic Diff
 
-Direction convention below: **OLD** = `SDC_PNP_Test\S05_ServoPNP.L5X` (Apr 2026), **NEW** = `plc-reference\standard\S05_ServoPNP.L5X` (V4.2, Aug 2026). State map is UNCHANGED (identical to S01's table plus "Extend Z Axis To Pick/Place Position" wording). Routine list unchanged (R00, R01, R02, R03, R04_XAxisServo, R05_ZAxisServo, R20).
+Direction convention below: **OLD** = `plc-reference\SDC_PNP_Test\S05_ServoPNP.L5X` (Apr 2026), **NEW** = `plc-reference\standard\S05_ServoPNP.L5X` (V4.2, Aug 2026). State map is UNCHANGED (identical to S01's table plus "Extend Z Axis To Pick/Place Position" wording). Routine list unchanged (R00, R01, R02, R03, R04_XAxisServo, R05_ZAxisServo, R20).
 
 ## 2.1 New tags (NEW only)
 

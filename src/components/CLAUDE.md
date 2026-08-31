@@ -31,7 +31,7 @@ components/
   modals/
     AddDeviceModal.jsx, ActionModal.jsx, NewStateMachineModal.jsx,
     ProjectManagerModal.jsx, RecipeManagerModal.jsx,
-    ReferencePositionModal.jsx, SignalModal.jsx, SmOutputModal.jsx,
+    SignalModal.jsx,
     DeviceLibraryPicker.jsx, CustomDeviceConfigurator.jsx
 ```
 

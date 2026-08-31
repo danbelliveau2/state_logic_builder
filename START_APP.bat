@@ -9,7 +9,8 @@ echo  ============================================
 echo   SDC State Logic Builder
 echo  ============================================
 echo  Running from: %APP_DIR%
-echo  Browser will open automatically at http://localhost:3131
+echo  Browser will open automatically at http://localhost:3131  (v2 shell)
+echo  Frozen v1 classic app: http://localhost:3131/classic.html
 echo  Close this window to stop both servers.
 echo.
 

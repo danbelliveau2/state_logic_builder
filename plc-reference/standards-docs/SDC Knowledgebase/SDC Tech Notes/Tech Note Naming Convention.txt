@@ -1,0 +1,3 @@
+TN-DDMMYYYY-Job##-ShortTopic-Initials
+
+Example: TN-02162026-Job1125-MotorCommutation-TW

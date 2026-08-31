@@ -1,0 +1,51 @@
+{
+  "verdict": "fix",
+  "scope": "full",
+  "costUSD": 1.0669,
+  "model": "claude-opus-5",
+  "durationS": 197,
+  "findings": [
+    {
+      "severity": "blocker",
+      "routine": "R05_ZAxisServo",
+      "finding": "Manual Mode rung 13 was copied slot-for-slot from the template instead of being retargeted to this axis's real targets: ManMoves.0/1/2 now point at Positions[0] Retract, Positions[1] PickTransition and Positions[2] Pick — so the operator can manually drive Z onto a SPEED TRANSITION POINT (a mid-flight plumbing position that is never a park target) and has NO manual move to Place at all. Commissioning and recovery both need a manual move to Place. Map the three manual-move bits to the three real targets (ManMoves.0→Positions[0] Retract, ManMoves.1→Positions[2] Pick, ManMoves.2→Positions[4] Place) and leave the transition/blend slots out of the manual list.",
+      "templateEvidence": "S05 R05_ZAxisServo rung 13: each HMI_ZAxis.Control.ManMoves.n stages a NAMED TARGET (Positions[0]=Pick, [1]=Place, [2]=Retract) — one manual bit per real move destination; the template axis has no non-target slots. motion-model-pnp.md: the transition point is internal plumbing, 'the axis never stops at a transition point'."
+    },
+    {
+      "severity": "style",
+      "routine": "R02_StateTransitions",
+      "finding": "Several rung comments drift from the template's terse action-naming style into mechanics/justification prose: rung 7 'Station commits to the part here - latch part tracking Attempt', rung 11 'Pick side corner blend - the traverse starts while Z finishes its rise to Retract.', rung 15 'Cross axis verification at the consequence point - both axes strictly arrived at Place before the release.', rung 19 similar. The rung comment should name the physical action/destination of the state ('State 28: Move X Axis To Place Position') and stop there; the *Replace stub note on rung 12 is the one legitimate exception.",
+      "templateEvidence": "S05 R02 rung comments: 'State 16: Extend x axis', 'State 22: Extend z axis to place position' — action + destination only. Jason's 2026-08-25 correction: comments name the physical action, not segment mechanics or justification of implementation choices."
+    },
+    {
+      "severity": "style",
+      "routine": "R01_Inputs",
+      "finding": "Gripper status bits are named PartGripperOpened / PartGripperClosed while the outputs correctly use the gripper verb pair q_EngagePartGripper / q_DisengagePartGripper. Mixing Open/Close and Engage/Disengage vocabulary for the same device reads as two devices; SDC's per-device-type verb convention (gripper = Engage/Disengage) applies to labels, delays, sensors and tags alike. Rename to PartGripperEngaged / PartGripperDisengaged (and the derived uses in R01 rung 11, R02 rungs 3/23/24).",
+      "templateEvidence": "S05 R01 rungs 3/4 derive GripperOpened/GripperClosed from q_OpenGripper/q_CloseGripper — the status bit mirrors the OUTPUT verb pair; Dan 2026-08: 'gripper = Engage/Disengage, cylinder = Extend/Retract (follow the naming conventions everywhere — labels, delays, sensors, tags)'."
+    },
+    {
+      "severity": "note",
+      "routine": "R04_XAxisServo",
+      "finding": "A new rung 2 (S:FS seed of ZAxisSafePosition from Retract + the larger corner blend) was inserted ahead of the permissive, shifting the axis-module boilerplate rung numbers by one. The construct itself is exactly Jason's 2026-08-25 X-permissive ruling (LE compare in rung 3, exact-complement GT in R20 rung 4) and the shapes of the boilerplate rungs are unchanged — recorded so the next reviewer knows the offset is deliberate.",
+      "templateEvidence": "S05 R04 rungs 0-2 (ready / enable delay / permissive); leads' boilerplate map (CONTROLS #4): rungs 0,1,3-12,16-20 never change — only the permissive and motion-trigger rungs are application-dependent."
+    },
+    {
+      "severity": "note",
+      "routine": "R03_StateLogic",
+      "finding": "PartStarted (rung 5) seals on XIO(q_DisengagePartGripper), which already drops the bit the scan the release is commanded at state 40 — the XIO(Status.State[43]) term in the same branch can never be the deciding condition. Harmless (the posture memory is still correct through a stop), but the state term is dead and will confuse the next reader.",
+      "templateEvidence": "S05 R03 rung 5: [XIC(Status.State[13]) , XIC(PartStarted) XIO(Status.State[28]) XIO(g_MachineBasic.PowerUpCP) XIO(GripperClosed)] — the state term and the gripper term drop the seal at different moments by design."
+    }
+  ],
+  "standardsQuestions": [
+    {
+      "topic": "Manual moves on axes with transition/blend slots",
+      "question": "Under the fast/slow + transition-point standard, an axis's Positions[] array now carries non-target slots (speed transition points, corner blend distances) alongside real targets. Which slots get HMI manual-move bits in the per-axis Manual Mode rung — only the real park/work targets, or every populated slot?",
+      "proposedSolution": "My proposal: manual-move bits are assigned ONLY to real move targets (Retract/Pick/Place on a PNP Z, Pick/Place on the traverse), in that order, and transition points and blend distances never get a manual-move bit because they are internal plumbing the axis is never meant to park on. Do you like that, or should every populated Positions[] slot be manually reachable for commissioning?",
+      "addressee": "CE",
+      "domain": "controls",
+      "kind": "question"
+    }
+  ],
+  "missingVsTemplate": [],
+  "summary": "Architecture, R02 ordering (4→55 strictly ascending, override block in template order), the one-MAM-per-axis/MCD spine, the staging shapes, the seven RangeCheck instances, the cross-axis place blend band, the ZAxisSafePosition permissive with its exact-complement quickstop reason, and the R20 alarm partition (3000 ms destination rungs shared by MAM+MCD states, 5000 ms per-transition-point rungs, the 10000 ms Severity-1 part-present warning) all match the verified v7 shapes — this is close. One bounce: R05's Manual Mode rung was reindexed instead of retargeted, so ManMoves.1 jogs Z onto the PickTransition speed point and there is no manual move to Place; fix the three bits to Retract/Pick/Place. Then tighten the R02 rung comments back to action-and-destination and make the gripper status bits speak Engage/Disengage like their outputs do."
+}

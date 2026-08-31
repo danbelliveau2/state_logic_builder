@@ -1,0 +1,1569 @@
+[
+  {
+    "id": "standard-templates",
+    "name": "SDC Standard Templates (V4.2 station family)",
+    "location": "plc-reference/standard/ (S00_IndexerSP, S00_IndexerNoSP, S01_PartLoad, S05_ServoPNP)",
+    "accessStatus": "full",
+    "lastIngested": "2026-08-21",
+    "takeaways": [
+      "Template structural shapes are law: rung ordering, trigger format, staging, routine layout",
+      "One MAM per axis in a single motion-command rung, gated by a plain state list",
+      "R02 sequence rungs in ascending state order, override block (99/init/fault/manual/safety) last",
+      "States 0-3 are supervisor postures; sequence runs 4-99 in +3 steps; 100-124 init; 127 fault",
+      "Wideband [PC+InPos , IP+InPosWide] branch is how corners blend - never timers",
+      "Init/resume skeleton keys on gripper command state as the only part memory",
+      "Pattern inventory auto-derives from these files by hash - new template drops re-train themselves"
+    ]
+  },
+  {
+    "id": "x-drive-standards",
+    "name": "X:/Electrical Dept - CE standards ingestion",
+    "location": "X:/Electrical Dept -> copied to plc-reference/standards-docs/",
+    "accessStatus": "copied",
+    "lastIngested": "2026-08-21",
+    "takeaways": [
+      "PLC Software Standardization Rev2 is the design authority - 'whatever it says' (Dan's ruling)",
+      "One state machine per program; programs ordered upstream to downstream following the part",
+      "One state transition per rung; actions live in R03, decisions in R02",
+      "Sensorless-actuator delay timers need all three trigger legs: output on, reverse output off, reverse sensor off",
+      "Verify stations: ON = pass, consecutive-failures counter (default 3), stuck-ON detection - must be generated",
+      "Lockout/bypass force the part-tracking success bit and raise standing warnings",
+      "Valve type is control semantics: double-sol holds position, center-blocked holds vertical loads",
+      "Servo hardware: TLP+K5300 standard PNP, VPL+K5500 for camming/coordinated motion, multiturn absolute encoders",
+      "Alarm messages: station prefix + condition + operator action",
+      "Standard AOI library: State_Engine_128Max, ProgramAlarmHandler, CPU_TimeDate_wJulian, MovingAverage, OEE, TopAlarms"
+    ]
+  },
+  {
+    "id": "n-drive-training",
+    "name": "N:/CE Training Material (\"the Mecca\")",
+    "location": "N:/AI Folder/CE Training Material -> copied to plc-reference/training-material/",
+    "accessStatus": "copied",
+    "lastIngested": "2026-08-21",
+    "takeaways": [
+      "Both questionnaires answered by Jason Perry (2026-08-20) - 21 open Jarvis questions resolved",
+      "Active sequence states are 4-99, hard ceiling; fault = state 127, recovery is per-station judgment",
+      "A state is entered from exactly ONE rung - parallel branches, never multiple rungs",
+      "Motion decision tree: MAM point-to-point, blend for multi-axis corners, MAG conveyor tracking, MAPC chassis camming",
+      "Axis-module rungs 0,1,3-12,16-20 never change; only manual/auto motion triggers are per-application",
+      "Keyence vision standard: EtherNet/IP trigger, 6-step handshake ending in store + acknowledge",
+      "ShowRoomChassis exemplar: cam-synchronized stations run angle-window logic, not state machines",
+      "ShowRoomFlexFeeder exemplar: robot stations converse via i_RobotStatus bits + EDA register compares",
+      "Four legacy projects catalogued as anti-patterns - never style authority (concepts/anti-patterns.md)"
+    ]
+  },
+  {
+    "id": "leads-questionnaires",
+    "name": "Answered questionnaires from the controls leads",
+    "location": "plc-reference/training-material/CONTROLS_LEADS_QUESTIONS.docx + JARVIS_QUESTIONS_FOR_LEADS.docx (.extracted.md alongside)",
+    "accessStatus": "copied",
+    "lastIngested": "2026-08-21",
+    "takeaways": [
+      "Acceptance test for generated code: engineering audit of each line; gold standard is the SDC template",
+      "Old reference code never wins over the new standard",
+      "Wideband distance = worst-case clearance geometry plus margin; blend wherever geometry allows",
+      "Warning = machine keeps running while operator tends a condition that may eventually stop it",
+      "q_ActuatorsSafe is a defined safe subset per application, not all-actuators-home",
+      "TorqueHome for hard-stop axes, MAH otherwise; homing (R04/R05 rungs 9-11) is distinct from init (100-124)",
+      "Retry = counter + standard backward transition; at max, transition to the fault/route state",
+      "HMI_Toggle stays alive for station toggle buttons alongside Tracking OpStatus",
+      "Top-5 generated-code wrongs named: duplicate state entries, wrong-state actions, out-of-order states, misread decisions, states past 99"
+    ]
+  },
+  {
+    "id": "concepts-from-feedback",
+    "name": "Concepts and correction lessons (Dan, Jason's reviews, build corrections)",
+    "location": "jarvis-knowledge/concepts/*.md + buildScores.json",
+    "accessStatus": "full",
+    "lastIngested": "2026-08-21",
+    "takeaways": [
+      "Concepts not rules: deepen understanding on error, never append rules",
+      "Two altitudes: logic thinks freely, expression speaks SDC - structure is the immovable guide rail",
+      "Lookup hierarchy: templates first, seen SDC code second, SDC-style freedom last (flagged)",
+      "Fast/slow + transition points is Dan's standing extension of S05 - never cleaned away",
+      "Fault vs warning severity decides whether the machine exits through 127 or holds",
+      "State comments and rung labels generate from the diagram state map, never inherited",
+      "Proposal channel: non-standard patterns surface as flagged decisions, never ship silently"
+    ]
+  },
+  {
+    "id": "me-knowledge",
+    "name": "ME-facing standing knowledge",
+    "location": "src/lib/agentGenerator/meKnowledge.md",
+    "accessStatus": "full",
+    "lastIngested": "2026-08-21",
+    "takeaways": [
+      "Device taxonomy: valves/EOAT/timers/HMI are never devices; the actuated mechanism is",
+      "Self-answer test before any question; logically-forced answers are never questions",
+      "Standing defaults: gripper 250ms, cylinder delays stroke-based, Fast 1000 mm/s / Slow 100 mm/s, millimeters always",
+      "Servo position tables are an ME prerequisite before compile - readiness item, not a CE flag",
+      "Mechanical/controls boundary: model questions to the ME upfront, judgment questions to controls at compile",
+      "Non-standard ME requests are flagged, built anyway, and noted for CE review",
+      "CE standards documents outrank Dan's relayed understanding where they conflict (Dan's authority ruling)"
+    ]
+  },
+  {
+    "id": "verified-exemplars",
+    "name": "Engineer-verified-correct builds (the gold rank)",
+    "location": "plc-reference/verified/ (SDCServoPNP_JARVIS_v7__verified_by_Jason.L5X)",
+    "accessStatus": "full",
+    "lastIngested": "2026-08-26",
+    "takeaways": [
+      "SDCServoPNP_JARVIS_v7.L5X confirmed CORRECT by Jason Perry (2026-08-26, via Dan) - the verified servo/PNP reference; ranks above engineer-corrected and delivered in exemplar selection",
+      "MCD stroke alarms partition two-per-stroke: MAM-command state + MCD state share the destination-arrival alarm; transition-band waits get their own per-transition-point 'Speed Transition' alarm (both directions through a point share one rung)",
+      "Verified FaultTimes: 3000 ms destination arrivals, 5000 ms transition-band waits, 10000 ms part-present idle warning",
+      "Cross-axis corner blend: the traversing axis's target RangeCheck takes its wide band by DIRECT reference to the corner's blend row on the owning axis (XAxisPlace wide band = HMI_ZAxis.Parameters.Positions[6]) - one ME-owned number, no mirrored slot",
+      "X permissive: Z homed AND LE(Z actual, ZAxisSafePosition) seeded at S:FS from Retract + the LARGER corner blend (GE/LT CPT branch pair)",
+      "Quickstop reason branch is the exact complement of the permissive compare (GT against ZAxisSafePosition), never XIO(permissive)",
+      "Before asking a human, SEARCH THE VERIFIED WORK - a question answerable from a verified exemplar is never asked"
+    ]
+  },
+  {
+    "id": "acd-only-templates",
+    "name": "Template history + standard projects locked in .ACD",
+    "location": "X:/Electrical Dept/Standards - Software/Allen Bradley/Projects (V1.0-V4.1 SoftwareStandardization.ACD)",
+    "accessStatus": "needs-export",
+    "lastIngested": null,
+    "takeaways": [
+      "Only V4.2 has an L5X export; earlier revisions are .ACD and unreadable to Jarvis",
+      "Revision History.md captures WHY each template version changed - already ingested",
+      "Export request filed with the leads (questions.json q_std_ingest_acd_exports)",
+      "Future template revisions should land as L5X in plc-reference/standard/ to self-retrain the pattern inventory"
+    ]
+  },
+  {
+    "id": "inbox-d77fbcf1",
+    "name": "Lesson notes - dial station feeder bowls.md",
+    "location": "JARVIS Inbox/_learned/Lesson notes - dial station feeder bowls.md",
+    "accessStatus": "copied-locally",
+    "lastIngested": "2026-08-28",
+    "takeaways": [
+      "Vibratory feeder bowls belong to the escapement state machine, not the pick-and-place — or run free/uncommanded external to any state machine",
+      "This is confirmed across every dial station SDC has shipped — a settled pattern, not a one-off",
+      "Feeder bowl blow-off air is continuous-flow, driven by a spring-return single solenoid (SY_100) — one output only, no reverse/retract output to interlock against"
+    ]
+  },
+  {
+    "id": "inbox-76b163eb",
+    "name": "gripper-timing-note.md",
+    "location": "JARVIS Inbox/_learned/gripper-timing-note.md",
+    "accessStatus": "copied-locally",
+    "lastIngested": "2026-08-28",
+    "takeaways": [
+      "Soft/deformable parts require a 250ms wait between part-present sensor confirmation and gripper Engage command — distinct from the standard ~250ms engage/disengage actuation delay.",
+      "Hard parts need no such pre-engage delay; standard timing applies as-is.",
+      "This is a part-property-driven timing rule, not a device-type default — applies when the ME identifies parts as soft/deformable.",
+      "Source: empirical floor debug on station 1199, not a design derivation — treat as a learned SDC lesson to apply going forward when soft parts are mentioned."
+    ]
+  },
+  {
+    "id": "inbox-39c93407",
+    "name": "JOB_9999.md",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Fanuc Robot\\Claude Fanuc Assets\\Jobs\\9999 Infeed Pick - 3 Place\\JOB_9999.md",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-28",
+    "takeaways": [
+      "Robot-side command dispatch is a shared-register handshake, not per-move I/O: PLC writes a command code to R[50] (1=pick, 2/3/4=place destinations, 100=safe home), the robot's active sub writes R[60]=R[50] on completion, and the PLC's master loop is just WAIT(R[60]<>R[50]).",
+      "Multi-destination selection lives entirely in the command code — the PLC decides which place destination by which integer it writes, not by sensing or station logic.",
+      "Position-register (PR) numbering follows a fixed convention: PR[4]/PR[5] are temp-offset/zero-offset scratch, PR[14] is the shared clear/home position, then sequential approach/target pairs per destination (PR[15]/16 pick, PR[17]/18, PR[19]/20, PR[21]/22 for places) — the usual PR[14]-PR[20] range simply extends upward per extra destination.",
+      "Standard robot-cell handshake register map: R[41]=override/EDA, DO[8]=station handshake pulse, DI[40]=cycle stop, DI[39]=station fault (into R[1]), RO[1]/RO[2] triggered via CALL GRIP/UNGRIP subs rather than direct output writes.",
+      "This is Fanuc TP/LS robot programming territory (R[] registers, PR[] position registers, UTOOL/UFRAME, .LS/.TP compile) — a different execution environment from SDC's PLC/servo-axis ladder standard, but the same 'ME fills in station-specific values, controls fills in the pattern' philosophy applies (yellow-row IO template, teach only the PR values)."
+    ]
+  },
+  {
+    "id": "inbox-8021bc49",
+    "name": "JOB_1325.md",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Fanuc Robot\\Claude Fanuc Assets\\Jobs\\1325 Station-to-Dial Pick-Place\\JOB_1325.md",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-29",
+    "takeaways": [
+      "Introduces SDC's standard PLC↔robot handshake pattern: PLC writes a command number into R[50], robot executes the matching subroutine and echoes R[60]=R[50] when done; PLC blocks on WAIT R[60]<>R[50].",
+      "Standard robot position-register (PR) template is fixed across all robot programs: PR[1]=Home/Perch, PR[2]=LPOS snapshot, PR[3]=JPOS snapshot, PR[4]=temp offset (auto-set from PR[5]), PR[5]=all-zero reference — only PR[6]+ are station-specific teach points.",
+      "Readiness/completion between robot and station/dial uses a pulse-then-poll pattern: robot pulses a handshake DO (0.5s) then polls a station/dial DI for the ready condition, with a dedicated fault register (R[1]) that aborts to a safe label on any nonzero value from an external fault DI.",
+      "Gripper actuation on the robot side goes through CALL GRIP/UNGRIP subroutines with the same ~0.25s dwell SDC already standardizes for PLC-driven grippers — confirms the timing convention holds across device classes, not just PLC IO.",
+      "Deploy/commissioning order is standardized: load EtherNet/IP config → fill/load IO map → load programs → verify zero/reference registers → teach approach/touch-up positions → verify tool/frame calibration → dry-run at 10% → ramp through speed stages."
+    ]
+  },
+  {
+    "id": "inbox-6ebdb617",
+    "name": "CLAUDE.md",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Fanuc Robot\\CLAUDE.md",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "Standard PR/label/register pools exist for every robot program (PR[1]=Home/Perch, PR[4]/PR[5]=Temp/Zero offset, PR[6]-PR[100]=open job pool, R[1]=fault register, LBL[900]/[999]=done/fault-abort) — same 'don't invent, use the pool' judgment as PLC tag naming.",
+      "New-job generation is templated: copy standard I/O template + eipcfg.xml + standard MAIN unchanged (only dispatch CALLs vary) + tailored compile-safe subs, all suffixed with the job number.",
+      "Fanuc robot programs follow a fixed PR/IO/label numbering scheme: PR[1]=Home/Perch, PR[2]/PR[3]=LPOS/JPOS snapshots, PR[4]=Temp Offset (copied from PR[5]=Zero), PR[6]-PR[100]=open pool for job motion positions.",
+      "Master loop (per-cell A1A_MAIN_SDC / SDC_MAIN_STD.LS) is command-driven over EtherNet/IP: PLC writes a command number to R[50], robot dispatches to the matching sub, waits on R[60] ack, loops.",
+      "Compile-safe baseline avoids four controller-option-dependent features: no bracket comments on register refs, no Flag F[] instructions (use R[] instead), no parenthesized compound WAIT/Mixed-Logic, and use ABORT (never END or CALL END).",
+      "Standard subprogram skeleton: init (UTOOL/UFRAME/PR[4]=PR[5]) → move to home/perch → approach/work motions using PR[6]-PR[100] → grip/handshake → retract → LBL[900] done block → LBL[999] fault entry.",
+      "Advanced showroom-cell features (iRPickTool flex-feed, Line Tracking, Mixed Logic, group I/O, background tasks, Flags) are only used when the target controller is known to have those options enabled — otherwise stick to the compile-safe baseline.",
+      "New job setup is templated: a job folder gets a standard I/O template, verbatim EtherNet/IP config, an unmodified master loop (only dispatch CALLs change), and tailored subs built on the compile-safe skeleton, with all PR assignments documented in a job sheet to avoid collisions."
+    ]
+  },
+  {
+    "id": "inbox-b58a8c97",
+    "name": "JOB_1210.md",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Fanuc Robot\\Claude Fanuc Assets\\Jobs\\1210 Tray-to-Dial Pick-Place\\JOB_1210.md",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-29",
+    "takeaways": [
+      "PLC drives the robot via a single command register (R[50]) with values mapped to CALL subroutines (pick/place/safehome); the sub acks by mirroring the value into R[60], and PLC waits on R[60]<>R[50].",
+      "Standard position-register convention: PR[5]=zero reference, PR[4]=temp offset seeded from PR[5] at init, PR[14]=shared clear/home, then paired approach+position registers per station move (e.g. PR[15]/16 tray pick, PR[17]/18 dial place).",
+      "Standard handshake register/IO set for robot cells: R[41]=override, DO[8]=station handshake pulse, DI[5]=ok-to-place, DI[40]=cycle stop, DI[39]=station fault (mapped to R[1]).",
+      "Grip/ungrip are wrapped as their own subroutines (CALL GRIP/UNGRIP) driving dedicated RO bits, not inlined DO logic.",
+      "Deploy checklist order matters: load EtherNet/IP config + set robot IP, build/load IO from the station's IO template, load LS programs (auto-compile to .TP), teach position registers, verify UTOOL/UFRAME, then dry-run each sub at low speed before full cycle."
+    ]
+  },
+  {
+    "id": "inbox-b3356305",
+    "name": "README.md",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Fanuc Robot\\Claude Fanuc Assets\\Jobs\\README.md",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-29",
+    "takeaways": [
+      "Robot jobs are generated per-job into Jobs/<job#> <title>/ with a fixed file set: IO template, eipcfg.xml, MAIN_<job#>.LS, station subs (PICK/PLACE), and a JOB_<job#>.md sheet.",
+      "Naming convention is job-number-suffixed (MAIN_1210, PICK_1210) — mirrors PLC's station-prefixed naming discipline but for TP code.",
+      "Subroutines follow a fixed compile-safe skeleton: init → clear PR[14] → approach → work → grip/handshake → retract → LBL[900]/[999].",
+      "Motion position registers are allocated by a collision-avoidance scheme: PR[14] is the shared clear/home register, then each station claims its own pair (PR[15]/16, PR[17]/18, ...).",
+      "I/O template and EtherNet/IP config are standard-as-is unless the cell physically deviates — same 'standard unless stated otherwise' posture as PLC device defaults.",
+      "A generator script (_job_generator.py) produces the boilerplate; the subroutines are then refined per job description — an analogous generate-then-refine flow to the PLC compile pipeline."
+    ]
+  },
+  {
+    "id": "inbox-fe1a2890",
+    "name": "Revision History.md",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Allen Bradley\\Projects\\SDC Chassis Template\\Revision History.md",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "'Waiting For Part' was downgraded from fault to warning on part-load/PNP stations — consistent with SDC's low-nuisance-stop philosophy.",
+      "Downtime now accrues only on fault stops, not cycle stops; a batch counter and recipe program/HMI were added as new production capabilities; OkToIndex was renamed StationComplete.",
+      "Alarm generation moved from pure state-timeout faulting to detecting faults directly from output/input state (v3.0), a change in the alarms mechanism worth knowing.",
+      "Servo template gained quick-stop logic (axis in motion + permissive/safety drop), torque monitoring, and manual-mode accel/decel loading — deepens servo-motion standard behavior.",
+      "'Waiting For Part' was reclassified from fault to warning on S01/S03/S05 — a template-wide judgment call about what should stop the machine vs just notify.",
+      "State machines gained a formal 'PartStarted' concept with an optional jump state, and the indexer gained a pause feature implemented as two dedicated states (40 & 42) rather than a flag — reinforces the pattern of representing behavior as explicit states.",
+      "Downtime accounting was refined: accumulates only on fault stop, never on ordinary cycle stop — a production-metrics rule.",
+      "AOI_RangeCheck gained a wideband/deadband parameter as a template feature (v3.0), consistent with the later corner-blend RangeCheck-per-corner pattern already learned from Dan."
+    ]
+  },
+  {
+    "id": "inbox-2ee64778",
+    "name": "picktool  quick setup guide.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Fanuc Robot\\Claude Fanuc Assets\\Prompting & Instructions\\picktool  quick setup guide.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-29",
+    "takeaways": [
+      "Line tracking requires a physical Pulsecoder (conveyor encoder) wired to the robot controller and configured with an encoder number + moving-average smoothing (typically 10 updates) so the robot stops smoothly if the conveyor stops suddenly.",
+      "The tracking frame is defined by measuring two points on the conveyor (upstream/downstream boundaries) with a calibration grid plus a recorded Z height — this defines the window within which the robot can pick moving parts.",
+      "Robot programs must set 'Continue track at prog end' = TRUE, or tracking motion stops jerkily between program calls — this is the standard setting for continuous smooth operation, not a one-off tuning choice.",
+      "Vision-guided pick positions are computed as a nominal taught position offset by a vision-found VOFFSET register (VR) — the vision system doesn't reteach positions, it offsets a fixed one per detected part.",
+      "Payload is switched at runtime between two profiles (hand-only vs hand+workpiece) right after grip/release — same idea as an SDC gripper's mass compensation, but done via FANUC's PAYLOAD[n] register swap.",
+      "Conveyor/fixed-station handoff uses a queue abstraction (station ID + GETQUE/ACKQUE calls) rather than direct position polling — this is FANUC's built-in equivalent of a station-to-station part handoff.",
+      "Auto visual track frame setup is restricted to 4-axis robots, line conveyors only (not circular/servo), one robot group, up to 8 conveyors per system — hard vendor limitations, not configuration choices."
+    ]
+  },
+  {
+    "id": "inbox-e2ec6f9f",
+    "name": "Fanuc Robot Startup Checklist.txt",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Fanuc Robot\\Fanuc Robot Startup Checklist.txt",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-29",
+    "takeaways": [
+      "Before any config, verify installed software/options against the robot's slip sheet, then take an 'Image Backup' and 'all-of-the-above' backup stored in the job folder as the initial baseline.",
+      "SDC fixes ~45 Config Menu register values identically across all Fanuc robots (Hot Start=FALSE, I/O power fail recovery=Recover All, START for CONTINUE only=TRUE, CSTOPI for ABORT=TRUE, Return to top of program=TRUE, etc.) — this is the standard, not per-robot tuning.",
+      "Standard UOP status DO mapping is fixed: DO[200]=AUTO mode, DO[201]=T1, DO[202]=T2, DO[203]=E-STOP, DO[204]=sim input active, DO[205]=sim output active, DO[206]=override=100.",
+      "Digital I/O and UOP assignments load from a standard file (DIOCFGSV.IO); EDA setup loads from EIPCFG with Ethernet/IP connection 2 config word size forced to zero.",
+      "Ethernet Config Port 1 IP assignment follows a fixed menu path (setup>type>next>hostComm>Port1)."
+    ]
+  },
+  {
+    "id": "inbox-c58e6f87",
+    "name": "Q4X IO-Link Data Reference Guide 198185.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\IODD\\Banner\\Q4X laser distance sensor\\Q4X IODD file\\Q4X IODD file\\Q4X IO-Link Data Reference Guide 198185.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-29",
+    "takeaways": [
+      "Q4X Process Data In is a fixed 16-bit cyclic frame (2.7ms): 13-bit distance in 0.1mm units, 1 stability bit, 2 output-channel state bits — no Process Data Out (device is read-only over IO-Link).",
+      "Configuration (setpoints, teach mode, delay timers, hysteresis, gain, pushbutton lockout, etc.) is done acyclically via IO-Link index/subindex parameter access, not through the cyclic process data.",
+      "Teach-in is triggered by writing specific Standard Command codes (65/67/68/71/72/79) to index 2, then polling Teach State/TP1/TP2 status at index 59.",
+      "Distance-based setpoints (BDC1/BDC2) and offsets scale by sensor model (Q4X100/110/300/310/600/610) — same parameter index, different valid mm range per model variant.",
+      "Two IO-Link event codes exist for this sensor: parameter error (0x6320) and laser-fault shutdown (0x8d00) — worth mapping to station alarms if this sensor is used.",
+      "This is vendor reference data (not a controls-judgment concept) — useful only when JARVIS wires up a station using a Q4X IO-Link distance sensor."
+    ]
+  },
+  {
+    "id": "inbox-8069bd43",
+    "name": "IO-Link Device Test Report.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\IODD\\Banner\\Q4X laser distance sensor\\Q4X IODD file\\Q4X IODD file\\IO-Link Device Test Report.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Vendor/lab certification document for a specific IO-Link device (Banner Q5XK) — confirms protocol conformance (data layer, ISDU, events, data storage, block parameters) not machine design.",
+      "No mechanism, sequencing, or controls-judgment content applicable to how SDC builds machines or writes PLC code.",
+      "Device-level specs present (32 input bits / 8 output bits, min cycle 3600us, SIO mode supported) but these are catalog/datasheet facts, not a standing engineering rule to encode.",
+      "Nothing here contradicts or deepens any existing concept file — this is reference material, not knowledge to distill.",
+      "Pure third-party conformance certification for a Banner Q5XK IO-Link device — protocol/physical-layer test pass results only.",
+      "No mechanism, standard, or judgment relevant to how SDC designs machines or writes PLC code.",
+      "Nothing here deepens device taxonomy, motion models, alarms, or any existing concept file.",
+      "Skip — file as reference only, no distillation needed."
+    ]
+  },
+  {
+    "id": "inbox-f42ed0f2",
+    "name": "IO-Link Device Test Report - 600 mm.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\IODD\\Banner\\Q4X laser distance sensor\\Q4X IODD file\\Q4X IODD file\\IO-Link Device Test Report - 600 mm.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-29",
+    "takeaways": [
+      "Vendor IO-Link conformance certification for Banner Q4XFKLAF610-Q8 (600mm sensing range) — no mechanical/controls content, purely a compliance test log",
+      "Confirms IO-Link v1.1 protocol support, ISDU, data storage, and event handling all pass spec — informational for parts qualification, not a design change",
+      "Nothing here alters how SDC designs devices, sequences, or PLC code — no new mechanism, standard, or judgment to distill",
+      "Pure vendor/device certification paperwork confirming IO-Link 1.1 protocol compliance (data layer, ISDU, events, data storage, block parameter, IODD tests)",
+      "No mechanical, sequencing, or PLC-code guidance — just confirms the sensor's IO-Link stack works to spec",
+      "Nothing here changes how SDC designs stations, writes states, or handles devices",
+      "Device technical specs (process data bits, cycle time, access locks) are vendor datasheet detail, not SDC standards"
+    ]
+  },
+  {
+    "id": "inbox-6021bc47",
+    "name": "sce-306012wflp-sales-drw.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Elect Design\\Autocad Drawings\\Layout Blocks\\Saginaw Enclosures\\sce-306012wflp\\sce-306012wflp-sales-drw.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-29",
+    "takeaways": [
+      "Pure vendor dimensional drawing for an electrical enclosure — no controls logic, sequencing, or device behavior content.",
+      "No mechanism, standard, or judgment call relevant to PLC code or machine building is present.",
+      "Nothing here contradicts or deepens existing JARVIS knowledge.",
+      "Pure vendor dimensional drawing for an electrical enclosure — no control logic, mechanism, or standards content",
+      "No PLC/machine-building judgment to extract; this is reference geometry for enclosure selection/panel layout",
+      "Nothing here changes or deepens SDC's controls approach"
+    ]
+  },
+  {
+    "id": "inbox-2a0a4bec",
+    "name": "History_V3_10.txt",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Lenze\\EtherNet IP_EDS_V3_10\\History_V3_10.txt",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-29",
+    "takeaways": [
+      "Pure changelog of EDS file releases for Lenze inverter product lines — no controls logic, mechanisms, or judgment content",
+      "Documents which EDS file version pairs with which drive family/firmware for Rockwell/Studio 5000 integration",
+      "No new device taxonomy, state logic, motion patterns, or standards content relevant to SDC's machine-building practice",
+      "Useful only as a lookup reference if/when commissioning a Lenze drive to know which EDS file matches firmware version",
+      "Pure EDS-file version changelog for Lenze drive products — no controls logic, mechanisms, or judgment involved.",
+      "Confirms Lenze inverters (i550, i650, i950, 8400, 9400 lines) are part of SDC's known drive hardware ecosystem.",
+      "No new mechanism, standard, or engineering judgment for JARVIS to learn — this is vendor firmware/file bookkeeping.",
+      "Nothing here changes how SDC builds machines or writes PLC code."
+    ]
+  },
+  {
+    "id": "inbox-06204e09",
+    "name": "EtherNetIPSampleProgramGuide(CompactLogix).pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Keyence\\HR_EthernetIP_Setup_Files\\Sample_CompactLogix\\EtherNetIPSampleProgramGuide(CompactLogix).pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "On read failure the result-data tag is updated with literal \"ERROR\" rather than leaving stale data.",
+      "Handshake-enabled result retrieval uses a strobe/latch pattern: PLC sets ResultDataLatch true to request data, reader responds with ResultDataStrobe true when data is updated, PLC then drops the latch bit — this is a generic explicit-request/strobe pattern, not unique to vision cameras.",
+      "This reader's protocol is structurally the same trigger→busy-wait→complete→clear pattern SDC already uses for vision-system integrations — it's a barcode-reader instance of that same device class.",
+      "SR-Reader is a barcode/2D code reader talking EtherNet/IP, controlled by a fixed 4-step PLC sequence: check ready (Busy/Error) → set Trigger true to start read → detect Read Complete → access Result Data.",
+      "Two handshake modes: Data Handshake Disable = reader auto-pushes Result Data the instant read completes, no retrieve step; Data Handshake Enable = reader queues results internally and PLC must pulse a Retrieve/Latch request to pull each queued result, with an update/ready count exposing backlog.",
+      "Read Complete has its own acknowledge cycle — PLC sets Read Complete Clear true once Read Complete is seen true, then false once Read Complete drops false — this arms the reader for the next trigger; skipping the clear pulse stalls the next read.",
+      "Read Failure is a separate bit from Read Complete — Result Data still updates on failure, just populated with an ERROR value, so the read-success/read-failure branches both land on 'complete', they just check the failure bit before trusting the payload.",
+      "Reading Mode Single + Timing Mode Level Trigger means the trigger input must stay high to sustain the read attempt and going low cancels the in-progress read — this is a level trigger, not a one-shot pulse."
+    ]
+  },
+  {
+    "id": "inbox-e0b4381b",
+    "name": "switch left right png attribute.txt",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\HMI Graphics\\switch left right png attribute.txt",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-29",
+    "takeaways": [
+      "This is a license/attribution snippet for a vector image (on/off switch icon), not engineering content.",
+      "No mechanisms, standards, or judgment about how SDC builds machines or PLC code are present.",
+      "Nothing here changes or deepens any existing concept file or standing knowledge.",
+      "Document is a stock-image attribution notice, not a technical or standards document",
+      "Contains no mechanism, standard, or judgment relevant to controls or PLC code",
+      "No new facts or concepts to extract"
+    ]
+  },
+  {
+    "id": "inbox-c3315768",
+    "name": "BIS_M_4006-034_V5 AOI User Manual.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Balluff\\BIS018A EIP RFID reader\\BIS_M_4006-034_V5 AOI User Manual.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-29",
+    "takeaways": [
+      "Rich hex ErrorCode set (no tag in range, read/write error, tag removed mid-op, CRC mismatch, timeout, cable break, command not supported, etc.) is the natural source for RFID-station alarm text.",
+      "Mostly vendor boilerplate/disclaimer — no new SDC controls judgment, but this is the first RFID-reader device type seen, worth a standing fact for device taxonomy and future alarm mapping.",
+      "Vendor AOI documentation for the Balluff BIS M-4006-* RFID data-carrier reader/writer; one AOI instance is required per physical reader unit, no shared instance data.",
+      "Reader exposes a servo-like status pattern for its jobs: OK (system ready), IP (in process), DN (done), ER+ErrorCode (fault code) — same shape as SDC's usual done/error handshakes on other actuators.",
+      "Requires two Controller/program-scoped InOut tags per reader: Carrier (read/write data buffer, sized to the data-carrier capacity) and Interface (command/status).",
+      "Fixed 128-byte cyclic I/O per reader (Input/Output assemblies) plus a 4-byte Config assembly (CRC on/off, dynamic mode, auto-read vs type/serial, slow-tag detection) — set once, only reloaded on download/power-cycle.",
+      "Errors carry hex codes (00–36, AF, FF) with defined recovery meaning (e.g. 0E = CRC mismatch → check data carrier; AF = AOI timeout) — a fixed vendor error table, not something to reinvent.",
+      "This is boilerplate vendor reference material — no new SDC judgment or pattern beyond recognizing RFID reader/writer as a station device with its own AOI-driven job/status model."
+    ]
+  },
+  {
+    "id": "inbox-f23f550f",
+    "name": "Balluff-BNI_IOL-311-012-K035-20231204-IODD1.1.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\IODD\\Balluff\\BNI00KA cabinet NPN IO module\\Balluff-BNI_IOL-311-012-K035-20231204-IODD1.1.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-29",
+    "takeaways": [
+      "Pure vendor conformance/legal document for a specific Balluff IO-Link device — no controls mechanism, judgment, or SDC standard content",
+      "No conformance exceptions declared (Part B empty) — device fully conforms to IO-Link V1.1.3 and listed device profiles",
+      "Nothing here changes how SDC builds machines or PLC code; it's a compliance record for procurement/quality files, not engineering knowledge",
+      "This is a vendor conformity certificate for an IO-Link IO-Link master/device, not an engineering document",
+      "No mechanical, controls, or PLC-code content to distill — purely compliance/certification paperwork",
+      "No conformance exceptions were declared, so no deviations to track for this device",
+      "Nothing here changes how SDC builds machines or writes PLC code"
+    ]
+  },
+  {
+    "id": "inbox-ee73dcd0",
+    "name": "History_V3_9.txt",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Lenze\\Ethernet IP_EDS_V3_9\\Ethernet IP_EDS_V3_9\\History_V3_9.txt",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Pure changelog of EDS file versions tied to Lenze drive firmware revisions — no mechanism, standard, or judgment content",
+      "Confirms SDC uses Lenze i550 (cabinet/motec/protec variants) and i950 servo inverters with EtherNet/IP, plus legacy 8400/9400 series",
+      "No controls logic, naming, sequencing, or PLC coding guidance present — just which EDS file version pairs with which firmware",
+      "Not actionable for PLC code generation or station design; useful only if/when configuring a specific drive's network object needing the matching EDS file",
+      "Pure EDS-file version history for Lenze inverters (i550, i950, 8400, 9400) — no PLC logic, machine design, or SDC standard content",
+      "No mechanism, judgment call, or станд practice relevant to how SDC builds machines or writes PLC code",
+      "Confirms SDC uses Lenze inverters (i550 cabinet/protec/motec, i950 servo) with EtherNet/IP EDS files, but this is vendor firmware/config bookkeeping, not engineering knowledge",
+      "Nothing here contradicts or deepens existing concept files or standing knowledge — this is boilerplate revision-table material per the librarian's own filtering rule"
+    ]
+  },
+  {
+    "id": "inbox-826d612a",
+    "name": "SCHUNK-EGU_EGK-20221109-MD1.1.3.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\IODD\\Schunk\\EGU electric gripper\\SCHUNK-EGU_EGK-20221109-MD1.1.3.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Nothing here changes or deepens JARVIS's standing knowledge — safe to skip filing",
+      "Pure compliance/certification paperwork for SCHUNK EGU/EGK grippers' IO-Link interface",
+      "No mechanism, standard, or judgment relevant to how SDC builds machines or PLC code",
+      "No device behavior, wiring, timing, or configuration detail included — just conformance to IO-Link spec versions",
+      "Boilerplate manufacturer declaration; nothing to distill into concepts or standing facts",
+      "Pure compliance/certification paperwork for SCHUNK EGU/EGK gripper IO-Link interfaces.",
+      "No mechanism, standard, or judgment relevant to SDC's machine-building or PLC code practices.",
+      "Confirms EGU/EGK series supports IO-Link V1.1 — informational only, not a controls behavior change."
+    ]
+  },
+  {
+    "id": "inbox-368253ea",
+    "name": "Read me.txt",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Sick\\SICK AFx60_V1_00\\Sample Code\\Read me.txt",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Reference implementation targets an L30EE CompactLogix but is adaptable to ControlLogix — so encoder integration isn't platform-locked.",
+      "Document itself has no technical detail (tag structure, wiring, scaling) — just a pointer to the example files; nothing here deepens motion/servo logic beyond 'this resource exists'.",
+      "SDC has a pre-built AOI + example project for talking to SICK AFS60/AFM60 EtherNet/IP encoders",
+      "Examples are built for L30EE CompactLogix, adaptable to ControlLogix",
+      "No new mechanism, judgment, or standard is actually explained in the doc itself — just points to existing example code",
+      "SDC already has a working add-on instruction (AOI) for EtherNet/IP communication with SICK AFS60/AFM60 absolute encoders.",
+      "Example files target an L30ER-class CompactLogix processor but are adaptable to ControlLogix.",
+      "No mechanism/judgment content beyond pointing to the existing code asset — nothing about how the AOI is wired into a station's device model or fault handling."
+    ]
+  },
+  {
+    "id": "inbox-e5ced034",
+    "name": "AFX60_AOI_EN.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Sick\\SICK AFx60_V1_00\\Documentation\\AFX60_AOI_EN.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Parameter selection is bitmapped in stData.GetData.Selection / SetData.Selection before triggering the read/write — multiple parameters can be selected at once.",
+      "Error codes distinguish module errors (0xF001-F00A, e.g. timeout, invalid parameter selection, out-of-range write values), standard MSG instruction errors, and extended MSG errors — all packed into one 32-bit code.",
+      "This is vendor-specific integration mechanics for one sensor family, not an SDC design pattern or judgment call — mostly reference material for whoever wires up this particular encoder model.",
+      "SICK_AFX60 AOI reads/writes absolute-encoder device parameters (position limits, preset, speed limits, temperature format, etc.) via non-cyclic CIP Generic MSG instructions, separate from the encoder's normal cyclic position/speed data.",
+      "Pattern: a Selection bitfield (or ReadAll bit) picks which parameters to touch, a rising edge on bRead/bWrite triggers the async multi-scan operation, and bReadDone/bWriteDone plus bReadError/bWriteError + error-code outputs report completion/failure.",
+      "GetMessage (Get Attribute Single) and SetMessage (Set Attribute Single) MESSAGE instances must each be configured once per instance — Class 1/Instance 1/Attribute 1, pointed at the encoder's array records — and can be Connected (persistent) or auto-connect on request.",
+      "Error codes are layered: module-specific codes (timeout, invalid attribute/class, invalid parameter selection, out-of-range write values), plus passthrough MSG error/extended-error codes from the controller's own messaging system.",
+      "This is vendor/device-specific reference material, not an SDC design standard — no station-architecture, naming, or judgment content to fold into SDC's own concepts beyond 'this AOI exists for SICK absolute encoders.'"
+    ]
+  },
+  {
+    "id": "inbox-cb96aca5",
+    "name": "AFX60_AOI_DE.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Sick\\SICK AFx60_V1_00\\Documentation\\AFX60_AOI_DE.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Default timeout is 5000ms (iTimeout) before a timeout error code is raised; read and write actions are independent and can run concurrently.",
+      "Error codes are layered: block-internal codes (F001-F00A, e.g. bad parameter selection or out-of-range write values), plus passthrough MSG-instruction error/extended-error codes from Studio 5000's own messaging system.",
+      "This is a specific third-party device driver pattern (absolute encoder over EtherNet/IP via acyclic CIP service calls) — worth keeping as a reference pattern if/when SDC stations use SICK AFS60/AFM60 encoders for absolute position feedback.",
+      "Third-party AOI (not SDC-authored) that wraps CIP Generic explicit messaging (Get/Set Attribute Single) to exchange acyclic encoder parameters alongside the encoder's normal cyclic process data.",
+      "Edge-triggered bRead/bWrite kick off a multi-scan async operation; completion signaled by bReadDone/bWriteDone, with bReadError/bWriteError plus 32-bit error codes on failure.",
+      "Default communication timeout is 5000 ms — same magnitude as SDC's standard station fault-time default, just coincidental to this vendor block, not an SDC rule.",
+      "Parameter selection is done via bit-selection sub-structures (GetData.Selection / SetData.Selection) rather than always reading/writing everything.",
+      "This is device-vendor documentation, not SDC controls judgment — no station-building pattern or standard is introduced beyond 'if a job needs SICK absolute encoder parameters beyond cyclic I/O, this AOI is the mechanism.'"
+    ]
+  },
+  {
+    "id": "inbox-9557f121",
+    "name": "8014213_Installation_LadderRoutine_AFxEtherNetIP_en.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Sick\\8014213_Installation_LadderRoutine_AFxEtherNetIP_en.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Vendor installation walkthrough for SICK AFx60 EtherNet/IP absolute encoders — not an SDC standard, just third-party integration steps.",
+      "Each encoder instance needs a uniquely-named ladder routine (Final Name) and uniquely-named tag references (e.g. Enc1, Enc2) when multiple encoders are used in one project.",
+      "Integration pattern: import vendor L5X routine, call it via JSR from MainRoutine, then read/write encoder parameters through GetData/SetData controller tags which mirror the encoder's web server settings.",
+      "Nothing here reflects SDC design judgment, mechanism choices, or station-building standards — pure vendor procedure with screenshots.",
+      "Purely vendor procedural documentation (menu clicks, dialog boxes) for a specific SICK encoder product line — not an SDC design standard.",
+      "Key mechanical fact: multiple instances of the same vendor device each require a uniquely-named ladder routine import (Final Name) and uniquely-named Controller Tags (e.g. Enc1, Enc2) to coexist in one project.",
+      "No new device taxonomy, naming convention, state-machine, or motion pattern relevant to SDC's own build standards.",
+      "Nothing here contradicts or deepens existing JARVIS concepts — encoders of this type aren't currently part of SDC's documented device/servo model."
+    ]
+  },
+  {
+    "id": "inbox-7651b636",
+    "name": "Change Log Ver5.txt",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Parker\\IPA Servo Drives\\AOIs\\IPA_AOI_v5\\Information\\Change Log Ver5.txt",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Switching between EOT homing modes (16,17,19,22,27,30) and non-EOT modes requires re-downloading the IPA project via ACR-View",
+      "PROG2/PROG3 are custom-operation slots authored in ACR-View and invoked from PLC via IPA_Run_Prog2/IPA_Run_Prog3",
+      "IPA_SetEncPosition now operates in user units instead of raw counts as of this release",
+      "IPA move function blocks are non-blocking — a new move command interrupts/supersedes one already in progress, so PLC logic must be written with that race in mind",
+      "New pattern for homing to a mechanical hard stop: drop torque limit, raise position-error limit beyond max travel, command an overtravel move, then watch actual position stop changing and issue IPA_MoveStop",
+      "Switching away from an EOT (end-of-travel) homing mode back to non-EOT modes requires a full IPA project re-download via ACR-View, not just a parameter change",
+      "PROG2/PROG3 are IPA-side custom programs (written/downloaded in ACR-View) invokable from the PLC via IPA_Run_Prog2/IPA_Run_Prog3 for special sequences outside standard motion FBs",
+      "AOI revision and the IPA project revision must always match or functionality breaks — a versioning discipline worth checking during commissioning/troubleshooting"
+    ]
+  },
+  {
+    "id": "inbox-915b7175",
+    "name": "EIP_parameters.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Parker\\IPA Servo Drives\\EIP_parameters.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Each group is defined by 4 parameters: start parameter, parameter count, direction, data type (P37440+, 4 params per group, sequential blocks).",
+      "Limits: 16 groups max, 8 parameters/group max, 100 total parameters max.",
+      "Data type encoding: 1=DINT, 2=Real. Direction encoding: 0=ACR→PLC, 1=PLC→ACR.",
+      "ACR OS x.30 update 3+ supports EIP Class 1 connections where the PLC scanner's Forward Open omits configuration data — the mapping is instead set on the ACR controller itself via parameters.",
+      "Setup is two-tiered: P37434 sets the number of parameter groups (max 16), then each group's start parameter, count, direction, and data type are set via a fixed parameter block (P37440+, 4 params per group).",
+      "Hard limits: max 16 groups, max 8 parameters per group, max 100 total parameters across all groups.",
+      "Data type is encoded numerically (1=DINT, 2=Real); direction is encoded numerically (0=ACR→PLC, 1=PLC→ACR).",
+      "This must be configured on the ACR controller BEFORE the PLC's Class 1 connection is established — it's a prerequisite step, not something the PLC program can do at runtime."
+    ]
+  },
+  {
+    "id": "inbox-68f5befa",
+    "name": "Config_EIP.txt",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Parker\\IPA Servo Drives\\Config_EIP.txt",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Document is mostly boilerplate P-variable group-mapping data for IPA drive EtherNet/IP configuration — not new controls logic knowledge.",
+      "One operationally useful nugget: ACR-View JOG commands are blocked while the PLC's EtherNet/IP connection is actively writing 0 to the JOG register.",
+      "To manually jog an IPA drive during commissioning/troubleshooting, the PLC connection must be disconnected or the PLC program halted first.",
+      "No new device taxonomy, state-machine, or code-generation pattern is introduced by this document.",
+      "Document is a vendor-specific (Parker IPA drive) EtherNet/IP group-mapping config script — mostly literal P-variable addresses, no engineering judgment to distill.",
+      "One real operational gotcha buried in the header comment: manually jogging via ACR-View won't work while the PLC's EtherNet/IP connection is live, because the PLC continuously writes 0 to the jog register and overrides the jog command.",
+      "Fix is to disconnect the PLC's EIP connection or halt its program before attempting a manual ACR-View jog on these drives.",
+      "No new device taxonomy, state-machine, or standards content beyond this commissioning/troubleshooting note."
+    ]
+  },
+  {
+    "id": "inbox-0ee8a2a6",
+    "name": "Balluff-BNI_LH1-303-S11-K091-20230413-MD1.1.3.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\IODD\\Balluff\\BNI00J8 16DI 8DO M12 IO block\\Balluff-BNI_LH1-303-S11-K091-20230413-MD1.1.3.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Pure compliance/certification paperwork for a specific Balluff IO-Link device — no engineering, mechanism, or PLC-code content.",
+      "No deviations declared; standard IO-Link conformance only.",
+      "Nothing here changes or deepens SDC's controls/mechanical build practices.",
+      "Pure vendor compliance/certification paperwork for a specific IO-Link device — no mechanism, standard, or judgment content relevant to SDC machine building or PLC code.",
+      "No deviations declared; no device profile specifics that affect integration decisions.",
+      "Nothing here changes or deepens how SDC builds machines or writes PLC code."
+    ]
+  },
+  {
+    "id": "inbox-679754e8",
+    "name": "Balluff-BMP_01-ZPZxxxxA-20230214-MD1.1.2.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\IODD\\Balluff\\BMP-01 magnetic position sensor\\Balluff-BMP_01-ZPZxxxxA-20230214-MD1.1.2.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Pure compliance/certification paperwork for a Balluff IO-Link BMP position sensor — no controls or mechanical design content.",
+      "Confirms device/vendor IDs and IO-Link spec version conformance for procurement/documentation purposes only.",
+      "No mechanisms, sequencing, wiring, or SDC standards content to distill.",
+      "Not something Jarvis needs to reason about when building machines or PLC code.",
+      "Pure vendor compliance/declaration document — certifies IO-Link Interface V1.1 conformance for Balluff BMP 01-xPxxxxxA sensors",
+      "No mechanism, standard, or judgment content relevant to how SDC builds machines or PLC code",
+      "No new device behavior, wiring, or tag/config guidance included",
+      "Nothing here contradicts or deepens existing SDC standing knowledge"
+    ]
+  },
+  {
+    "id": "inbox-a235db8c",
+    "name": "Operation Manual - Ethernet IP ITV - IN19856.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\SMC\\ITV_Reg_DUX02357-SEN\\Operation Manual - Ethernet IP ITV - IN19856.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Hold on Connection Loss is a safety-relevant configurable behavior: on Ethernet loss it either holds the last setpoint or zeroes/exhausts; on reconnect it deliberately does NOT auto-resume the previous setpoint (must be re-commanded to a different value then back) — a fault-recovery detail if this device is ever integrated into a station's recovery logic.",
+      "POE-daisy-chained ITV groups have hard wiring rules (max 5 per group, only the final unit has POE disabled, Bus Out of a POE-enabled unit must only ever feed another unit's Bus In) — relevant if a machine layout chains multiple ITVs off one drop.",
+      "This is vendor reference material for a specific SMC part number, not an SDC-authored standard — captured narrowly as a device-type addition to pneumatics knowledge.",
+      "ITV is a proportional pressure/vacuum regulator controlled directly over EtherNet/IP (its own I/O device, not just a valve) — setpoint and feedback are 16-bit INT words with 12-bit counts (0–4095) plus an Ext/E overrange bit and a feedback diagnostics byte.",
+      "Counts scaling: Counts = (desired pressure / max pressure) × 4095, or use SMC's per-body-type scale factor; engineering-unit mode (PSI/bar/kPa/MPa/kg/cm²) is selectable and requires a per-unit-type multiplier for integer math.",
+      "Default failure behavior on EtherNet/IP comm loss is fail-safe exhaust: setpoint goes to 0 unless 'Hold on Connection Loss' is enabled, in which case it holds last setpoint; even with reconnection after a non-Hold loss, the ITV will NOT auto-resume the prior setpoint — it must be re-commanded away and back to that value.",
+      "Response tuning lives in the device: User Gain (0–15, default 8, speed vs overshoot) and User Sensitivity (0–7, default 2, precision vs hunting) — analogous in spirit to servo gain tuning but device-native and settable via web page or explicit messaging.",
+      "Device can run up to 120% of its rated full-scale range, so a smaller-body-type ITV can sometimes be chosen for a lower-pressure application to gain finer resolution/precision while still reaching the needed max pressure."
+    ]
+  },
+  {
+    "id": "inbox-8f0b67fb",
+    "name": "sce-24p24-sales-drw.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Elect Design\\Autocad Drawings\\Layout Blocks\\Saginaw Enclosures\\sce-24p24\\sce-24p24-sales-drw.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Pure vendor dimensional drawing for an SCE-24P24 subpanel (front view, hole spacing, overall dimensions)",
+      "No mechanisms, sequences, standards, or judgment calls present — just physical dimensions of a purchased part",
+      "Nothing here changes or deepens how SDC builds machines or writes PLC code",
+      "No new device types, defaults, or naming conventions introduced",
+      "Boilerplate vendor reference material — skip per filing policy",
+      "Pure vendor spec sheet: overall panel dimensions (19.25 x 20.94) and hole spacing/typical dimensions for a 24x24 subpanel",
+      "No mechanism, control logic, or SDC standard content — just physical dimensions for ordering/fitting a panel",
+      "Nothing here changes how JARVIS builds machines or writes PLC code"
+    ]
+  },
+  {
+    "id": "inbox-64c5f647",
+    "name": "R45C-KI-IQ Conformance Test Report.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\IODD\\Banner\\R45C-K-UQ analog voltage output adapter\\R45C-KI-IQ Conformance Test Report.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "This is a vendor conformance certificate, not a design or standards document — no engineering judgment, mechanisms, or SDC practice content to distill.",
+      "Confirms the R45C-KI-IQ is a validated IO-Link v1.1 device (32-bit process data in/out, ISDU supported, SIO mode supported) — useful only as a device datasheet reference, not conceptual knowledge.",
+      "No conflicts with existing standing knowledge — nothing here changes how SDC builds machines or PLC code.",
+      "Vendor certification document only — confirms the R45C-KI-IQ IO-Link device meets IO-Link v1.1 spec, no controls/build methodology content",
+      "No mechanism, standard, or judgment relevant to how SDC designs machines or writes PLC code",
+      "Device specs noted: 32 bits process data in/out, ISDU supported, SIO mode supported, min cycle time 4800 μs — useful only if/when this specific part number is integrated",
+      "Nothing here contradicts or deepens existing SDC knowledge stores"
+    ]
+  },
+  {
+    "id": "inbox-fcb88da1",
+    "name": "R45C-K-IQ Conformance Test Report.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\IODD\\Banner\\R45C-K-UQ analog voltage output adapter\\R45C-K-IQ Conformance Test Report.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Pure third-party IO-Link certification paperwork for a Banner sensor model, not SDC design guidance.",
+      "Confirms device supports IO-Link v1.1, SIO mode, ISDU, 32-bit process data in/out, min cycle time 4800 μs.",
+      "No mechanism, judgment, or SDC standard is described — this is vendor compliance evidence, not build knowledge.",
+      "Nothing here changes how SDC builds machines or PLC code.",
+      "This is a vendor/certification document — device electrical/protocol conformance test results, not SDC controls methodology",
+      "No mechanism, standard, or judgment relevant to how SDC builds machines or PLC code",
+      "No conflicts with existing standing knowledge"
+    ]
+  },
+  {
+    "id": "inbox-0471e9c9",
+    "name": "R45C-K-IIQ Conformance Test Report.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\IODD\\Banner\\R45C-K-UQ analog voltage output adapter\\R45C-K-IIQ Conformance Test Report.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "This is a vendor conformance certificate, not a design/standards document — no controls or mechanical judgment content.",
+      "Device technical facts: Banner R45C-K-IIQ, IO-Link v1.1, 32 bits process data in/out, min cycle time 4800 μs, SIO mode supported.",
+      "All 108 IO-Link protocol conformance tests passed — no functional caveats or exceptions to design around.",
+      "Nothing here changes how SDC builds machines or PLC code — purely a certification artifact for a specific device model.",
+      "This is a vendor conformance test report, not a design/standards document — no controls or mechanical judgment content",
+      "Confirms the R45C-K-IIQ is a certified IO-Link v1.1 device with ISDU support, 32 bits process data in/out, SIO mode supported",
+      "No mechanisms, standards, or judgment relevant to how SDC builds machines or PLC code",
+      "Purely a compliance artifact — useful for procurement/traceability records, not for JARVIS's engineering knowledge"
+    ]
+  },
+  {
+    "id": "inbox-6a93325a",
+    "name": "R45C-K-UQ Conformance Test Report.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\IODD\\Banner\\R45C-K-UQ analog voltage output adapter\\R45C-K-UQ Conformance Test Report.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Pure device certification paperwork — confirms protocol compliance, not mechanical/controls behavior",
+      "No new device mechanism, wiring, or PLC logic guidance included",
+      "No standards deepening or judgment relevant to how SDC builds machines or code",
+      "Nothing here contradicts existing standing knowledge",
+      "This is a vendor certification document (TMG TE conformance testing), not an engineering or standards decision record",
+      "Confirms R45C-K-UQ supports IO-Link v1.1, ISDU, SIO mode, 32 bits process data in/out, min cycle time 4800 μs",
+      "No mechanism, judgment call, or SDC standard is described — purely a pass/fail protocol compliance report",
+      "Nothing here changes how JARVIS builds machines or PLC code"
+    ]
+  },
+  {
+    "id": "inbox-a90519f5",
+    "name": "R45C-KU-UQ Conformance Test Report.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\IODD\\Banner\\R45C-K-UQ analog voltage output adapter\\R45C-KU-UQ Conformance Test Report.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "This is a third-party IO-Link certification report (TMG TE GmbH) for the Banner R45C-KU-UQ device, not an SDC-authored standard or lesson",
+      "Confirms device supports IO-Link v1.1, ISDU, 32-bit process data in/out, SIO mode, data storage, and standard access locks — all pass with no failures",
+      "Contains no mechanism, judgment, or SDC-specific practice — purely vendor compliance test results for a specific part number",
+      "Nothing here changes or deepens how SDC builds machines or PLC code",
+      "Vendor certification document for a Banner R45C-KU-UQ IO-Link sensor — confirms protocol compliance (IO-Link v1.1, ISDU, events, data storage, block parameters), not an SDC engineering standard.",
+      "No mechanism, judgment, or SDC-specific practice is described — purely third-party lab test pass/fail results.",
+      "Device specs noted (32 process data input/output bits, min cycle time 4800 μs, SIO mode supported) are datasheet facts, not controls patterns worth generalizing.",
+      "Nothing here changes or deepens how SDC builds machines or writes PLC code."
+    ]
+  },
+  {
+    "id": "inbox-de5bdb96",
+    "name": "R45C-K-UUQ Conformance Test Report.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\IODD\\Banner\\R45C-K-UQ analog voltage output adapter\\R45C-K-UUQ Conformance Test Report.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Pure vendor certification/compliance document — no controls logic, mechanism, or SDC standard content",
+      "Confirms the R45C-K-UUQ device is IO-Link 1.1 compliant with known process data sizes (32 bits in/out) and min cycle time (4800 μs), useful only as a datasheet reference if this sensor is ever specified",
+      "Nothing here changes how SDC builds machines or PLC code — no judgment, mechanism, or standard to distill",
+      "Third-party IO-Link conformance certification report for Banner R45C-K-UUQ sensor",
+      "Confirms IO-Link 1.1 protocol compliance, ISDU support, event handling, data storage — passed all 108 tests",
+      "No mechanism, standard, or judgment relevant to how SDC builds machines or writes PLC code",
+      "Purely a vendor compliance artifact — no action needed"
+    ]
+  },
+  {
+    "id": "inbox-04d77a3f",
+    "name": "IO-Link Conformance Report - Voltage.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\IODD\\Banner\\S15C-IU analog current adapter\\IO-Link Conformance Report - Voltage.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Vendor-issued IO-Link conformance certificate for the Banner S15C-U sensor — pure compliance paperwork, no SDC mechanism or PLC-code content.",
+      "Confirms protocol-level specs (32 process data input bits, 0 output bits, min cycle time 3600µs, IO-Link v1.1) but these are device datasheet facts, not SDC build practice.",
+      "No mechanical, controls, or standards judgment for JARVIS to learn from this document.",
+      "This is a third-party IO-Link Consortium conformance test certificate for the Banner S15C-U sensor, not an SDC standards or design document.",
+      "Contains device protocol parameters (vendor/device ID, process data bits, cycle time, access locks) and a pass/fail test log — no mechanism, judgment, or SDC-specific convention is described.",
+      "Nothing here changes how SDC builds machines, writes PLC code, or makes design decisions.",
+      "No conflicts with standing knowledge — the document is out of scope for JARVIS's concept/fact store."
+    ]
+  },
+  {
+    "id": "inbox-52837f01",
+    "name": "EthernetIP_IPA_B.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Parker\\IPA Servo Drives\\AOIs\\IPA_AOI_v5\\EthernetIP_IPA_B.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Parker IPA drives are NOT native Logix motion axes — they're EtherNet/IP adapters exchanging data via CIP Class 1 (cyclic parameter I/O) and Class 3 (explicit service request) connections",
+      "Motion is commanded through a vendor AOI set (IPA_AxisManager mandatory + IPA_Move/Home/ServoOn/ServoOff/MoveStop/MoveVelocity/SetKAMR/FaultReset/etc.), each with EN/DN/ER handshake bits — a different command shape than the standard MAM rung",
+      "IPA_Move takes Absolute/Position/Velocity/Accel/Decel/Jerk directly per call rather than referencing HMI position-table indices — no built-in equivalent of SDC's Parameters.Positions[N] table",
+      "KAMR (Kill All Motion Request) is a LATCHED hard-stop condition requiring IPA_FaultReset to clear before any new motion is allowed — a harder-stop concept than a normal Logix axis fault",
+      "IPA_Home supports 16 numbered HomeMode configurations encoding direction, backup, and switch-edge combinations, plus separate EOT (end-of-travel) homing modes requiring drive reconfiguration via ACR-View if changed",
+      "This is reference material for if/when SDC integrates a Parker IPA drive station over EtherNet/IP — it does not change or supersede the native-axis MAM/wideband standard, it's a separate platform"
+    ]
+  },
+  {
+    "id": "inbox-3d110962",
+    "name": "IO-Link Conformance Report - Current.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\IODD\\Banner\\S15C-IU analog current adapter\\IO-Link Conformance Report - Current.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Pure vendor certification paperwork for one sensor model/firmware revision — no mechanism, standard, or judgment content relevant to how SDC builds machines or writes PLC code.",
+      "Confirms the S15C-I supports IO-Link v1.1, ISDU, SIO mode, 32 input bits / 0 output bits — useful only as a device datasheet reference if this part number is ever specified, not as a controls-engineering concept.",
+      "No decisions, defaults, or patterns here that JARVIS needs to learn or apply.",
+      "Vendor IO-Link conformance certificate for the Banner S15C-I device — all 109 IODD/data-layer/ISDU/event/physical-layer test cases passed",
+      "Contains only test-lab metadata (device IDs, cycle time, process data bit widths, access locks) — no mechanism, standard, or judgment relevant to how SDC builds machines or PLC code",
+      "No new device behavior, wiring, or programming pattern is described — this is a pass/fail compliance artifact, not a design or standards document"
+    ]
+  },
+  {
+    "id": "inbox-ed9cc0cc",
+    "name": "sce-244212wflp-sales-drw.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Elect Design\\Autocad Drawings\\Layout Blocks\\Saginaw Enclosures\\sce-244212wflp\\sce-244212wflp-sales-drw.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "This is a raw dimensional drawing (front/side/rear/top/bottom views) for an electrical enclosure, not a controls or PLC document",
+      "Contains only physical envelope dimensions, door count/dims, and usable depth — no device, IO, sequence, or logic information",
+      "No mechanism, standard, or judgment relevant to how SDC builds machines or writes PLC code is present",
+      "Nothing here contradicts or extends existing JARVIS knowledge — pure vendor catalog reference",
+      "Pure vendor dimension sheet for an electrical enclosure — no mechanism, sequencing, or controls-judgment content",
+      "No PLC code, device, or standards information to distill",
+      "Nothing here contradicts or deepens existing standing knowledge"
+    ]
+  },
+  {
+    "id": "inbox-348bbb95",
+    "name": "sce-36el2412lp-sales-drw.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Elect Design\\Autocad Drawings\\Layout Blocks\\Saginaw Enclosures\\sce-36el2412lp\\sce-36el2412lp-sales-drw.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Pure vendor spec sheet: overall/usable dimensions, mounting hole spacing, and view layout for one enclosure model",
+      "No mechanism, control logic, or SDC standard is described — just catalog dimensions and finish codes (gray vs RAL 7035)",
+      "Subpanel explicitly not included — irrelevant to controls/PLC work",
+      "Nothing here changes or deepens how SDC builds machines or writes code",
+      "Pure vendor dimensional drawing (enclosure dimensions, door dimensions, mounting hole spacing, color SKU suffixes)",
+      "No mechanism, sequence, or controls-judgment content — nothing about how SDC builds machines or PLC code",
+      "Subpanel explicitly not included, which is a procurement/BOM note, not a controls fact",
+      "No conflicts with standing knowledge; nothing worth filing to concepts or meKnowledge"
+    ]
+  },
+  {
+    "id": "inbox-8b365a25",
+    "name": "Revision Notes.txt",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Balluff\\BIS018A EIP RFID reader\\Revision Notes.txt",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Every BIS4006 instance needs the same five core UDTs (Command, Config, InHeader, Interface, OutHeader) plus one CORE_Sequence and one CORE_XferIndex UDT — a fixed skeleton regardless of carrier size.",
+      "On top of the core skeleton, exactly ONE 'COMP' carrier structure must be chosen based on the physical RFID tag's memory capacity — options range from 112 bytes up to 64kB.",
+      "BISMxx02 (2000-byte UserData) is marked DEFAULT — the standard choice unless the ME specifies a different physical tag capacity.",
+      "Document gives no design rationale (no guidance on when/why to deviate from the default carrier size) — this is pure reference material, not engineering judgment, so it's filed as standing facts rather than a concept.",
+      "BISM4006 stations use a fixed core UDT set (Command, Config, InHeader, Interface, OutHeader) plus CORE_Sequence and CORE_XferIndex — this is the standard tag scaffold for RFID/carrier read-write interfacing.",
+      "On top of that core, exactly ONE 'COMP' (Compiled) carrier UDT is picked per station, sized to the actual user-data payload carried — variants run from 112 bytes up to 64 kilobytes.",
+      "Default/most-common variant is BISMxx02 with 2000-byte user data — use this unless the process data size forces a bigger or smaller carrier.",
+      "UDT names embed a revision/format suffix (e.g. _3617US, _3917US, _4318US) alongside the byte-size — different suffix families are not interchangeable even at the same byte count (e.g. BISMxx13 vs BISMxx14 both large, different suffix generation)."
+    ]
+  },
+  {
+    "id": "inbox-c5ec8692",
+    "name": "you must install the AOP for this module.txt",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Rockwell Automation\\5069-Serial Module\\you must install the AOP for this module.txt",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "No engineering content — just a terse gripe about needing to install a Rockwell AOP for some module.",
+      "No mechanism, standard, or judgment call is described; nothing to distill.",
+      "Not filed anywhere — doesn't deepen any existing concept or add a standing fact.",
+      "No engineering content — just a complaint about needing to install a Rockwell AOP",
+      "No mechanism, standard, or judgment to distill",
+      "Not actionable for concepts or standing knowledge"
+    ]
+  },
+  {
+    "id": "inbox-9585c078",
+    "name": "AGB_Balluff_e.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Balluff\\ST_EDS_BIS_ETHERNET_IP_DRF_911299_02_000\\AGB_Balluff_e.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "This is a vendor (Balluff) legal T&Cs document — no engineering, controls, or PLC content whatsoever.",
+      "Covers delivery terms, retention of title, liability limits, warranty periods (12/24 months by product type), payment terms, and software licensing under German law.",
+      "Nothing here changes how SDC builds machines, writes PLC code, or makes controls judgments — it's contracts/legal, not engineering.",
+      "No mechanisms, standards, or design patterns to extract; irrelevant to Jarvis's knowledge domain.",
+      "This is a legal/commercial terms document from Balluff (a sensor vendor SDC buys from), not an engineering or standards document",
+      "No mechanisms, controls standards, or PLC/machine-building judgment content anywhere in the document",
+      "Contains only warranty periods, retention of title, liability limits, software licensing terms, and jurisdiction clauses under German civil/commercial law",
+      "Nothing here changes or deepens how SDC builds machines or writes PLC code"
+    ]
+  },
+  {
+    "id": "inbox-5b16d7ec",
+    "name": "AGB_Balluff_d.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Balluff\\ST_EDS_BIS_ETHERNET_IP_DRF_911299_02_000\\AGB_Balluff_d.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "This is a vendor legal/commercial T&Cs document (Balluff GmbH), not engineering or controls content",
+      "No mechanisms, standards, or judgment relevant to how SDC builds machines or PLC code",
+      "Contains only contract law: delivery, retention of title, warranty periods, liability caps, software licensing terms",
+      "Nothing here changes or deepens JARVIS's engineering knowledge — pure boilerplate to skip per instructions",
+      "Pure legal/commercial boilerplate (German general terms and conditions) from Balluff, a sensor vendor — no engineering, controls, or mechanical content",
+      "Covers delivery terms, warranty periods (24 months for wear-free sensors like inductive/RFID/magnetic-field/capacitive, 12 months for wear parts), liability limits, and software licensing terms",
+      "Nothing here changes how SDC builds machines, writes PLC code, or handles devices — it's supplier contract language, explicitly out of scope per the librarian's mandate"
+    ]
+  },
+  {
+    "id": "inbox-19c85128",
+    "name": "911299 Readme.txt",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Balluff\\ST_EDS_BIS_ETHERNET_IP_DRF_911299_02_000\\911299 Readme.txt",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Pure vendor packaging manifest — no engineering content, mechanisms, or SDC judgment involved",
+      "Confirms Balluff BIS V-6106 RFID device is used somewhere in SDC's install base via EtherNet/IP",
+      "No standards, patterns, or corrections to file — nothing here changes how SDC builds machines or PLC code",
+      "Balluff BIS V-6106 RFID device EDS/ICO file package manifest, version V1.2",
+      "No mechanism, standard, or judgment content — just a file listing and product association (BIS V-6106-034-...)",
+      "Nothing here changes or deepens SDC's build/PLC practices"
+    ]
+  },
+  {
+    "id": "inbox-a09d4495",
+    "name": "Modbus TCP Server - AOI based code for ControlLogix v 2.02.00.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Modbus TCP\\Modbus TCP Server - AOI based code for ControlLogix v 2.02.00.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Monitoring surface is standardized: Sts_EN/Sts_Waiting/Sts_Accepted/Sts_Faulted status bits plus Sts_ActiveConnections; Modbus data lives under Ref_ModbusData split into coil/discrete-input/input-register/holding-register areas",
+      "Standard Modbus addressing/function-code limits apply: coils & discrete inputs 0-2047 (120 max per op), registers 0-1023 (120 max per op), big-endian word format",
+      "Rung Import is the ONLY supported way to add this AOI — copy/paste or toolbar-add strips the preconfigured MSG instruction data and breaks it.",
+      "One server AOI instance per CompactLogix controller; ControlLogix can run one instance per 1756-EN2T(R) module, each needing its own data tag set.",
+      "Recommended periodic task rate is 10ms; server data delivery lag = (total transactions across clients) x 2 scans x periodic task rate — this can add real latency for busy Modbus masters polling an SDC controller.",
+      "Supports standard Modbus function codes 01/02/03/04/05/06/15/16 (coils, discrete inputs, holding/input registers), big-endian word format, addresses limited to 2048 coils/inputs and 1024 registers, max 120 items per transaction.",
+      "Requires an EtherNet/IP module with Logix Sockets support; LocalSlot/LocalAddress parameters must be set correctly and Inp_Enable re-toggled after any parameter change.",
+      "Redundancy systems see ~5s+ Modbus outage after a controller switchover — a real timing consideration if a station's Modbus link feeds anything time-critical."
+    ]
+  },
+  {
+    "id": "inbox-43a8e71f",
+    "name": "Modbus TCP Client - AOI based code for ControlLogix v 2.02.00.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Modbus TCP\\Modbus TCP Client - AOI based code for ControlLogix v 2.02.00.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Supports standard Modbus function codes 01/02/05/15 (bit-level coils/discrete inputs) and 03/04/06/16 (word-level holding/input registers), addressing 0-65535 per point, big-endian word format.",
+      "Health/diagnostic bits to read: Sts_EN, Sts_Connected (TCP accepted, not data-flow proof), Sts_Faulted, Sts_Overlap (transaction not finishing before next trigger), Sts_Overload (chronic overlap — must fix PollInterval); per-transaction TransStatus: 0=success,1=in process,2=retry,-1=exception.",
+      "Multiple AOI instances per controller are supported for multiple Modbus servers, but each instance needs its own backing/Message tags (the '_Data' array can be shared); memory cost is ~93KB for the first instance and ~20KB per additional instance — relevant for CompactLogix controllers with small memory budgets.",
+      "AOI must be installed via Rung Import only — copy/paste or toolbar-add strips the pre-configured Message instructions and breaks it",
+      "Memory cost is real: ~93KB for the first instance, ~20KB per additional instance — matters on small CompactLogix (as low as 384KB total)",
+      "Each transaction has a practical PollInterval floor (80ms min, scaling up with number of active transactions) — too-fast polling throws Sts_Overlap then Sts_Overload",
+      "Supports 8 Modbus function codes across bit-level (coils/discrete inputs) and word-level (holding/input registers) with distinct local (0-1023) vs server (0-65535) addressing",
+      "Multiple AOI instances share nothing but the '_Data' tag structure — each needs its own backing/Message tags; Server+Client coexisting in one program causes intermittent Client disconnects; redundancy switchover costs ≥5s of Modbus comms"
+    ]
+  },
+  {
+    "id": "inbox-a742928b",
+    "name": "i550i5Protec_ActuatorSpeed_AOI_documentation_3.0.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Lenze\\i550-BSCT-ABaoi_2.00\\i550i5Protec_ActuatorSpeed_AOI_documentation_3.0.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "i550_ActuatorSpeed is a speed-only (RPM) VFD control AOI — distinct from servo positioning axes: no position loop, just enable/run/velocity/direction/quickstop.",
+      "Network control on an i550 requires four parameters set true: P201:1=5 (setpoint source=network), P400:1=1 (enable), P400:2=1 (run), P400:37=1 (activate network control) — via explicit messaging or drive Properties.",
+      "Lenze EDS file updates embed a revision date into the AOI's linked data type; installing a newer EDS without updating that embedded date on the AOI produces a 'false data type' error — a known gotcha, not a real fault.",
+      "CIP connection limits mean multiple simultaneous explicit MSG instructions to one drive can exhaust connections — SDC's pattern is a dedicated i550ExplicitMSGHandler AOI that sequences ~11 parameter writes one at a time off an edge-triggered xSend, completing with xDone.",
+      "AOI output xSpeedEqZero and xDriveQspActive give quickstop/zero-speed status without needing a separate timer or sensor."
+    ]
+  },
+  {
+    "id": "inbox-96d9c2a1",
+    "name": "EthernetBus_i550_Lenze_en_2015_12_14_V0.1.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Lenze\\i550-BSCT-ABaoi_2.00\\AditionalFiles\\EthernetBus_i550_Lenze_en_2015_12_14_V0.1.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Network control requires setting Network Enable (0x2631:37/P400:37) and mapping a control/status word (CIA402, AC Drive profile, or Lenze legacy NetWord) — protocol-specific handshake details, not general SDC practice.",
+      "EtherNet/IP uses Class 1 (implicit/cyclic, assembly instances 21-23/70-73/110) and Class 3 (explicit/acyclic) messaging; PROFINET uses cyclic process data + acyclic PROFIdrive parameter channel; EtherCAT uses CoE with fixed PDO mapping (0x1603/0x1A03) for velocity mode.",
+      "No SDC-specific controls judgment, station architecture, or PLC coding pattern is present — this is device datasheet material, useful only if/when a station specs an i550 drive on one of these buses.",
+      "Nothing here contradicts or deepens existing SDC concepts (modbus-tcp-client, servo-motion, etc.) since i550 fieldbus options are PROFINET/EtherCAT/EtherNet/IP, not Modbus TCP.",
+      "Vendor product datasheet for the Lenze i550 drive's three Ethernet fieldbus options; mostly parameter-index lookup tables, LED codes, and wizard-style quick-start steps specific to this part number.",
+      "Key transferable gotcha: even when a VFD is under network (PLC) control, some command bits stay hardwired-active regardless — on the i550, Inverter Enable, Run/Stop, Quick Stop, Reset Fault, and DC Brake remain governed by local digital inputs/parameters unless a specific 'NetCtrl' bit is also set; the network control word does not automatically own the whole drive.",
+      "Standard CIP AC Drive Profile pattern shown: Output assembly (control word + speed ref) is scanner→drive, Input assembly (status word + actual speed/current) is drive→scanner, with configurable per-fault watchdog/timeout reactions (Trouble/Warning) mapped to fault codes — a generic pattern for any EtherNet/IP-adapter VFD, not i550-specific.",
+      "No SDC standard, station archetype, or PLC code-generation practice is touched — this is device commissioning reference, not a controls-judgment document."
+    ]
+  },
+  {
+    "id": "inbox-6519ac27",
+    "name": "11867_DOC_010319.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Banner\\ABR Barcode Reader\\11867_DOC_010319.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "No readable text/content was extracted from this file — it appears to be a scan or image-based PDF that didn't OCR, or an extraction failure.",
+      "Nothing substantive to distill: no mechanisms, standards, or judgment calls present in the extracted text.",
+      "Should be re-submitted with proper OCR/text extraction before it can be filed into any concept.",
+      "Document body contains only page markers ('1 of 2', '2 of 2') with no readable text",
+      "No mechanical, controls, or standards content could be extracted",
+      "Cannot distill knowledge from this file as received — needs re-scan or re-export with OCR before it can be filed"
+    ]
+  },
+  {
+    "id": "inbox-b810ebe4",
+    "name": "NOTICE.txt",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Balluff\\BIS018A EIP RFID reader\\NOTICE.txt",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "This is a copyright/license notice, not technical documentation",
+      "No mechanisms, standards, or judgment relevant to SDC machine building or PLC code",
+      "Nothing here changes or deepens JARVIS's engineering knowledge",
+      "Pure copyright/license notice, no mechanisms or standards described",
+      "Nothing here changes how SDC builds machines or PLC code",
+      "No filing action warranted"
+    ]
+  },
+  {
+    "id": "inbox-f4441ae3",
+    "name": "QCM50-K3D60-Q8-5-28-02-2019_SW003.004.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\IODD\\Banner\\QCM50 color sensor\\QCM50-K3D60-Q8-5-28-02-2019_SW003.004.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "This is a third-party IO-Link conformance/certification test report (TEConcept GmbH test suite) for a specific Banner sensor model — vendor documentation, not SDC methodology",
+      "Contains device protocol parameters (Vendor ID, Device ID, process data bit widths, cycle time, IODD checksum) that are device-specific reference data, not generalizable controls patterns",
+      "No mechanism, standard, or judgment call relevant to how SDC builds machines or PLC code — it's a pass/fail conformance log for the physical layer protocol implementation",
+      "Nothing here deepens any existing concept file or contradicts standing knowledge; it's the kind of document Jarvis would look up per-device (e.g. when wiring this specific sensor) rather than learn from",
+      "Vendor/lab certification paperwork for one sensor model — no SDC mechanism, standard, or controls judgment involved",
+      "Device specs noted: IO-Link v1.1, 48 process-input bits, 0 output bits, min cycle time 4000 μs, ISDU/data-storage/block-parameter support — useful only as a datasheet reference if this exact sensor is ever specified",
+      "All applicable protocol test cases passed; skips were for optional/backward-compatibility features the device doesn't implement (PD descriptors, hardware rev, error count, device status) — normal and not a red flag",
+      "Nothing here changes how SDC builds machines or writes PLC code"
+    ]
+  },
+  {
+    "id": "inbox-06faa4a4",
+    "name": "History_V3_1.txt",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Lenze\\Ethernet IP_EDS_V3_1\\History_V3_1.txt",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Pure changelog of EDS file versions for Lenze servo/inverter hardware (9400, 8400, i550 series)",
+      "No mechanism, standard, or judgment described — just filenames and dates tied to inverter models",
+      "Nothing here deepens PLC code, machine-building practice, or controls judgment",
+      "Skip: this is boilerplate revision-table material Jarvis doesn't need to retain",
+      "Pure changelog of Lenze EDS (Electronic Data Sheet) files added per drive model/firmware version",
+      "No controls logic, PLC code, naming, or state-machine content — just device driver file provenance",
+      "Covers i550, 8400 (cabinet/motec/protec variants), and 9400 Ethernet IP module (i700) inverters",
+      "Nothing here contradicts or deepens current SDC concepts — it's a hardware/firmware asset log, not engineering judgment"
+    ]
+  },
+  {
+    "id": "inbox-0717eb93",
+    "name": "sce-24el2410lp-sales-drw.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Elect Design\\Autocad Drawings\\Layout Blocks\\Saginaw Enclosures\\sce-24el2410lp\\sce-24el2410lp\\sce-24el2410lp-sales-drw.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Nothing here changes or deepens PLC code, machine logic, or SDC standards",
+      "Pure mechanical/dimensional cut sheet for an electrical enclosure — door opening, usable depth, mounting dims",
+      "No PLC, controls, or machine-building content relevant to Jarvis's knowledge domains",
+      "Subpanel not included; enclosure comes in two color finishes (SCE-09 Gray or RAL 7035)",
+      "Nothing here changes or deepens controls judgment, standards, or code patterns",
+      "Pure mechanical enclosure spec sheet (dimensions, views, color codes) with no actuators, sequencing, or code-relevant content",
+      "Subpanel not included — a controls detail only if SDC needs to order/spec a subpanel separately, not addressed here",
+      "Nothing here changes device taxonomy, standards, or judgment for machine building"
+    ]
+  },
+  {
+    "id": "inbox-42e22ec5",
+    "name": "psc1-c-10-fb1.PDF",
+    "location": "\\\\…\\Electrical Dept\\Standards - Elect Design\\Autocad Drawings\\Layout Blocks\\Schmersal Safety Controller PSC1\\psc1-c-10-fb1.PDF",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "No extractable content — the document body/text was not included, only a filename and origin path",
+      "Cannot determine if this is a standard, drawing, or spec without the actual page content",
+      "Nothing here changes or deepens SDC machine-building or PLC practice as delivered",
+      "File contains no extractable text or diagram content in this transmission — just a page-count placeholder ('-- 1 of 1 --')",
+      "Cannot distill mechanisms, standards, or judgment from an empty/blank document body",
+      "Filename suggests an electrical design standard (PSC1-C-10, function block?) but nothing confirms scope without actual content",
+      "No action taken — flagging for re-submission with actual document body"
+    ]
+  },
+  {
+    "id": "inbox-9d50b7c1",
+    "name": "sce-36p30-sales-drw.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Elect Design\\Autocad Drawings\\Layout Blocks\\Saginaw Enclosures\\sce-36p30\\sce-36p30-sales-drw.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Pure enclosure/subpanel dimensional data (widths, hole spacing, typ. dimensions) — no device, wiring, or logic content",
+      "No mechanisms, judgment, or SDC standards are described — just physical panel measurements for a vendor part",
+      "Nothing here changes or deepens how SDC builds machines or writes PLC code",
+      "Not tied to any existing concept file — filing would be noise",
+      "Pure vendor dimensional drawing — hole spacing/sizes for the SCE-36P30 subpanel, no controls logic or mechanism content",
+      "No new device, standard, or judgment call for Jarvis to learn from this — it's raw CAD reference data",
+      "Nothing here contradicts or deepens existing concept files; not actionable knowledge for PLC/machine building"
+    ]
+  },
+  {
+    "id": "inbox-f6ffd780",
+    "name": "SMC Air Prep Selection Sheet-Barnum PartNums.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Pneumatics\\SMC Air Prep Selection Sheet-Barnum PartNums.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Pure parts-catalog/procurement reference — no controls or mechanical design judgment content",
+      "Lists SMC air prep combo options: basic gauge, filter/reg combo, combo w/ISE40 digital pressure switch (2 PNP outputs), combo w/24vdc soft-start/dump valve, and combo with both",
+      "Covers NPT/G/Rc thread sizes 1/4\" through 1\", standard and metal-bowl variants, each mapped to an HHB part number",
+      "No new mechanism, standard, or judgment call relevant to how SDC builds machines or writes PLC code — this is vendor SKU boilerplate",
+      "This is a parts-ordering catalog cross-referencing SMC air prep unit part numbers by thread type/size and feature options",
+      "No mechanism, standard, or judgment content relevant to PLC code or machine design",
+      "One option variant (ISE40 digital pressure switch, 2 PNP outputs) implies some air-prep units carry an electrical pressure-switch feature, but no station/application context is given to act on this",
+      "Nothing here changes or deepens how SDC builds machines or PLC code"
+    ]
+  },
+  {
+    "id": "inbox-9f316cb7",
+    "name": "sce-30p30-sales-drawing.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Elect Design\\Autocad Drawings\\Layout Blocks\\Saginaw Enclosures\\sce-30p30\\sce-30p30-sales-drawing.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Pure vendor spec sheet for an enclosure subpanel (dimensions, mounting hole pattern, 11GA carbon steel material)",
+      "No controls logic, PLC, device, or standards content — nothing about mechanisms, judgment, or SDC conventions",
+      "Not relevant to how SDC builds machines or writes code; purely a mechanical/enclosure vendor reference",
+      "Pure vendor spec sheet for an off-the-shelf enclosure subpanel (SCE-30P30), no controls or PLC-relevant content",
+      "Contains only physical dimensions, material spec (11GA carbon steel), and a single-item bill of material",
+      "No mechanism, standard, or judgment relevant to how SDC builds machines or writes PLC code"
+    ]
+  },
+  {
+    "id": "inbox-e5b77446",
+    "name": "sce-30el3012lp-sales-drw.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Elect Design\\Autocad Drawings\\Layout Blocks\\Saginaw Enclosures\\sce-30el3012lp\\sce-30el3012lp-sales-drw.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Pure vendor spec sheet: overall dims 30x30x12, door opening/usable depth, mounting hole spacing (25.25\" pattern), 1/4-turn latches",
+      "No control logic, mechanism behavior, or SDC standard content — just a cutsheet for enclosure selection",
+      "Subpanel not included, which is a BOM/selection detail (need separate subpanel if required) but not a controls concern",
+      "Nothing here changes how SDC builds machines or writes PLC code",
+      "Pure vendor dimensional drawing (enclosure size, door opening, usable depth, latch locations) — no controls logic, mechanism, or SDC standard content.",
+      "Subpanel not included with this enclosure model — would need to be ordered/fabricated separately if used.",
+      "No new concept, mechanism, or judgment call for JARVIS to learn from this document."
+    ]
+  },
+  {
+    "id": "inbox-46fa626b",
+    "name": "sce-304210wflp-sales-drw.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Elect Design\\Autocad Drawings\\Layout Blocks\\Saginaw Enclosures\\sce-304210wflp\\sce-304210wflp-sales-drw.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "This is a mechanical enclosure dimensional drawing (dimensions, door hardware, view callouts) for a Saginaw electrical enclosure",
+      "No PLC logic, device behavior, sequencing, or SDC standards content present",
+      "Nothing here changes how JARVIS builds machines or writes code",
+      "Pure vendor mechanical dimension sheet for an enclosure (dimensions, door swing/hardware, usable depth) — no controls, PLC, or machine-building logic content.",
+      "No mechanisms, standards, or judgment calls relevant to how SDC writes code or builds machines.",
+      "Nothing here contradicts or deepens existing JARVIS knowledge — it's a catalog/reference drawing, not an engineering practice document."
+    ]
+  },
+  {
+    "id": "inbox-db292a2e",
+    "name": "sce-42p30-sales-drw.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Elect Design\\Autocad Drawings\\Layout Blocks\\Saginaw Enclosures\\sce-42p30\\sce-42p30-sales-drw.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Pure vendor spec sheet: subpanel front-view dimensions (18.63, 25.25, 26.94, 37.25, 38.94, .28, .88, .50, .84, .75 I.D.)",
+      "No mechanism, sequence, standard, or judgment content relevant to PLC code or machine design",
+      "Nothing here contradicts or deepens existing SDC knowledge — purely a part reference for enclosure selection",
+      "Pure vendor dimensional drawing for a stock 42x30 enclosure subpanel — no controls or mechanical design judgment content.",
+      "Lists panel dimensions and hole spacing typicals (18.63, 25.25, 26.94, 37.25, 38.94, .28, .88, .50, .84, .75 I.D.) with no context on what device or station it's for.",
+      "No sequence, device, alarm, or standards content — nothing to distill into concepts or standing facts.",
+      "Likely reference material for panel layout/enclosure selection, not a knowledge-bearing engineering document."
+    ]
+  },
+  {
+    "id": "inbox-03b8433b",
+    "name": "sce-20166elj-sales-drw.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Elect Design\\Autocad Drawings\\Layout Blocks\\Saginaw Enclosures\\sce-20166elj\\sce-20166elj-sales-drw.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Pure vendor spec sheet for an enclosure's physical dimensions (mounting holes, door opening, usable depth)",
+      "No controls, PLC logic, device behavior, or SDC standards content present",
+      "Nothing here deepens or changes how SDC builds machines or writes PLC code",
+      "Pure vendor spec sheet: enclosure mounting hole pattern, door dimensions, and usable interior depth",
+      "No control logic, device behavior, or SDC standard content — just physical cabinet dimensions",
+      "Nothing here changes how machines are built or PLC code is written; this is reference material for panel layout, not engineering judgment"
+    ]
+  },
+  {
+    "id": "inbox-d4e2477a",
+    "name": "sce-42el3610lp-sales-drw.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Elect Design\\Autocad Drawings\\Layout Blocks\\Saginaw Enclosures\\sce-42el3610lp\\sce-42el3610lp-sales-drw.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Pure dimensional/mechanical drawing for a vendor enclosure (42x36x10 nominal), no controls logic or standards content",
+      "No mechanism, judgment, or SDC-specific practice is present — just cutout/hole dimensions and view layout",
+      "Nothing here contradicts or deepens existing concept knowledge; this is catalog reference material, not engineering method",
+      "Pure vendor dimensional drawing for one enclosure part number — no controls logic, standards, or mechanism content.",
+      "No new device types, sequencing, alarm, or naming concepts present.",
+      "Nothing here contradicts or deepens existing JARVIS knowledge — it's raw hardware spec sheet reference material, not engineering judgment."
+    ]
+  },
+  {
+    "id": "inbox-0eeb686e",
+    "name": "sce-42p36-sales-drw.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Elect Design\\Autocad Drawings\\Layout Blocks\\Saginaw Enclosures\\sce-42p36\\sce-42p36-sales-drw.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Pure vendor dimensional drawing for a subpanel (SCE-42P36) with hole spacing and panel size callouts",
+      "No devices, sequences, controls logic, or SDC standards content present",
+      "Nothing here changes or deepens PLC/controls knowledge — it's a mechanical component reference sheet",
+      "Pure vendor dimensional/mechanical drawing for an enclosure subpanel — no controls logic, sequence, or PLC content",
+      "No devices, states, IO, or naming information relevant to JARVIS's controls knowledge",
+      "Nothing here contradicts or deepens existing concept files or standing facts"
+    ]
+  },
+  {
+    "id": "inbox-6927a851",
+    "name": "SPIDERII_8TX_1FX-ST EEC.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Elect Design\\Autocad Drawings\\Layout Blocks\\Hirschmann\\Mfr Dwgs\\SPIDERII_8TX_1FX-ST EEC.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Single-page datasheet cover with legal/ownership boilerplate and two overall dimensions (137.59 x 115.3 mm)",
+      "No wiring, port, mounting, or configuration detail included",
+      "Nothing about mechanisms, controls standards, or PLC practice to extract",
+      "Document is just a drawing title block (drafter, date, legal copyright notice) plus two dimension numbers (137.59, 115.3) for a Hirschmann SPIDERII 8TX/1FX-ST EEC switch",
+      "No mechanism, wiring, configuration, or standards content present",
+      "Nothing here changes or deepens how SDC builds machines or PLC code"
+    ]
+  },
+  {
+    "id": "inbox-f87254fb",
+    "name": "sce-48p36-sales-drw.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Elect Design\\Autocad Drawings\\Layout Blocks\\Saginaw Enclosures\\sce-48p36\\sce-48p36-sales-drw.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Pure dimensional/mechanical drawing for a vendor enclosure subpanel (mounting hole pattern, hole sizes .28\" typ, I.D. .75\" typ)",
+      "No control logic, device behavior, or SDC standard content — just a cutsheet for a panel builder/enclosure vendor",
+      "Nothing here changes how JARVIS writes PLC code or reasons about devices/state machines",
+      "Pure vendor dimensional drawing (hole spacing, panel size) for a Saginaw 48x36 enclosure subpanel",
+      "No controls logic, device behavior, or PLC/electrical design judgment content",
+      "No new mechanisms, standards, or naming conventions relevant to JARVIS's PLC/controls knowledge",
+      "Purely a mechanical/electrical panel-fab reference, not station or machine behavior"
+    ]
+  },
+  {
+    "id": "inbox-3e0374e8",
+    "name": "sce-48el3610lp-sales-drw.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Elect Design\\Autocad Drawings\\Layout Blocks\\Saginaw Enclosures\\sce-48el3610lp\\sce-48el3610lp-sales-drw.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Pure vendor dimensional drawing for an electrical enclosure (48x36x10 nominal), no controls logic or mechanism content",
+      "Contains only physical dimensions, door/latch layout, and view callouts — no PLC, sequencing, or device-behavior information",
+      "Nothing here changes how SDC builds machines or writes PLC code; it's a reference cut sheet for panel/enclosure selection",
+      "Pure enclosure dimensional drawing (48x36x10 in, door opening/usable depth, mounting hole spacing) with no PLC logic, device, or standards content.",
+      "No mechanisms, judgment calls, or SDC-specific practices are described — it's a vendor cut sheet for panel selection/layout.",
+      "Nothing here contradicts or deepens existing JARVIS knowledge on how machines/PLC code are built."
+    ]
+  },
+  {
+    "id": "inbox-24f48711",
+    "name": "Quote 35113351_240806_1 Steven Douglas 8 7 24.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Elect Design\\archive\\DwgSoftwareEvaluation\\Quote 35113351_240806_1 Steven Douglas 8 7 24.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Document content did not extract — only page-number placeholders ('1 of 3', '2 of 3', '3 of 3') were present",
+      "No mechanical, controls, or PLC-relevant detail is visible in what was provided",
+      "Filename/origin suggest this is a commercial quote, not an engineering standard — likely low priority for controls knowledge even if re-extracted",
+      "Cannot distill engineering judgment from a document with no visible body text"
+    ]
+  },
+  {
+    "id": "inbox-9e6e4772",
+    "name": "readme.txt",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\IODD\\Schunk\\EGU electric gripper\\readme.txt",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Key gotcha: EDS file version must match FZ/FJ firmware version (EDS v1.03 requires firmware v4.20+) — a device on older firmware will not connect if the newer EDS is installed",
+      "Switching between single-camera and dual-camera EtherNet/IP configurations on an FZ_Series device in Network Configurator can silently fail to update I/O connection sizes unless the device is removed and re-added to the network first",
+      "Do not delete/reinstall the FZ Series EDS file directly in Network Configurator while it's running — doing so triggers an unintended auto-install; cancel and use the proper menu-driven install/update instead",
+      "Nothing here changes SDC PLC coding patterns/judgment — it's vendor hardware/tool compatibility trivia, filed as a vision-systems troubleshooting note only",
+      "Pure vendor/CAD-download boilerplate with no controls, mechanical, or PLC content",
+      "Contains only file names, unzip instructions, and marketing links in six languages",
+      "No engineering judgment, standard, or mechanism to distill",
+      "Nothing here updates any existing concept file or standing fact"
+    ]
+  },
+  {
+    "id": "inbox-b01eeed0",
+    "name": "README.txt",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Manufacturer EDS Files\\Cognex\\README.txt",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "EDS files let RSLinx browse/register In-Sight vision systems over EtherNet/IP but are NOT required for RSLogix 5000 connection setup.",
+      "Rockwell recommends using the In-Sight Add-on Profile (AOP) instead of raw EDS install when configuring the connection in RSLogix 5000.",
+      "Pure installation/procedural boilerplate — no new controls judgment, mechanism, or standard for how SDC builds machines or PLC code."
+    ]
+  },
+  {
+    "id": "inbox-26fdfc6d",
+    "name": "TurckCross.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Elect Design\\archive\\Common Parts Images\\TurckCross.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Pure vendor catalog data: cable AWG sizes, conductor counts, insulation/jacket thickness, compliance ratings, and color-code charts",
+      "No PLC logic, machine mechanism, control philosophy, or SDC engineering judgment content present",
+      "Nothing here changes how SDC designs, sequences, or codes machines — it's a wiring/cable selection reference for electrical design, not controls",
+      "No contradiction with any standing JARVIS knowledge — content is entirely out of scope for controls concepts"
+    ]
+  },
+  {
+    "id": "inbox-04756705",
+    "name": "sce-366012wflp-sales-drw.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Elect Design\\Autocad Drawings\\Layout Blocks\\Saginaw Enclosures\\sce-366012wflp\\sce-366012wflp-sales-drw.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-30",
+    "takeaways": [
+      "Pure vendor dimensional drawing for an enclosure cabinet — panel dimensions, door hardware callouts, no controls or PLC content.",
+      "Nothing here describes a mechanism, sequence, or engineering judgment relevant to how SDC builds machines or writes PLC code.",
+      "No new device types, standards, or patterns introduced — just enclosure geometry for procurement/layout reference."
+    ]
+  },
+  {
+    "id": "inbox-8663070f",
+    "name": "sce-60p36-sales-drawing.pdf",
+    "location": "\\\\…\\Electrical Dept\\Standards - Elect Design\\Autocad Drawings\\Layout Blocks\\Saginaw Enclosures\\sce-60p36\\sce-60p36-sales-drawing.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "Pure vendor mechanical dimensional drawing for an enclosure subpanel, no controls/PLC content",
+      "No devices, sequences, standards, or judgment calls relevant to JARVIS's PLC/machine-building knowledge",
+      "Nothing here contradicts or deepens existing standing knowledge"
+    ]
+  },
+  {
+    "id": "inbox-0f921eda",
+    "name": "ChangeLog.txt",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\HMI Graphics\\mnticons-1.9\\ChangeLog.txt",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "Document is a changelog for a generic icon asset pack (image sizes, icon additions/updates)",
+      "No mechanisms, standards, or judgment relevant to machine building or PLC code",
+      "Nothing here deepens any existing concept file",
+      "No standing facts worth recording for controls engineering work"
+    ]
+  },
+  {
+    "id": "inbox-27225676",
+    "name": "Tech Note Naming Convention.txt",
+    "location": "\\\\…\\Electrical Dept\\SDC Knowledgebase\\SDC Tech Notes\\Tech Note Naming Convention.txt",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "Defines a filename pattern for tech notes: TN-DDMMYYYY-Job##-ShortTopic-Initials",
+      "Purely a documentation/administrative convention — not a machine, controls, or PLC coding standard",
+      "Does not affect device taxonomy, tag naming, state logic, or any engineering judgment JARVIS applies"
+    ]
+  },
+  {
+    "id": "inbox-3973c79a",
+    "name": "GE-Short-Circuit Current Calculations.pdf",
+    "location": "\\\\…\\Electrical Dept\\References\\GE-Short-Circuit Current Calculations.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "Document contains no extractable text — all 60 pages returned empty placeholders",
+      "Topic (short-circuit current calculations) is electrical power distribution engineering, not PLC/controls logic",
+      "No mechanisms, standards, or judgment calls could be distilled from this extraction",
+      "Cannot verify relevance to SDC's machine-building or PLC coding practices from this content"
+    ]
+  },
+  {
+    "id": "inbox-71fdeb93",
+    "name": "ELECTRICAL_THEORY_AND_APPLICATION.pdf",
+    "location": "\\\\…\\Electrical Dept\\References\\ELECTRICAL_THEORY_AND_APPLICATION.pdf",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "This is generic electrical fundamentals (atoms, Ohm's law, series/parallel circuits, AWG wire tables, single/three-phase distribution) aimed at kiln technicians, not SDC machine-building practice",
+      "Kiln-specific content (NEMA cordsets, Delta vs Wye wiring, thermocouple types, DYNATROL 3-zone control) is product documentation for L&L kilns, unrelated to SDC's PLC/servo/pneumatic station architecture",
+      "No PLC programming, state-machine, servo, pneumatic, vision, or robot content — nothing that changes how SDC builds machines or writes PLC code",
+      "Nothing here contradicts or deepens any existing concept file or standing SDC fact; it's outside the domain entirely"
+    ]
+  },
+  {
+    "id": "inbox-3ccd8a7e",
+    "name": "EE Recipe Handler Instructions.docx",
+    "location": "\\\\…\\Electrical Dept\\EE Process and Standards Documents\\EE Recipe Handler Instructions.docx",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "SDC has a standard reusable Recipe program/UDT block to import for any station needing recipe storage/editing.",
+      "Recipe_Structure UDT holds required (highlighted) system elements plus ME-defined machine-specific parameters.",
+      "Recipe_Data array sizing is driven by three indexes that must all be set equal, minimum 10, matching total recipe count.",
+      "Three input parameters wire the UDT to the HMI: i_DisplayListSize (list size, default 10), i_RecipeStructureUDTSizeBytes (must equal UDT byte size), i_SavedRecipeArrayLength (must equal the array size from step 3).",
+      "HMI Recipe Select/Edit screens have fixed button semantics: Sort/Delete require a 2s hold, Create New uploads-then-creates, Save and Download each flash red on a diff (edited-vs-saved, edited-vs-running), and Save must always precede Download."
+    ]
+  },
+  {
+    "id": "inbox-fe952d2c",
+    "name": "EE E-Viewer Work Instruction Engineers.docx",
+    "location": "\\\\…\\Electrical Dept\\EE Process and Standards Documents\\EE E-Viewer Work Instruction Engineers.docx",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "E-Viewer is a redline review/communication tool for Eplan electrical drawings, purely administrative — no PLC logic, device, or machine-design content.",
+      "No automatic write-back: approved redline changes must be manually re-implemented in Eplan, then a new project backup uploaded to create a new version.",
+      "This concerns electrical schematic documentation workflow (EE discipline), not controls/PLC programming — outside JARVIS's domain of machine behavior or code standards."
+    ]
+  },
+  {
+    "id": "inbox-adc33b45",
+    "name": "1145_program_setup.docx",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Epson Robots\\Job_References\\1145_program_setup.docx",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "Robot-side Dry-Run is its own DI bit that skips actuation (vacuum) but still runs all motion — same intent as the PLC's Dry-Run toggle, just propagated to an external controller over discrete I/O instead of being native logic.",
+      "Row-indexed placement (basket with N rows) computes an offset from a base point via a simple row×pitch formula, and always routes through a dedicated clear/transition point before/after entering a tight space to avoid tool-arm collision.",
+      "The robot program self-instruments cycle time (per-cycle, running min/max) and prints it to the console every cycle — a lightweight built-in performance-monitoring pattern with no PLC involvement.",
+      "Robot integration uses a dedicated-DI-per-sequence handshake: PLC sets one bit, robot raises an in-progress DO, executes the move, pulses a shared Move-Complete DO for 0.25s, then waits (30s timeout) for PLC to drop the run bit before re-arming.",
+      "Multi-cup vacuum grippers are driven by a PLC-supplied bitmask (part-present per position) — only cups under a present part are energized, and the program waits for per-cup vacuum sensor confirmation before retracting.",
+      "Robot dry-run mode (a dedicated DI) skips actuator energization (vacuum) but still runs the motion — same intent as PLC-side Dry-Run, applied on the robot side.",
+      "Row/nest placement into a multi-slot fixture uses an offset formula off a single base point (rXOffset = row*pitch - pitch) plus a clear→approach→descend→retract→clear move sequence specifically to avoid tool-arm collision with the fixture walls.",
+      "Cycle-time instrumentation (per-cycle time, running min/max, baseline on cycle 1) is printed to the robot console — a lightweight diagnostic pattern with no PLC-side dependency."
+    ]
+  },
+  {
+    "id": "inbox-0e76c761",
+    "name": "epson_flex_feeder_guide_v1.docx",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Epson Robots\\Standard Docs\\epson_flex_feeder_guide_v1.docx",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "Document is an empty sign-off form for a specific job (Alcon, #1146) — no recorded encoder/trigger/LTFACT values to learn from",
+      "It does reveal the standard checklist SDC uses when commissioning Epson SCARA line tracking: encoder type/mounting, trigger sensor offset, part spacing, TCP offset, LTLIMIT/LTWINDOW/LTSLIP/LTFACT, and tested max reliable speed",
+      "This is new territory — no existing concept file covers Epson-specific conveyor line-tracking (encoder-synchronized robot pick) parameters",
+      "Nothing here overrides or deepens existing servo/PNP/robot standards since no actual values or resolutions were recorded — worth flagging the template itself as a future-reference checklist rather than engineering judgment"
+    ]
+  },
+  {
+    "id": "inbox-55878bc2",
+    "name": "SDC_2D_iRPickTool_Setup_Procedure.docx",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Fanuc Robot\\Claude Fanuc Assets\\Prompting & Instructions\\SDC_2D_iRPickTool_Setup_Procedure.docx",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "Priority-model-pick pattern: use PKCSGETTIME (non-blocking peek, returns estimated arrival ms, stat=3 means no match) before PKCSGETQUE to avoid the race condition of three sequential 100ms blocking timeouts when filtering the pick queue by model ID — falls through instantly to unfiltered get if no priority part is near.",
+      "iRPickTool workcell tree has a fixed node hierarchy (Grippers→Robots→Trays→Conveyors→FixStations) with SDC naming: GRIPPERn/ZONEn, ROBOTn, TRAYn, CONVn, SENSn, CSTNn, FSTNn, vision process always SDC_STANDARD",
+      "Camera exposure has a hard ceiling: never exceed 10ms; drop to 1ms and open aperture for belt speeds >100mm/sec — longer exposure = motion blur = bad locator scores regardless of belt speed",
+      "Pick angle errors have a strict root-cause diagnostic order: vision model orientation → calibration residual → symmetry confusion → tracking frame → and NEVER compensate for any of these by hand-tweaking Reference Pos (masks the error, causes angle drift with belt speed)",
+      "SENS1 Trigger Distance should be set to 50-80% of camera FOV in belt-travel direction — smaller causes duplicate detections, larger creates blind zones where parts pass uncaptured",
+      "SDC defaults: GPM score threshold 70, calibration residual target <0.3mm, CONV1 duplicate tolerance 10mm, Approach Offset Z -50mm, Dynamic Error Adjustment 30.000, Skip Outbound Motion enabled with FLAG=1",
+      "Acceptance criteria for a commissioned cell: calibration residual <0.3mm, detection rate ≥99%, pick success ≥98% at full belt speed, discard rate ≤1%, cycle time within ±5% of target",
+      "Priority model picking uses PKCSGETQUE's 6th argument (undocumented on the teach pendant) with up to 3 model-ID registers R[11]-R[13] tried in order, falling through to an unfiltered get if none match"
+    ]
+  },
+  {
+    "id": "inbox-9bc79695",
+    "name": "DCS_Regulatory_Memo_1118GE.docx",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Fanuc Robot\\Claude Fanuc Assets\\Reference & Compliance\\DCS_Regulatory_Memo_1118GE.docx",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "OSHA 1910.212, ANSI/RIA R15.06-2012, and ISO 10218-1/2 are all performance-based — none names DCS or any specific controller feature as required.",
+      "DCS is one acceptable safeguarding option among several equivalents: physical barriers, safety light curtains, safety laser scanners, interlocked gates, safety mats.",
+      "The controlling requirement is a documented risk assessment (per ANSI/RIA R15.06-2012) that determines the needed Performance Level/SIL — the safeguarding method is then chosen to meet that level.",
+      "For the 1118 GE machine specifically, use/non-use of DCS should be justified by the risk assessment and practical design, not asserted as a compliance mandate."
+    ]
+  },
+  {
+    "id": "inbox-6428ddb4",
+    "name": "EE Debug and Testing Process.docx",
+    "location": "\\\\…\\Electrical Dept\\EE Process and Standards Documents\\EE Debug and Testing Process.docx",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "Servo torque limits are staged during commissioning: start at 50% max, then set final limit ~20% over the actual observed max once running full-auto at cycle time.",
+      "Automatic-mode servo speeds are commissioned as two named setpoints — a 'slow speed' debug profile and the final 'running speed' — so techs can toggle between them, not just tune one speed live.",
+      "Debug/commissioning proceeds subsystem-by-subsystem: single-step first, then full-auto dry-run (slow, then ramped up to cycle time), then real parts, before combining subsystems and finally the whole machine.",
+      "Fault checkout is an explicit commissioning step: verify every alarm message is useful, root-cause high-occurrence/disruptive faults, and add retry/auto-recovery/auto-reject logic to raise uptime rather than just leaving the fault as a stop.",
+      "Before a machine ships, temporary debug bits, unused tags, and AFI instructions must be stripped from the code, and an 'as-shipped' software backup is taken.",
+      "Motion permissives (e.g. Z retracted before X allowed to move) are explicitly verified as a commissioning step, not assumed correct from code review alone."
+    ]
+  },
+  {
+    "id": "inbox-53e4d530",
+    "name": "EE Hardware Specification Regulations.docx",
+    "location": "\\\\…\\Electrical Dept\\EE Process and Standards Documents\\EE Hardware Specification Regulations.docx",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "Allen-Bradley is the default PLC platform; safety uses Compact GuardLogix/GuardLogix on AB projects",
+      "Banner safety expansion relays (bipolar wiring) replace Omron for contact expansion; Keyence safety PLCs are reserved for non-AB projects",
+      "Guard door switches standardize on Keyence GS-M51P",
+      "SMC EX600 is the primary on-machine IO platform (its IO-Link module covers IO-Link needs, not a separate IO-Link-first platform)",
+      "24VDC supplies are Puls CP series (CP5.241/CP10.241/CP20.241 most common); breakers are Noark",
+      "AB servo drives standardize on 5300/5500 series; 5100 series is a case-by-case exception (axis-count overflow, cost-reduced simple repeat jobs)"
+    ]
+  },
+  {
+    "id": "inbox-eea70d47",
+    "name": "EE Design Drawings and BOM Standard.docx",
+    "location": "\\\\…\\Electrical Dept\\EE Process and Standards Documents\\EE Design Drawings and BOM Standard.docx",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "This is an EE (electrical engineering) documentation/BOM workflow standard — EPLAN, Total ETO imports, Master Electrical BOM lifecycle",
+      "No content touches PLC code structure, controls logic, device taxonomy, or machine sequencing",
+      "ME-owned spreadsheet is authoritative source for motors/sensors/pneumatics; EE BOMs must reconcile against it, and EE may override ME component choices when documented",
+      "Redline/revision-control process is specific to EPLAN/Total ETO, not to PLC programs or JARVIS-generated code",
+      "Nothing here contradicts or deepens any existing concept file or standing fact relevant to controls engineering"
+    ]
+  },
+  {
+    "id": "inbox-f84086a5",
+    "name": "Fanuc_Dual_Arm_VIS_Calibration_Guide.docx",
+    "location": "\\\\…\\Electrical Dept\\Standards - Software\\Fanuc Robot\\Fanuc_Dual_Arm_VIS_Calibration_Guide.docx",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "SDC standard reverses common Fanuc training convention: camera mounts on the FOLLOWER (Group 2), calibration target mounts on the LEADER (Group 1) — gives the follower freedom to sweep poses while the leader holds the target still.",
+      "UT9 is reserved cell-wide on all SDC dual-arm cells for calibration tools only (camera UTOOL and target UTOOL) — production tools live in UT1–UT8 and must never be overwritten by calibration data.",
+      "MultiCal (Fanuc's automated calibration program) is the SDC-preferred execution path over manual pose-by-pose capture; run at 25-50% override, T1 mandatory on first attempt of any new cell, one parameter change at a time on failure.",
+      "Results are NOT saved until manually accepted from MultiCal's bottom page — a completed run that isn't accepted silently discards the calibration and leaves the Coord Motion page stale.",
+      "Residual error acceptance bands: <0.5mm excellent (precision welding/dispensing), 0.5-1.0mm acceptable for handling/assembly, 1.0-2.0mm marginal (investigate), >2.0mm reject and recalibrate.",
+      "Inside a COORD block, follower motion lines are interpreted in the leader's UFRAME, not the follower's own $WORLD — a common source of programmer confusion when teaching points.",
+      "Re-calibration triggers: any collision, re-mastering or motor/encoder replacement on either arm, lens/focus/aperture adjustment, or loosening of camera/grid mounting hardware; scheduled every 6mo (production) / quarterly (high-precision)."
+    ]
+  },
+  {
+    "id": "inbox-7f340d5a",
+    "name": "Total ETO for EE Dept -Rev 01.docx",
+    "location": "\\\\…\\Electrical Dept\\EE Process and Standards Documents\\Total ETO for EE Dept -Rev 01.docx",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "Covers electrical engineering BOM/procurement workflow tooling (Total ETO), not machine building or PLC code",
+      "No mechanisms, standards, or judgment relevant to JARVIS's controls/PLC domain",
+      "Entirely about software setup, BOM import formatting, release/hold procedures, and report generation in a third-party ETO tool",
+      "Nothing here changes or deepens how SDC builds machines or writes PLC code"
+    ]
+  },
+  {
+    "id": "inbox-5781cab5",
+    "name": "Pneumatic Standardization Selection Guide, Rev2.docx",
+    "location": "\\\\…\\Electrical Dept\\EE Process and Standards Documents\\Pneumatic Standardization Selection Guide, Rev2.docx",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "Valve spool configuration is chosen by axis motion type: horizontal PNP axes/grippers use 2-position double-solenoid (SY3200); vertical PNP axes use 3-position CENTER-BLOCKED (SY3300) so the axis holds position rather than falling on air/power loss.",
+      "3-position center-EXHAUST valves (SY3400) are reserved for advanced safety applications that must actively depressurize an actuator, not general motion.",
+      "Standalone (non-valve-bank) valves are required when a robot gripper has no internal solenoid (Epson robots never have this option; Fanuc can) or when an actuator needs high-speed direct-PLC-output control bypassing the valve bank.",
+      "Air prep unit sizing = total machine air consumption + 20% safety factor; number of air prep units/valve banks scales with number of machine safety zones.",
+      "Vacuum generation is a deliberate engineer's choice between two SMC families: ZK2 electronic generator (integrated pressure switch) vs ZH venturi (standalone Coval switch) — sized per application.",
+      "EX600 (EtherNet/IP, up to 9 IO modules/16 valves) is the primary valve-bank platform; EX260 (IO-Link) is used when the machine's I/O architecture is IO-Link and has no expansion IO capability."
+    ]
+  },
+  {
+    "id": "inbox-d8cd0209",
+    "name": "SDC_Motors_Cables_Drives_Guildelines_Rev 2.docx",
+    "location": "\\\\…\\Electrical Dept\\Standards - Elect Design\\Servo Standardization\\SDC_Motors_Cables_Drives_Guildelines_Rev 2.docx",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-08-31",
+    "takeaways": [
+      "TLP motors (Kinetix 5300) are SDC's default for simple point-to-point axes — standard PNP, ball screw/belt, simple rotary, indexing ring shot-pin.",
+      "VPL motors (Kinetix 5500) are for complex/coordinated motion — dial/CAM axes, indexing ring main drive, servo press, high-speed coordinated motion.",
+      "SDC standard encoder is multiturn absolute (not incremental) — position is retained through power cycles, which is why homing-move logic can be minimal.",
+      "Holding brakes are required for vertical loads EXCEPT the SDC standard PNP vertical axis, which does not need one for standard payloads (heavy payloads need a calc).",
+      "TLP requires separate power+feedback cables; VPL uses a single hybrid cable (Lutze preferred); motion axes need high-flex cable.",
+      "CIP Motion-enabled PLC selection scales with axis count: CompactLogix up to 16 axes, ControlLogix beyond that."
+    ]
+  }
+]

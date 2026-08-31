@@ -1,0 +1,1578 @@
+﻿<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<RSLogix5000Content SchemaRevision="1.0" SoftwareRevision="37.00" TargetName="TopAlarms" TargetType="AddOnInstructionDefinition" TargetClass="Standard" TargetRevision="1.0 " TargetLastEdited="2026-04-02T11:55:28.337Z" ContainsContext="true" ExportDate="Thu Apr 02 07:55:56 2026" ExportOptions="References NoRawData L5KData DecoratedData Context Dependencies ForceProtectedEncoding AllProjDocTrans">
+<Controller Use="Context" Name="ChassisStandard">
+<DataTypes Use="Context">
+<DataType Name="AlarmData" Family="NoFamily" Class="User">
+<Members>
+<Member Name="ProgramID" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Unique ID given to each AOI instance.]]>
+</Description>
+</Member>
+<Member Name="AlarmID" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Index number of the alarm taken from the array attached to the AOI.]]>
+</Description>
+</Member>
+<Member Name="Severity" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Fault = 0, Warning = 1]]>
+</Description>
+</Member>
+<Member Name="Group" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Alarm group number.
+0 -31]]>
+</Description>
+</Member>
+<Member Name="Message" DataType="STRING100" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Message Description
+(Default Language)]]>
+</Description>
+</Member>
+<Member Name="TimeStamp" DataType="LINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[UTC microseconds. Time it went active.]]>
+</Description>
+</Member>
+<Member Name="Count" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Count of Alarm Occurrences]]>
+</Description>
+</Member>
+<Member Name="Duration" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Duration in seconds]]>
+</Description>
+</Member>
+<Member Name="ZZZZZZZZZZAlarmData8" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="Active" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZAlarmData8" BitNumber="0" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Alarm Active]]>
+</Description>
+</Member>
+<Member Name="DoNotSaveToHistory" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZAlarmData8" BitNumber="1" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Set this flag to prevent the alarm from cluttering up the history.]]>
+</Description>
+</Member>
+<Member Name="HMI_ResetCount" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZAlarmData8" BitNumber="2" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[HMI Reset input]]>
+</Description>
+</Member>
+</Members>
+<Dependencies>
+<Dependency Type="DataType" Name="STRING100"/>
+</Dependencies>
+</DataType>
+<DataType Name="AlarmHistory" Family="NoFamily" Class="User">
+<Members>
+<Member Name="Message" DataType="STRING" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="AlarmCount" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="ShiftAlarmCount" DataType="DINT" Dimension="3" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+</DataType>
+<DataType Name="STRING100" Family="StringFamily" Class="User">
+<Members>
+<Member Name="LEN" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="DATA" DataType="SINT" Dimension="100" Radix="ASCII" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+</DataType>
+<DataType Name="TopAlarmsDT" Family="NoFamily" Class="User">
+<Members>
+<Member Name="Message" DataType="STRING" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="AlarmCount" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+</DataType>
+</DataTypes>
+<AddOnInstructionDefinitions Use="Context">
+<AddOnInstructionDefinition Use="Target" Name="TopAlarms" Class="Standard" Revision="1.0" ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" CreatedDate="2026-01-27T13:08:28.348Z" CreatedBy="STEVENDOUGLAS\HRizor" EditedDate="2026-04-02T11:55:28.337Z" EditedBy="STEVENDOUGLAS\jperry"
+ SoftwareRevision="v37.00">
+<Parameters>
+<Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Input - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Output - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="AlarmData" TagType="Base" DataType="AlarmData" Usage="InOut" Required="true" Visible="true" Constant="false"/>
+<Parameter Name="AlarmStopTrigger" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</DefaultData>
+</Parameter>
+<Parameter Name="TopAlarms" TagType="Base" DataType="TopAlarmsDT" Dimensions="5" Usage="InOut" Required="true" Visible="true" Constant="false"/>
+<Parameter Name="TopShiftAlarms" TagType="Base" DataType="TopAlarmsDT" Dimensions="3 5" Usage="InOut" Required="true" Visible="true" Constant="false"/>
+<Parameter Name="CurrentShift" TagType="Base" DataType="DINT" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</Parameter>
+<Parameter Name="Reset" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</DefaultData>
+</Parameter>
+<Parameter Name="NumberOfShifts" TagType="Base" DataType="DINT" Usage="Input" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read Only">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</Parameter>
+</Parameters>
+<LocalTags>
+<LocalTag Name="Message" DataType="STRING" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00']]]>
+</DefaultData>
+<DefaultData Format="String" Length="0">
+<![CDATA['']]>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="AlarmHistory" DataType="AlarmHistory" Dimensions="51" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[[[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]],[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,[0,0,0]]]]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<Array DataType="AlarmHistory" Dimensions="51">
+<Element Index="[0]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[1]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[2]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[3]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[4]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[5]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[6]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[7]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[8]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[9]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[10]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[11]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[12]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[13]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[14]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[15]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[16]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[17]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[18]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[19]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[20]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[21]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[22]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[23]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[24]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[25]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[26]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[27]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[28]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[29]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[30]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[31]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[32]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[33]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[34]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[35]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[36]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[37]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[38]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[39]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[40]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[41]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[42]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[43]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[44]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[45]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[46]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[47]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[48]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[49]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+<Element Index="[50]">
+<Structure DataType="AlarmHistory">
+<StructureMember Name="Message" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="AlarmCount" DataType="DINT" Radix="Decimal" Value="0"/>
+<ArrayMember Name="ShiftAlarmCount" DataType="DINT" Dimensions="3" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Element>
+</Array>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="Trigger" DataType="BOOL" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="ShiftHistorizeComplete" DataType="BOOL" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="HistorizeComplete" DataType="BOOL" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="ReadyToRank" DataType="BOOL" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="TempMessage" DataType="STRING" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00']]]>
+</DefaultData>
+<DefaultData Format="String" Length="0">
+<![CDATA['']]>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="TempAlarmCount" DataType="DINT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="TempShiftMessage" DataType="STRING" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00']]]>
+</DefaultData>
+<DefaultData Format="String" Length="0">
+<![CDATA['']]>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="TempShiftAlarmCount" DataType="DINT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="ShiftRankComplete" DataType="BOOL" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="RankComplete" DataType="BOOL" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="ReOrderCheck" DataType="BOOL" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="x" DataType="DINT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="y" DataType="DINT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="z" DataType="DINT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="w" DataType="DINT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="i" DataType="DINT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="k" DataType="DINT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="j" DataType="DINT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="ShiftPointer" DataType="DINT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="EmptyString" DataType="STRING" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00']]]>
+</DefaultData>
+<DefaultData Format="String" Length="0">
+<![CDATA['']]>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="ONSR" DataType="FBD_ONESHOT" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[[1,0,5.60519386e-045]]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="FBD_ONESHOT">
+<DataValueMember Name="EnableIn" DataType="BOOL" Value="1"/>
+<DataValueMember Name="InputBit" DataType="BOOL" Value="0"/>
+<DataValueMember Name="EnableOut" DataType="BOOL" Value="0"/>
+<DataValueMember Name="OutputBit" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="ValidShift" DataType="BOOL" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+</LocalTags>
+<Routines>
+<Routine Name="Logic" Type="ST">
+<STContent>
+<Line Number="0">
+<![CDATA[if (CurrentShift > 0) then]]>
+</Line>
+<Line Number="1">
+<![CDATA[	ValidShift := 1;]]>
+</Line>
+<Line Number="2">
+<![CDATA[	ShiftPointer := CurrentShift - 1;]]>
+</Line>
+<Line Number="3">
+<![CDATA[else]]>
+</Line>
+<Line Number="4">
+<![CDATA[	ValidShift :=0;]]>
+</Line>
+<Line Number="5">
+<![CDATA[end_if;]]>
+</Line>
+<Line Number="6">
+<![CDATA[]]>
+</Line>
+<Line Number="7">
+<![CDATA[ONSR.InputBit := AlarmStopTrigger;]]>
+</Line>
+<Line Number="8">
+<![CDATA[OSRI(ONSR);]]>
+</Line>
+<Line Number="9">
+<![CDATA[if ONSR.OutputBit then]]>
+</Line>
+<Line Number="10">
+<![CDATA[	Trigger := 1;]]>
+</Line>
+<Line Number="11">
+<![CDATA[end_if;]]>
+</Line>
+<Line Number="12">
+<![CDATA[COP(AlarmData.Message,Message,82);]]>
+</Line>
+<Line Number="13">
+<![CDATA[]]>
+</Line>
+<Line Number="14">
+<![CDATA[//Clear History and Top Alarms Logic]]>
+</Line>
+<Line Number="15">
+<![CDATA[if Reset then]]>
+</Line>
+<Line Number="16">
+<![CDATA[	for z := 0 to 50 do]]>
+</Line>
+<Line Number="17">
+<![CDATA[		COP(EmptyString,AlarmHistory[z].Message,1);]]>
+</Line>
+<Line Number="18">
+<![CDATA[		AlarmHistory[z].AlarmCount := 0;]]>
+</Line>
+<Line Number="19">
+<![CDATA[		for i := 0 to 2 do]]>
+</Line>
+<Line Number="20">
+<![CDATA[			AlarmHistory[z].ShiftAlarmCount[i] := 0;]]>
+</Line>
+<Line Number="21">
+<![CDATA[		end_for;]]>
+</Line>
+<Line Number="22">
+<![CDATA[		i := 0;]]>
+</Line>
+<Line Number="23">
+<![CDATA[	end_for;]]>
+</Line>
+<Line Number="24">
+<![CDATA[	for y := 0 to 4 do]]>
+</Line>
+<Line Number="25">
+<![CDATA[		COP(EmptyString,TopAlarms[y].Message,1);]]>
+</Line>
+<Line Number="26">
+<![CDATA[		TopAlarms[y].AlarmCount := 0;]]>
+</Line>
+<Line Number="27">
+<![CDATA[		for k := 0 to 2 do]]>
+</Line>
+<Line Number="28">
+<![CDATA[			COP(EmptyString,TopShiftAlarms[k,y].Message,1);]]>
+</Line>
+<Line Number="29">
+<![CDATA[			TopShiftAlarms[k,y].AlarmCount := 0;]]>
+</Line>
+<Line Number="30">
+<![CDATA[		end_for;]]>
+</Line>
+<Line Number="31">
+<![CDATA[		k := 0;]]>
+</Line>
+<Line Number="32">
+<![CDATA[	end_for;]]>
+</Line>
+<Line Number="33">
+<![CDATA[	z := 0;]]>
+</Line>
+<Line Number="34">
+<![CDATA[	y := 0;]]>
+</Line>
+<Line Number="35">
+<![CDATA[end_if;]]>
+</Line>
+<Line Number="36">
+<![CDATA[]]>
+</Line>
+<Line Number="37">
+<![CDATA[//Add New Alarm to History OR Increase Count of Existing Alarm in History (Increase Shift Alarm Count as well)]]>
+</Line>
+<Line Number="38">
+<![CDATA[if Trigger then]]>
+</Line>
+<Line Number="39">
+<![CDATA[	for z := 0 to 50 do]]>
+</Line>
+<Line Number="40">
+<![CDATA[		if not HistorizeComplete then]]>
+</Line>
+<Line Number="41">
+<![CDATA[			if AlarmHistory[z].Message = Message then]]>
+</Line>
+<Line Number="42">
+<![CDATA[				AlarmHistory[z].AlarmCount := AlarmHistory[z].AlarmCount + 1;]]>
+</Line>
+<Line Number="43">
+<![CDATA[				if ValidShift then]]>
+</Line>
+<Line Number="44">
+<![CDATA[					AlarmHistory[z].ShiftAlarmCount[ShiftPointer] := AlarmHistory[z].ShiftAlarmCount[ShiftPointer] + 1;]]>
+</Line>
+<Line Number="45">
+<![CDATA[				end_if;]]>
+</Line>
+<Line Number="46">
+<![CDATA[				HistorizeComplete := 1;]]>
+</Line>
+<Line Number="47">
+<![CDATA[			else if (AlarmHistory[z].Message = EmptyString) then]]>
+</Line>
+<Line Number="48">
+<![CDATA[					COP(Message,AlarmHistory[z].Message,1);]]>
+</Line>
+<Line Number="49">
+<![CDATA[					AlarmHistory[z].AlarmCount := 1;]]>
+</Line>
+<Line Number="50">
+<![CDATA[					if ValidShift then]]>
+</Line>
+<Line Number="51">
+<![CDATA[						AlarmHistory[z].ShiftAlarmCount[ShiftPointer] := 1;]]>
+</Line>
+<Line Number="52">
+<![CDATA[					end_if;]]>
+</Line>
+<Line Number="53">
+<![CDATA[					HistorizeComplete := 1;]]>
+</Line>
+<Line Number="54">
+<![CDATA[				end_if;]]>
+</Line>
+<Line Number="55">
+<![CDATA[			end_if;]]>
+</Line>
+<Line Number="56">
+<![CDATA[		end_if;]]>
+</Line>
+<Line Number="57">
+<![CDATA[	end_for;]]>
+</Line>
+<Line Number="58">
+<![CDATA[	HistorizeComplete := 0;]]>
+</Line>
+<Line Number="59">
+<![CDATA[	z := 0;]]>
+</Line>
+<Line Number="60">
+<![CDATA[	Trigger := 0;]]>
+</Line>
+<Line Number="61">
+<![CDATA[	ReadyToRank := 1;]]>
+</Line>
+<Line Number="62">
+<![CDATA[end_if;]]>
+</Line>
+<Line Number="63">
+<![CDATA[]]>
+</Line>
+<Line Number="64">
+<![CDATA[//Update Existing Ranked Alarms]]>
+</Line>
+<Line Number="65">
+<![CDATA[if ReadyToRank then]]>
+</Line>
+<Line Number="66">
+<![CDATA[	for w := 0 to 50 do]]>
+</Line>
+<Line Number="67">
+<![CDATA[		for j := 0 to 4 do]]>
+</Line>
+<Line Number="68">
+<![CDATA[			if AlarmHistory[w].Message = TopAlarms[j].Message then]]>
+</Line>
+<Line Number="69">
+<![CDATA[				TopAlarms[j].AlarmCount := AlarmHistory[w].AlarmCount;]]>
+</Line>
+<Line Number="70">
+<![CDATA[				RankComplete := 1;]]>
+</Line>
+<Line Number="71">
+<![CDATA[			end_if;]]>
+</Line>
+<Line Number="72">
+<![CDATA[			if ValidShift then]]>
+</Line>
+<Line Number="73">
+<![CDATA[				if AlarmHistory[w].Message = TopShiftAlarms[ShiftPointer,j].Message then]]>
+</Line>
+<Line Number="74">
+<![CDATA[				TopShiftAlarms[ShiftPointer,j].AlarmCount := AlarmHistory[w].ShiftAlarmCount[ShiftPointer];]]>
+</Line>
+<Line Number="75">
+<![CDATA[				ShiftRankComplete := 1;]]>
+</Line>
+<Line Number="76">
+<![CDATA[				end_if;]]>
+</Line>
+<Line Number="77">
+<![CDATA[			end_if;]]>
+</Line>
+<Line Number="78">
+<![CDATA[		end_for;]]>
+</Line>
+<Line Number="79">
+<![CDATA[		j := 0;]]>
+</Line>
+<Line Number="80">
+<![CDATA[		]]>
+</Line>
+<Line Number="81">
+<![CDATA[//If message is not in the top alarms, compare to see if it is greater than the last alarm on the list, if so, replace the last alarm with the current one]]>
+</Line>
+<Line Number="82">
+<![CDATA[		if ((AlarmHistory[w].AlarmCount > TopAlarms[4].AlarmCount) and NOT RankComplete) then]]>
+</Line>
+<Line Number="83">
+<![CDATA[			COP(AlarmHistory[w].Message,TopAlarms[4].Message,1);]]>
+</Line>
+<Line Number="84">
+<![CDATA[			TopAlarms[4].AlarmCount := AlarmHistory[w].AlarmCount;]]>
+</Line>
+<Line Number="85">
+<![CDATA[			RankComplete := 1;]]>
+</Line>
+<Line Number="86">
+<![CDATA[		end_if;]]>
+</Line>
+<Line Number="87">
+<![CDATA[		if ValidShift then]]>
+</Line>
+<Line Number="88">
+<![CDATA[			if ((AlarmHistory[w].ShiftAlarmCount[ShiftPointer] > TopShiftAlarms[ShiftPointer,4].AlarmCount) and NOT ShiftRankComplete) then]]>
+</Line>
+<Line Number="89">
+<![CDATA[				COP(AlarmHistory[w].Message,TopShiftAlarms[ShiftPointer,4].Message,1);]]>
+</Line>
+<Line Number="90">
+<![CDATA[				TopShiftAlarms[ShiftPointer,4].AlarmCount := AlarmHistory[w].ShiftAlarmCount[ShiftPointer];]]>
+</Line>
+<Line Number="91">
+<![CDATA[				ShiftRankComplete := 1;]]>
+</Line>
+<Line Number="92">
+<![CDATA[			end_if;]]>
+</Line>
+<Line Number="93">
+<![CDATA[		end_if;]]>
+</Line>
+<Line Number="94">
+<![CDATA[		RankComplete := 0;]]>
+</Line>
+<Line Number="95">
+<![CDATA[		ShiftRankComplete := 0;]]>
+</Line>
+<Line Number="96">
+<![CDATA[	end_for;]]>
+</Line>
+<Line Number="97">
+<![CDATA[	w := 0;]]>
+</Line>
+<Line Number="98">
+<![CDATA[	ReadyToRank := 0;]]>
+</Line>
+<Line Number="99">
+<![CDATA[	ReOrderCheck := 1;]]>
+</Line>
+<Line Number="100">
+<![CDATA[end_if;]]>
+</Line>
+<Line Number="101">
+<![CDATA[]]>
+</Line>
+<Line Number="102">
+<![CDATA[//Check / Fix Order of Top 5 Alarms and Top 5 Alarms of the Current Shift]]>
+</Line>
+<Line Number="103">
+<![CDATA[if ReOrderCheck then]]>
+</Line>
+<Line Number="104">
+<![CDATA[	for x := 0 to 3 do]]>
+</Line>
+<Line Number="105">
+<![CDATA[		if TopAlarms[x].AlarmCount < TopAlarms[x+1].AlarmCount then]]>
+</Line>
+<Line Number="106">
+<![CDATA[			TempAlarmCount := TopAlarms[x].AlarmCount;]]>
+</Line>
+<Line Number="107">
+<![CDATA[			COP(TopAlarms[x].Message,TempMessage,1);]]>
+</Line>
+<Line Number="108">
+<![CDATA[			TopAlarms[x].AlarmCount := TopAlarms[x+1].AlarmCount;]]>
+</Line>
+<Line Number="109">
+<![CDATA[			COP(TopAlarms[x+1].Message,TopAlarms[x].Message,1);]]>
+</Line>
+<Line Number="110">
+<![CDATA[			TopAlarms[x+1].AlarmCount := TempAlarmCount;]]>
+</Line>
+<Line Number="111">
+<![CDATA[			COP(TempMessage,TopAlarms[x+1].Message,1);]]>
+</Line>
+<Line Number="112">
+<![CDATA[		end_if;]]>
+</Line>
+<Line Number="113">
+<![CDATA[		if ValidShift then]]>
+</Line>
+<Line Number="114">
+<![CDATA[			if TopShiftAlarms[ShiftPointer,x].AlarmCount < TopShiftAlarms[ShiftPointer,x+1].AlarmCount then]]>
+</Line>
+<Line Number="115">
+<![CDATA[				TempShiftAlarmCount := TopShiftAlarms[ShiftPointer,x].AlarmCount;]]>
+</Line>
+<Line Number="116">
+<![CDATA[				COP(TopShiftAlarms[ShiftPointer,x].Message,TempShiftMessage,1);]]>
+</Line>
+<Line Number="117">
+<![CDATA[				TopShiftAlarms[ShiftPointer,x].AlarmCount := TopShiftAlarms[ShiftPointer,x+1].AlarmCount;]]>
+</Line>
+<Line Number="118">
+<![CDATA[				COP(TopShiftAlarms[ShiftPointer,x+1].Message,TopShiftAlarms[ShiftPointer,x].Message,1);]]>
+</Line>
+<Line Number="119">
+<![CDATA[				TopShiftAlarms[ShiftPointer,x+1].AlarmCount := TempShiftAlarmCount;]]>
+</Line>
+<Line Number="120">
+<![CDATA[				COP(TempShiftMessage,TopShiftAlarms[ShiftPointer,x+1].Message,1);]]>
+</Line>
+<Line Number="121">
+<![CDATA[			end_if;]]>
+</Line>
+<Line Number="122">
+<![CDATA[		end_if;]]>
+</Line>
+<Line Number="123">
+<![CDATA[	end_for;]]>
+</Line>
+<Line Number="124">
+<![CDATA[	x := 0;]]>
+</Line>
+<Line Number="125">
+<![CDATA[end_if;]]>
+</Line>
+<Line Number="126">
+<![CDATA[]]>
+</Line>
+<Line Number="127">
+<![CDATA[//Retry IF order is still NOT correct]]>
+</Line>
+<Line Number="128">
+<![CDATA[if ((TopAlarms[0].AlarmCount >= TopAlarms[1].AlarmCount) AND (TopAlarms[1].AlarmCount >= TopAlarms[2].AlarmCount) AND (TopAlarms[2].AlarmCount >= TopAlarms[3].AlarmCount) AND (TopAlarms[3].AlarmCount >= TopAlarms[4].AlarmCount))  then]]>
+</Line>
+<Line Number="129">
+<![CDATA[	if ValidShift AND ((TopShiftAlarms[ShiftPointer,0].AlarmCount >= TopShiftAlarms[ShiftPointer,1].AlarmCount) AND (TopShiftAlarms[ShiftPointer,1].AlarmCount >= TopShiftAlarms[ShiftPointer,2].AlarmCount) AND (TopShiftAlarms[ShiftPointer,2].AlarmCount >= TopShiftAlarms[ShiftPointer,3].AlarmCount) AND (TopShiftAlarms[ShiftPointer,3].AlarmCount >= TopShiftAlarms[ShiftPointer,4].AlarmCount)) then]]>
+</Line>
+<Line Number="130">
+<![CDATA[		ReOrderCheck := 0;]]>
+</Line>
+<Line Number="131">
+<![CDATA[	end_if;]]>
+</Line>
+<Line Number="132">
+<![CDATA[	if NOT ValidShift then]]>
+</Line>
+<Line Number="133">
+<![CDATA[		ReOrderCheck := 0;]]>
+</Line>
+<Line Number="134">
+<![CDATA[	end_if;]]>
+</Line>
+<Line Number="135">
+<![CDATA[end_if;]]>
+</Line>
+</STContent>
+</Routine>
+</Routines>
+<Dependencies>
+<Dependency Type="DataType" Name="AlarmData"/>
+<Dependency Type="DataType" Name="AlarmHistory"/>
+<Dependency Type="DataType" Name="TopAlarmsDT"/>
+</Dependencies>
+</AddOnInstructionDefinition>
+</AddOnInstructionDefinitions>
+</Controller>
+</RSLogix5000Content>

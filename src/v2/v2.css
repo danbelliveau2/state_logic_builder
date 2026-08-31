@@ -21,6 +21,22 @@ body {
   height: calc(100vh / var(--app-scale, 1));
 }
 
+/* ── React Flow canvases are UN-ZOOM ISLANDS ─────────────────────────────
+   React Flow does its coordinate math in CSS px but measures handles with
+   getBoundingClientRect(), which under a page `zoom` returns SCALED values —
+   so at 90% every handle anchor computes 0.9× its true node-relative offset
+   and every edge endpoint lands left of / above the rendered handle by a
+   uniform (1 − scale) × offset. On a 240px node that's a 12px miss at every
+   single connection ("QA: 30 violations", red dot beside every handle dot).
+   The canvas has its OWN zoom control (RF viewport), so app-scaling the
+   diagram pixels adds nothing — divide the zoom back out over the canvas
+   subtree so RF always operates at exactly 1:1, at any app scale. The
+   surrounding UI (panels, bars, popups) keeps scaling normally. */
+.canvas-wrapper,
+.v2-cf__canvas {
+  zoom: calc(1 / var(--app-scale, 1));
+}
+
 .v2-app {
   display: flex;
   flex-direction: column;
@@ -781,6 +797,26 @@ body {
   margin-left: 6px;
   flex-shrink: 0;
 }
+/* "Station Specs" — the other page of the two-page flow; sits right beside
+ * the view switcher under the station header. */
+.v2-station-specs-btn {
+  margin-left: 6px;
+  flex-shrink: 0;
+  padding: 4px 12px;
+  background: #fff;
+  border: 1px solid var(--color-primary, #0072B5);
+  color: var(--color-primary, #0072B5);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .12s, color .12s;
+}
+.v2-station-specs-btn:hover {
+  background: var(--color-primary, #0072B5);
+  color: #fff;
+}
 .v2-controls-banner {
   position: absolute;
   top: 58px;
@@ -1538,3 +1574,559 @@ textarea.v2-cc__blank-input {
   border-radius: 4px;
 }
 .v2-docs__delete:hover { color: #b83c3c; background: rgba(184, 60, 60, 0.08); }
+
+/* ─── Station banner — the persistent row above BOTH station views ─────────
+   (Dan: the Spec Sheet|Diagram toggle never moves; the view flips beneath.)
+   Controls never shrink or truncate; the row wraps at narrow widths; only
+   the station NAME may ellipsize. */
+.v2-station-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding: 5px 14px;
+  background: #fff;
+  border-bottom: 1px solid var(--color-border, #e2e8f0);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 40;
+}
+.v2-station-banner__num {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  background: #1574C4;
+  border-radius: 999px;
+  padding: 2px 9px;
+  letter-spacing: 0.03em;
+}
+.v2-station-banner__name {
+  min-width: 0;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #1e293b;
+}
+.v2-station-banner__spacer { flex: 1; min-width: 0; }
+.v2-station-banner__linked {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #16a34a;
+  background: rgba(22,163,74,0.12);
+  padding: 3px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+.v2-body-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Pipeline button — THE one code action, in the station banner ───────── */
+.v2-pipeline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+.v2-pipeline__hint {
+  font-size: 10.5px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+.v2-pipeline__gap {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: #a07c14;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+.v2-pipeline__btn {
+  flex-shrink: 0;
+  background: #1574C4;
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 5px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s, opacity 0.2s;
+}
+.v2-pipeline__btn:hover { background: #1265ab; }
+.v2-pipeline__btn--working {
+  background: #4a6584;
+}
+
+/* ─── Jarvis chip — TOP BAR right side (Dan, Aug 24) ────────────────────────
+   Compact SQUARE chip (app-wide square rule): green dot + "Jarvis" + count.
+   In-flow in the header flex — can never overlap content at any width. */
+.v2-jarvis-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  background: #061d39;
+  color: #dbe6f2;
+  border: 1px solid #14304f;
+  border-radius: 4px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s;
+}
+.v2-jarvis-chip:hover { background: #0b2a50; }
+.v2-jarvis-chip__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #befa4f;
+  flex-shrink: 0;
+}
+.v2-jarvis-chip__badge {
+  background: #1574C4;
+  color: #fff;
+  border-radius: 3px;
+  min-width: 17px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 0 5px;
+}
+
+/* ─── Pipeline button in the TOP BAR + step indicator ─────────────────────── */
+.v2-pipeline--topbar { gap: 12px; }
+.v2-pipeline__stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  min-width: 0;
+}
+.v2-pipeline__hint--topbar { color: #9db2c8; max-width: 340px; }
+@media (max-width: 1250px) { .v2-pipeline__hint--topbar { display: none; } }
+.v2-stepper { display: flex; align-items: center; gap: 3px; white-space: nowrap; }
+.v2-stepper__step { display: inline-flex; align-items: center; gap: 3px; }
+.v2-stepper__arrow { color: #4a6584; font-size: 9px; margin: 0 1px; }
+.v2-stepper__dot { width: 7px; height: 7px; border-radius: 50%; background: #2c4664; flex-shrink: 0; }
+.v2-stepper__dot--done { background: #5a9a48; }
+.v2-stepper__dot--current { background: #befa4f; box-shadow: 0 0 5px rgba(190,250,79,0.7); }
+.v2-stepper__dot--working { animation: sdc-step-pulse 1.4s ease-in-out infinite; }
+.v2-stepper__label { font-size: 9px; color: #7d93ab; font-weight: 600; }
+.v2-stepper__label--current { color: #fff; font-weight: 700; }
+@keyframes sdc-step-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* ─── The five-page pill — Dan's shell (centered, high contrast) ──────────── */
+.v2-pagenav {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: stretch;
+  background: #fff;
+  border: 1px solid #9db2c8;
+  /* Squared SDC chip style — the square rule applies to every toggle
+     app-wide (Dan, Aug 24). */
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.10);
+  z-index: 45;
+}
+.v2-pagenav__btn {
+  border: none;
+  background: transparent;
+  padding: 7px 16px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #1e293b;            /* high contrast — Dan: "really hard to see" */
+  cursor: pointer;
+  white-space: nowrap;
+  border-right: 1px solid #e2e8f0;
+  transition: background 0.15s, color 0.15s;
+}
+.v2-pagenav__btn:last-child { border-right: none; }
+.v2-pagenav__btn:hover { background: #eef4fb; }
+.v2-pagenav__btn--active {
+  background: #1574C4;
+  color: #fff;
+}
+/* ATTENTION state — Jarvis is blocked on answers; they live on the sheet. */
+.v2-pagenav__btn--attn {
+  background: #dc2626;
+  color: #fff;
+  animation: v2AttnPulse 2.4s ease-in-out infinite;
+}
+.v2-pagenav__btn--attn.v2-pagenav__btn--active { background: #b91c1c; animation: none; }
+.v2-pagenav__attn-badge {
+  display: inline-block;
+  margin-left: 6px;
+  background: #fff;
+  color: #b91c1c;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 0 6px;
+  vertical-align: 1px;
+}
+@keyframes v2AttnPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45); }
+  50% { box-shadow: 0 0 0 5px rgba(220, 38, 38, 0); }
+}
+@media (max-width: 1450px) {
+  .v2-pagenav__btn { padding: 7px 10px; font-size: 11.5px; }
+}
+
+/* ─── Page covers (CE Review / Code Generation) over the mounted canvas ───── */
+.v2-page-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: var(--color-bg);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.v2-page-cover > * { flex: 1; min-height: 0; }
+
+/* ─── Mechanical Diagram view — no state numbers (they're a controls concept;
+   "the mechanical view is just a sequence"), part tracking stays visible and
+   reads a touch larger. ─── */
+.v2-center--mech .state-node__step-num,
+.v2-center--mech .decision-node__step-num { display: none; }
+.v2-center--mech .pt-badge { transform: scale(1.18); transform-origin: top right; }
+
+/* ─── Controls Diagram — the compiled code's flowchart (ControlsFlowView) ───
+   Derived read-only view: main sequence center column, fault/init/recovery
+   column on the right, edges labeled with the plain-form R02 conditions. */
+.v2-cf {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+}
+.v2-cf__topbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 10px 14px 8px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+.v2-cf__station { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; color: var(--color-text); }
+.v2-cf__station b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v2-cf__station-num {
+  flex-shrink: 0;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 3px 6px;
+}
+.v2-cf__mode { font-size: 11px; color: var(--color-text-light); white-space: nowrap; }
+.v2-cf__meta { display: inline-flex; gap: 14px; font-size: 11px; color: var(--color-text-light); white-space: nowrap; }
+.v2-cf__meta b { color: var(--color-text); }
+.v2-cf__legend { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.v2-cf__leg {
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 10px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.v2-cf__leg--main { background: #eaf2f8; border-color: #b9d3e6; color: #2c5d84; }
+.v2-cf__leg--confirm { background: #f1f5f9; border-color: #cbd5e1; color: #475569; }
+.v2-cf__leg--recovery { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
+.v2-cf__leg--wait { background: #e0edfa; border-color: #93c5fd; color: #1e50a2; }
+.v2-cf__empty { max-width: 620px; margin: 48px auto 0; padding: 0 20px; }
+.v2-cf__canvas { flex: 1; min-height: 0; position: relative; }
+
+/* Node internals shared by the fallback cards + real-node wrappers.
+   (The nodes themselves are the REAL StateNode/DecisionNode components, or
+   fallback cards riding on the mechanical .state-node classes — see the
+   .v2-cfr / .v2-cfs rules near the overlay section.) */
+.v2-cf__action-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: #334155;
+}
+.v2-cf__chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.v2-cf__chip {
+  font-size: 9.5px;
+  font-weight: 700;
+  border-radius: 9px;
+  padding: 1px 7px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.v2-cf__chip--confirm { background: #f1f5f9; border-color: #cbd5e1; color: #475569; }
+.v2-cf__chip--template { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
+.v2-cf__chip--hs-in { background: #e0edfa; border-color: #93c5fd; color: #1e50a2; }
+.v2-cf__chip--hs-out { background: #ecfdf5; border-color: #6ee7b7; color: #065f46; }
+/* Part-tracking / signal latches (OTL ↑ green, OTU ↓ red) */
+.v2-cf__chip--pt-on { background: #e6f4ea; border-color: #86efac; color: #166534; }
+.v2-cf__chip--pt-off { background: #fdecec; border-color: #fca5a5; color: #991b1b; }
+.v2-cf__timeout {
+  margin: 0 8px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px dashed #fcd34d;
+  border-radius: 6px;
+  padding: 3px 7px;
+  line-height: 1.3;
+}
+/* Handles exist for edge anchoring only — invisible, not interactive */
+.v2-cf__handle {
+  width: 6px !important;
+  height: 6px !important;
+  background: transparent !important;
+  border: none !important;
+  pointer-events: none !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+}
+
+/* Edge labels — wrapping HTML pills with the full rung text as tooltip */
+.v2-cf__elabel {
+  position: absolute;
+  pointer-events: all;
+  max-width: 250px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #334155;
+  line-height: 1.3;
+  text-align: center;
+  z-index: 5;
+}
+.v2-cf__elabel--wait { border-color: #93c5fd; color: #1e50a2; }
+.v2-cf__elabel--recovery { border-color: #fcd34d; color: #92400e; background: rgba(255, 251, 235, 0.95); }
+.v2-cf__elabel--timeout { border-color: #fcd34d; color: #92400e; }
+.v2-cf__elabel--flag { border-color: #f59e0b; box-shadow: 0 0 0 1px #f59e0b33; }
+
+/* ─── Diagram page chrome — ONE slim IN-FLOW sub-row below the banner (Dan,
+   Aug 22: "the diagram page is the diagram"; in-flow = zero overlap at any
+   width, by construction). ─── */
+.v2-diagbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  height: 40px;
+  padding: 0 14px;
+  background: var(--color-surface, #fff);
+  border-bottom: 1px solid var(--color-border);
+  overflow: hidden;
+}
+.v2-diagbar__spacer { flex: 1; min-width: 8px; }
+.v2-diagbar__meta {
+  display: inline-flex;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--color-text-light);
+  white-space: nowrap;
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.v2-diagbar__legend { display: inline-flex; gap: 6px; flex-shrink: 0; }
+.v2-diagbar__legend-tip {
+  display: none;
+  font-size: 13px;
+  color: var(--color-text-light);
+  cursor: help;
+  flex-shrink: 0;
+}
+/* Legend chips only when they fit cleanly — tooltip ⓘ otherwise. */
+@media (max-width: 1400px) {
+  .v2-diagbar__legend { display: none; }
+  .v2-diagbar__legend-tip { display: inline; }
+}
+@media (max-width: 1240px) {
+  .v2-diagbar__meta { display: none; }
+}
+.v2-diagbar__action {
+  flex-shrink: 0;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.v2-diagbar__action:disabled { opacity: 0.55; cursor: default; }
+.v2-diagbar__action--approve {
+  background: var(--color-success, #5a9a48);
+  color: #fff;
+  border: none;
+}
+.v2-diagbar__action--approve:hover:not(:disabled) { filter: brightness(1.08); }
+.v2-diagbar__action--compile {
+  background: #fff;
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+}
+/* ✨ Generate — the diagram page's primary action (Dan, Aug 23: the Code
+   Generation page is gone; review → approve → generate right here). */
+.v2-diagbar__action--generate {
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  margin-left: 8px;
+  /* The page's PRIMARY action (Dan, Aug 24: make it obvious) — bigger,
+     heavier, with a soft ring; still lives in the sub-bar. */
+  font-size: 13px;
+  font-weight: 800;
+  padding: 7px 22px;
+  box-shadow: 0 0 0 3px rgba(0, 114, 181, 0.14);
+}
+.v2-diagbar__action--generate:hover:not(:disabled) {
+  filter: brightness(1.08);
+  box-shadow: 0 0 0 4px rgba(0, 114, 181, 0.22);
+}
+.v2-diagbar__approve-wrap { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.v2-diagbar__approved {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #166534;
+  white-space: nowrap;
+}
+.v2-diagbar__revoke {
+  border: none;
+  background: transparent;
+  color: #166534;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0 1px;
+  line-height: 1;
+  opacity: 0.7;
+}
+.v2-diagbar__revoke:hover { opacity: 1; }
+.v2-diagbar__err {
+  color: var(--color-danger);
+  font-weight: 800;
+  cursor: help;
+}
+
+/* Squared SDC chip style (Dan, Aug 24) — matches the app-stack chips, not
+   rounded pills. */
+.v2-diagtoggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 2px;
+  background: var(--color-sidebar, #f1f5f9);
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  padding: 2px;
+}
+.v2-diagtoggle__btn {
+  border: none;
+  background: transparent;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  padding: 5px 16px;
+  cursor: pointer;
+}
+.v2-diagtoggle__btn:hover { color: var(--color-text); }
+.v2-diagtoggle__btn--active {
+  background: var(--color-primary);
+  color: #fff;
+}
+.v2-diagtoggle__btn--active:hover { color: #fff; }
+
+/* ─── Controls-detail overlay — covers the CANVAS AREA ONLY (inside
+   .v2-center), so the stations panel / pill dock / page chrome stay put:
+   same page, more nodes. Background matches the canvas surface. ─── */
+.v2-center-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* EXACTLY the mechanical canvas's background (.canvas-wrapper) — the two
+     diagram views must read as the same page. */
+  background: #edf1f5;
+}
+.v2-center-overlay > * { flex: 1; min-height: 0; }
+
+/* Read-only: the controls layer's nodes never open pickers/menus. */
+.v2-center-overlay .react-flow__node { pointer-events: none !important; }
+/* The real components hide their step number in mech view via
+   .v2-center--mech — the overlay always shows it (it IS the controls layer). */
+.v2-center-overlay .state-node__step-num,
+.v2-center-overlay .decision-node__step-num { display: flex !important; }
+
+/* REAL drawn node wrapper (CFRealNode) — the component renders itself; the
+   wrapper only anchors edges + carries the compiled chips below the card. */
+.v2-cfr { position: relative; }
+.v2-cfr__inner { pointer-events: none; }
+/* Recovery-lane tint ring so the lane still reads on real components. */
+.v2-cfr--recovery .state-node,
+.v2-cfr--recovery .decision-node { box-shadow: 0 0 0 3px #fde68a; }
+.v2-cfr .v2-cf__chips { padding: 4px 2px 0; }
+.v2-cfr .v2-cf__timeout { margin: 4px 0 0; }
+
+/* Fallback card for synthesized/template states — rides on the mechanical
+   .state-node classes; only lane accents are added here. */
+.v2-cfs { cursor: default; }
+.v2-cfs .state-node__header { border-bottom: none; padding-bottom: 6px; }
+.v2-cfs .state-node__header + .state-node__body { padding-top: 0; }
+.v2-cfs--recovery { border-color: #d97706 !important; background: #fffbeb !important; }
+.v2-cfs--recovery .action-row { background: #fef8ec; }
+.v2-cfs--confirm { border-style: dashed !important; border-color: #94a3b8 !important; background: #f8fafc !important; }
+.v2-cfs--confirm .action-row { background: #f1f5f9; }
+.v2-cfs .v2-cf__chips { padding: 0 8px 8px; }
+.v2-cfs .v2-cf__timeout { margin: 0 8px 8px; }

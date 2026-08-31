@@ -1,4 +1,9 @@
 <!DOCTYPE html>
+<!--
+  DEFAULT entry — the v2 shell (src/v2/). v2 is the live app.
+  The frozen classic v1 shell stays reachable at /classic.html.
+  /v2.html is kept as an alias so existing links/bookmarks keep working.
+-->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -11,6 +16,6 @@
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+    <script type="module" src="/src/v2/main.jsx"></script>
   </body>
 </html>

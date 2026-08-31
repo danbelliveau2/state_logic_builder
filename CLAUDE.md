@@ -77,10 +77,11 @@ Full file map + all schemas → [@docs/architecture.md](docs/architecture.md)
 - Program: `S{nn}_{PascalCaseName}` (e.g. `S02_StampCycle`)
 - R00_Main → R01_Inputs → R02_StateTransitions → R03_StateLogic → R04/R05 servo → R20_Alarms
 
-### Step Counter
-- DINT tag `Step` — base 1, increment +3 per state (1, 4, 7, 10...)
+### Step Counter (PLC Software Standardization Rev2 §19)
+- DINT tag `Step` — sequence starts at state 4, increment +3 per state (4, 7, 10...)
 - Vision Inspect nodes: 4 sub-states
-- Reserved: 0 (powerup), 1-3 (SDC reserved), 99 (lockout), 100–127 (init block), 127 (cycle-ready)
+- Fixed low states (never assigned to user nodes): 0 = Safety Stop, 1 = Manual, 2 = Auto Idle Not Ready, 3 = Auto Idle Ready
+- Reserved: 99 (lockout), 100–127 (init block). Doc says 124 = init complete; shipped V4.2 templates use 127 as fault/restart — doc-vs-template question is OPEN (see jarvis-knowledge/analysis/standards-doc-conflicts.md C2); interim behavior follows the templates.
 
 ### HMI Toggles (fixed bit map — never change)
 - `HMI_Toggle.0` → Lockout (forces Step=99)

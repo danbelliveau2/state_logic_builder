@@ -544,6 +544,39 @@ export const DEVICE_CATEGORIES = {
 };
 
 /**
+ * THE CLASSIC TAXONOMY as one shared model (Dan, 2026-08-25: "Other devices"
+ * lumping sensors, signals, and counters is wrong). Sheet grouping, diagrams,
+ * compile, and codegen key off this ONE function so they never disagree on
+ * what's a physical device vs a sensor vs an inter-SM signal vs a counter.
+ *
+ * Roles:
+ *   'servo'     — ServoAxis (linear or rotary/dial)
+ *   'pneumatic' — cylinders, grippers, rotary actuators, vacuum
+ *   'sensor'    — physical inputs (DigitalSensor / AnalogSensor — keep their
+ *                 debounce / sensor semantics)
+ *   'signal'    — inter-SM handshakes (p_*), SM outputs, flags — the classic
+ *                 project.signals / smOutputs concepts; each has a SOURCE SM
+ *   'counter'   — retry / fixture counters and other SetValue targets —
+ *                 values, not devices
+ *   'other'     — genuine devices with no finer group (Robot, Vision,
+ *                 Conveyor, Timer, Custom)
+ */
+export function classifyDeviceRole(dev) {
+  const t = String(dev?.type ?? '');
+  if (t === 'ServoAxis') return 'servo';
+  if (t.startsWith('Pneumatic')) return 'pneumatic';
+  if (t === 'DigitalSensor' || t === 'AnalogSensor') return 'sensor';
+  const name = String(dev?.displayName ?? dev?.name ?? '');
+  if (t === 'Parameter') {
+    if (/counter|counts?$/i.test(name)) return 'counter';
+    return 'signal';
+  }
+  // Classic tag-prefix reading for untyped rows: p_ = SM output signal.
+  if (!t && /^p_/i.test(name)) return 'signal';
+  return 'other';
+}
+
+/**
  * Get all available operations for a device type
  */
 export function getOperationsForType(typeKey) {
@@ -574,6 +607,7 @@ export function getSensorConfigKey(device) {
 
     case 'PneumaticGripper':
       if (arr.includes('2-sensor')) return 'both';
+      if (arr.includes('open only') || arr.includes('disengaged only')) return 'disengageOnly';
       if (arr.includes('1-sensor') || arr.includes('engaged only') || arr.includes('closed only')) return 'engageOnly';
       return 'none';
 

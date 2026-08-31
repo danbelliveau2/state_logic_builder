@@ -12,8 +12,8 @@
  *                                             _uniqueName
  *    325- 410   Store init / default state    defaultProject, networkConfig
  *    415- 447   Undo / redo                   _pushHistory, undo, redo
- *    450- 668   Project actions               loadProject (455),
- *                                             exportProjectJSON
+ *    450- 668   Project actions               loadProject (455)
+ *                                             (exportProjectJSON lives in lib/projectApi.js)
  *    670-1745   StateMachine actions          addStateMachine (670),
  *                                             duplicateStateMachine (907)
  *   1747-1953   Device actions                addDevice (1747),
@@ -4466,7 +4466,9 @@ export const useDiagramStore = create(
           return;
         }
 
-        const filename = projectApi.toFilename(name);
+        // Keep filename derivation consistent with the saved project.name —
+        // the server refuses saves whose payload name maps to a different file.
+        const filename = projectApi.toFilename(name || 'New Project');
 
         // Check if a project with this name already exists
         try {
@@ -5452,14 +5454,39 @@ export const useDiagramStore = create(
 // Writes project to the server file whenever project data changes (debounced 2s).
 // This prevents the "reload loses SMs" bug where initializeProjects loads stale
 // server data over fresh localStorage data.
+// PROJECT-IDENTITY SAFETY (Aug 2026 data-eater fix): the save must be ATOMIC
+// with the identity it belongs to. The old code captured `project` at
+// schedule time but read `currentFilename` at fire time (2s later) — if the
+// user switched/opened another project inside that window, the PREVIOUS
+// project's content was written under the NEW project's filename
+// (confirmed twice on 2026-08-25: 996-Magnet_Dial content clobbered
+// Magnet_Dial_v3.json). Fix: capture filename+project TOGETHER at schedule
+// time, then re-verify both at write time and refuse on any mismatch.
+// server.js handleSave enforces the same rule server-side (belt & braces).
 let _autoSaveTimer = null;
 useDiagramStore.subscribe(
   (state) => state.project,
   (project) => {
     if (_autoSaveTimer) clearTimeout(_autoSaveTimer);
+    // Capture the identity this content belongs to AT SCHEDULE TIME.
+    const filenameAtSchedule = useDiagramStore.getState().currentFilename;
     _autoSaveTimer = setTimeout(async () => {
-      const { serverAvailable, currentFilename } = useDiagramStore.getState();
+      const { serverAvailable, currentFilename, project: liveProject } = useDiagramStore.getState();
       if (!serverAvailable || !currentFilename) return;
+      // Identity guard 1: the active file changed since this save was
+      // scheduled — this content does NOT belong to currentFilename. Refuse.
+      if (filenameAtSchedule && filenameAtSchedule !== currentFilename) {
+        console.warn(`Auto-save skipped: project switched (${filenameAtSchedule} → ${currentFilename}) after save was scheduled`);
+        return;
+      }
+      // Identity guard 2: the store's project object was replaced (project
+      // load/switch/tab restore) — the captured content is stale. Refuse.
+      // (The replacement itself re-triggers this subscriber with the correct
+      // pairing, so nothing is lost by skipping here.)
+      if (liveProject !== project) {
+        console.warn('Auto-save skipped: project content replaced after save was scheduled');
+        return;
+      }
       try {
         await projectApi.saveProject(currentFilename, project);
       } catch (err) {

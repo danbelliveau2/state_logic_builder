@@ -1,0 +1,154 @@
+﻿<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--Get CPU Time And Date. Calculates Day number from Jan 1 for Julian Day. Get UTC in microseconds.-->
+<RSLogix5000Content SchemaRevision="1.0" SoftwareRevision="37.00" TargetName="CPU_TimeDate_wJulian" TargetType="AddOnInstructionDefinition" TargetClass="Standard" TargetRevision="2.2 " TargetLastEdited="2025-07-14T15:17:12.357Z" ContainsContext="true" ExportDate="Wed Jul 30 14:10:56 2025" ExportOptions="References NoRawData L5KData DecoratedData Context Dependencies ForceProtectedEncoding AllProjDocTrans">
+<Controller Use="Context" Name="SoftwareStandardization">
+<DataTypes Use="Context">
+<DataType Name="CPU_TimeDate" Family="NoFamily" Class="User">
+<Description>
+<![CDATA[CPU Time And Date Array]]>
+</Description>
+<Members>
+<Member Name="Year" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Month" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Day" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Hour" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Minutes" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Seconds" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Milliseconds" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Microseconds" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="UTCMicroseconds" DataType="LINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+</DataType>
+</DataTypes>
+<AddOnInstructionDefinitions Use="Context">
+<AddOnInstructionDefinition Use="Target" Name="CPU_TimeDate_wJulian" Class="Standard" Revision="2.2" Vendor="SDC" ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" CreatedDate="2014-05-01T14:06:05.139Z" CreatedBy="RA-INT\anabuto" EditedDate="2025-07-14T15:17:12.357Z"
+ EditedBy="STEVENDOUGLAS\jperry" SoftwareRevision="v37.00">
+<Description>
+<![CDATA[Get CPU Time And Date. Calculates Day number from Jan 1 for Julian Day. Get UTC in microseconds.]]>
+</Description>
+<RevisionNote>
+<![CDATA[2.0:  Added UTC functionality
+2.1:  -Fixed non-functioning milliseconds
+ -updated timedate UDT to add system clock microseconds
+1-5-21 Dan Garr
+v2.2 Cleaned up unused tags and optimized all data types for mem usage. 2021-05-11 D.E.S.]]>
+</RevisionNote>
+<Parameters>
+<Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Input - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Output - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="JulianDate" TagType="Base" DataType="INT" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="Read Only">
+<Description>
+<![CDATA[ordinal date]]>
+</Description>
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="INT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</Parameter>
+<Parameter Name="TimeDateTag" TagType="Base" DataType="CPU_TimeDate" Usage="InOut" Required="true" Visible="true" Constant="false"/>
+</Parameters>
+<LocalTags>
+<LocalTag Name="Month" DataType="SINT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="SINT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="LookUp" DataType="INT" Dimensions="13" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[[0,0,31,59,90,120,151,181,212,243,273,304,334]]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<Array DataType="INT" Dimensions="13" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="31"/>
+<Element Index="[3]" Value="59"/>
+<Element Index="[4]" Value="90"/>
+<Element Index="[5]" Value="120"/>
+<Element Index="[6]" Value="151"/>
+<Element Index="[7]" Value="181"/>
+<Element Index="[8]" Value="212"/>
+<Element Index="[9]" Value="243"/>
+<Element Index="[10]" Value="273"/>
+<Element Index="[11]" Value="304"/>
+<Element Index="[12]" Value="334"/>
+</Array>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="TimeDateArray" DataType="DINT" Dimensions="7" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[[0,0,0,0,0,0,0]]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<Array DataType="DINT" Dimensions="7" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+<Element Index="[3]" Value="0"/>
+<Element Index="[4]" Value="0"/>
+<Element Index="[5]" Value="0"/>
+<Element Index="[6]" Value="0"/>
+</Array>
+</DefaultData>
+</LocalTag>
+</LocalTags>
+<Routines>
+<Routine Name="Logic" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Text>
+<![CDATA[GSV(WallClockTime,,LocalDateTime,TimeDateArray[0]);]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Text>
+<![CDATA[CLR(JulianDate)MOVE(TimeDateArray[1],Month);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Text>
+<![CDATA[LIMIT(1,Month,12)ADD(LookUp[Month],TimeDateArray[2],JulianDate);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Text>
+<![CDATA[GT(TimeDateArray[1],2)CMP(((TimeDateArray[0] MOD 4) = 0))[CMP(((TimeDateArray[0] MOD 100) > 0)) ,CMP(((TimeDateArray[0] MOD 400) = 0)) ]ADD(JulianDate,1,JulianDate);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Text>
+<![CDATA[MOVE(TimeDateArray[0],TimeDateTag.Year)MOVE(TimeDateArray[1],TimeDateTag.Month)MOVE(TimeDateArray[2],TimeDateTag.Day)MOVE(TimeDateArray[3],TimeDateTag.Hour)MOVE(TimeDateArray[4],TimeDateTag.Minutes)MOVE(TimeDateArray[5],TimeDateTag.Seconds)DIV(TimeDateArray[6],1000,TimeDateTag.Milliseconds)MOVE(TimeDateArray[6],TimeDateTag.Microseconds);]]>
+</Text>
+</Rung>
+<Rung Number="5" Type="N">
+<Text>
+<![CDATA[GSV(TimeSynchronize,,CurrentTimeMicroseconds,TimeDateTag.UTCMicroseconds);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+<Dependencies>
+<Dependency Type="DataType" Name="CPU_TimeDate"/>
+</Dependencies>
+</AddOnInstructionDefinition>
+</AddOnInstructionDefinitions>
+<WallClockTime Use="Reference">
+</WallClockTime>
+<TimeSynchronize Use="Reference">
+</TimeSynchronize>
+</Controller>
+</RSLogix5000Content>

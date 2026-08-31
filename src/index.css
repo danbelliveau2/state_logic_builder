@@ -1881,13 +1881,59 @@ body {
 }
 
 /* ── Pill shape (cylinders) ─────────────────────────────────────────── */
+/* `border-radius: 50vh` was VIEWPORT-dependent (600px on a 1200px-tall screen),
+ * which the browser then clamped to min(w,h)/2 — so a tall multi-row node
+ * became a 115px-radius stadium and its top/bottom rows were guaranteed to
+ * paint outside the curve. `--pill-radius` is measured from the node's own
+ * height in StateNode and capped, so a short node still reads as a pill and a
+ * tall one degrades to a generous rounded rect instead of eating its corners. */
 .state-node--pill {
-  border-radius: 50vh;
+  border-radius: var(--pill-radius, 22px);
 }
 
+/* A `pill` node's outline is two semicircular caps of radius = height/2.
+ * A flat 12px inset does NOT clear that curve — the .action-row's own opaque
+ * rectangle (and its first/last glyphs) painted OUTSIDE the pill, which is
+ * exactly the `SetValue Empty_Fixture_Counter` / `SetOn Reject_` spill.
+ * `--pill-inset` is measured live from the node's height in StateNode
+ * (see usePillInset) and falls back to a safe 22px before first measure. */
 .state-node--pill .state-node__body {
-  padding-left: 12px;
-  padding-right: 12px;
+  padding-left: var(--pill-inset, 22px);
+  padding-right: var(--pill-inset, 22px);
+}
+
+/* ── Node chip containment ────────────────────────────────────────────────
+ * Signal latch chips, PT log pills, SM-output badges and retry badges render
+ * as SIBLINGS of .action-row, so they bypassed the only containment point the
+ * node had (`.action-row { overflow: hidden }`). An inline-flex chip sizes to
+ * max-content, and a single-token identifier like `Full_Revolution_No_Stack`
+ * has no break opportunity — so `flex-wrap: wrap` could not help and the chip
+ * painted straight through the 240px outline.
+ * Every chip strip and every chip now has a hard containment box, and the
+ * label ellipsizes INSIDE it. */
+.node-chip-strip {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.node-chip {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* Glyphs / prefix badges keep their intrinsic size; only the name shrinks. */
+.node-chip > :not(.node-chip__label) {
+  flex: 0 0 auto;
+}
+
+.node-chip__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ── SVG-shaped nodes ────────────────────────────────────────────────── */
@@ -1957,8 +2003,11 @@ body {
   padding: 8px 10px 6px;
 }
 
+/* Body padding on an SVG-polygon node must clear the polygon's corner inset
+ * (CORNER_PX = 14 in StateNode.buildShapePoints) on every side the shape cuts.
+ * pentagon tapers to a point below 0.85h, so its bottom inset is the largest. */
 .state-node--pentagon .state-node__body {
-  padding: 12px 22px 8px;
+  padding: 12px 22px 18px;
 }
 
 .state-node--hexagon .state-node__body {
@@ -1977,12 +2026,14 @@ body {
   padding: 8px 14px 6px;
 }
 
+/* 12px was BELOW the 14px polygon corner inset — row edges painted outside
+ * the outline at the top and bottom rows. */
 .state-node--poly14 .state-node__body {
-  padding: 8px 12px 6px;
+  padding: 8px 16px 6px;
 }
 
 .state-node--poly16 .state-node__body {
-  padding: 8px 12px 6px;
+  padding: 8px 16px 6px;
 }
 
 .state-node__header {
@@ -2286,6 +2337,71 @@ body {
   border-radius: 4px;
   border-left: 3px solid var(--device-color, #9ca3af);
   font-size: 11px;
+  /* Contain content — row text must NEVER spill outside the node border. */
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* ServoMove rich row — compact stacked lines: head / POS / SPEED (/ END). */
+.action-row--servo {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 3px 6px;
+}
+.servo-move__head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  margin-bottom: 1px;
+}
+.servo-move__device {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+/* POS / SPEED / END aligned label grid — labels in a fixed column so the
+ * values line up (Fanuc-style: point / speed / end condition). The line's
+ * font-size is auto-scaled inline so the number + unit ALWAYS fits; only
+ * the NAME may ellipsize, never the value. */
+.servo-move__grid {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  column-gap: 4px;
+  row-gap: 0;
+  align-items: baseline;
+  padding-left: 2px;
+  min-width: 0;
+}
+.servo-move__lbl {
+  font-size: 7.5px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  color: #64748b;
+  white-space: nowrap;
+}
+.servo-move__line {
+  display: flex;
+  align-items: baseline;
+  color: #1e293b;
+  min-width: 0;
+  white-space: nowrap;
+  line-height: 1.35;
+}
+.servo-move__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.servo-move__num {
+  flex-shrink: 0;
+  font-weight: 500;
+  white-space: pre;
 }
 
 .action-row--clickable {
@@ -2306,6 +2422,10 @@ body {
   color: #111827;
   font-size: 12px;
   min-width: 0;
+  /* Long device names ellipsize INSIDE the node — never outside the border. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .action-op {
@@ -2316,7 +2436,12 @@ body {
   white-space: nowrap;
   font-weight: 600;
   letter-spacing: .2px;
-  flex-shrink: 0;
+  /* Shrinkable with ellipsis so a long pill can't push past the node edge. */
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   /* On FAR LEFT — verb reads first, subject follows. No margin-left:auto. */
 }
 .action-op--clickable {
@@ -2605,37 +2730,46 @@ body {
   flex-shrink: 0;
 }
 
+/* Collapsed = a small horizontal "Properties" chip pinned top-right of the
+ * panel column. Never vertical text (Dan, Aug 2026). */
 .properties-panel--collapsed {
-  width: 36px;
-  min-width: 36px;
-  background: var(--color-surface);
-  border-left: 1px solid var(--color-border);
+  width: auto;
+  min-width: 0;
+  background: transparent;
+  border-left: none;
   flex-shrink: 0;
-  overflow: hidden;
+  overflow: visible;
   display: flex;
   align-items: flex-start;
+  justify-content: flex-end;
+  padding: 8px;
 }
 
-.properties-panel__expand-btn {
-  display: flex;
-  flex-direction: column;
+.properties-panel__expand-chip {
+  display: inline-flex;
   align-items: center;
-  justify-content: flex-start;
-  gap: 0;
-  padding: 12px 4px;
-  width: 100%;
-  background: none;
-  border: none;
+  gap: 5px;
+  padding: 4px 10px;
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #d1d5db);
+  border-radius: 999px;
   cursor: pointer;
-  color: var(--color-text-muted);
-  font-size: 13px;
-  font-weight: 600;
+  color: var(--color-text-muted, #64748b);
+  font-size: 10px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: .5px;
+  letter-spacing: .06em;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  transition: color .12s, border-color .12s;
 }
-.properties-panel__expand-btn:hover {
-  background: #f1f5f9;
-  color: var(--color-text);
+.properties-panel__expand-chip:hover {
+  border-color: #0072B5;
+  color: #0072B5;
+}
+.properties-panel__expand-chip-caret {
+  font-size: 8px;
+  line-height: 1;
 }
 
 .properties-panel__header {
@@ -4488,6 +4622,12 @@ body {
   font-family: Consolas, Menlo, Monaco, monospace;
   white-space: pre-line;
   line-height: 1.3;
+  /* An unbreakable token (a bare tag name) escaped the row without these —
+   * `pre-line` wraps on newlines only, never mid-token. */
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ─── Recipe Selector (Toolbar) ───────────────────────────────────────── */

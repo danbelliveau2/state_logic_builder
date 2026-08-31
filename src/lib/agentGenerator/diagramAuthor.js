@@ -90,16 +90,26 @@ Action (a row inside a state):
 - ServoMove additionally: "positionName": "<one of that device's positions>"
 - ServoMove additionally: "speedProfile": "<one of that device's speedProfiles names, e.g. 'Fast' or 'Slow'>"
   — REQUIRED on every ServoMove when the device declares more than one speed profile (the ME must see
-  which segment runs fast and which runs slow right on the canvas). A stroke the spec calls
-  fast-then-slow is TWO ServoMove rows: a 'Fast' move to the transition position, then a 'Slow'
-  move to the final position.
+  which segment runs fast and which runs slow right on the canvas).
+- SERVO GROUPING LAW (SDC template — S05_ServoPNP): EVERY ServoMove gets its OWN state node. NEVER put
+  two ServoMove rows in one state — a MAM only fires on its rung's false->true edge at state entry, so a
+  second move commanded in the same state NEVER EXECUTES. A stroke the spec calls fast-then-slow is TWO
+  chained STATES: a 'Fast' move state to the transition position -> edge -> a 'Slow' move state to the
+  final position. Overlap/blending between motions is expressed ONLY on the connecting edge (see
+  "advance" below), never by stacking moves inside one state.
 - ServoMove additionally (optional): "advance": "wideband" when this travel move blends into the next
-  motion (rounded corner — the next axis may start inside the clearance band). Omit for strict
-  complete-then-go moves.
-- Pack RELATED simultaneous/sequential motions into ONE dense multi-action node rather than a chain of
-  one-action nodes. Rows run in order; to gate a later row on the earlier one add on the earlier row:
-  "advanceCondition": { "type": "onComplete" }   (default — after complete)
-  or { "type": "timer", "timerMs": 500 } or { "type": "none" } (concurrent).
+  motion (rounded corner — the next state's axis may start once this axis is inside the clearance band).
+  Omit for strict complete-then-go moves.
+- STATE GRANULARITY LAW (Dan 2026-08-25 — concepts/coordination.md): actions share ONE state ONLY
+  when SIMULTANEOUS — parallel non-conflicting actuations commanded at the same instant (e.g.
+  all-retract-together), marked "advanceCondition": { "type": "none" } (concurrent). ANY sequential
+  dependency between actuations ("after complete", "then", a timer between them) is a SEPARATE
+  state — no exceptions; an after-complete chain inside one node hides a state transition from the
+  state map, the fault timers, and single-step mode. A state holds at most ONE ServoMove plus rows
+  genuinely simultaneous with it. The same physical pattern must resolve to the same state shape
+  everywhere in the diagram — consistency is itself a rule. ("advanceCondition": { "type":
+  "onComplete" } / { "type": "timer", "timerMs": 500 } exist in the schema but drawing them between
+  actuation rows is a review blocker — split the state instead.)
 - A check / wait / decision INSIDE a state is an embedded decision row:
   { "id": "id_x", "deviceId": "_decision", "nodeMode": "wait" | "decide" | "verify",
     "signalName": "<signal/sensor name>", "signalSource": "<device displayName>",
@@ -127,13 +137,20 @@ const LAYOUT_RULES = `
 - Node width is 240px. Lay the main flow in ONE vertical column at x=300.
 - Constant GAP: exactly 50px of empty space between one node's bottom edge and the next node's top
   (SDC standard vertical density — compact; applies to every project, machine and station).
-  Estimate node height as 70 + 55 * (number of action rows) px (min 90). Compute y positions cumulatively.
-- Branch lanes: a fail/reject branch column sits a FULL LANE out: main column x + 420.
-  A retry branch goes LEFT: main column x - 420.
+  Node heights are recomputed programmatically after you respond, so a rough cumulative estimate is
+  enough — but keep the flow ORDER and COLUMN assignment exact.
+- Branch lanes: the ALTERNATE branch of every 2-exit check leaves the node's RIGHT side
+  (exit-fail handle) and its chain gets its own column a FULL LANE RIGHT: main column x + 420.
   Pass/primary continues STRAIGHT DOWN in the main column (exit-pass = bottom of node).
-  Fail = right side (exit-fail), Retry = left side (exit-retry).
-- Sub-branches (a branch off a branch) go only HALF a lane further: +210 from their parent column.
+  This applies to retry chains too — a "no part, retry" chain is the check's exit-fail
+  branch and goes RIGHT like any alternate. NEVER place an exit-fail target LEFT of its
+  source: the edge physically leaves the right face and would cross back through the node.
+- Sub-branches (a branch off a branch, e.g. retries-exhausted off a retry chain) go only
+  HALF a lane further RIGHT: parent column x + 210. NEVER straight below the branch source —
+  its edge also leaves the right side.
 - A branch path's nodes STACK in their own column — never staggered.
+- The FIRST node of a branch sits BELOW its source node's bottom edge (its own column,
+  next row down) so the side exit routes as a clean L-bend: right, then down.
 - Loop-backs / merges re-enter the main flow BETWEEN two nodes (the target node y leaves room above).
   Give any node that receives a merge edge ~40px extra top clearance.
 - Rails (loop-back verticals) hug the nodes: they sit just past the widest node they pass (+50px), not far out.
@@ -156,7 +173,8 @@ Rules of engagement:
   Cycle Complete terminal state.
 - Use full-word PascalCase device names (SDC standard — no abbreviations).
 - When the description is ambiguous, make the SDC-standard choice and raise it in openQuestions.
-- Dense nodes: group each logical machine motion phase into one state with multiple action rows.
+- State granularity: one state = one moment in time. Group only SIMULTANEOUS actuations (concurrent
+  rows) into one state; every sequential step gets its own state. One ServoMove per state, always.
 - ids: use short unique strings like "n1","n2","e1","d1" — they will be kept as-is.
 `;
 
@@ -286,6 +304,159 @@ function validateAndNormalizeProject(project) {
   return fixups;
 }
 
+// ── Rule-based post-passes (deterministic — never left to the model) ────────
+
+/**
+ * SDC servo grouping law (template S05_ServoPNP, R04/R05 "Axis Motion
+ * Command" rungs): one MAM per axis, fired on the rung's false->true edge at
+ * state entry — a SECOND ServoMove commanded inside the same state never
+ * executes. So every ServoMove must live in its OWN state; overlap/blending
+ * is expressed only on the connecting edge.
+ *
+ * This pass enforces that regardless of what the model drew: any stateNode
+ * holding 2+ ServoMove rows is split into a chain of states (first keeps the
+ * node id/label so incoming edges stay valid; outgoing edges move to the
+ * last node of the chain). A move's `advance: 'wideband'` intent is carried
+ * onto the connecting edge. Returns fixup strings.
+ */
+function splitMultiServoMoveStates(project) {
+  const fixups = [];
+  for (const sm of project.stateMachines || []) {
+    const devById = new Map((sm.devices || []).map(d => [d.id, d]));
+    const isServoMove = (a) =>
+      a && a.operation === 'ServoMove' && a.deviceId !== '_decision';
+    const newNodes = [];
+    for (const n of sm.nodes) {
+      const actions = n.data?.actions || [];
+      const moveCount = actions.filter(isServoMove).length;
+      if (n.type !== 'stateNode' || moveCount <= 1) { newNodes.push(n); continue; }
+
+      // Group rows: break BEFORE a ServoMove when the current group already
+      // holds one. Non-motion rows stay grouped with the move they follow.
+      const groups = [];
+      let cur = [];
+      for (const a of actions) {
+        if (isServoMove(a) && cur.some(isServoMove)) { groups.push(cur); cur = []; }
+        cur.push(a);
+      }
+      if (cur.length) groups.push(cur);
+
+      const chain = groups.map((g, gi) => {
+        if (gi === 0) {
+          const mv0 = g.find(isServoMove);
+          const dev0 = mv0 ? devById.get(mv0.deviceId) : null;
+          const label0 = mv0
+            ? `${dev0?.displayName ?? dev0?.name ?? 'Axis'} → ${mv0.positionName ?? '?'}${mv0.speedProfile ? ` (${mv0.speedProfile})` : ''}`
+            : n.data.label;
+          return { ...n, data: { ...n.data, label: label0 || n.data.label, actions: g } };
+        }
+        const mv = g.find(isServoMove);
+        const dev = mv ? devById.get(mv.deviceId) : null;
+        const label = mv
+          ? `${dev?.displayName ?? dev?.name ?? 'Axis'} → ${mv.positionName ?? '?'}${mv.speedProfile ? ` (${mv.speedProfile})` : ''}`
+          : `${n.data.label ?? 'State'} (cont.)`;
+        return {
+          id: uid('n'),
+          type: 'stateNode',
+          position: { x: n.position.x, y: n.position.y },
+          data: { label, actions: g, isInitial: false, isComplete: false },
+        };
+      });
+
+      const lastId = chain[chain.length - 1].id;
+      // Outgoing edges of the original node now leave from the END of the chain.
+      for (const e of sm.edges) {
+        if (e.source === n.id) e.source = lastId;
+      }
+      // Chain edges: gate = the servo move's completion; wideband blend intent
+      // moves onto the edge (and stays on the row for the "≈ blends" hint).
+      for (let gi = 0; gi < chain.length - 1; gi++) {
+        const gActs = chain[gi].data.actions;
+        const gLast = gActs[gActs.length - 1];
+        const wideband = gLast?.advance === 'wideband'
+          || gActs.some(a => isServoMove(a) && a.advance === 'wideband');
+        if (gLast && gLast.advanceCondition) delete gLast.advanceCondition;
+        sm.edges.push({
+          id: uid('e'),
+          source: chain[gi].id,
+          target: chain[gi + 1].id,
+          sourceHandle: null,
+          targetHandle: null,
+          type: 'routableEdge',
+          data: {
+            conditionType: 'servoAtTarget',
+            label: '',
+            ...(wideband ? { advance: 'wideband' } : {}),
+          },
+        });
+      }
+      newNodes.push(...chain);
+      fixups.push(`SM "${sm.name}": state "${n.data.label || n.id}" held ${moveCount} servo moves — split into ${chain.length} chained states (one MAM edge per move; SDC trigger law)`);
+    }
+    sm.nodes = newNodes;
+  }
+  return fixups;
+}
+
+/**
+ * Height estimate for a drafted node as StateNode renders it (px).
+ * Mirrors the real render: label header, per-row heights (servo move rows
+ * are 3 lines + tag hints), "then after complete" chips between rows, and
+ * the Home node's entry-rule pill block.
+ */
+function estimateNodeHeight(node) {
+  if (node.type === 'decisionNode') return 96;
+  const actions = node.data?.actions || [];
+  let h = 42; // container padding + label line
+  actions.forEach((a, i) => {
+    if (a.deviceId === '_decision') h += 46;
+    else if (a.operation === 'ServoMove') h += 80; // head + dest + speed + tag hints
+    else h += 34; // single-line row + verify text
+    if (i < actions.length - 1) h += 16; // advance-condition chip
+  });
+  if (node.data?.isInitial) h += 88; // Home Conditions / entry-rule pills
+  return Math.max(h, 64);
+}
+
+/**
+ * Deterministic layout — the model's positions are never trusted for
+ * collision safety, lane discipline, or handle geometry. Runs the SHARED
+ * column-aware algorithm (src/lib/branchLayout.mjs — same one Canvas re-runs
+ * with real measured heights): main spine + branch lanes derived from the
+ * edges' sourceHandles (exit-fail → right lane, sub-branch → half lane),
+ * constant 50px gap from estimated heights, merge clearance, staggered loop
+ * rails. Every node is flagged `data._autoLayout = true` so the client
+ * refines spacing once REAL measured heights exist (Canvas clears the flag).
+ *
+ * branchLayout.mjs is ESM (this file is CJS) — loaded via dynamic import().
+ */
+let _branchLayoutMod = null;
+async function loadBranchLayout() {
+  if (!_branchLayoutMod) {
+    const { pathToFileURL } = require('url');
+    _branchLayoutMod = await import(
+      pathToFileURL(path.join(__dirname, '..', 'branchLayout.mjs')).href
+    );
+  }
+  return _branchLayoutMod;
+}
+
+async function normalizeLayout(project) {
+  const { layoutBranchDiagram, applyBranchLayout } = await loadBranchLayout();
+  for (const sm of project.stateMachines || []) {
+    const layout = layoutBranchDiagram(sm.nodes || [], sm.edges || [], {
+      getHeight: estimateNodeHeight,
+    });
+    if (!layout.changed) continue;
+    const applied = applyBranchLayout(sm.nodes || [], sm.edges || [], layout);
+    sm.nodes = applied.nodes.map(n => ({
+      ...n,
+      data: { ...(n.data || {}), _autoLayout: true },
+    }));
+    sm.edges = applied.edges;
+  }
+}
+
 // ── Main entry ───────────────────────────────────────────────────────────────
 
 /**
@@ -371,6 +542,9 @@ async function authorDiagram({ description, images = [], station = null, onProgr
   const parsed = extractJson(text);
   const project = parsed.project;
   const fixups = validateAndNormalizeProject(project);
+  // Rule-based post-passes — never left to the model:
+  fixups.push(...splitMultiServoMoveStates(project)); // one ServoMove per state (SDC trigger law)
+  await normalizeLayout(project);                     // column-aware collision-free layout
 
   // Single-station mode: enforce exactly one SM with the requested identity.
   if (station && station.name) {
@@ -399,4 +573,10 @@ async function authorDiagram({ description, images = [], station = null, onProgr
   };
 }
 
-module.exports = { authorDiagram, validateAndNormalizeProject };
+module.exports = {
+  authorDiagram,
+  validateAndNormalizeProject,
+  splitMultiServoMoveStates,
+  normalizeLayout,
+  estimateNodeHeight,
+};

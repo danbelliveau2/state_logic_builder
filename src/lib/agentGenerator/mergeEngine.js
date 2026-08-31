@@ -212,13 +212,20 @@ function transformStrings(xml, start, end, transform) {
   const errors = [];
   let count = 0;
 
+  // transform is called as transform(text, indexWithinPass) — the index is
+  // the 0-based element position within each format pass (array order), so
+  // an index-targeted transform hits the same element in every format.
+  let passIdx = -1;
+
   // Work on a slice, then reassemble (all three passes on the same slice).
   let slice = xml.slice(start, end);
 
   // 1. L5K [LEN,'body'] tokens
+  passIdx = -1;
   slice = slice.replace(/\[(\d+),'((?:\$.|[^'$])*)'/g, (whole, lenStr, body) => {
+    passIdx++;
     const { text, bufferSize } = decodeStringBody(body);
-    const next = transform(text);
+    const next = transform(text, passIdx);
     if (next == null || next === text) return whole;
     if (next.length > bufferSize) {
       errors.push(`String too long for buffer (${next.length} > ${bufferSize}): "${next}"`);
@@ -228,23 +235,37 @@ function transformStrings(xml, start, end, transform) {
     return `[${next.length},'${encodeStringBody(next, bufferSize)}'`;
   });
 
-  // 2. Decorated LEN + DATA pairs
+  // 2. Decorated LEN + DATA pairs. An EMPTY element renders as
+  //    <![CDATA[]]> (no quotes at all) while a populated one is
+  //    <![CDATA['text']]> — so the quotes are optional here, otherwise empty
+  //    array slots are skipped and every later element's ordinal drifts.
+  //    Inside an <Array> the authoritative index is the enclosing
+  //    <Element Index="[N]"> attribute; scalars fall back to the ordinal.
+  passIdx = -1;
   slice = slice.replace(
-    /(<DataValueMember Name="LEN"[^>]*Value=")(\d+)("\/>\s*<DataValueMember Name="DATA"[^>]*>\s*<!\[CDATA\[')((?:\$.|[^'$])*)('\]\]>)/g,
-    (whole, p1, lenStr, p2, body, p5) => {
-      const { text } = decodeStringBody(body);
-      const next = transform(text);
+    /(<DataValueMember Name="LEN"[^>]*Value=")(\d+)("\/>\s*<DataValueMember Name="DATA"[^>]*>\s*<!\[CDATA\[)(?:'((?:\$.|[^'$])*)')?(\]\]>)/g,
+    (whole, p1, lenStr, p2, body, p4, offset) => {
+      passIdx++;
+      // Authoritative element index: nearest preceding <Element Index="[N]">.
+      const before = slice.slice(0, offset);
+      const em = /<Element Index="\[(\d+)\]"[^>]*>(?![\s\S]*<Element Index=)/.exec(before);
+      const idx = em ? parseInt(em[1], 10) : passIdx;
+      const { text } = decodeStringBody(body || '');
+      const next = transform(text, idx);
       if (next == null || next === text) return whole;
       count++;
-      return `${p1}${next.length}${p2}${encodeStringBody(next)}${p5}`;
+      // Re-emit with quotes (a populated STRING always carries them).
+      return `${p1}${next.length}${p2}'${encodeStringBody(next)}'${p4}`;
     });
 
   // 3. <Data Format="String" Length="N"> <![CDATA['...']]>
+  passIdx = -1;
   slice = slice.replace(
     /(<Data Format="String" Length=")(\d+)("\s*>\s*<!\[CDATA\[')((?:\$.|[^'$])*)('\]\]>)/g,
     (whole, p1, lenStr, p2, body, p5) => {
+      passIdx++;
       const { text } = decodeStringBody(body);
-      const next = transform(text);
+      const next = transform(text, passIdx);
       if (next == null || next === text) return whole;
       count++;
       return `${p1}${next.length}${p2}${encodeStringBody(next)}${p5}`;
@@ -582,6 +603,48 @@ function opAddTag(xml, prog, op, errors) {
       `<DataValueMember Name="TT" DataType="BOOL" Value="0"/>${CRLF}` +
       `<DataValueMember Name="DN" DataType="BOOL" Value="0"/>${CRLF}` +
       `</Structure>${CRLF}</Data>${CRLF}</Tag>${CRLF}`;
+  } else if (op.dataType === 'MOTION_INSTRUCTION') {
+    // Motion control tag (MAM/MCD/MAS/... instruction backing tag) — exact
+    // Studio 5000 v37 export shape, zero-initialized.
+    block =
+      `<Tag Name="${op.name}" TagType="Base" DataType="MOTION_INSTRUCTION" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">${CRLF}` +
+      desc +
+      `<Data Format="L5K">${CRLF}<![CDATA[[0,0,0,0,0,0,0,0,0]]]>${CRLF}</Data>${CRLF}` +
+      `<Data Format="Decorated">${CRLF}<Structure DataType="MOTION_INSTRUCTION">${CRLF}` +
+      `<DataValueMember Name="FLAGS" DataType="DINT" Radix="Decimal" Value="0"/>${CRLF}` +
+      `<DataValueMember Name="EN" DataType="BOOL" Value="0"/>${CRLF}` +
+      `<DataValueMember Name="DN" DataType="BOOL" Value="0"/>${CRLF}` +
+      `<DataValueMember Name="ER" DataType="BOOL" Value="0"/>${CRLF}` +
+      `<DataValueMember Name="PC" DataType="BOOL" Value="0"/>${CRLF}` +
+      `<DataValueMember Name="IP" DataType="BOOL" Value="0"/>${CRLF}` +
+      `<DataValueMember Name="AC" DataType="BOOL" Value="0"/>${CRLF}` +
+      `<DataValueMember Name="ACCEL" DataType="BOOL" Value="0"/>${CRLF}` +
+      `<DataValueMember Name="DECEL" DataType="BOOL" Value="0"/>${CRLF}` +
+      `<DataValueMember Name="TrackingMaster" DataType="BOOL" Value="0"/>${CRLF}` +
+      `<DataValueMember Name="CalculatedDataAvailable" DataType="BOOL" Value="0"/>${CRLF}` +
+      `<DataValueMember Name="ERR" DataType="INT" Radix="Decimal" Value="0"/>${CRLF}` +
+      `<DataValueMember Name="STATUS" DataType="SINT" Radix="Decimal" Value="0"/>${CRLF}` +
+      `<DataValueMember Name="STATE" DataType="SINT" Radix="Decimal" Value="0"/>${CRLF}` +
+      `<DataValueMember Name="SEGMENT" DataType="DINT" Radix="Decimal" Value="0"/>${CRLF}` +
+      `<DataValueMember Name="EXERR" DataType="SINT" Radix="Decimal" Value="0"/>${CRLF}` +
+      `</Structure>${CRLF}</Data>${CRLF}</Tag>${CRLF}`;
+  } else if (op.dataType === 'AOI_RangeCheck') {
+    // Position-monitor RangeCheck instance backing tag — exact Studio 5000
+    // v37 export shape (matches the template's own instances), zeroed.
+    block =
+      `<Tag Name="${op.name}" TagType="Base" DataType="AOI_RangeCheck" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">${CRLF}` +
+      desc +
+      `<Data Format="L5K">${CRLF}<![CDATA[[1,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000${CRLF}\t\t,0.00000000e+000,0.00000000e+000]]]>${CRLF}</Data>${CRLF}` +
+      `<Data Format="Decorated">${CRLF}<Structure DataType="AOI_RangeCheck">${CRLF}` +
+      `<DataValueMember Name="EnableIn" DataType="BOOL" Value="1"/>${CRLF}` +
+      `<DataValueMember Name="EnableOut" DataType="BOOL" Value="0"/>${CRLF}` +
+      `<DataValueMember Name="Value" DataType="REAL" Radix="Float" Value="0.0"/>${CRLF}` +
+      `<DataValueMember Name="Deadband" DataType="REAL" Radix="Float" Value="0.0"/>${CRLF}` +
+      `<DataValueMember Name="Actual" DataType="REAL" Radix="Float" Value="0.0"/>${CRLF}` +
+      `<DataValueMember Name="InPos" DataType="BOOL" Value="0"/>${CRLF}` +
+      `<DataValueMember Name="DeadbandWide" DataType="REAL" Radix="Float" Value="0.0"/>${CRLF}` +
+      `<DataValueMember Name="InPosWide" DataType="BOOL" Value="0"/>${CRLF}` +
+      `</Structure>${CRLF}</Data>${CRLF}</Tag>${CRLF}`;
   } else {
     const isReal = op.dataType === 'REAL';
     const raw = Number(op.value) || 0;
@@ -599,10 +662,16 @@ function opAddTag(xml, prog, op, errors) {
 function opSetStringData(xml, prog, op, errors) {
   const tag = findTagBlock(xml, prog, op.tag, errors);
   if (!tag) return xml;
-  const res = transformStrings(xml, tag.start, tag.end, t => (t === op.oldText ? op.newText : null));
+  // With "index": target exactly that 0-based array element (needed for
+  // empty/duplicate strings like fresh AlarmList slots). transformStrings
+  // passes the element index within each format pass.
+  const transform = (op.index !== undefined && op.index !== null)
+    ? (t, i) => (i === op.index && t === op.oldText ? op.newText : null)
+    : t => (t === op.oldText ? op.newText : null);
+  const res = transformStrings(xml, tag.start, tag.end, transform);
   errors.push(...res.errors);
   if (res.count === 0 && res.errors.length === 0) {
-    errors.push(`setStringData ${op.tag}: no string equals "${op.oldText}" — copy the exact current text from the template extracts`);
+    errors.push(`setStringData ${op.tag}: no string ${op.index !== undefined ? `at index ${op.index} ` : ''}equals "${op.oldText}" — copy the exact current text from the template extracts`);
     return xml;
   }
   return res.xml;

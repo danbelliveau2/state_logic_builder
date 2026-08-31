@@ -18,6 +18,11 @@ import './v2.css';
 // Restore the persisted UI scale BEFORE first paint — no 100% flash.
 initAppScale();
 
+// Dev-only handle for the layout-acceptance harness (same as classic entry).
+if (import.meta.env.DEV) {
+  import('../store/useDiagramStore.js').then(m => { window.__sdcStore = m.useDiagramStore; });
+}
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <AppV2 />

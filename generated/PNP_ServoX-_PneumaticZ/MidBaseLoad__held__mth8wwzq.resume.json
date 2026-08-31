@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "stage": "readiness",
+  "smId": "id_mth4w6rl",
+  "smName": "MidBaseLoad",
+  "mode": "authoring",
+  "template": "S05_ServoPNP.L5X",
+  "attemptCount": 0,
+  "lastEditPlan": null,
+  "lastL5xDraft": null,
+  "persistentFindings": [],
+  "validationReport": "(held before writing — no draft exists yet)",
+  "projectFilename": "PNP_ServoX-_PneumaticZ.json",
+  "heldAt": "2026-08-31T12:59:55.526Z",
+  "reason": "pre-write readiness found 9 unresolved item(s) — held before any write",
+  "questions": [
+    {
+      "id": "q_help_mth8wwzn_vprw1w",
+      "question": "State 37 'Wait For Dial Ready' references a signal 'DialReady' from source 'Dial' — is this an external input tag (e.g., from a supervisor or partner station) that should be defined in the IO list, or should I derive it from a local condition?",
+      "proposedSolution": "Treat DialReady as an external input stub per the standalone pattern (*Replace rung comment: 'Replace with real Dial Ready condition from the next station or supervisor'). Wire it as XIC(i_DialReady) in the transition rung. If no IO row exists, create one as a logical input tag i_DialReady initialized false, to be wired by the integrator when the station joins a machine.",
+      "addressee": "CE"
+    },
+    {
+      "id": "q_help_mth8wwzn_0z5ntz",
+      "question": "EscapementFinger2 is listed in the devices section with a valve definition, but the state sequence never commands it (no Extend or Retract action assigned). The change log states it was deleted during the walk. Should I omit it entirely from the program, or stub it with a comment for potential future use?",
+      "proposedSolution": "Omit EscapementFinger2 entirely — do not create valve outputs, tag structures, or state logic for it. The device list is stale legacy data per the approved change log. If it is needed later, a new state machine revision will add it.",
+      "addressee": "CE"
+    },
+    {
+      "id": "q_help_mth8wwzn_1gfdti",
+      "question": "The state sequence transitions directly from State 34 (Retract Escapement Finger 1) to State 37 (Wait For Dial Ready) with no intermediate states for escapement recovery or re-arming. If a fault occurs during States 4–34 (the escapement half), what recovery path should bring the station back to ready? The FAULT RECOVERY panel specifies: gripped-with-part → extend shuttle, signal part-ready, hold ready; not-gripped → open gripper, retract shuttle, finger 1 down, home.",
+      "proposedSolution": "Create a fault-recovery rung in R02 that branches on ShuttleGripper state: if engaged (part gripped), move to a 'Hold Ready For Pick' state (not in the main sequence, but a recovery hold state) that extends the shuttle and waits for external pickup signal; if disengaged, move to a 'Recovery Retract' state that opens the gripper, retracts the shuttle, retracts the finger, and returns to State 4. Both recovery paths will be gated by a UseRestartLogic or similar flag (per the template pattern) and documented as *Replace rungs for machine integration.",
+      "addressee": "CE"
+    },
+    {
+      "id": "q_help_mth8wwzn_ayq8my",
+      "question": "The Nest_Part_Present sensor has sensorArrangement='' (empty) — should I infer this as a simple digital input with a debounce, or does it have specific timing (e.g., a 500 ms timer per the timerMs value)?",
+      "proposedSolution": "Treat Nest_Part_Present as a debounced digital input using the standard AOI_Debounce pattern (100 ms on, 100 ms off) as shown in R01 of the exemplar. The timerMs=1000 is a generic default and not device-specific; apply the exemplar's debounce timing.",
+      "addressee": "CE"
+    },
+    {
+      "id": "q_help_mth8wwzn_axngtj",
+      "question": "VerticalSlide has retTimerMs=5000 (extend timer 1000, retract timer 5000). Is the 5-second retract time a mechanical dwell (e.g., air bleed delay) or a sensor verification timeout? If it's a dwell, should I apply a fixed TON, or should I use the presence of a retract-position sensor to exit early?",
+      "proposedSolution": "Treat retTimerMs=5000 as a mechanical stroke-completion timer (not a dwell). Use a TON(VerticalSlide_RetractDelay, 5000) that resets on the transition to Retract and signals done when DN=true. The device has only a retract sensor; exit the retract state when either the sensor activates OR the timer DN fires, whichever is first — this matches the exemplar's 'sensor OR timeout' pattern for actuators with single sensors.",
+      "addressee": "ME"
+    },
+    {
+      "id": "q_help_mth8wwzn_tjn1x1",
+      "question": "The state transition from State 40 (Servo Move X Axis To Place) to State 43 (Extend Vertical Slide At Dial) assumes the X-axis motion is complete. Should I wait for XAxis_MAM.PC (motion complete) before transitioning, and what is the fault timeout for this move?",
+      "proposedSolution": "Gate the transition with XIC(XAxis_MAM.PC) XIC(XAxis_MAM.DN) in the R02 rung, per the exemplar's MAM-motion-complete pattern. Set the FaultTime to 3000 ms (standard destination-arrival timeout from the verified exemplar). If the axis does not reach Place position within 3 seconds, raise Alarm 'Waiting For X Axis To Reach Place Position'.",
+      "addressee": "CE"
+    },
+    {
+      "id": "q_help_mth8wwzn_k04o1q",
+      "question": "ShuttleGripper and PNPGripper both have no retract sensors (sensorArrangement='No sensors'). How should I verify that a disengage command has completed — by a fixed timer only, or by some other method?",
+      "proposedSolution": "For both grippers, use the standard sensorless-actuator delay pattern from the exemplar (R01 rungs 3–4): ON-output→TON-timer→ON-sensor-substitute. For Disengage commands, set the timer to the disengageTimerMs value (250 ms for both), then on timeout set a 'GripperOpened' bit. For Engage commands, use the engageTimerMs value (250 ms). This matches the exemplar's sensorless gripper handling.",
+      "addressee": "CE"
+    },
+    {
+      "id": "q_help_mth8wwzn_smsh96",
+      "question": "State 37 'Wait For Dial Ready' waits on an external DialReady signal. If the dial never signals ready (e.g., dial is broken or the next station is offline), what timeout should I apply before raising an alarm?",
+      "proposedSolution": "Apply a 10000 ms (10-second) timeout per the verified exemplar's 'Waiting For Part Present' pattern (Alarm[5], R20 rung 10). Create Alarm 'Waiting For Dial Ready' with the same 10s timeout and mark it as a warning (not a hard fault) so the machine pauses but does not stop; the operator can then investigate the dial station and resume. This follows the 'Waiting For' alarm pattern.",
+      "addressee": "CE"
+    },
+    {
+      "id": "q_help_mth8wwzn_7zplnj",
+      "question": "The sequence has no explicit 'Cycle Complete' signal sent to a downstream station or supervisor. Should State 55 pulse a discrete output (q_StationComplete or similar) to notify the dial that a part has been placed, or is that handled by the machine integration layer?",
+      "proposedSolution": "State 55 should set a q_StationComplete output per the standalone template pattern (R03 rung 7 in the exemplar). In this standalone version, stub it with an OTE(q_StationComplete) that remains true until the next cycle begins. When the station joins a machine, this stub will be replaced with the machine-level part-tracking and handshake logic per the integrator's specification.",
+      "addressee": "CE"
+    }
+  ]
+}

@@ -1,4 +1,13 @@
 /**
+ * ══════════════════════════════════════════════════════════════════════════
+ *  FROZEN v1 (classic shell) — DO NOT MODIFY.
+ *  Dan's ruling (Aug 2026): v1 stays frozen and reachable exactly as it is
+ *  (served at /classic.html). All new work happens in the v2 shell
+ *  (src/v2/AppV2.jsx, served at / and /v2.html). This applies to the whole
+ *  classic tree: App.jsx, Toolbar, DeviceSidebar, PropertiesPanel,
+ *  ProjectTabBar, StandardsView, ProjectSetup and the classic-only editors.
+ * ══════════════════════════════════════════════════════════════════════════
+ *
  * App - Root component.
  * Layout: Toolbar (top) | DeviceSidebar (left) | Canvas (center) | PropertiesPanel (right)
  */

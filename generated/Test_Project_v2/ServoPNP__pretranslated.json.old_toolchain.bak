@@ -1,0 +1,109 @@
+{
+  "pretranslated": true,
+  "ready": true,
+  "ok": true,
+  "stale": false,
+  "project": "Test_Project_v2",
+  "smId": "id_mt32wnzy",
+  "smName": "ServoPNP",
+  "compiledAt": "2026-08-25T14:19:11.092Z",
+  "mode": "translation",
+  "jarvisVersion": "1.3.0",
+  "savedPath": "C:\\SDC-StateLogic\\generated\\Test_Project_v2\\ServoPNP__jarvis_v1.3.0__2026-08-25_1434.L5X",
+  "savedIrPath": "C:\\SDC-StateLogic\\generated\\Test_Project_v2\\ServoPNP__jarvis_v1.3.0__2026-08-25_1434.ir.json",
+  "buildId": "b_mt8rnamp_zoa50s",
+  "validation": {
+    "ok": true,
+    "errors": [],
+    "warnings": [
+      "Non-ASCII character U+2014 (\"—\") in CDATA near \"S01_ServoPNP\" — Studio 5000 imports are ASCII-only; replace it (e.g. em-dash with \"-\") or $-escape it inside string data",
+      "Non-ASCII character U+2014 (\"—\") in CDATA near \"R02_StateTransitions\" — Studio 5000 imports are ASCII-only; replace it (e.g. em-dash with \"-\") or $-escape it inside string data",
+      "Exitless wait: transition out of state 55 waits on XAxisPick.InPos, q_DisengagePartGripper with no fault/timeout path — no R20_Alarms rung references Status.State[55] or the waited condition (Rule 11: no exitless waits)"
+    ]
+  },
+  "internalReview": {
+    "verdict": "fix",
+    "findings": [
+      {
+        "severity": "blocker",
+        "routine": "R05_ZAxisServo",
+        "finding": "Rung 16 \"Use MCD For Speed Changes\" contains ONLY the staging MOVEs — the MCD instruction itself is absent, with a comment saying the tool cannot declare the ZAxis_MCD MOTION_INSTRUCTION tag. The whole sanctioned fast/slow architecture is therefore dead: nothing ever changes the in-flight profile, every Z stroke runs at its starting speed into the nest. A tool limitation that prevents following a known standard is a BLOCKING question, never a shipped placeholder (SUPREME LAW).",
+        "templateEvidence": "Jason's corrected file R05_ZAxisServo rung 16: the same branch staging PLUS MCD(iq_ZAxis,ZAxis_MCD,Move,Yes,ZAxisMCDSpeed,Yes,ZAxisMCDAccel,Yes,ZAxisMCDDecel,No,0,No,0,...) on the rung output; inventory STANDING SANCTIONED EXTENSION requires one MCD rung per multi-speed axis with its own control tag."
+      },
+      {
+        "severity": "blocker",
+        "routine": "R02_StateTransitions",
+        "finding": "Rungs 6, 10, 14, 18 (states 13, 25, 37, 49) gate the transition on XIC(g_MachineBasic.AlwaysOff) with a DryRun bypass instead of the approved XIC(ZAxisPickTransition.InPosWide) / XIC(ZAxisPlaceTransition.InPosWide). Two defects at once: the sequence is DEADLOCKED in auto (state 10 can never advance unless DryRun is on), and AlwaysOff-gating of live logic is the explicitly designated anti-pattern (anti-patterns §8, _1028_Diamond). The approved sequence states the exact condition text — it was not implementable, so the correct move was to hold, not to smother the rung.",
+        "templateEvidence": "Approved sequence transitions [10]->[13] / [22]->[25] / [34]->[37] / [46]->[49]: bare XIC({Pos}Transition.InPosWide) mid-flight form, pattern TRANSITION_CONDITION_FAMILIES; anti-patterns.md §8 forbids AlwaysOff-gated live rungs."
+      },
+      {
+        "severity": "blocker",
+        "routine": "R05_ZAxisServo",
+        "finding": "Rung 22 Axis Position Monitor declares only ZAxisRetract/ZAxisPick/ZAxisPlace — the four required instances (ZAxisPickTransition on Positions[1], ZAxisPlaceTransition on Positions[3], and the per-corner ZAxisPickRetractBlend / ZAxisPlaceRetractBlend anchored on Positions[0] with wide bands Positions[5]/[6]) are missing and deferred to a *Replace comment. Every named position the sequence uses must exist as its own RangeCheck instance; without them the transition and blend conditions above cannot exist at all.",
+        "templateEvidence": "Jason's corrected file Z Axis Position Monitor rung: SEVEN AOI_RangeCheck instances (targets + two transition points + one per corner); servo-motion.md \"Every named position gets its own AOI_RangeCheck instance\"."
+      },
+      {
+        "severity": "blocker",
+        "routine": "R02_StateTransitions",
+        "finding": "The two sanctioned corner blends were dropped: rung 11 (state 28) and rung 19 (state 52) use strict XIC(ZAxis_MAM.PC) XIC(ZAxisRetract.InPos) only, with the wideband branch relegated to a *Replace comment. The approved sequence requires [XIC(ZAxis_MAM.PC) XIC(ZAxisRetract.InPos) , XIC(ZAxis_MAM.IP) XIC(ZAxisPickRetractBlend.InPosWide)] and the place-side equivalent. Consequence: the ME's 25 mm corner blends do not exist in the code and the machine dead-stops at both corners.",
+        "templateEvidence": "Template R02 rungs 7/12 wideband OR form [XIC(ZAxis_MAM.PC) XIC(ZAxisRetract.InPos) ,XIC(ZAxis_MAM.IP) XIC(ZAxisRetract.InPosWide)]; approved sequence transitions [25]->[28] and [49]->[52]."
+      },
+      {
+        "severity": "blocker",
+        "routine": "R20_Alarms",
+        "finding": "Alarms 6–9 (both speed-transition timeouts and both gripper-delay timeouts) CONCAT from AlarmList[6..9], which the rung comments admit are empty and un-writable by the tool. Four faults will raise with a blank operator message. An alarm with no station-prefix + condition + required action message does not meet §11, and again a tool limitation was papered over instead of held.",
+        "templateEvidence": "Template R20 rungs 5–10 each CONCAT(g_StationList[StaNum],AlarmList[n],Alarm[n].Message) with a populated list element; alarms concept: messages are operator instructions (condition + recovery action)."
+      },
+      {
+        "severity": "blocker",
+        "routine": "R02_StateTransitions",
+        "finding": "Rung 4 (state 7) dropped the template's DryRun parallel branch on the part-present wait: XIC(Status.State[4])XIC(PartPresentDebounce.On)XIC(SS_OK) instead of XIC(Status.State[4])[XIC(PartPresentDebounce.On) ,XIC(DryRun)]XIC(SS_OK). Dry run is a mandated per-station debug facility and this is the rung where it bypasses the sensor; nothing in the approved sequence required removing it. Ironically DryRun was instead pasted onto the four transition-band rungs where it does not belong.",
+        "templateEvidence": "Template R02 rung 4: XIC(Status.State[4])[XIC(PartPresentDebounce.On) ,XIC(DryRun) ]XIC(SS_OK)MOVE(7,Control.StateReg); PLC Std §22 debug facilities."
+      },
+      {
+        "severity": "style",
+        "routine": "R02_StateTransitions",
+        "finding": "Rung comments on 6, 10, 11, 14, 18, 19 and R05 rungs 16/22 are multi-sentence explanations of tool limitations and future edits (\"This tool cannot declare that data type…\", \"The mid flight band detection cannot be declared by this tool\"). Comments name the physical action or destination, terse; commentary justifying implementation gaps goes stale and is not template vocabulary.",
+        "templateEvidence": "Template comment style: \"State 16: Extend x axis (Application dependent - add wideband positioning permissive…)\", \"Use MCD For Speed Changes\", \"Move Z Axis To Retract Position\"."
+      },
+      {
+        "severity": "note",
+        "routine": "R03_StateLogic",
+        "finding": "Rung 7 q_StationComplete replaced the indexer/part-status shape with a standalone seal-in plus a *Replace comment, and rung 3 q_ActuatorsSafe was re-derived (X has no retract position on a PNP). Both are legitimate under the standalone generation scope and the approved sequence — recorded, no action.",
+        "templateEvidence": "Scope law (standalone stubs with *Replace comment); CONTROLS #18 q_ActuatorsSafe is a defined safe subset per application."
+      }
+    ],
+    "standardsQuestions": [
+      {
+        "topic": "Tag-declaration gap blocking standard servo constructs",
+        "question": "The generator could not declare a MOTION_INSTRUCTION control tag ({Axis}_MCD), additional AOI_RangeCheck backing tags, or write STRING elements into the AlarmList array, so three standard constructs (the MCD speed-change instruction, per-position/per-corner RangeCheck instances, and alarm message text) came out as placeholder rungs. Can the tag-declaration path be opened for these types so the standard shapes can be emitted, and should any build that hits this limitation be blocked from shipping rather than emitting *Replace placeholders?",
+        "proposedSolution": "My proposal: add MOTION_INSTRUCTION, AOI_RangeCheck instance tags and AlarmList STRING element writes to the emitter's declarable set, and make this class of limitation a hard compile HOLD — the build stops with this question instead of shipping AlwaysOff/placeholder rungs. I'd rather deliver nothing than a file whose speed changes and blends silently don't exist.",
+        "addressee": "ME",
+        "domain": "jarvis",
+        "kind": "question"
+      }
+    ],
+    "missingVsTemplate": [
+      "R05_ZAxisServo rung 16: the MCD instruction itself (staging only, no MCD).",
+      "R05_ZAxisServo rung 22: AOI_RangeCheck instances ZAxisPickTransition, ZAxisPlaceTransition, ZAxisPickRetractBlend, ZAxisPlaceRetractBlend.",
+      "R02 rungs 6/10/14/18: the real mid-flight transition conditions ({Pos}Transition.InPosWide) — replaced by AlwaysOff placeholders.",
+      "R02 rungs 11/19: the wideband corner-blend parallel branches.",
+      "R02 rung 4: the template's DryRun parallel branch on the part-present wait.",
+      "R20 rungs 11–14: AlarmList[6..9] message text (alarms fire with blank messages)."
+    ],
+    "summary": "This one bounces. The whole sanctioned fast/slow architecture is missing its working parts: the MCD rung has no MCD instruction, the four transition/blend RangeCheck instances don't exist, and the four speed-change transitions are gated on g_MachineBasic.AlwaysOff — so in auto the sequence deadlocks at state 10 and, if it did run, Z would drive into pick and place at full speed with both corner blends dead-stopped. Four alarms would raise with blank messages. Every one of these is the same mistake: the tool couldn't express a standard, and you crammed a placeholder in instead of stopping and raising it — that is exactly what the supreme law forbids. Everything else (R02 ordering, one-MAM-per-axis, staging grouping, init graph, mnemonics, one-rung-per-state) is clean, so fix the declaration gap, emit the real constructs, restore the DryRun branch on state 4, and trim the tool-limitation prose out of the rung comments.",
+    "questionIds": [],
+    "heldStatus": null,
+    "template": "S05_ServoPNP.L5X",
+    "scope": "full",
+    "model": "claude-opus-5",
+    "costUSD": 0.8565,
+    "durationS": 106,
+    "at": "2026-08-25T14:40:20.422Z"
+  },
+  "costUSD": 3.6699,
+  "durationS": 693,
+  "attempts": 5,
+  "createdAt": "2026-08-25T14:34:23.763Z",
+  "error": null
+}

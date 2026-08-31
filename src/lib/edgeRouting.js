@@ -29,6 +29,11 @@
 
 export const NODE_WIDTH = 240;
 const ALIGN_THRESHOLD = 1;   // px — points within this are "aligned"
+// Minimum perpendicular run out of a handle before ANY bend is allowed.
+// A bend closer than this to a node face reads as "the edge doesn't come out
+// of the handle, it jogs off the node's corner" — Dan's #1 recurring complaint.
+// Applies at BOTH ends: stub out of the source, stub into the target.
+export const MIN_STUB = 20;
 
 // ── Path Building ────────────────────────────────────────────────────────────
 
@@ -119,6 +124,24 @@ export function pointsToSvg(pts) {
  * @param {Array} allNodes — all React Flow node objects (for bounding box)
  * @returns {Array} 4 waypoints forming a U-shape
  */
+/**
+ * Which side does a backward (loop) edge's rail go on?
+ *
+ * HARD RULE: a SIDE-handle source always rails on the side its handle faces —
+ * exit-fail (right handle) → right rail, exit-retry (left) → left rail —
+ * regardless of stored loopSide or target position. Anything else makes the
+ * first segment cross back THROUGH the source node ("edges must leave at the
+ * connection points" — Dan). Bottom-handle loops keep the stored/derived side.
+ * Exported so RoutableEdge's drag overlays agree with the route.
+ */
+export function backwardRailGoRight(sourceHandle, edgeData, srcX, tgtX) {
+  if (sourceHandle === 'exit-fail') return true;
+  if (sourceHandle === 'exit-retry') return false;
+  if (edgeData?.loopSide === 'right') return true;
+  if (edgeData?.loopSide === 'left') return false;
+  return tgtX >= srcX;
+}
+
 export function computeBackwardWaypoints(src, tgt, allNodes) {
   const DROP = 40;
   const PAD  = 60;
@@ -199,8 +222,7 @@ export function computeAutoRoute(src, tgt, edgeData, allNodes, sourceHandle, sna
     const PAD      = edgeData?.loopOffset     ?? 60;
     const TOP_DROP = edgeData?.loopTopDrop    ?? 40;
     const BOT_DROP = edgeData?.loopBottomDrop ?? 40;
-    const goRight = edgeData?.loopSide === 'right'
-                 || (edgeData?.loopSide == null && tgt.x >= src.x);
+    const goRight = backwardRailGoRight(sourceHandle, edgeData, src.x, tgt.x);
     // Bounds — handle position determines which edge of the node `src.x` is.
     const srcCenterX = sourceHandle === 'exit-fail'  ? src.x - NODE_WIDTH / 2
                      : sourceHandle === 'exit-retry' ? src.x + NODE_WIDTH / 2
@@ -295,7 +317,17 @@ export function computeAutoRoute(src, tgt, edgeData, allNodes, sourceHandle, sna
   if (isSideways) {
     const midY = (src.y + tgt.y) / 2;
     const offset = Number(edgeData?.mergeYOffset ?? 0);
-    const railY = midY + offset;
+    // The horizontal jog must land in OPEN SPACE between the two nodes —
+    // never within MIN_STUB of either node face. Without this clamp a small
+    // residual X offset (e.g. two nodes of different width whose centers
+    // don't match) produced a bend right at the source's bottom edge, which
+    // reads as the edge not exiting the handle at all.
+    const lo = src.y + MIN_STUB;
+    const hi = tgt.y - MIN_STUB;
+    // If the nodes are closer than 2*MIN_STUB apart there is no legal band;
+    // the midpoint is then the least-bad choice (and the layout's GAP=50
+    // guarantees this never happens for auto-laid-out diagrams).
+    const railY = hi <= lo ? midY : Math.min(Math.max(midY + offset, lo), hi);
     return [
       { x: src.x, y: railY },
       { x: tgt.x, y: railY },
@@ -387,6 +419,25 @@ export function enforceNodeClearance(wps, src, tgt, allNodes, sourceHandle = nul
 
   const lastSegIdx = result.length - 2; // segment index for wp[last-1]→wp[last]
 
+  // Owner-node rects — a clearance push must never relocate a segment INTO
+  // the edge's own source/target node (e.g. a loop-back's top horizontal
+  // pushed up off a mid-diagram node and into the source body). When the
+  // closer-side push would do that, flip to the other side of the blocker.
+  const ownerRects = [];
+  for (const node of allNodes) {
+    if (!srcNodeIds.has(node.id) && !tgtNodeIds.has(node.id)) continue;
+    ownerRects.push({
+      x: node.position?.x ?? 0,
+      y: node.position?.y ?? 0,
+      w: node.measured?.width ?? node.width ?? NODE_WIDTH,
+      h: node.measured?.height ?? node.height ?? 80,
+    });
+  }
+  const horizHitsOwner = (yPos, x1, x2) => ownerRects.some(r =>
+    yPos > r.y && yPos < r.y + r.h && Math.max(x1, x2) > r.x && Math.min(x1, x2) < r.x + r.w);
+  const vertHitsOwner = (xPos, y1, y2) => ownerRects.some(r =>
+    xPos > r.x && xPos < r.x + r.w && Math.max(y1, y2) > r.y && Math.min(y1, y2) < r.y + r.h);
+
   // Stub axes — used by the collinearity check below to decide whether
   // pushing a stub-adjacent segment would break the perpendicular stub.
   const firstWp = result[0];
@@ -456,10 +507,15 @@ export function enforceNodeClearance(wps, src, tgt, allNodes, sourceHandle = nul
           const minX = nx + nw + PAD;
           if (segX < minX) newX = minX;
         } else if (segX > nx - PAD && segX < nx + nw + PAD) {
-          // Default (non-owner): corridor-gated closer-side push
+          // Default (non-owner): corridor-gated closer-side push — flipped
+          // to the far side when the near side would land inside the edge's
+          // own source/target node.
           const distLeft = segX - nx;
           const distRight = (nx + nw) - segX;
-          newX = distLeft < distRight ? nx - PAD : nx + nw + PAD;
+          const near = distLeft < distRight ? nx - PAD : nx + nw + PAD;
+          const far  = distLeft < distRight ? nx + nw + PAD : nx - PAD;
+          newX = vertHitsOwner(near, segMinY, segMaxY) && !vertHitsOwner(far, segMinY, segMaxY)
+            ? far : near;
         }
 
         if (newX !== null) {
@@ -485,10 +541,15 @@ export function enforceNodeClearance(wps, src, tgt, allNodes, sourceHandle = nul
           const maxY = ny - PAD;
           if (segY > maxY) newY = maxY;
         } else if (segY > ny - PAD && segY < ny + nh + PAD) {
-          // Default (non-owner): corridor-gated closer-side push
+          // Default (non-owner): corridor-gated closer-side push — flipped
+          // to the far side when the near side would land inside the edge's
+          // own source/target node.
           const distTop = segY - ny;
           const distBot = (ny + nh) - segY;
-          newY = distTop < distBot ? ny - PAD : ny + nh + PAD;
+          const near = distTop < distBot ? ny - PAD : ny + nh + PAD;
+          const far  = distTop < distBot ? ny + nh + PAD : ny - PAD;
+          newY = horizHitsOwner(near, segMinX, segMaxX) && !horizHitsOwner(far, segMinX, segMaxX)
+            ? far : near;
         }
 
         if (newY !== null) {

@@ -1,13 +1,13 @@
 # Jason Feedback Analysis — Z-Axis "Wrong State" Red-Crosses (R05_ZAxisServo, V42)
 
-**File reviewed:** `SDC_PNP_Test/S01_ServoPNP_AI_Generated_V42.L5X`
+**File reviewed:** `plc-reference/SDC_PNP_Test/S01_ServoPNP_AI_Generated_V42.L5X`
 **Feedback:** Jason red-crossed the `Status.State[19]` and `Status.State[25]` branches in rung 14 (auto position staging) and rung 15 (MAM command) of R05_ZAxisServo, reading them as "Wait For Index Complete" and "Open Gripper" — states where the Z axis must not move.
 
 ---
 
 ## VERDICT: (B) — WRONG LABELS, not wrong logic. The generated logic is provably correct; the labels Jason saw are the *legacy template's* state map, not this file's.
 
-The twist: the mislabels are **not in the generated file at all**. The generated L5X's own `Status.STATE[]` comments are correct and match its logic. The labels Jason cited ("Wait For Index Complete" on 19, "Open Gripper" on 25) are, verbatim, the state descriptions from the legacy SDC reference template `SDC_PNP_Test/S05_ServoPNP.L5X`, whose state numbering assigns different meanings to 19 and 25. Jason reviewed the AI file's state numbers through the legacy map — most likely because he imported the program into a Studio 5000 project that already carried the legacy `Status` tag descriptions (on import collision, Studio 5000 keeps the existing tag's operand comments), or because he cross-referenced the legacy printout.
+The twist: the mislabels are **not in the generated file at all**. The generated L5X's own `Status.STATE[]` comments are correct and match its logic. The labels Jason cited ("Wait For Index Complete" on 19, "Open Gripper" on 25) are, verbatim, the state descriptions from the legacy SDC reference template `plc-reference/SDC_PNP_Test/S05_ServoPNP.L5X`, whose state numbering assigns different meanings to 19 and 25. Jason reviewed the AI file's state numbers through the legacy map — most likely because he imported the program into a Studio 5000 project that already carried the legacy `Status` tag descriptions (on import collision, Studio 5000 keeps the existing tag's operand comments), or because he cross-referenced the legacy printout.
 
 ## Evidence
 

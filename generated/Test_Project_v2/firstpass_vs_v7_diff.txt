@@ -1,0 +1,129 @@
+=== v7 (8-round loop) vs FIRST-PASS build — rung-level diff ===
+stats: {"changedRungs":50,"addedRungs":0,"removedRungs":0,"tagChanges":15}
+
+## R01_Inputs — 3 difference(s)
+- CHANGED
+    v7 : XIC(q_DisengagePartGripper)XIO(q_EngagePartGripper)TON(PartGripperDisengageDelay,?,?)XIC(PartGripperDisengageDelay.DN)OTE(GripperOpened);
+    new: XIC(q_DisengagePartGripper)XIO(q_EngagePartGripper)TON(PartGripperDisengageDelay,?,?)XIC(PartGripperDisengageDelay.DN)OTE(PartGripperOpened);
+- CHANGED
+    v7 : XIC(q_EngagePartGripper)XIO(q_DisengagePartGripper)TON(PartGripperEngageDelay,?,?)XIC(PartGripperEngageDelay.DN)OTE(GripperClosed);
+    new: XIC(q_EngagePartGripper)XIO(q_DisengagePartGripper)TON(PartGripperEngageDelay,?,?)XIC(PartGripperEngageDelay.DN)OTE(PartGripperClosed);
+- CHANGED
+    v7 : XIC(ZAxisRetract.InPos)[XIC(GripperOpened) XIC(XAxisPick.InPos) ,XIC(GripperClosed) XIC(XAxisPlace.InPos) ]OTE(Initialized);
+    new: XIC(ZAxisRetract.InPos)[XIC(PartGripperOpened) XIC(XAxisPick.InPos) ,XIC(PartGripperClosed) XIC(XAxisPlace.InPos) ]OTE(Initialized);
+
+## R02_StateTransitions — 24 difference(s)
+- COMMENT-ONLY: v7 "STATE MAP (generated - authoritative): 4=Start Of Sequence, Wait For Part Present | 7=Move Z Axis To" → new "STATE MAP (generated - authoritative): 4=Start Of Sequence, Wait For Part Present | 7=Move Z Axis To"
+- CHANGED [State 4: Start of sequence, wait for part present]
+    v7 : [XIC(Status.State[55]) XIC(SS_OK) ,[XIC(Status.State[3]) XIC(Initialized) ,XIC(Status.State[124]) ] XIC(GripperOpened) ]XIC(CycleRunning)XIO(Lockout)MOVE(4,Control.StateReg);
+    new: [XIC(Status.State[55]) XIC(CycleRunning) ,XIC(Status.State[3]) XIC(Initialized) XIC(PartGripperOpened) XIC(CycleRunning) ,XIC(Status.State[124]) XIC(q_DisengagePartGripper) XIC(XAxisPick.InPos) XIC(ZAxisRetract.InPos) ]XIO(Lockout)XIC(SS_OK)MOVE(4,Control.Stat
+- COMMENT-ONLY: v7 "State 7: Move z axis to pick position" → new "State 7: Move Z Axis To Pick Position"
+- COMMENT-ONLY: v7 "State 10: Wait for z axis at pick speed transition" → new "State 10: Wait For Z Axis At Pick Speed Transition"
+- CHANGED [State 13: Z axis slow down to pick]
+    v7 : XIC(Status.State[10])XIC(ZAxisPickTransition.InPosWide)XIC(SS_OK)MOVE(13,Control.StateReg);
+    new: XIC(Status.State[10])[XIC(ZAxisPickTransition.InPosWide) ,XIC(ZAxis_MAM.PC) XIC(ZAxisPick.InPos) ]XIC(SS_OK)MOVE(13,Control.StateReg);
+- COMMENT-ONLY: v7 "State 16: Engage gripper on part *Reattach the CycleStationA gate to the part tracking Attempt latch" → new "State 16: Engage Gripper On Part Station commits to the part here - latch part tracking Attempt"
+- CHANGED [State 19: Move z axis to retract position (carrying part)]
+    v7 : [XIC(Status.State[16]) XIC(GripperClosed) XIC(SS_OK) ,XIC(Status.State[2]) XIO(Initialized) XIC(PartStarted) XIC(CycleRunning) XIC(q_EngagePartGripper) ]MOVE(19,Control.StateReg);
+    new: [XIC(Status.State[16]) XIC(q_EngagePartGripper) XIC(PartGripperEngageDelay.DN) ,XIC(Status.State[2]) XIO(Initialized) XIC(PartStarted) XIC(CycleRunning) XIC(q_EngagePartGripper) ]XIC(SS_OK)MOVE(19,Control.StateReg);
+- COMMENT-ONLY: v7 "State 22: Wait for z axis at pick speed transition" → new "State 22: Wait For Z Axis At Pick Speed Transition"
+- COMMENT-ONLY: v7 "State 25: Z axis speed up to retract position" → new "State 25: Z Axis Speed Up To Retract Position"
+- COMMENT-ONLY: v7 "State 28: Move x axis to place position Pick-side corner blend - x traverse starts while z finishes " → new "State 28: Move X Axis To Place Position Pick side corner blend - the traverse starts while Z finishe"
+- CHANGED [State 31: Move z axis to place position *Add the place nest clear input as a ser]
+    v7 : [XIC(Status.State[28]) [XIC(XAxis_MAM.PC) XIC(XAxisPlace.InPos) ,XIC(XAxis_MAM.IP) XIC(XAxisPlace.InPosWide) ] ,[XIC(Status.State[3]) XIC(Initialized) ,XIC(Status.State[124]) ] XIC(q_EngagePartGripper) XIC(CycleRunning) ]XIC(SS_OK)MOVE(31,Control.StateReg);
+    new: [XIC(Status.State[28]) [XIC(XAxis_MAM.PC) XIC(XAxisPlace.InPos) ,XIC(XAxis_MAM.IP) XIC(XAxisPlace.InPosWide) ] ,XIC(Status.State[124]) XIC(q_EngagePartGripper) XIC(XAxisPlace.InPos) XIC(ZAxisRetract.InPos) ]XIC(SS_OK)MOVE(31,Control.StateReg);
+- COMMENT-ONLY: v7 "State 34: Wait for z axis at place speed transition" → new "State 34: Wait For Z Axis At Place Speed Transition"
+- CHANGED [State 37: Z axis slow down to place]
+    v7 : XIC(Status.State[34])XIC(ZAxisPlaceTransition.InPosWide)XIC(SS_OK)MOVE(37,Control.StateReg);
+    new: XIC(Status.State[34])[XIC(ZAxisPlaceTransition.InPosWide) ,XIC(ZAxis_MAM.PC) XIC(ZAxisPlace.InPos) ]XIC(SS_OK)MOVE(37,Control.StateReg);
+- COMMENT-ONLY: v7 "State 40: Disengage gripper to release part Both axes verified strictly at place - the release is th" → new "State 40: Disengage Gripper To Release Part Cross axis verification at the consequence point - both "
+- CHANGED [State 43: Move z axis to retract position]
+    v7 : XIC(Status.State[40])XIC(GripperOpened)XIC(SS_OK)MOVE(43,Control.StateReg)OTL(\Tracking.p_Data.Nest[NestNumCurrent].PartStatus.Station[StaNum].Success);
+    new: XIC(Status.State[40])XIC(q_DisengagePartGripper)XIC(PartGripperDisengageDelay.DN)XIC(SS_OK)MOVE(43,Control.StateReg)OTL(\Tracking.p_Data.Nest[NestNumCurrent].PartStatus.Station[StaNum].Success);
+- COMMENT-ONLY: v7 "State 46: Wait for z axis at place speed transition" → new "State 46: Wait For Z Axis At Place Speed Transition"
+- COMMENT-ONLY: v7 "State 49: Z axis speed up to retract position" → new "State 49: Z Axis Speed Up To Retract Position"
+- COMMENT-ONLY: v7 "State 52: Move x axis to pick position Place-side corner blend - x return starts while z finishes it" → new "State 52: Move X Axis To Pick Position Place side corner blend - the return traverse starts while Z "
+- COMMENT-ONLY: v7 "State 55: Cycle complete, ready for next command" → new "State 55: Cycle Complete, Ready For Next Command Strict arrival at the rest posture: X at Pick, Z at"
+- COMMENT-ONLY: v7 "State 100: Start of initialization sequence, retract z axis" → new "State 100: Start of initialization sequence, move Z axis to retract position"
+- CHANGED [State 103: Initialization move x axis to pick position]
+    v7 : XIC(Status.State[100])XIC(ZAxis_MAM.PC)XIC(ZAxisRetract.InPos)XIC(q_DisengagePartGripper)XIC(SS_OK)MOVE(103,Control.StateReg);
+    new: XIC(Status.State[100])XIC(ZAxis_MAM.PC)XIC(ZAxisRetract.InPos)XIC(PartGripperOpened)XIC(SS_OK)MOVE(103,Control.StateReg);
+- CHANGED [State 106: Initialization move x axis to place position]
+    v7 : XIC(Status.State[100])XIC(ZAxis_MAM.PC)XIC(ZAxisRetract.InPos)XIC(q_EngagePartGripper)XIC(SS_OK)MOVE(106,Control.StateReg);
+    new: XIC(Status.State[100])XIC(ZAxis_MAM.PC)XIC(ZAxisRetract.InPos)XIC(PartGripperClosed)XIC(SS_OK)MOVE(106,Control.StateReg);
+- COMMENT-ONLY: v7 "Restart Logic *Use the part status at this station to determine a course of action here. No attempt " → new "Restart Logic *Use the part status at this station to determine a course of action here."
+- COMMENT-ONLY: v7 "Cycle Time **Cycle time captured at state 55 cycle complete" → new "Cycle Time Cycle complete state 55 latches the cycle time and resets the timer"
+
+## R03_StateLogic — 5 difference(s)
+- CHANGED [Part started - set once the gripper commits to the part, cleared after the relea]
+    v7 : [XIC(Status.State[16]) ,XIC(PartStarted) XIO(Status.State[43]) XIO(g_MachineBasic.PowerUpCP) XIO(q_DisengagePartGripper) ]OTE(PartStarted);
+    new: [XIC(Status.State[19]) ,XIC(PartStarted) XIO(Status.State[43]) XIO(g_MachineBasic.PowerUpCP) XIO(q_DisengagePartGripper) ]OTE(PartStarted);
+- COMMENT-ONLY: v7 "Set Part Tracking If Station Is Locked Out *Replace the AlwaysOff stub with the machine complete gat" → new "Set Part Tracking If Station Is Locked Out *Replace the AlwaysOff stub with the real machine complet"
+- COMMENT-ONLY: v7 "Station Complete - template part-tracking shape (stubbed) OR the standalone state-55 completion bran" → new "Station Complete - template part tracking shape (stubbed) OR the standalone state 55 completion bran"
+- COMMENT-ONLY: v7 "Gripper Control - engage" → new "Part Gripper Control - engage"
+- COMMENT-ONLY: v7 "Gripper Control - disengage" → new "Part Gripper Control - disengage"
+
+## R04_XAxisServo — 5 difference(s)
+- COMMENT-ONLY: v7 "XAxis Permissive - ZAxis homed and at or above the safe position set at startup (Jason Perry, 2026-0" → new "X Axis Motion Permissive - Z axis homed AND Z actual position at or above the startup safe position "
+- CHANGED [Auto Mode]
+    v7 : XIC(SafetyOK)XIO(Status.State[1])[MOVE(0,XAxisMotionParameters.MoveType) ,MOVE(HMI_XAxis.Parameters.AutoSpeed[0],XAxisMotionParameters.Speed) ,MOVE(HMI_XAxis.Parameters.Accel[0],XAxisMotionParameters.Accel) ,MOVE(HMI_XAxis.Parameters.Decel[0],XAxisMotionParame
+    new: XIC(S:FS)ADD(HMI_ZAxis.Parameters.Positions[0],HMI_ZAxis.Parameters.Positions[6],ZAxisSafePosition);
+- COMMENT-ONLY: v7 "Axis Motion Command" → new "Axis Motion Command - X Axis auto move states 28 (to Place), 52 (to Pick), 103 and 106 (initializati"
+- CHANGED [Set the ZAxis safe position for XAxis motion at startup - Retract plus the large]
+    v7 : XIC(S:FS)[GE(HMI_ZAxis.Parameters.Positions[5],HMI_ZAxis.Parameters.Positions[6]) CPT(ZAxisSafePosition,HMI_ZAxis.Parameters.Positions[0]+HMI_ZAxis.Parameters.Positions[5]) ,LT(HMI_ZAxis.Parameters.Positions[5],HMI_ZAxis.Parameters.Positions[6]) CPT(ZAxisSafeP
+    new: XIC(SafetyOK)XIO(Status.State[1])[MOVE(0,XAxisMotionParameters.MoveType) ,MOVE(HMI_XAxis.Parameters.AutoSpeed[0],XAxisMotionParameters.Speed) ,MOVE(HMI_XAxis.Parameters.Accel[0],XAxisMotionParameters.Accel) ,MOVE(HMI_XAxis.Parameters.Decel[0],XAxisMotionParame
+- COMMENT-ONLY: v7 "Axis Position Monitor Place wide band takes the place-side corner blend value (HMI_ZAxis Positions[6" → new "Axis Position Monitor - X Axis PROPOSED NON-STANDARD PATTERN: the XAxisPlace wide band references HM"
+
+## R05_ZAxisServo — 5 difference(s)
+- CHANGED [Manual Mode]
+    v7 : XIC(SafetyOK)XIC(Status.State[1])[[MOVE(HMI_ZAxis.Parameters.ManualSpeed,ZAxisMotionParameters.Speed) ,MOVE(HMI_ZAxis.Parameters.Accel[0],ZAxisMotionParameters.Accel) ,MOVE(HMI_ZAxis.Parameters.Decel[0],ZAxisMotionParameters.Decel) ] ,XIC(ZAxisPermissive) [XIC
+    new: XIC(SafetyOK)XIC(Status.State[1])[[MOVE(HMI_ZAxis.Parameters.ManualSpeed,ZAxisMotionParameters.Speed) ,MOVE(HMI_ZAxis.Parameters.Accel[0],ZAxisMotionParameters.Accel) ,MOVE(HMI_ZAxis.Parameters.Decel[0],ZAxisMotionParameters.Decel) ] ,XIC(ZAxisPermissive) [XIC
+- CHANGED [Auto Mode]
+    v7 : XIC(SafetyOK)XIO(Status.State[1])[MOVE(0,ZAxisMotionParameters.MoveType) ,[XIC(Status.State[7]) ,XIC(Status.State[31]) ] [MOVE(HMI_ZAxis.Parameters.AutoSpeed[0],ZAxisMotionParameters.Speed) ,MOVE(HMI_ZAxis.Parameters.Accel[0],ZAxisMotionParameters.Accel) ,MOVE
+    new: XIC(SafetyOK)XIO(Status.State[1])[MOVE(0,ZAxisMotionParameters.MoveType) ,[XIC(Status.State[7]) ,XIC(Status.State[31]) ,XIC(Status.State[100]) ] [MOVE(HMI_ZAxis.Parameters.AutoSpeed[0],ZAxisMotionParameters.Speed) ,MOVE(HMI_ZAxis.Parameters.Accel[0],ZAxisMotio
+- COMMENT-ONLY: v7 "Axis Motion Command" → new "Axis Motion Command - Z Axis auto move states 7 (to Pick), 19 (to Retract), 31 (to Place), 43 (to Re"
+- COMMENT-ONLY: v7 "Use MCD For Speed Changes" → new "Use MCD For Speed Changes States 13 and 37 slow the in-flight stroke into Pick/Place; states 25 and "
+- COMMENT-ONLY: v7 "Axis Position Monitor One instance per named position: targets, the two speed transition points, and" → new "Axis Position Monitor - Z Axis. One instance per named position; the two corner blend instances are "
+
+## R20_Alarms — 8 difference(s)
+- CHANGED [X Axis quickstop warning]
+    v7 : [XIC(XAxis_MAS_All.EN) ONS(ONS.29) ,XIC(ServoAlarm[4].Active) XIO(FaultReset) ][OTE(ServoAlarm[4].Active) ,GT(HMI_ZAxis.Status.ActualPosition,ZAxisSafePosition) CONCAT(g_StationList[StaNum],ZAxisQuickstopMessageA,ZAxisQuickstopMessageB) CONCAT(ZAxisQuickstopMe
+    new: [XIC(XAxis_MAS_All.EN) ONS(ONS.29) ,XIC(ServoAlarm[4].Active) XIO(FaultReset) ][OTE(ServoAlarm[4].Active) ,XIO(XAxisPermissive) CONCAT(g_StationList[StaNum],ZAxisQuickstopMessageA,ZAxisQuickstopMessageB) CONCAT(ZAxisQuickstopMessageB,ZAxisQuickstopReason,Servo
+- CHANGED [Waiting For X Axis To Reach Place Position]
+    v7 : [[XIC(Status.State[28]) ,XIC(Status.State[106]) ] MOVE(3000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[0].Active) XIO(FaultReset) ][OTE(Alarm[0].Active) ,ONS(ONS.9) CONCAT(g_StationList[StaNum],AlarmList[0],Alarm[0].Message) ];
+    new: [[XIC(Status.State[28]) ,XIC(Status.State[106]) ] MOVE(5000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[0].Active) XIO(FaultReset) ][OTE(Alarm[0].Active) ,ONS(ONS.9) CONCAT(g_StationList[StaNum],AlarmList[0],Alarm[0].Message) ];
+- CHANGED [Waiting For X Axis To Reach Pick Position]
+    v7 : [[XIC(Status.State[52]) ,XIC(Status.State[103]) ] MOVE(3000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[1].Active) XIO(FaultReset) ][OTE(Alarm[1].Active) ,ONS(ONS.10) CONCAT(g_StationList[StaNum],AlarmList[1],Alarm[1].Message) ];
+    new: [[XIC(Status.State[52]) ,XIC(Status.State[103]) ] MOVE(5000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[1].Active) XIO(FaultReset) ][OTE(Alarm[1].Active) ,ONS(ONS.10) CONCAT(g_StationList[StaNum],AlarmList[1],Alarm[1].Message) ];
+- CHANGED [Waiting For Z Axis To Reach Pick Position]
+    v7 : [[XIC(Status.State[7]) ,XIC(Status.State[13]) ] MOVE(3000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[2].Active) XIO(FaultReset) ][OTE(Alarm[2].Active) ,ONS(ONS.11) CONCAT(g_StationList[StaNum],AlarmList[2],Alarm[2].Message) ];
+    new: [XIC(Status.State[13]) MOVE(5000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[2].Active) XIO(FaultReset) ][OTE(Alarm[2].Active) ,ONS(ONS.11) CONCAT(g_StationList[StaNum],AlarmList[2],Alarm[2].Message) ];
+- CHANGED [Waiting For Z Axis To Reach Place Position]
+    v7 : [[XIC(Status.State[31]) ,XIC(Status.State[37]) ] MOVE(3000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[3].Active) XIO(FaultReset) ][OTE(Alarm[3].Active) ,ONS(ONS.12) CONCAT(g_StationList[StaNum],AlarmList[3],Alarm[3].Message) ];
+    new: [XIC(Status.State[37]) MOVE(5000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[3].Active) XIO(FaultReset) ][OTE(Alarm[3].Active) ,ONS(ONS.12) CONCAT(g_StationList[StaNum],AlarmList[3],Alarm[3].Message) ];
+- CHANGED [Waiting For Z Axis To Reach Retract Position]
+    v7 : [[XIC(Status.State[19]) ,XIC(Status.State[25]) ,XIC(Status.State[43]) ,XIC(Status.State[49]) ,XIC(Status.State[100]) ] MOVE(3000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[4].Active) XIO(FaultReset) ][OTE(Alarm[4].Active) ,ONS(ONS.13) CONCAT(g_Statio
+    new: [[XIC(Status.State[25]) ,XIC(Status.State[49]) ,XIC(Status.State[100]) ] MOVE(5000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[4].Active) XIO(FaultReset) ][OTE(Alarm[4].Active) ,ONS(ONS.13) CONCAT(g_StationList[StaNum],AlarmList[4],Alarm[4].Message) ]
+- CHANGED [Waiting For Z Axis To Reach Pick Speed Transition]
+    v7 : [[XIC(Status.State[10]) ,XIC(Status.State[22]) ] MOVE(5000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[6].Active) XIO(FaultReset) ][OTE(Alarm[6].Active) ,ONS(ONS.15) CONCAT(g_StationList[StaNum],AlarmList[6],Alarm[6].Message) ];
+    new: [[XIC(Status.State[7]) ,XIC(Status.State[10]) ,XIC(Status.State[19]) ,XIC(Status.State[22]) ] MOVE(5000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[6].Active) XIO(FaultReset) ][OTE(Alarm[6].Active) ,ONS(ONS.15) CONCAT(g_StationList[StaNum],AlarmList[6
+- CHANGED [Waiting For Z Axis To Reach Place Speed Transition]
+    v7 : [[XIC(Status.State[34]) ,XIC(Status.State[46]) ] MOVE(5000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[7].Active) XIO(FaultReset) ][OTE(Alarm[7].Active) ,ONS(ONS.16) CONCAT(g_StationList[StaNum],AlarmList[7],Alarm[7].Message) ];
+    new: [[XIC(Status.State[31]) ,XIC(Status.State[34]) ,XIC(Status.State[43]) ,XIC(Status.State[46]) ] MOVE(5000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[7].Active) XIO(FaultReset) ][OTE(Alarm[7].Active) ,ONS(ONS.16) CONCAT(g_StationList[StaNum],AlarmList[
+
+## (tags) — 15 difference(s)
+- TAG-CHANGED AlarmList: Name="AlarmList" TagType="Base" DataType="STRING" Dimensions="10" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Value: <Array DataType="STRING" Dimensions="10"> <Element Index="[0]"> <Structure DataType="STRING"> <DataValueMember Name="LEN" → Name="AlarmList" TagType="Base" DataType="STRING" Dimensions="10" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Value: <Array DataType="STRING" Dimensions="10"> <Element Index="[0]"> <Structure DataType="STRING"> <DataValueMember Name="LEN"
+- TAG-REMOVED GripperClosed: Name="GripperClosed" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Value: <DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+- TAG-REMOVED GripperOpened: Name="GripperOpened" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Value: <DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+- TAG-CHANGED ZAxisQuickstopReason: Name="ZAxisQuickstopReason" TagType="Base" DataType="STRING" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Value: <![CDATA['- Z axis not retracted']]> → Name="ZAxisQuickstopReason" TagType="Base" DataType="STRING" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Value: <![CDATA['- Z Axis Below Safe Clearance Position']]>
+- TAG-CHANGED ZAxisPickTransition: Name="ZAxisPickTransition" TagType="Base" DataType="AOI_RangeCheck" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Description: Z axis pick speed transition point (Positions[1]) - MCD anchor, detected mid-flight on InPosWide | Value: <Struct → Name="ZAxisPickTransition" TagType="Base" DataType="AOI_RangeCheck" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Description: Z Axis pick speed transition point - HMI_ZAxis.Parameters.Positions[1] | Value: <Structure DataType="AOI_RangeChe
+- TAG-CHANGED ZAxisPlaceTransition: Name="ZAxisPlaceTransition" TagType="Base" DataType="AOI_RangeCheck" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Description: Z axis place speed transition point (Positions[3]) - MCD anchor, detected mid-flight on InPosWide | Value: <Stru → Name="ZAxisPlaceTransition" TagType="Base" DataType="AOI_RangeCheck" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Description: Z Axis place speed transition point - HMI_ZAxis.Parameters.Positions[3] | Value: <Structure DataType="AOI_RangeC
+- TAG-CHANGED ZAxisPickRetractBlend: Name="ZAxisPickRetractBlend" TagType="Base" DataType="AOI_RangeCheck" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Description: Pick-side retract corner blend - anchored on Retract with wide band = PickRetractBlend (Positions[5]) | Value:  → Name="ZAxisPickRetractBlend" TagType="Base" DataType="AOI_RangeCheck" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Description: Pick side retract corner blend - anchored at Retract, wide band = HMI_ZAxis.Parameters.Positions[5] | Value: <S
+- TAG-CHANGED ZAxisPlaceRetractBlend: Name="ZAxisPlaceRetractBlend" TagType="Base" DataType="AOI_RangeCheck" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Description: Place-side retract corner blend - anchored on Retract with wide band = PlaceRetractBlend (Positions[6]) | Valu → Name="ZAxisPlaceRetractBlend" TagType="Base" DataType="AOI_RangeCheck" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Description: Place side retract corner blend - anchored at Retract, wide band = HMI_ZAxis.Parameters.Positions[6] | Value: 
+- TAG-CHANGED ZAxis_MCD: Name="ZAxis_MCD" TagType="Base" DataType="MOTION_INSTRUCTION" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Description: Z axis MCD control tag - in-flight speed changes at the pick/place transition points | Value: <Structure DataType="MOTI → Name="ZAxis_MCD" TagType="Base" DataType="MOTION_INSTRUCTION" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Description: Z Axis motion change dynamics control tag - in-flight speed changes at the transition points | Value: <Structure DataTy
+- TAG-CHANGED ZAxisMCDSpeed: Name="ZAxisMCDSpeed" TagType="Base" DataType="REAL" Radix="Float" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Description: Z axis MCD staged speed (separate from ZAxisMotionParameters so the in-flight move is retuned without disturbing th → Name="ZAxisMCDSpeed" TagType="Base" DataType="REAL" Radix="Float" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Description: Z Axis MCD staged speed - separate from ZAxisMotionParameters so the in-flight move is retuned without disturbing t
+- TAG-CHANGED ZAxisMCDAccel: Name="ZAxisMCDAccel" TagType="Base" DataType="REAL" Radix="Float" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Description: Z axis MCD staged accel | Value: <DataValue DataType="REAL" Radix="Float" Value="0.0"/> → Name="ZAxisMCDAccel" TagType="Base" DataType="REAL" Radix="Float" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Description: Z Axis MCD staged accel | Value: <DataValue DataType="REAL" Radix="Float" Value="0.0"/>
+- TAG-CHANGED ZAxisMCDDecel: Name="ZAxisMCDDecel" TagType="Base" DataType="REAL" Radix="Float" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Description: Z axis MCD staged decel | Value: <DataValue DataType="REAL" Radix="Float" Value="0.0"/> → Name="ZAxisMCDDecel" TagType="Base" DataType="REAL" Radix="Float" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Description: Z Axis MCD staged decel | Value: <DataValue DataType="REAL" Radix="Float" Value="0.0"/>
+- TAG-CHANGED ZAxisSafePosition: Name="ZAxisSafePosition" TagType="Base" DataType="REAL" Radix="Float" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Description: Z at or above this height = safe for XAxis motion. Set at startup from Retract + the larger corner blend (Jason → Name="ZAxisSafePosition" TagType="Base" DataType="REAL" Radix="Float" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Description: Z Axis safe clearance position for the X traverse permissive - seeded at first scan from Retract plus the place
+- TAG-ADDED PartGripperClosed: Name="PartGripperClosed" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Value: <DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+- TAG-ADDED PartGripperOpened: Name="PartGripperOpened" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None" | Value: <DataValue DataType="BOOL" Radix="Decimal" Value="0"/>

@@ -50,13 +50,13 @@ check(system.length > 0, 'system prompt assembled');
 
 // ── Part 2: validator ────────────────────────────────────────────────────────
 console.log('\n=== Part 2: validator — known-good V4.2 AI export ===');
-const goodPath = path.join(ROOT, 'SDC_PNP_Test', 'S01_ServoPNP_AI_Generated_V42.L5X');
+const goodPath = path.join(ROOT, 'plc-reference', 'SDC_PNP_Test', 'S01_ServoPNP_AI_Generated_V42.L5X');
 const good = validateL5X(fs.readFileSync(goodPath, 'utf8'));
 console.log(formatReport(good).split('\n').map(l => '  ' + l).join('\n'));
 check(good.ok, 'S01_ServoPNP_AI_Generated_V42.L5X validates clean');
 
 console.log('\n=== Part 2: validator — old SLD export (expected to fail) ===');
-const badPath = path.join(ROOT, 'SDC_PNP_Test', 'S01_SDCServoPNP_SLD.L5X');
+const badPath = path.join(ROOT, 'plc-reference', 'SDC_PNP_Test', 'S01_SDCServoPNP_SLD.L5X');
 const bad = validateL5X(fs.readFileSync(badPath, 'utf8'));
 console.log(formatReport(bad).split('\n').map(l => '  ' + l).join('\n'));
 check(!bad.ok, 'S01_SDCServoPNP_SLD.L5X fails validation');

@@ -1,0 +1,29 @@
+{
+  "verdict": "ship",
+  "scope": "delta",
+  "costUSD": 0.1356,
+  "model": "claude-opus-5",
+  "durationS": 16,
+  "findings": [
+    {
+      "severity": "note",
+      "routine": "R05_ZAxisServo",
+      "finding": "Prior blocker CLEARED: Manual Mode rung now maps ManMoves.0→Positions[0] (Retract), ManMoves.1→Positions[2] (Pick), ManMoves.2→Positions[4] (Place); the transition/blend slots are out of the manual list and a manual move to Place exists for commissioning/recovery. Template rung shape (speed/accel/decel branch, permissive-gated position branches, OTE(ZAxisManMoveTrig)) is otherwise unchanged.",
+      "templateEvidence": "S05_ServoPNP R05_ZAxisServo rung 13 'Manual Mode' — ManMoves bits select real named park targets from HMI_{Axis}.Parameters.Positions[]"
+    },
+    {
+      "severity": "note",
+      "routine": "R02_StateTransitions",
+      "finding": "Prior style finding CLEARED: the four rung comments are now terse action/destination naming ('State 28: Move X Axis To Place Position' + a one-line corner-blend note), and the state-16 comment became a legitimate *Replace-style integration stub for the CycleStationA gate. Minor lowercase 'x'/'z' in two blend notes — not worth a change.",
+      "templateEvidence": "S05_ServoPNP R02 rung comments: 'State 16: Extend x axis (Application dependent - add wideband positioning permissive...)' — terse action naming plus a short application note"
+    },
+    {
+      "severity": "note",
+      "routine": "R01_Inputs",
+      "finding": "Gripper status-bit naming (GripperOpened/GripperClosed alongside q_Engage/q_Disengage outputs) stands as decided — the engineer-verified SDCServoPNP_JARVIS_v7.L5X uses exactly this split. No action.",
+      "templateEvidence": "plc-reference/verified/SDCServoPNP_JARVIS_v7.L5X R01 gripper status rungs (Jason Perry confirmed 2026-08-26)"
+    }
+  ],
+  "standardsQuestions": [],
+  "summary": "Both actionable priors are genuinely fixed: the Z manual-move slots now point at the three real park targets (Retract/Pick/Place) with the transition and blend slots excluded, and the R02 rung comments are back to terse action naming with the one integration stub note kept where it belongs. The delta touches only those four comments and one manual-mode rung — no logic outside the manual position selects changed, and nothing new violates a template shape. Priors 3-5 were recorded decisions/notes, not open items. Ship."
+}

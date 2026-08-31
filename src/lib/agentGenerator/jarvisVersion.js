@@ -15,7 +15,7 @@
  * CommonJS, plain Node — required by client.js and scripts/jarvisBenchmark.cjs.
  */
 
-const JARVIS_VERSION = '1.1.2';
+const JARVIS_VERSION = '1.4.0';
 
 const HISTORY = [
   {
@@ -86,6 +86,75 @@ const HISTORY = [
       'ascending before the override block = ERROR; invented move-trigger latches / extra per-axis MAMs / ' +
       'missing state-list+gating = ERROR; consecutive same-axis move states both in one MAM list (second ' +
       'move never executes) = ERROR.',
+    templates: 'V4.2',
+  },
+  {
+    version: '1.2.0',
+    date: '2026-08-21',
+    changes: 'Template consultation made MANDATORY and self-deriving (Dan: multi-move states vs S05\'s ' +
+      'one-move-per-state; "put rules in place so I don\'t have to keep telling you"). (1) templatePatterns.js ' +
+      'auto-derives structural invariants from the plc-reference/standard L5X files themselves (one MAM per ' +
+      'axis, one move per state, staging shape defaults-first, transition condition families, R02 ordering, ' +
+      'mnemonic family, init graph), cached by file hash in jarvis-knowledge/analysis/template-patterns.json — ' +
+      'new templates re-derive with no curation. (2) Compile conformance contract: templateConformance section ' +
+      'required in compiled output — every structural decision cites its inventory pattern or declares an ' +
+      'extension (sanctioned-extension recognized for the fast/slow + transition-point standard, Dan 2026-08-21); ' +
+      'uncited = compile validation error. Inventory + contract injected into compile, generation, and review ' +
+      'prompts. (3) validator.checkOneMovePerState: >=2 ServoMoves on one axis in one state = ERROR at IR level ' +
+      '(compile validation AND validateAgainstCompiledIR); cross-axis after-complete chain in one state = ERROR; ' +
+      'cross-axis overlap = warning (must be permissive-gated wideband). Internal reviewer runs a ' +
+      'template-conformance pass against the inventory; undeclared divergence = blocker. Dan\'s doctrine ' +
+      'codified as THE CHECK: the internal review\'s one question is "is this in line with SDC standards?" — ' +
+      'it runs on every generation path (full run, pretranslation, and a review-only pass on cached ' +
+      'pretranslated files that were never reviewed). Third verdict \'unsure\': the standards knowledge ' +
+      'doesn\'t answer a structural choice -> build HELD (never shipped, never guessed), specific standards ' +
+      'questions filed to jarvis-knowledge/questions.json (source \'internal review\', linked to the build id); ' +
+      'Code grid shows "held — N standards questions filed for the controls team". unsure != fix: fix is for ' +
+      'known violations, unsure is for unknown standards.',
+    templates: 'V4.2',
+  },
+  {
+    version: '1.3.0',
+    date: '2026-08-22',
+    changes: 'DAN\'S ESCALATION MODEL built into the pipeline. (1) Solutions, not explanations — every ' +
+      'question-creating path (compile questions, internal-review standardsQuestions, hold-for-help, ' +
+      'correction lessons, /api/jarvis/questions) carries proposedSolution (Jarvis\'s best answer, required ' +
+      'by prompt contract) and addressee (\'ME\'|\'CE\', derived from the question domain). (2) Loop limit -> ' +
+      'hold-for-help: a validation finding surviving JARVIS_FINDING_ROUND_LIMIT (default 4) consecutive fix ' +
+      'rounds, or JARVIS_MAX_FIX_ROUNDS (default 8) total rounds, STOPS generation (the v4 build burned 12 ' +
+      'rounds on one junction); Jarvis formulates the question(s) WITH proposed solution(s), the build ' +
+      'persists as held (build.help {questions, status:\'waiting\'}) with resume state (last edit plan + ' +
+      'L5X draft + findings — the prompt is deterministic, so that is the whole session-unique state). ' +
+      '(3) POST /api/jarvis/builds/:id/continue folds human answers into knowledge and resumes the held fix ' +
+      'loop through THE CHECK. (4) Structural-delta highlight: translation plans may DECLARE deliberate ' +
+      'deviations (plan.structuralChanges + irPatch); validation and internal review run against the PATCHED ' +
+      'contract, sm.compiledSequence is updated so the flowchart stays truthful, and each change rides as ' +
+      '{text, approved:false} for quick approve (POST /api/jarvis/builds/:id/approve-changes) — never silent ' +
+      'divergence, never blocking the file. (5) build.writingNotes [{text}] — right-amount notes of what came ' +
+      'up while writing (plan notes + per-round root causes), no quota, never filler.',
+    templates: 'V4.2',
+  },
+  {
+    version: '1.4.0',
+    date: '2026-08-25',
+    changes: 'FIRST-PASS DOCTRINE (Dan, verbatim: "Look at the request. Use SDC standards. Look at the ' +
+      'references they gave you. Ask the engineers any questions BEFORE writing. Write the code based on ' +
+      'SDC standards. Maybe one review at the end. You don\'t get eight revisions — you get one."). ' +
+      '(1) PRE-WRITE STUDY (preWriteStudy.js): the write call now carries the COMPLETE closest ' +
+      'engineer-corrected exemplar of the same template family (rung-for-rung routine bodies, ' +
+      'whole-routine budget trim), lessons from studied reference material (sources.json), and the ' +
+      'build\'s recorded rulings (approved deviations, compile flags/decisions, answered questions) — ' +
+      'own 1h-TTL cache block. (2) READINESS PASS: one cheap fast-model call (JARVIS_READINESS_MODEL, ' +
+      'default claude-haiku-4-5) before writing — "list anything unresolved, ambiguous, or missing that ' +
+      'would cause a defect"; real items HOLD the build before any write token is spent (questions with ' +
+      'proposed solutions through the existing hold channel; resume folds answers in and skips the pass). ' +
+      '(3) WRITE ONCE: the translation prompt is reframed — final file, no revision loop, one senior ' +
+      'review at the end. (4) Fix loop = SAFETY NET, rounds = TUITION: caps unchanged, but every build ' +
+      'that needed fix rounds files lessons ("what should the pre-write study have caught?") through ' +
+      'correctionLearner into the concept docs. (5) THE METRIC: firstPassShip + roundsToShip recorded ' +
+      'per build (buildScores) and aggregated by GET /api/jarvis/trackrecord as the first-pass ship ' +
+      'rate — Jarvis\'s headline number. Gates: JARVIS_PREWRITE_STUDY / JARVIS_READINESS / ' +
+      'JARVIS_TUITION (all default on).',
     templates: 'V4.2',
   },
 ];

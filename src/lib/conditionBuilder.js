@@ -32,7 +32,7 @@ export function hasSensorForOperation(device, operation) {
 
     case 'PneumaticGripper':
       if (operation === 'Engage')    return configKey === 'both' || configKey === 'engageOnly';
-      if (operation === 'Disengage') return configKey === 'both';
+      if (operation === 'Disengage') return configKey === 'both' || configKey === 'disengageOnly';
       return false;
 
     case 'PneumaticVacGenerator':
@@ -61,7 +61,7 @@ export function needsTimerForOperation(device, operation) {
       return false;
 
     case 'PneumaticGripper':
-      if (operation === 'Engage')    return configKey === 'none';
+      if (operation === 'Engage')    return configKey === 'none' || configKey === 'disengageOnly';
       if (operation === 'Disengage') return configKey === 'engageOnly' || configKey === 'none';
       return false;
 

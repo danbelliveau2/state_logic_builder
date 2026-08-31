@@ -9,7 +9,11 @@
  * {
  *   "programName": "S01_ServoPNP",          // optional — engine derives one if omitted
  *   "notes": "free text (ignored by engine)",
- *   "operations": [ <op>, ... ]             // applied strictly in order
+ *   "operations": [ <op>, ... ],            // applied strictly in order
+ *   "structuralChanges": [                  // optional (translation mode):
+ *     { "text": "one plain sentence",       //   declared deviations from the
+ *       "irPatch": [ <irOp>, ... ] }        //   approved compiled sequence
+ *   ]                                       //   (see coordinationAuthor.applyIrPatches)
  * }
  *
  * Operations (see OP_DOCS below for the model-facing documentation):
@@ -79,8 +83,8 @@ const OPS = {
     optional: { description: 'string', value: 'any' },
     check(op) {
       if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(op.name)) return `addTag: invalid tag name "${op.name}"`;
-      if (!['BOOL', 'DINT', 'REAL', 'TIMER'].includes(op.dataType)) {
-        return `addTag: unsupported dataType "${op.dataType}" (BOOL | DINT | REAL | TIMER)`;
+      if (!['BOOL', 'DINT', 'REAL', 'TIMER', 'MOTION_INSTRUCTION', 'AOI_RangeCheck'].includes(op.dataType)) {
+        return `addTag: unsupported dataType "${op.dataType}" (BOOL | DINT | REAL | TIMER | MOTION_INSTRUCTION | AOI_RangeCheck)`;
       }
       return null;
     },
@@ -91,7 +95,13 @@ const OPS = {
   },
   setStringData: {
     required: { tag: 'string', oldText: 'string', newText: 'string' },
-    optional: {},
+    optional: { index: 'number' },
+    check(op) {
+      if (op.index !== undefined && (!Number.isInteger(op.index) || op.index < 0)) {
+        return 'setStringData "index" must be a 0-based integer array element index';
+      }
+      return null;
+    },
   },
   setTagComment: {
     required: { tag: 'string', operand: 'string' },
@@ -138,6 +148,36 @@ function validatePlan(plan) {
   if (plan.programName !== undefined) {
     if (typeof plan.programName !== 'string' || !/^S\d{2}_[A-Za-z][A-Za-z0-9_]*$/.test(plan.programName)) {
       errors.push(`programName must match S{NN}_{PascalName} — got ${JSON.stringify(plan.programName)}`);
+    }
+  }
+  // Declared structural deviations from the approved compiled sequence
+  // (Dan's escalation model: never silent divergence — a deliberate change is
+  // declared with one plain sentence + the IR patch that keeps the diagram
+  // truthful). Validated structurally here; op semantics belong to
+  // coordinationAuthor.applyIrPatches.
+  const IR_OPS = ['addState', 'removeState', 'updateState', 'addTransition', 'removeTransition', 'updateTransition'];
+  if (plan.structuralChanges !== undefined) {
+    if (!Array.isArray(plan.structuralChanges)) {
+      errors.push('"structuralChanges" must be an array of { text, irPatch? }');
+    } else {
+      plan.structuralChanges.forEach((c, i) => {
+        const where = `structuralChanges[${i}]`;
+        if (!c || typeof c !== 'object') { errors.push(`${where}: not an object`); return; }
+        if (typeof c.text !== 'string' || !c.text.trim()) {
+          errors.push(`${where}: needs "text" — one plain sentence naming the change`);
+        }
+        if (c.irPatch !== undefined) {
+          if (!Array.isArray(c.irPatch)) {
+            errors.push(`${where}: "irPatch" must be an array of IR ops`);
+          } else {
+            c.irPatch.forEach((op, j) => {
+              if (!op || typeof op !== 'object' || !IR_OPS.includes(op.op)) {
+                errors.push(`${where}.irPatch[${j}]: unknown op "${op && op.op}" — allowed: ${IR_OPS.join(', ')}`);
+              }
+            });
+          }
+        }
+      });
     }
   }
   if (!Array.isArray(plan.operations)) {
@@ -210,8 +250,13 @@ later operations must be written using the NEW names):
 
 5. {"op":"addTag","name":"p_PartGripped","dataType":"BOOL",
     "description":"SM Output Signal: Part_Gripped - ON while a part is held"}
-   Declare a new program tag (BOOL | DINT | REAL | TIMER). "value" presets a
-   scalar (or TIMER preset, e.g. {"value":2000} sets .PRE).
+   Declare a new program tag (BOOL | DINT | REAL | TIMER | MOTION_INSTRUCTION
+   | AOI_RangeCheck). "value" presets a scalar (or TIMER preset, e.g.
+   {"value":2000} sets .PRE). MOTION_INSTRUCTION declares a motion control
+   tag (e.g. ZAxis_MCD for the "Use MCD For Speed Changes" rung);
+   AOI_RangeCheck declares a position-monitor instance backing tag (e.g.
+   ZAxisPickTransition, ZAxisPickRetractBlend) — both emit the full
+   Studio-format structure, zero-initialized.
 
 6. {"op":"setTagData","tag":"CloseGripperDelay","member":"PRE","value":250,"oldValue":100}
    Change one numeric member of an existing program tag. Keeps the L5K and
@@ -221,7 +266,9 @@ later operations must be written using the NEW names):
    Rewrite one string value (alarm message, HMI status message). oldText must
    be the EXACT current text (shown in the template extracts). LEN fields and
    $00 padding are recomputed automatically. The new text must fit the
-   existing string buffer.
+   existing string buffer. For EMPTY or duplicate array elements, add
+   "index": N (0-based element index, e.g. AlarmList[6] -> "index":6 with
+   "oldText":"") — the write then targets exactly that element.
 
 8. {"op":"setTagComment","tag":"Status","operand":".STATE[7]","text":"Move Z Axis To Pick Position"}
    Set (or with "remove":true delete) the comment on a tag member operand —
@@ -240,6 +287,28 @@ HARD LIMITS (the merge engine refuses these — do not attempt):
   missing matches are hard errors and come back to you for correction
   (ambiguity errors list the matching rung numbers and comments; resolve with
   "occurrence"/"nearComment" on updateRung/spliceRungs).
+
+STRUCTURAL CHANGES (translation mode only — never silent divergence): if
+implementing the approved compiled sequence FORCES a structural change — a
+state added/removed, a transition redirected or re-conditioned — you must
+DECLARE it as a deliberate decision instead of quietly diverging:
+
+  "structuralChanges": [
+    { "text": "<ONE plain sentence: what changed and why>",
+      "irPatch": [ {"op":"addState","state":{"stateNumber":34,"label":"Wait for gripper confirm","actions":[]}},
+                   {"op":"updateTransition","fromState":31,"toState":37,"patch":{"toState":34}},
+                   {"op":"addTransition","transition":{"fromState":34,"toState":37,"conditionText":"CloseGripperDelay.DN","kind":"sequence"}} ] }
+  ]
+
+The irPatch updates the approved sequence to match your code, so the diagram
+stays truthful and validation checks your code against the PATCHED contract.
+irPatch ops: addState {state}, removeState {stateNumber},
+updateState {stateNumber, patch}, addTransition {transition},
+removeTransition {fromState, toState}, updateTransition {fromState, toState, patch}.
+Every declared change is flagged to the engineer for a quick approve — it does
+not block the file. An UNDECLARED divergence from the approved sequence is a
+defect and fails validation. Use this sparingly: the approved sequence is the
+law; declare a change only when the template's rung shapes genuinely force it.
 
 KEEP THE PLAN COMPACT: a typical station is 40-90 operations. Use the
 shortest unique "match" strings, never restate rungs you are not changing,

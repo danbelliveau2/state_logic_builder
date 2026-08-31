@@ -1,0 +1,512 @@
+﻿<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--State Logic Engine For 128 States-->
+<RSLogix5000Content SchemaRevision="1.0" SoftwareRevision="37.00" TargetName="State_Engine_128Max" TargetType="AddOnInstructionDefinition" TargetClass="Standard" TargetRevision="5.0 " TargetLastEdited="2024-08-26T19:13:31.195Z" ContainsContext="true" ExportDate="Wed Jul 30 14:10:16 2025" ExportOptions="References NoRawData L5KData DecoratedData Context Dependencies ForceProtectedEncoding AllProjDocTrans">
+<Controller Use="Context" Name="SoftwareStandardization">
+<DataTypes Use="Context">
+<DataType Name="State_Logic_Control" Family="NoFamily" Class="User">
+<Members>
+<Member Name="StateReg" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Register]]>
+</Description>
+</Member>
+<Member Name="ZZZZZZZZZZState_Logi1" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="EnaFaultDetect" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZState_Logi1" BitNumber="0" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Enable Fault Detection]]>
+</Description>
+</Member>
+<Member Name="EnaTransitionTimer" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZState_Logi1" BitNumber="1" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Enable State Transition Timer]]>
+</Description>
+</Member>
+<Member Name="FaultTime" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Timeout Fault Time (Msec)]]>
+</Description>
+</Member>
+<Member Name="TransitionTime" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Transition preset time (ms)]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+<DataType Name="State_Logic_Status" Family="NoFamily" Class="User">
+<Members>
+<Member Name="State" DataType="BOOL" Dimension="128" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Control Bits]]>
+</Description>
+</Member>
+<Member Name="PreviousState" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Previous State]]>
+</Description>
+</Member>
+<Member Name="ZZZZZZZZZZState_Logi2" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="StateChangeOccurred_OS" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZState_Logi2" BitNumber="0" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Change Occurred]]>
+</Description>
+</Member>
+<Member Name="TimeoutFlt" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZState_Logi2" BitNumber="1" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Timeout Fault]]>
+</Description>
+</Member>
+<Member Name="TransitionTimerDone" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZState_Logi2" BitNumber="2" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Transition Time Done]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+</DataTypes>
+<AddOnInstructionDefinitions Use="Context">
+<AddOnInstructionDefinition Use="Target" Name="State_Engine_128Max" Class="Standard" Revision="5.0" Vendor="Steven Douglas Corp." ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" CreatedDate="2013-06-25T13:55:13.933Z" CreatedBy="BillHambyLaptop\Bill" EditedDate="2024-08-26T19:13:31.195Z"
+ EditedBy="STEVENDOUGLAS\dgarr" SoftwareRevision="v36.00">
+<Description>
+<![CDATA[State Logic Engine For 128 States]]>
+</Description>
+<RevisionNote>
+<![CDATA[-Separated UDT into Control & Status Pieces For better use with standard "Progam" methods.
+-Removed Timer,OS,Bit, Counter from Control UDT (Use local program tags instead)
+-4.1 optimizations
+-4.2 optimizations. Ena--Timer bits no longer needed.
+-5.0 added integrated state history array (variable length) 1/14/23 D.G.]]>
+</RevisionNote>
+<Parameters>
+<Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Input - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Output - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="StateLogicControl" TagType="Base" DataType="State_Logic_Control" Usage="InOut" Required="true" Visible="true" Constant="false"/>
+<Parameter Name="StateLogicStatus" TagType="Base" DataType="State_Logic_Status" Usage="InOut" Required="true" Visible="true" Constant="false"/>
+<Parameter Name="StateHistoryArray" TagType="Base" DataType="SINT" Dimensions="1" Usage="InOut" Radix="Decimal" Required="true" Visible="true" Constant="false">
+<Description>
+<![CDATA[State history array]]>
+</Description>
+</Parameter>
+</Parameters>
+<LocalTags>
+<LocalTag Name="StateDurationTimer" DataType="FBD_TIMER" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[[1,0,0,0,0,0,0,0,0,4,0,0]]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="FBD_TIMER">
+<DataValueMember Name="EnableIn" DataType="BOOL" Value="1"/>
+<DataValueMember Name="TimerEnable" DataType="BOOL" Value="0"/>
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Reset" DataType="BOOL" Value="0"/>
+<DataValueMember Name="EnableOut" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Status" DataType="DINT" Radix="Hex" Value="16#0000_0000"/>
+<DataValueMember Name="InstructFault" DataType="BOOL" Value="0"/>
+<DataValueMember Name="PresetInv" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="i" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="INT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="StateReg_Prev" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="INT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="FaultTimer" DataType="FBD_TIMER" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[[1,0,0,0,0,0,0,0,0,4,0,0]]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="FBD_TIMER">
+<DataValueMember Name="EnableIn" DataType="BOOL" Value="1"/>
+<DataValueMember Name="TimerEnable" DataType="BOOL" Value="0"/>
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Reset" DataType="BOOL" Value="0"/>
+<DataValueMember Name="EnableOut" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Status" DataType="DINT" Radix="Hex" Value="16#0000_0000"/>
+<DataValueMember Name="InstructFault" DataType="BOOL" Value="0"/>
+<DataValueMember Name="PresetInv" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="localStatus" DataType="State_Logic_Status" ExternalAccess="None">
+<Description>
+<![CDATA[Temp structure for copying to ensure data changes all at once.]]>
+</Description>
+<DefaultData Format="L5K">
+<![CDATA[[[2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0,2#0],0,0]]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="State_Logic_Status">
+<ArrayMember Name="State" DataType="BOOL" Dimensions="128" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+<Element Index="[3]" Value="0"/>
+<Element Index="[4]" Value="0"/>
+<Element Index="[5]" Value="0"/>
+<Element Index="[6]" Value="0"/>
+<Element Index="[7]" Value="0"/>
+<Element Index="[8]" Value="0"/>
+<Element Index="[9]" Value="0"/>
+<Element Index="[10]" Value="0"/>
+<Element Index="[11]" Value="0"/>
+<Element Index="[12]" Value="0"/>
+<Element Index="[13]" Value="0"/>
+<Element Index="[14]" Value="0"/>
+<Element Index="[15]" Value="0"/>
+<Element Index="[16]" Value="0"/>
+<Element Index="[17]" Value="0"/>
+<Element Index="[18]" Value="0"/>
+<Element Index="[19]" Value="0"/>
+<Element Index="[20]" Value="0"/>
+<Element Index="[21]" Value="0"/>
+<Element Index="[22]" Value="0"/>
+<Element Index="[23]" Value="0"/>
+<Element Index="[24]" Value="0"/>
+<Element Index="[25]" Value="0"/>
+<Element Index="[26]" Value="0"/>
+<Element Index="[27]" Value="0"/>
+<Element Index="[28]" Value="0"/>
+<Element Index="[29]" Value="0"/>
+<Element Index="[30]" Value="0"/>
+<Element Index="[31]" Value="0"/>
+<Element Index="[32]" Value="0"/>
+<Element Index="[33]" Value="0"/>
+<Element Index="[34]" Value="0"/>
+<Element Index="[35]" Value="0"/>
+<Element Index="[36]" Value="0"/>
+<Element Index="[37]" Value="0"/>
+<Element Index="[38]" Value="0"/>
+<Element Index="[39]" Value="0"/>
+<Element Index="[40]" Value="0"/>
+<Element Index="[41]" Value="0"/>
+<Element Index="[42]" Value="0"/>
+<Element Index="[43]" Value="0"/>
+<Element Index="[44]" Value="0"/>
+<Element Index="[45]" Value="0"/>
+<Element Index="[46]" Value="0"/>
+<Element Index="[47]" Value="0"/>
+<Element Index="[48]" Value="0"/>
+<Element Index="[49]" Value="0"/>
+<Element Index="[50]" Value="0"/>
+<Element Index="[51]" Value="0"/>
+<Element Index="[52]" Value="0"/>
+<Element Index="[53]" Value="0"/>
+<Element Index="[54]" Value="0"/>
+<Element Index="[55]" Value="0"/>
+<Element Index="[56]" Value="0"/>
+<Element Index="[57]" Value="0"/>
+<Element Index="[58]" Value="0"/>
+<Element Index="[59]" Value="0"/>
+<Element Index="[60]" Value="0"/>
+<Element Index="[61]" Value="0"/>
+<Element Index="[62]" Value="0"/>
+<Element Index="[63]" Value="0"/>
+<Element Index="[64]" Value="0"/>
+<Element Index="[65]" Value="0"/>
+<Element Index="[66]" Value="0"/>
+<Element Index="[67]" Value="0"/>
+<Element Index="[68]" Value="0"/>
+<Element Index="[69]" Value="0"/>
+<Element Index="[70]" Value="0"/>
+<Element Index="[71]" Value="0"/>
+<Element Index="[72]" Value="0"/>
+<Element Index="[73]" Value="0"/>
+<Element Index="[74]" Value="0"/>
+<Element Index="[75]" Value="0"/>
+<Element Index="[76]" Value="0"/>
+<Element Index="[77]" Value="0"/>
+<Element Index="[78]" Value="0"/>
+<Element Index="[79]" Value="0"/>
+<Element Index="[80]" Value="0"/>
+<Element Index="[81]" Value="0"/>
+<Element Index="[82]" Value="0"/>
+<Element Index="[83]" Value="0"/>
+<Element Index="[84]" Value="0"/>
+<Element Index="[85]" Value="0"/>
+<Element Index="[86]" Value="0"/>
+<Element Index="[87]" Value="0"/>
+<Element Index="[88]" Value="0"/>
+<Element Index="[89]" Value="0"/>
+<Element Index="[90]" Value="0"/>
+<Element Index="[91]" Value="0"/>
+<Element Index="[92]" Value="0"/>
+<Element Index="[93]" Value="0"/>
+<Element Index="[94]" Value="0"/>
+<Element Index="[95]" Value="0"/>
+<Element Index="[96]" Value="0"/>
+<Element Index="[97]" Value="0"/>
+<Element Index="[98]" Value="0"/>
+<Element Index="[99]" Value="0"/>
+<Element Index="[100]" Value="0"/>
+<Element Index="[101]" Value="0"/>
+<Element Index="[102]" Value="0"/>
+<Element Index="[103]" Value="0"/>
+<Element Index="[104]" Value="0"/>
+<Element Index="[105]" Value="0"/>
+<Element Index="[106]" Value="0"/>
+<Element Index="[107]" Value="0"/>
+<Element Index="[108]" Value="0"/>
+<Element Index="[109]" Value="0"/>
+<Element Index="[110]" Value="0"/>
+<Element Index="[111]" Value="0"/>
+<Element Index="[112]" Value="0"/>
+<Element Index="[113]" Value="0"/>
+<Element Index="[114]" Value="0"/>
+<Element Index="[115]" Value="0"/>
+<Element Index="[116]" Value="0"/>
+<Element Index="[117]" Value="0"/>
+<Element Index="[118]" Value="0"/>
+<Element Index="[119]" Value="0"/>
+<Element Index="[120]" Value="0"/>
+<Element Index="[121]" Value="0"/>
+<Element Index="[122]" Value="0"/>
+<Element Index="[123]" Value="0"/>
+<Element Index="[124]" Value="0"/>
+<Element Index="[125]" Value="0"/>
+<Element Index="[126]" Value="0"/>
+<Element Index="[127]" Value="0"/>
+</ArrayMember>
+<DataValueMember Name="PreviousState" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="StateChangeOccurred_OS" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TimeoutFlt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TransitionTimerDone" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="HistoryArraySize" DataType="SINT" Radix="Decimal" ExternalAccess="None">
+<Description>
+<![CDATA[Size of state history array]]>
+</Description>
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="SINT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+</LocalTags>
+<Routines>
+<Routine Name="Logic" Type="ST">
+<STContent>
+<Line Number="0">
+<![CDATA[StateDurationTimer.Reset := 0;]]>
+</Line>
+<Line Number="1">
+<![CDATA[StateDurationTimer.PRE := 2147483647;]]>
+</Line>
+<Line Number="2">
+<![CDATA[SIZE(StateHistoryArray,0,HistoryArraySize);]]>
+</Line>
+<Line Number="3">
+<![CDATA[]]>
+</Line>
+<Line Number="4">
+<![CDATA[TONR(StateDurationTimer);]]>
+</Line>
+<Line Number="5">
+<![CDATA[]]>
+</Line>
+<Line Number="6">
+<![CDATA[COP(StateLogicStatus, localStatus, 1); //localStatus used so all Status updates at the same time, at the end of this code.]]>
+</Line>
+<Line Number="7">
+<![CDATA[If (StateLogicControl.StateReg = StateReg_Prev) THEN]]>
+</Line>
+<Line Number="8">
+<![CDATA[	//Previous State equal to Current State: Still in the same state as the last scan.]]>
+</Line>
+<Line Number="9">
+<![CDATA[	localStatus.StateChangeOccurred_OS := 0;]]>
+</Line>
+<Line Number="10">
+<![CDATA[]]>
+</Line>
+<Line Number="11">
+<![CDATA[	//State Duration Timer]]>
+</Line>
+<Line Number="12">
+<![CDATA[	StateDurationTimer.TimerEnable := 1;]]>
+</Line>
+<Line Number="13">
+<![CDATA[]]>
+</Line>
+<Line Number="14">
+<![CDATA[	//State Fault Timer]]>
+</Line>
+<Line Number="15">
+<![CDATA[	IF (StateDurationTimer.ACC >= StateLogicControl.FaultTime ) THEN]]>
+</Line>
+<Line Number="16">
+<![CDATA[		localStatus.TimeoutFlt := 1;]]>
+</Line>
+<Line Number="17">
+<![CDATA[	ELSE]]>
+</Line>
+<Line Number="18">
+<![CDATA[		localStatus.TimeoutFlt := 0;]]>
+</Line>
+<Line Number="19">
+<![CDATA[	END_IF;]]>
+</Line>
+<Line Number="20">
+<![CDATA[]]>
+</Line>
+<Line Number="21">
+<![CDATA[]]>
+</Line>
+<Line Number="22">
+<![CDATA[	//State Transition Timer]]>
+</Line>
+<Line Number="23">
+<![CDATA[	IF (StateDurationTimer.ACC >= StateLogicControl.TransitionTime) THEN]]>
+</Line>
+<Line Number="24">
+<![CDATA[		localStatus.TransitionTimerDone := 1;]]>
+</Line>
+<Line Number="25">
+<![CDATA[	ELSE]]>
+</Line>
+<Line Number="26">
+<![CDATA[		localStatus.TransitionTimerDone := 0;]]>
+</Line>
+<Line Number="27">
+<![CDATA[	END_IF;]]>
+</Line>
+<Line Number="28">
+<![CDATA[ELSE]]>
+</Line>
+<Line Number="29">
+<![CDATA[	//Previous State not Current State: State Change Occurred.]]>
+</Line>
+<Line Number="30">
+<![CDATA[	localStatus.StateChangeOccurred_OS := 1;]]>
+</Line>
+<Line Number="31">
+<![CDATA[	localStatus.PreviousState := StateReg_Prev;]]>
+</Line>
+<Line Number="32">
+<![CDATA[	StateReg_Prev := StateLogicControl.StateReg;]]>
+</Line>
+<Line Number="33">
+<![CDATA[	]]>
+</Line>
+<Line Number="34">
+<![CDATA[	//Shift state history array and store last state in index 0]]>
+</Line>
+<Line Number="35">
+<![CDATA[	if HistoryArraySize > 1 then //history array size of 1 would cause an array index out of bounds controller fault]]>
+</Line>
+<Line Number="36">
+<![CDATA[		for i := HistoryArraySize-1 to 1 by -1 do]]>
+</Line>
+<Line Number="37">
+<![CDATA[			StateHistoryArray[i] := StateHistoryArray[i-1];]]>
+</Line>
+<Line Number="38">
+<![CDATA[		end_for;]]>
+</Line>
+<Line Number="39">
+<![CDATA[	end_if;]]>
+</Line>
+<Line Number="40">
+<![CDATA[	StateHistoryArray[0] := StateReg_Prev;]]>
+</Line>
+<Line Number="41">
+<![CDATA[]]>
+</Line>
+<Line Number="42">
+<![CDATA[	StateDurationTimer.Reset := 1;]]>
+</Line>
+<Line Number="43">
+<![CDATA[	StateDurationTimer.TimerEnable := 0;]]>
+</Line>
+<Line Number="44">
+<![CDATA[	//Default to DINT Max value.]]>
+</Line>
+<Line Number="45">
+<![CDATA[	//EnaTransitionTimer and EnaFaultTimer bits kept for legacy compatibility]]>
+</Line>
+<Line Number="46">
+<![CDATA[	StateLogicControl.TransitionTime := 2147483647;]]>
+</Line>
+<Line Number="47">
+<![CDATA[	StateLogicControl.FaultTime := 2147483647;]]>
+</Line>
+<Line Number="48">
+<![CDATA[]]>
+</Line>
+<Line Number="49">
+<![CDATA[	localStatus.TimeoutFlt := 0;]]>
+</Line>
+<Line Number="50">
+<![CDATA[	localStatus.TransitionTimerDone := 0;]]>
+</Line>
+<Line Number="51">
+<![CDATA[END_IF;]]>
+</Line>
+<Line Number="52">
+<![CDATA[]]>
+</Line>
+<Line Number="53">
+<![CDATA[//Set the State Bit, clear all other bits.]]>
+</Line>
+<Line Number="54">
+<![CDATA[FOR i := 0 TO 127 DO]]>
+</Line>
+<Line Number="55">
+<![CDATA[	localStatus.State[i] := 0;]]>
+</Line>
+<Line Number="56">
+<![CDATA[END_FOR;]]>
+</Line>
+<Line Number="57">
+<![CDATA[localStatus.State[StateLogicControl.StateReg] := 1;]]>
+</Line>
+<Line Number="58">
+<![CDATA[]]>
+</Line>
+<Line Number="59">
+<![CDATA[COP(localStatus, StateLogicStatus, 1);]]>
+</Line>
+<Line Number="60">
+<![CDATA[]]>
+</Line>
+</STContent>
+</Routine>
+</Routines>
+<Dependencies>
+<Dependency Type="DataType" Name="State_Logic_Status"/>
+<Dependency Type="DataType" Name="State_Logic_Control"/>
+</Dependencies>
+</AddOnInstructionDefinition>
+</AddOnInstructionDefinitions>
+</Controller>
+</RSLogix5000Content>

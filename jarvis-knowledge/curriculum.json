@@ -1,0 +1,972 @@
+{
+  "updatedAt": "2026-08-26T10:45:06.013Z",
+  "doctrine": "concepts-not-rules: each study pass DEEPENS concept files (integrated understanding, cited sources); anti-pattern items land in anti-patterns.md only",
+  "counts": {
+    "total": 44,
+    "byStatus": {
+      "unstudied": 25,
+      "studied": 19
+    },
+    "byTopic": {
+      "naming-structure": 8,
+      "chassis-cam": 8,
+      "laser-marker": 4,
+      "vision": 11,
+      "indexer": 19,
+      "servo": 19,
+      "alarms": 24,
+      "production-oee": 15,
+      "pneumatics": 15,
+      "anti-pattern": 4,
+      "part-tracking": 14,
+      "process": 2,
+      "sensors": 1,
+      "robot": 1,
+      "recipe": 1,
+      "hmi": 1
+    }
+  },
+  "gaps": [
+    {
+      "topic": "laser-marker",
+      "finding": "only anti-pattern evidence exists (_1028_Diamond_041024.L5X, _1086_Steris_Cable.L5X, _990_Beckett_011224.L5X, PLC Software Standardization, Rev2.extracted.md) — no standard-conformant example",
+      "request": "export one recent laser-marker station program (standard-conformant) to the training folder"
+    }
+  ],
+  "items": [
+    {
+      "id": "ci_v7_verified_jason",
+      "path": "plc-reference/verified/SDCServoPNP_JARVIS_v7__verified_by_Jason.L5X",
+      "kind": "engineer-verified-correct",
+      "topics": [
+        "servo",
+        "alarms",
+        "part-tracking"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "servo-motion.md",
+        "motion-model-pnp.md",
+        "alarms.md"
+      ],
+      "status": "studied",
+      "studiedAt": "2026-08-26",
+      "studiedNote": "SDCServoPNP_JARVIS_v7.L5X confirmed CORRECT by Jason Perry (2026-08-26, via Dan). Gold exemplar - new top rank in preWriteStudy exemplar ordering (engineer-verified > engineer-corrected > delivered). Verified answers folded into motion-model-pnp.md (cross-axis corner blend wide band) and alarms.md (MCD 3-state stroke alarm partitioning).",
+      "sizeBytes": 294745,
+      "hash": null,
+      "priority": 0
+    },
+    {
+      "id": "ci_3074de1965f5",
+      "path": "plc-reference/training-queue/test-ref.L5X",
+      "kind": "intake",
+      "topics": [
+        "naming-structure"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "naming-and-structure.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 26,
+      "hash": "374f45dc41f9",
+      "priority": 1000
+    },
+    {
+      "id": "ci_9ebe82dfe17f",
+      "path": "plc-reference/training-material/Examples NOT Following SDC Standard/_1028_Diamond_041024.L5X",
+      "kind": "anti-pattern",
+      "topics": [
+        "chassis-cam",
+        "laser-marker",
+        "vision",
+        "indexer",
+        "servo",
+        "alarms",
+        "production-oee",
+        "pneumatics",
+        "anti-pattern"
+      ],
+      "antiPattern": true,
+      "conceptFiles": [
+        "anti-patterns.md"
+      ],
+      "status": "studied",
+      "studiedAt": "2026-08-23T18:47:50.536Z",
+      "studiedNote": "ownership+duplication anti-patterns; Telesis laser EIP interface recorded as legacy evidence",
+      "sizeBytes": 8736501,
+      "hash": "6a2e931b660c",
+      "priority": 110
+    },
+    {
+      "id": "ci_3d32b7e452d5",
+      "path": "plc-reference/training-material/Examples NOT Following SDC Standard/_1086_Steris_Cable.L5X",
+      "kind": "anti-pattern",
+      "topics": [
+        "chassis-cam",
+        "laser-marker",
+        "vision",
+        "servo",
+        "alarms",
+        "production-oee",
+        "anti-pattern"
+      ],
+      "antiPattern": true,
+      "conceptFiles": [
+        "anti-patterns.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 1942032,
+      "hash": "29ae7bb02b2e",
+      "priority": 110
+    },
+    {
+      "id": "ci_035966e35f69",
+      "path": "plc-reference/training-material/Examples NOT Following SDC Standard/_990_Beckett_011224.L5X",
+      "kind": "anti-pattern",
+      "topics": [
+        "laser-marker",
+        "vision",
+        "indexer",
+        "servo",
+        "production-oee",
+        "pneumatics",
+        "anti-pattern"
+      ],
+      "antiPattern": true,
+      "conceptFiles": [
+        "anti-patterns.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 7345338,
+      "hash": "250f5f91715e",
+      "priority": 110
+    },
+    {
+      "id": "ci_d1dc9e144b53",
+      "path": "plc-reference/standards-docs/Standards - Software/Allen Bradley/Projects/SDC Standard Template/V4.2/SoftwareStandardization.L5X",
+      "kind": "standard-program",
+      "topics": [
+        "indexer",
+        "servo",
+        "alarms",
+        "production-oee",
+        "part-tracking",
+        "pneumatics"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "coordination.md",
+        "station-archetypes.md",
+        "alarms.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 2134814,
+      "hash": "b14888ed1712",
+      "priority": 105
+    },
+    {
+      "id": "ci_c42431b9ae6e",
+      "path": "plc-reference/training-material/SDC Standard Templates/SoftwareStandardization.L5X",
+      "kind": "training-material",
+      "topics": [
+        "indexer",
+        "servo",
+        "alarms",
+        "production-oee",
+        "part-tracking",
+        "pneumatics"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "coordination.md",
+        "station-archetypes.md",
+        "alarms.md"
+      ],
+      "status": "studied",
+      "studiedAt": null,
+      "studiedNote": "duplicate of the standards-docs/standard copy",
+      "sizeBytes": 2134814,
+      "hash": "b14888ed1712",
+      "priority": 105
+    },
+    {
+      "id": "ci_7de61106f420",
+      "path": "plc-reference/analysis/1116_Molex_machine_structure.md",
+      "kind": "analysis",
+      "topics": [
+        "vision",
+        "indexer",
+        "alarms",
+        "part-tracking"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "vision-systems.md",
+        "coordination.md",
+        "station-archetypes.md"
+      ],
+      "status": "studied",
+      "studiedAt": "2026-08-21",
+      "studiedNote": "covered by the Aug-2026 broad ingestion (sources.json)",
+      "sizeBytes": 12082,
+      "hash": "86793488afd3",
+      "priority": 100
+    },
+    {
+      "id": "ci_c03f998c9771",
+      "path": "plc-reference/standard/S00_IndexerNoSP.L5X",
+      "kind": "template",
+      "topics": [
+        "indexer",
+        "servo",
+        "alarms",
+        "part-tracking"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "coordination.md",
+        "station-archetypes.md",
+        "alarms.md"
+      ],
+      "status": "studied",
+      "studiedAt": "2026-08-21",
+      "studiedNote": "covered by the Aug-2026 broad ingestion (sources.json)",
+      "sizeBytes": 232656,
+      "hash": "3d2941dbf9b2",
+      "priority": 100
+    },
+    {
+      "id": "ci_34d9237bfd65",
+      "path": "plc-reference/standard/S00_IndexerSP.L5X",
+      "kind": "template",
+      "topics": [
+        "indexer",
+        "servo",
+        "alarms",
+        "part-tracking"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "coordination.md",
+        "station-archetypes.md",
+        "alarms.md"
+      ],
+      "status": "studied",
+      "studiedAt": "2026-08-21",
+      "studiedNote": "covered by the Aug-2026 broad ingestion (sources.json)",
+      "sizeBytes": 288464,
+      "hash": "d5d417514cc3",
+      "priority": 100
+    },
+    {
+      "id": "ci_cfceedd3d4ab",
+      "path": "plc-reference/standard/S01_PartLoad.L5X",
+      "kind": "template",
+      "topics": [
+        "indexer",
+        "alarms",
+        "part-tracking",
+        "pneumatics"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "coordination.md",
+        "station-archetypes.md",
+        "alarms.md"
+      ],
+      "status": "studied",
+      "studiedAt": "2026-08-21",
+      "studiedNote": "covered by the Aug-2026 broad ingestion (sources.json)",
+      "sizeBytes": 143249,
+      "hash": "63ce57da74e5",
+      "priority": 100
+    },
+    {
+      "id": "ci_c6f2a728e092",
+      "path": "plc-reference/standard/S05_ServoPNP.L5X",
+      "kind": "template",
+      "topics": [
+        "servo",
+        "indexer",
+        "alarms",
+        "part-tracking",
+        "pneumatics"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "coordination.md",
+        "station-archetypes.md",
+        "alarms.md"
+      ],
+      "status": "studied",
+      "studiedAt": "2026-08-21",
+      "studiedNote": "covered by the Aug-2026 broad ingestion (sources.json)",
+      "sizeBytes": 280082,
+      "hash": "038ac43a5bb0",
+      "priority": 100
+    },
+    {
+      "id": "ci_50391342d03b",
+      "path": "plc-reference/standards-docs/EE Process and Standards Documents/EE Hardware Specification Regulations.extracted.md",
+      "kind": "standards-doc",
+      "topics": [
+        "process",
+        "vision"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "vision-systems.md",
+        "naming-and-structure.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 1369,
+      "hash": "b30a38b0fc2e",
+      "priority": 100
+    },
+    {
+      "id": "ci_ee8e20deb66c",
+      "path": "plc-reference/standards-docs/EE Process and Standards Documents/PLC Software Standardization, Rev2.extracted.md",
+      "kind": "standards-doc",
+      "topics": [
+        "naming-structure",
+        "laser-marker",
+        "vision",
+        "indexer",
+        "alarms",
+        "production-oee",
+        "pneumatics"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "vision-systems.md",
+        "station-archetypes.md",
+        "coordination.md"
+      ],
+      "status": "studied",
+      "studiedAt": "2026-08-21",
+      "studiedNote": "covered by the Aug-2026 broad ingestion (sources.json)",
+      "sizeBytes": 26040,
+      "hash": "808122cc5397",
+      "priority": 100
+    },
+    {
+      "id": "ci_cad2211dd81b",
+      "path": "plc-reference/standards-docs/Standards - Elect Design/Sensors Standardization/Sensor Standardization Rev 2.extracted.md",
+      "kind": "standards-doc",
+      "topics": [
+        "sensors",
+        "vision"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "vision-systems.md",
+        "pneumatics.md"
+      ],
+      "status": "studied",
+      "studiedAt": "2026-08-21",
+      "studiedNote": "covered by the Aug-2026 broad ingestion (sources.json)",
+      "sizeBytes": 9888,
+      "hash": "44550d2eed58",
+      "priority": 100
+    },
+    {
+      "id": "ci_618593b51a4e",
+      "path": "plc-reference/training-material/CONTROLS_LEADS_QUESTIONS.extracted.md",
+      "kind": "training-material",
+      "topics": [
+        "vision",
+        "indexer",
+        "servo",
+        "alarms",
+        "part-tracking"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "vision-systems.md",
+        "coordination.md",
+        "station-archetypes.md"
+      ],
+      "status": "studied",
+      "studiedAt": "2026-08-21",
+      "studiedNote": "covered by the Aug-2026 broad ingestion (sources.json)",
+      "sizeBytes": 10661,
+      "hash": "cd0714a2702f",
+      "priority": 100
+    },
+    {
+      "id": "ci_af24b9a97060",
+      "path": "plc-reference/training-material/Examples Following SDC Standard/ShowRoomFlexFeeder.L5X",
+      "kind": "exemplar",
+      "topics": [
+        "robot",
+        "vision",
+        "indexer",
+        "servo",
+        "alarms",
+        "production-oee",
+        "pneumatics"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "vision-systems.md",
+        "station-archetypes.md",
+        "coordination.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 929482,
+      "hash": "93bd0e7211ea",
+      "priority": 100
+    },
+    {
+      "id": "ci_6e57d9538fbb",
+      "path": "plc-reference/training-material/JARVIS_QUESTIONS_FOR_LEADS.extracted.md",
+      "kind": "training-material",
+      "topics": [
+        "chassis-cam",
+        "vision",
+        "servo"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "vision-systems.md",
+        "servo-motion.md",
+        "station-archetypes.md"
+      ],
+      "status": "studied",
+      "studiedAt": "2026-08-21",
+      "studiedNote": "covered by the Aug-2026 broad ingestion (sources.json)",
+      "sizeBytes": 10758,
+      "hash": "422f47c6fa17",
+      "priority": 100
+    },
+    {
+      "id": "ci_bc41075a4c7a",
+      "path": "plc-reference/analysis/S00_Indexer_templates.md",
+      "kind": "analysis",
+      "topics": [
+        "indexer",
+        "servo",
+        "alarms",
+        "part-tracking",
+        "pneumatics"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "coordination.md",
+        "station-archetypes.md",
+        "alarms.md"
+      ],
+      "status": "studied",
+      "studiedAt": "2026-08-21",
+      "studiedNote": "covered by the Aug-2026 broad ingestion (sources.json)",
+      "sizeBytes": 26150,
+      "hash": "d40899097870",
+      "priority": 85
+    },
+    {
+      "id": "ci_781f6396b491",
+      "path": "plc-reference/analysis/S01_PartLoad_and_S05_V42_diff.md",
+      "kind": "analysis",
+      "topics": [
+        "indexer",
+        "servo",
+        "alarms",
+        "part-tracking",
+        "pneumatics"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "coordination.md",
+        "station-archetypes.md",
+        "alarms.md"
+      ],
+      "status": "studied",
+      "studiedAt": "2026-08-21",
+      "studiedNote": "covered by the Aug-2026 broad ingestion (sources.json)",
+      "sizeBytes": 32318,
+      "hash": "652afa77d9bb",
+      "priority": 85
+    },
+    {
+      "id": "ci_aea32d78cfbe",
+      "path": "plc-reference/standards-docs/Standards - Software/Allen Bradley/Projects/SDC Chassis Template/ChassisStandard.L5X",
+      "kind": "standard-program",
+      "topics": [
+        "chassis-cam",
+        "indexer",
+        "servo",
+        "alarms",
+        "production-oee",
+        "part-tracking",
+        "pneumatics"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "coordination.md",
+        "station-archetypes.md",
+        "servo-motion.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 1356478,
+      "hash": "9c9f60394dbe",
+      "priority": 85
+    },
+    {
+      "id": "ci_2679abbdaa92",
+      "path": "plc-reference/standards-docs/Standards - Software/Allen Bradley/Projects/SDC Standard Template/Revision History.md",
+      "kind": "standards-doc",
+      "topics": [
+        "indexer",
+        "alarms",
+        "production-oee"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "coordination.md",
+        "station-archetypes.md",
+        "alarms.md"
+      ],
+      "status": "studied",
+      "studiedAt": "2026-08-21",
+      "studiedNote": "covered by the Aug-2026 broad ingestion (sources.json)",
+      "sizeBytes": 4532,
+      "hash": "86a5667383c1",
+      "priority": 85
+    },
+    {
+      "id": "ci_69d8536e003c",
+      "path": "plc-reference/training-material/Examples Following SDC Standard/ShowRoomChassis.L5X",
+      "kind": "exemplar",
+      "topics": [
+        "chassis-cam",
+        "indexer",
+        "servo",
+        "alarms",
+        "production-oee",
+        "part-tracking",
+        "pneumatics"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "coordination.md",
+        "station-archetypes.md",
+        "servo-motion.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 1284282,
+      "hash": "d5fbbd11de85",
+      "priority": 85
+    },
+    {
+      "id": "ci_f29dd51d221d",
+      "path": "plc-reference/training-material/SDC Standard Templates/ChassisStandard.L5X",
+      "kind": "training-material",
+      "topics": [
+        "chassis-cam",
+        "indexer",
+        "servo",
+        "alarms",
+        "production-oee",
+        "part-tracking",
+        "pneumatics"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "coordination.md",
+        "station-archetypes.md",
+        "servo-motion.md"
+      ],
+      "status": "studied",
+      "studiedAt": null,
+      "studiedNote": "duplicate of the standards-docs/standard copy",
+      "sizeBytes": 1356478,
+      "hash": "9c9f60394dbe",
+      "priority": 85
+    },
+    {
+      "id": "ci_10dc14ef024e",
+      "path": "plc-reference/standards-docs/Standards - Software/Allen Bradley/Projects/SDC Chassis Template/Revision History.md",
+      "kind": "standards-doc",
+      "topics": [
+        "chassis-cam"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "servo-motion.md",
+        "station-archetypes.md"
+      ],
+      "status": "studied",
+      "studiedAt": "2026-08-21",
+      "studiedNote": "covered by the Aug-2026 broad ingestion (sources.json)",
+      "sizeBytes": 42,
+      "hash": "7ab11379a164",
+      "priority": 80
+    },
+    {
+      "id": "ci_1ff16d175463",
+      "path": "plc-reference/standards-docs/Standards - Software/Allen Bradley/Programs/Alarm/Alarms.L5X",
+      "kind": "standard-program",
+      "topics": [
+        "alarms"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "alarms.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 230133,
+      "hash": "4d1fd06b121a",
+      "priority": 75
+    },
+    {
+      "id": "ci_1d997553706d",
+      "path": "plc-reference/standards-docs/Standards - Software/Allen Bradley/Programs/AOI's/Alarm Handler/ProgramAlarmHandler v3.1.L5X",
+      "kind": "standard-program",
+      "topics": [
+        "alarms"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "alarms.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 25711,
+      "hash": "f2fd446d477e",
+      "priority": 75
+    },
+    {
+      "id": "ci_54554a6a8667",
+      "path": "plc-reference/standards-docs/Standards - Software/Allen Bradley/Programs/AOI's/Alarm Handler/ProgramAlarmHandler.L5X",
+      "kind": "standard-program",
+      "topics": [
+        "alarms"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "alarms.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 23715,
+      "hash": "38e1ffc99eb7",
+      "priority": 75
+    },
+    {
+      "id": "ci_8f9393e5b8e3",
+      "path": "plc-reference/standards-docs/Standards - Software/Allen Bradley/Programs/AOI's/Top Alarms/TopAlarms.L5X",
+      "kind": "standard-program",
+      "topics": [
+        "alarms"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "alarms.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 70104,
+      "hash": "53f145055d4c",
+      "priority": 75
+    },
+    {
+      "id": "ci_1e2500a819a0",
+      "path": "plc-reference/standards-docs/Standards - Software/Allen Bradley/Programs/AOI's/OEE/OEE.L5X",
+      "kind": "standard-program",
+      "topics": [
+        "production-oee"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "production-and-operator.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 7830,
+      "hash": "36278cf73584",
+      "priority": 70
+    },
+    {
+      "id": "ci_5b39994be42c",
+      "path": "plc-reference/standards-docs/Standards - Software/Allen Bradley/Programs/Production Data/Production.L5X",
+      "kind": "standard-program",
+      "topics": [
+        "production-oee"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "production-and-operator.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 44093,
+      "hash": "7ab9f077da7f",
+      "priority": 70
+    },
+    {
+      "id": "ci_ce21a301a1b7",
+      "path": "plc-reference/standards-docs/Standards - Software/Allen Bradley/Rungs/Machine Cycle Time/CycleTime.L5X",
+      "kind": "standard-program",
+      "topics": [
+        "production-oee"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "production-and-operator.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 18106,
+      "hash": "d05939b9298b",
+      "priority": 70
+    },
+    {
+      "id": "ci_86b38641723b",
+      "path": "plc-reference/training-material/Examples NOT Following SDC Standard/_998_Diamond_GM_SecTermInsert_RevB.L5X",
+      "kind": "anti-pattern",
+      "topics": [
+        "chassis-cam",
+        "vision",
+        "indexer",
+        "servo",
+        "alarms",
+        "production-oee",
+        "pneumatics",
+        "anti-pattern"
+      ],
+      "antiPattern": true,
+      "conceptFiles": [
+        "anti-patterns.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 10653061,
+      "hash": "ea708ee4300d",
+      "priority": 70
+    },
+    {
+      "id": "ci_6af9e03726e8",
+      "path": "plc-reference/standards-docs/Standards - Elect Design/Servo Standardization/SDC_Motors_Cables_Drives_Guildelines_Rev 2.extracted.md",
+      "kind": "standards-doc",
+      "topics": [
+        "servo"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "servo-motion.md"
+      ],
+      "status": "studied",
+      "studiedAt": "2026-08-21",
+      "studiedNote": "covered by the Aug-2026 broad ingestion (sources.json)",
+      "sizeBytes": 4677,
+      "hash": "e066c3310d39",
+      "priority": 60
+    },
+    {
+      "id": "ci_dd1ab4fd6137",
+      "path": "plc-reference/standards-docs/EE Process and Standards Documents/EE Recipe Handler Instructions.extracted.md",
+      "kind": "standards-doc",
+      "topics": [
+        "recipe"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "production-and-operator.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 2230,
+      "hash": "e87a9eb72957",
+      "priority": 55
+    },
+    {
+      "id": "ci_ac75fd984102",
+      "path": "plc-reference/standards-docs/EE Process and Standards Documents/Pneumatic Standardization Selection Guide, Rev2.extracted.md",
+      "kind": "standards-doc",
+      "topics": [
+        "pneumatics"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "pneumatics.md"
+      ],
+      "status": "studied",
+      "studiedAt": "2026-08-21",
+      "studiedNote": "covered by the Aug-2026 broad ingestion (sources.json)",
+      "sizeBytes": 8048,
+      "hash": "008f6429a8ed",
+      "priority": 50
+    },
+    {
+      "id": "ci_85be1a7d52e0",
+      "path": "plc-reference/standards-docs/Standards - Software/Allen Bradley/Programs/HMI/HMI.L5X",
+      "kind": "standard-program",
+      "topics": [
+        "hmi"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "production-and-operator.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 7665,
+      "hash": "6d386cb497db",
+      "priority": 45
+    },
+    {
+      "id": "ci_866f954c186f",
+      "path": "plc-reference/standards-docs/SDC Knowledgebase/SDC Tech Notes/SDC Tech Note Template.extracted.md",
+      "kind": "standards-doc",
+      "topics": [
+        "naming-structure"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "naming-and-structure.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 464,
+      "hash": "9b701ce02952",
+      "priority": 35
+    },
+    {
+      "id": "ci_5b28ae63ea1a",
+      "path": "plc-reference/standards-docs/SDC Knowledgebase/SDC Tech Notes/Tech Note Naming Convention.txt",
+      "kind": "standards-doc",
+      "topics": [
+        "naming-structure"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "naming-and-structure.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 89,
+      "hash": "7e600701daa4",
+      "priority": 35
+    },
+    {
+      "id": "ci_1a4d30756f43",
+      "path": "plc-reference/standards-docs/SDC Knowledgebase/SDC Tech Notes/TN-02172026-Job1125-MotorCommutation-IG.extracted.md",
+      "kind": "standards-doc",
+      "topics": [
+        "naming-structure"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "naming-and-structure.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 1867,
+      "hash": "99e1052181fb",
+      "priority": 35
+    },
+    {
+      "id": "ci_007544e352d3",
+      "path": "plc-reference/standards-docs/Standards - Software/Allen Bradley/Programs/AOI's/CPUDateTime/CPU_TimeDate_wJulian.L5X",
+      "kind": "standard-program",
+      "topics": [
+        "naming-structure"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "naming-and-structure.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 6911,
+      "hash": "4dd641fda569",
+      "priority": 35
+    },
+    {
+      "id": "ci_a08e12f7b838",
+      "path": "plc-reference/standards-docs/Standards - Software/Allen Bradley/Programs/AOI's/Moving Average/MovingAverage.L5X",
+      "kind": "standard-program",
+      "topics": [
+        "naming-structure"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "naming-and-structure.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 11162,
+      "hash": "3ac2a76cea8d",
+      "priority": 35
+    },
+    {
+      "id": "ci_fdd8102d0f25",
+      "path": "plc-reference/standards-docs/Standards - Software/Allen Bradley/Programs/AOI's/State Engine/State_Engine_128Max.L5X",
+      "kind": "standard-program",
+      "topics": [
+        "naming-structure"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "naming-and-structure.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 18802,
+      "hash": "8a5b4a9d8361",
+      "priority": 35
+    },
+    {
+      "id": "ci_e3ab6fe13799",
+      "path": "plc-reference/standards-docs/EE Process and Standards Documents/EE Debug and Testing Process.extracted.md",
+      "kind": "standards-doc",
+      "topics": [
+        "process"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "naming-and-structure.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 5161,
+      "hash": "c7232f8531ca",
+      "priority": 30
+    }
+  ]
+}

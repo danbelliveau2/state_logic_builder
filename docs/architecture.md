@@ -262,7 +262,7 @@ updateFoo(id, val) {
 ```js
 const { stateMap, visionSubStepsMap } = computeStateNumbers(smNodes, smEdges);
 ```
-- DFS from initial node → step 1, 4, 7, 10...
+- DFS from initial node → step 4, 7, 10... (Rev2 §19 — states 0-3 are fixed supervisor-mode states, never node states)
 - Vision Inspect nodes get 4 sub-states
 - Outgoing edges sorted LEFT → RIGHT by target X before DFS
 - Snap-to-vertical threshold: 25px
@@ -297,11 +297,13 @@ const isDecisionExit = e.data?.isDecisionExit === true && e.sourceHandle !== 'ex
 ### Reserved State Numbers
 | State | Meaning |
 |-------|---------|
-| 0 | Pre-init / powerup |
-| 1, 2, 3 | Reserved for future SDC use |
+| 0 | Safety Stop (Rev2 §19) |
+| 1 | Manual |
+| 2 | Auto Idle Not Ready |
+| 3 | Auto Idle Ready |
 | 99 | Lockout (HMI_Toggle.0 → MOV 99) |
 | 100–127 | Station-type init block |
-| 127 | Init-complete / cycle-ready gate |
+| 127 | App/templates: fault-restart & init-block end; doc (Rev2) says 124 = init complete and never mentions 127 — OPEN question (conflicts file C2), interim behavior follows the templates |
 
 ### SDCStandardPNP Init Template
 - State 100: Retract Z → goto 103 (gripper open) or 106 (gripper closed)

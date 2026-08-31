@@ -4,7 +4,7 @@
     "name": "SDC_Servo_PNP",
     "description": "",
     "category": "",
-    "savedAt": "2026-08-20T12:22:44.942Z",
+    "savedAt": "2026-08-25T15:32:47.861Z",
     "nodes": [
       {
         "id": "id_mo9y29fv",
@@ -23,7 +23,7 @@
         },
         "measured": {
           "width": 240,
-          "height": 130
+          "height": 147
         },
         "selected": false,
         "dragging": false
@@ -33,7 +33,7 @@
         "type": "stateNode",
         "position": {
           "x": 300,
-          "y": 289
+          "y": 276
         },
         "data": {
           "stepNumber": 1,
@@ -50,7 +50,7 @@
         },
         "measured": {
           "width": 240,
-          "height": 67
+          "height": 84
         },
         "selected": false,
         "dragging": false
@@ -60,7 +60,7 @@
         "type": "stateNode",
         "position": {
           "x": 300,
-          "y": 436
+          "y": 410
         },
         "data": {
           "stepNumber": 2,
@@ -76,7 +76,7 @@
         },
         "measured": {
           "width": 240,
-          "height": 81
+          "height": 89
         },
         "selected": false
       },
@@ -85,7 +85,7 @@
         "type": "stateNode",
         "position": {
           "x": 300,
-          "y": 575
+          "y": 549
         },
         "data": {
           "stepNumber": 3,
@@ -102,7 +102,7 @@
         },
         "measured": {
           "width": 240,
-          "height": 67
+          "height": 84
         },
         "selected": false
       },
@@ -111,7 +111,7 @@
         "type": "stateNode",
         "position": {
           "x": 300,
-          "y": 722
+          "y": 683
         },
         "data": {
           "stepNumber": 4,
@@ -128,7 +128,7 @@
         },
         "measured": {
           "width": 240,
-          "height": 67
+          "height": 84
         },
         "selected": false
       },
@@ -137,7 +137,7 @@
         "type": "stateNode",
         "position": {
           "x": 300,
-          "y": 869
+          "y": 817
         },
         "data": {
           "stepNumber": 5,
@@ -154,7 +154,7 @@
         },
         "measured": {
           "width": 240,
-          "height": 67
+          "height": 84
         },
         "selected": false
       },
@@ -163,7 +163,7 @@
         "type": "stateNode",
         "position": {
           "x": 300,
-          "y": 1016
+          "y": 951
         },
         "data": {
           "stepNumber": 6,
@@ -179,7 +179,7 @@
         },
         "measured": {
           "width": 240,
-          "height": 81
+          "height": 89
         },
         "selected": false,
         "dragging": false
@@ -189,7 +189,7 @@
         "type": "stateNode",
         "position": {
           "x": 300,
-          "y": 1155
+          "y": 1090
         },
         "data": {
           "stepNumber": 7,
@@ -206,7 +206,7 @@
         },
         "measured": {
           "width": 240,
-          "height": 67
+          "height": 84
         },
         "selected": false,
         "dragging": false
@@ -216,7 +216,7 @@
         "type": "stateNode",
         "position": {
           "x": 300,
-          "y": 1302
+          "y": 1224
         },
         "data": {
           "stepNumber": 8,
@@ -233,7 +233,7 @@
         },
         "measured": {
           "width": 240,
-          "height": 67
+          "height": 84
         },
         "selected": false,
         "dragging": false
@@ -243,7 +243,7 @@
         "type": "stateNode",
         "position": {
           "x": 300,
-          "y": 1449
+          "y": 1358
         },
         "data": {
           "stepNumber": 9,
@@ -255,7 +255,7 @@
         },
         "measured": {
           "width": 240,
-          "height": 59
+          "height": 64
         },
         "selected": false,
         "dragging": false
@@ -600,7 +600,8 @@
             "moveType": "Pos",
             "isHome": true,
             "isRecipe": false,
-            "type": "position"
+            "type": "position",
+            "id": "4e827939-4143-43aa-a6bc-284401cf5145"
           },
           {
             "name": "Place",
@@ -608,7 +609,8 @@
             "moveType": "Pos",
             "isHome": false,
             "isRecipe": false,
-            "type": "position"
+            "type": "position",
+            "id": "50e954f5-b5e7-48ba-9d41-cb1c9f3623ee"
           },
           {
             "name": "Reject",
@@ -616,7 +618,8 @@
             "moveType": "Pos",
             "isHome": false,
             "isRecipe": false,
-            "type": "position"
+            "type": "position",
+            "id": "104c0d9d-7d60-4b40-8f45-270641e2b7f5"
           }
         ],
         "speedProfiles": [
@@ -657,7 +660,8 @@
             "moveType": "Pos",
             "isHome": true,
             "isRecipe": false,
-            "type": "position"
+            "type": "position",
+            "id": "60d4d611-6070-4d18-9797-414e93188140"
           },
           {
             "name": "Pick",
@@ -665,7 +669,8 @@
             "moveType": "Pos",
             "isHome": false,
             "isRecipe": false,
-            "type": "position"
+            "type": "position",
+            "id": "dd5edd2e-2b9d-4426-936f-82a48e0b7457"
           },
           {
             "name": "Place",
@@ -673,7 +678,8 @@
             "moveType": "Pos",
             "isHome": false,
             "isRecipe": false,
-            "type": "position"
+            "type": "position",
+            "id": "92caea6a-5b8d-41c5-b896-71a53bff140c"
           }
         ],
         "speedProfiles": [

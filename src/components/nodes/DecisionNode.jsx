@@ -3053,7 +3053,7 @@ export function DecisionBody({ data, smId, nodeId, selected, onClick, onContextM
     >
       {/* State number badge (top-left) — only on standalone DecisionNode, not embedded */}
       {!embedded && stateNumber != null && stateNumber > 0 && (
-        <div style={{
+        <div className="decision-node__step-num" style={{
           position: 'absolute', top: -6, left: -6, minWidth: 22, height: 18, padding: '0 4px',
           borderRadius: 9, fontSize: 9, fontWeight: 800, color: '#fff', background: '#1a1f2e',
           border: '1.5px solid rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center',
@@ -3122,12 +3122,12 @@ export function DecisionBody({ data, smId, nodeId, selected, onClick, onContextM
 
         {/* Retry badge */}
         {retryEnabled && (
-          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 4 }}>
-            <span style={{
+          <div className="node-chip-strip" style={{ display: 'flex', justifyContent: 'center', marginTop: 4 }}>
+            <span className="node-chip" style={{
               display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 9, fontWeight: 700,
               background: 'rgba(0,0,0,0.3)', color: '#fbbf24', padding: '1px 6px', borderRadius: 8,
               letterSpacing: '0.03em',
-            }}>{'\u21BB'} Retry x{retryMax}</span>
+            }}><span className="node-chip__label">{'\u21BB'} Retry x{retryMax}</span></span>
           </div>
         )}
         {/* Log footer pill — names the PT FIELD (or value-log field) being
@@ -3137,20 +3137,20 @@ export function DecisionBody({ data, smId, nodeId, selected, onClick, onContextM
             polarity; this pill carries the field NAME — the unique piece of
             info the engineer cares about. */}
         {((data.ptEnabled && data.ptFieldName) || (data.valueLogEnabled && data.valueFieldName)) && (
-          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 4, gap: 4, flexWrap: 'wrap' }}>
+          <div className="node-chip-strip" style={{ display: 'flex', justifyContent: 'center', marginTop: 4, gap: 4, flexWrap: 'wrap' }}>
             {data.valueLogEnabled && data.valueFieldName && (
-              <span style={{
+              <span className="node-chip" title={data.valueFieldName} style={{
                 display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 9, fontWeight: 700,
                 background: 'rgba(0,0,0,0.3)', color: '#5eead4', padding: '1px 6px', borderRadius: 8,
                 letterSpacing: '0.03em',
-              }}>📊 {data.valueFieldName}</span>
+              }}><span>📊</span><span className="node-chip__label">{data.valueFieldName}</span></span>
             )}
             {data.ptEnabled && data.ptFieldName && (
-              <span style={{
+              <span className="node-chip" title={data.ptFieldName} style={{
                 display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 9, fontWeight: 700,
                 background: 'rgba(0,0,0,0.3)', color: '#86efac', padding: '1px 6px', borderRadius: 8,
                 letterSpacing: '0.03em',
-              }}>📊 {data.ptFieldName}</span>
+              }}><span>📊</span><span className="node-chip__label">{data.ptFieldName}</span></span>
             )}
           </div>
         )}
@@ -3530,7 +3530,7 @@ export function DecisionNode({ data, selected, id }) {
     >
       {/* State number badge -- top-left, same style as StateNode */}
       {stateNumber != null && stateNumber > 0 && (
-        <div style={{
+        <div className="decision-node__step-num" style={{
           position: 'absolute',
           top: -6,
           left: -6,
@@ -3771,15 +3771,15 @@ export function DecisionNode({ data, selected, id }) {
 
         {/* Retry badge — shows in any mode when retry is enabled */}
         {retryEnabled && (
-          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 4 }}>
-            <span style={{
+          <div className="node-chip-strip" style={{ display: 'flex', justifyContent: 'center', marginTop: 4 }}>
+            <span className="node-chip" style={{
               display: 'inline-flex', alignItems: 'center', gap: 3,
               fontSize: 9, fontWeight: 700,
               background: 'rgba(0,0,0,0.3)', color: '#fbbf24',
               padding: '1px 6px', borderRadius: 8,
               letterSpacing: '0.03em',
             }}>
-              {'\u21BB'} Retry x{retryMax}
+              <span className="node-chip__label">{'\u21BB'} Retry x{retryMax}</span>
             </span>
           </div>
         )}

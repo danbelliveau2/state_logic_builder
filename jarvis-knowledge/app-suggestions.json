@@ -1,0 +1,10 @@
+[
+  {
+    "id": "as_mth88sg5",
+    "speaker": "Jason (CE)",
+    "ask": "Review position: \"controls.note entries are documentation/policy, not station data — they belong in a reviewFlags section (decision record) or a controls-engineer commentary, never as mutations on the station object itself... Applying it as station.controls.note fakes an app feature (a controls-decision annotation system) with a data edit.\"",
+    "reading": "A reviewer wants CE controls-intent statements rendered as a separate decision-record / reviewFlags surface rather than in the sheet's Controls notes section. The CE lane and its controlsNotes section are existing app features (Dan, 2026-08-30) with attribution and timestamps, so I filed the notes correctly and did not touch station data — but if the notes should render somewhere else, that is a render change for Dan to rule on.",
+    "at": "2026-08-31T12:41:09.893Z",
+    "status": "new"
+  }
+]

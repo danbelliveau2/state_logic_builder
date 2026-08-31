@@ -70,7 +70,7 @@ export function getDeviceTags(device, context = {}) {
         const arrangement = device.sensorArrangement ?? '';
         const hasBoth   = arrangement.includes('2-sensor');
         const hasNone   = arrangement.includes('No sensors');
-        const hasExtSensor = hasBoth;
+        const hasExtSensor = hasBoth || (!hasNone && /ext only/i.test(arrangement));
         const hasRetSensor = hasBoth || (!hasNone && arrangement.includes('Ret'));
         if (hasExtSensor) {
           tags.push({
@@ -143,8 +143,12 @@ export function getDeviceTags(device, context = {}) {
       // emitting a phantom i_*Closed even without a sensor, which left
       // the I/O map showing a tag the device couldn't actually read.
       const arrangement = device.sensorArrangement ?? '';
-      const hasClosedSensor = arrangement.includes('1-sensor') || arrangement.includes('2-sensor');
-      const hasOpenSensor   = arrangement.includes('2-sensor');
+      // '1-sensor (Open only)' is a real arrangement (Dan, Aug 23) — bare
+      // '1-sensor' still means closed-only for legacy strings.
+      const hasClosedSensor = arrangement.includes('2-sensor')
+        || /closed|engaged/i.test(arrangement)
+        || (arrangement.includes('1-sensor') && !/open|disengaged/i.test(arrangement));
+      const hasOpenSensor   = arrangement.includes('2-sensor') || /open|disengaged/i.test(arrangement);
       if (hasClosedSensor) {
         tags.push({
           name: resolvePattern(patterns.inputEngage, device),

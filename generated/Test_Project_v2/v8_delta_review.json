@@ -1,0 +1,30 @@
+{
+  "verdict": "fix",
+  "scope": "delta",
+  "costUSD": 0.7091,
+  "model": "claude-opus-5",
+  "durationS": 38,
+  "findings": [
+    {
+      "severity": "style",
+      "routine": "R04_XAxisServo",
+      "finding": "Prior finding #2 is only half fixed. The LOGIC is now correct — rung 2 seeds ZAxisSafePosition with a GE/LT-selected CPT taking Retract + the LARGER of Positions[5]/Positions[6], correct mnemonic family, correct polarity for the LE permissive compare. But the rung comment was not updated: it still reads \"seeded at first scan from Retract plus the place side corner blend (both corner blends are 25 mm; adjust in Studio if they diverge)\". That comment now misdescribes the logic (it is no longer the place-side row, and the Studio caveat is obsolete). Trim to the action, e.g. \"Z Axis safe clearance position for the X traverse permissive - Retract plus the larger corner blend, seeded at first scan\".",
+      "templateEvidence": "Jason 2026-08-25 (comment style): rung comments name the physical action or destination, never stale implementation caveats — the same rule that drove the comment trims applied elsewhere in this delta (R04 rungs 15/16/22, R05 rungs 14/15/16)."
+    },
+    {
+      "severity": "note",
+      "routine": "R20_Alarms",
+      "finding": "Prior finding #4 is resolved and now matches the engineer-verified v7 partition exactly: destination-arrival alarms carry the MAM-command + MCD states (Alarm[2] 7+13, Alarm[3] 31+37, Alarm[4] 19+25+43+49+100) at 3000 ms; the transition-band waits get their own per-transition-point alarms (Alarm[6] 10+22, Alarm[7] 34+46) at 5000 ms. No state appears in two rungs; X arrival rungs retimed to 3000 ms. No action.",
+      "templateEvidence": "SDCServoPNP_JARVIS_v7.L5X R20 (Jason Perry confirmed correct 2026-08-26): two alarms per stroke by milestone, 3000 ms destination / 5000 ms transition band."
+    },
+    {
+      "severity": "note",
+      "routine": "R20_Alarms",
+      "finding": "Prior finding #3 fixed correctly — the quickstop reason branch is now GT(HMI_ZAxis.Status.ActualPosition, ZAxisSafePosition), the exact complement of the permissive's LE compare, so the message no longer fires for a not-homed Z.",
+      "templateEvidence": "Jason Perry Teams ruling 2026-08-25: \"R20's quickstop reason is the exact complement of the same compare.\""
+    }
+  ],
+  "standardsQuestions": [],
+  "missingVsTemplate": [],
+  "summary": "Good round — the alarm partition now matches the verified v7 shape exactly (command+MCD states on the destination alarm at 3000 ms, band waits on their own transition alarms at 5000 ms, no state double-covered), the quickstop reason is the exact complement of the permissive compare, and the comment drift across R02/R04/R05 is trimmed to the template's terse style. One loose end: the ZAxisSafePosition seed logic is right but its rung comment still describes the old place-side-only seed with the obsolete \"adjust in Studio\" caveat — fix that one comment and this ships."
+}

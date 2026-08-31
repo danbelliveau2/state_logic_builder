@@ -1,0 +1,719 @@
+[
+  {
+    "id": "8fd7ad5e-ee2f-4fab-a330-a919ef0da80b",
+    "name": "SDC_Servo_PNP",
+    "description": "",
+    "category": "",
+    "savedAt": "2026-08-25T15:32:10.096Z",
+    "nodes": [
+      {
+        "id": "id_mo9y29fv",
+        "type": "stateNode",
+        "position": {
+          "x": 300,
+          "y": 79
+        },
+        "data": {
+          "stepNumber": 0,
+          "label": "Wait for Index Complete",
+          "actions": [],
+          "isInitial": true,
+          "indexSync": "independent",
+          "entryRule": "always"
+        },
+        "measured": {
+          "width": 240,
+          "height": 147
+        },
+        "selected": false,
+        "dragging": false
+      },
+      {
+        "id": "id_mo9y29fw",
+        "type": "stateNode",
+        "position": {
+          "x": 300,
+          "y": 276
+        },
+        "data": {
+          "stepNumber": 1,
+          "label": "Step 1",
+          "actions": [
+            {
+              "id": "id_mo9y29fy",
+              "deviceId": "id_mo9y29ft",
+              "operation": "ServoMove",
+              "positionName": "Pick"
+            }
+          ],
+          "isInitial": false
+        },
+        "measured": {
+          "width": 240,
+          "height": 84
+        },
+        "selected": false,
+        "dragging": false
+      },
+      {
+        "id": "id_mo9y29fz",
+        "type": "stateNode",
+        "position": {
+          "x": 300,
+          "y": 410
+        },
+        "data": {
+          "stepNumber": 2,
+          "label": "Step 2",
+          "actions": [
+            {
+              "id": "id_mo9y29g1",
+              "deviceId": "id_mo9y29fu",
+              "operation": "Engage"
+            }
+          ],
+          "isInitial": false
+        },
+        "measured": {
+          "width": 240,
+          "height": 89
+        },
+        "selected": false
+      },
+      {
+        "id": "id_mo9y29g2",
+        "type": "stateNode",
+        "position": {
+          "x": 300,
+          "y": 549
+        },
+        "data": {
+          "stepNumber": 3,
+          "label": "Step 3",
+          "actions": [
+            {
+              "id": "id_mo9y29g4",
+              "deviceId": "id_mo9y29ft",
+              "operation": "ServoMove",
+              "positionName": "Clear"
+            }
+          ],
+          "isInitial": false
+        },
+        "measured": {
+          "width": 240,
+          "height": 84
+        },
+        "selected": false
+      },
+      {
+        "id": "id_mo9y29g5",
+        "type": "stateNode",
+        "position": {
+          "x": 300,
+          "y": 683
+        },
+        "data": {
+          "stepNumber": 4,
+          "label": "Step 4",
+          "actions": [
+            {
+              "id": "id_mo9y29g7",
+              "deviceId": "id_mo9y29fs",
+              "operation": "ServoMove",
+              "positionName": "Place"
+            }
+          ],
+          "isInitial": false
+        },
+        "measured": {
+          "width": 240,
+          "height": 84
+        },
+        "selected": false
+      },
+      {
+        "id": "id_mo9y29g8",
+        "type": "stateNode",
+        "position": {
+          "x": 300,
+          "y": 817
+        },
+        "data": {
+          "stepNumber": 5,
+          "label": "Step 5",
+          "actions": [
+            {
+              "id": "id_mo9y29ga",
+              "deviceId": "id_mo9y29ft",
+              "operation": "ServoMove",
+              "positionName": "Place"
+            }
+          ],
+          "isInitial": false
+        },
+        "measured": {
+          "width": 240,
+          "height": 84
+        },
+        "selected": false
+      },
+      {
+        "id": "id_mo9y29gb",
+        "type": "stateNode",
+        "position": {
+          "x": 300,
+          "y": 951
+        },
+        "data": {
+          "stepNumber": 6,
+          "label": "Step 6",
+          "actions": [
+            {
+              "id": "id_mo9y29gd",
+              "deviceId": "id_mo9y29fu",
+              "operation": "Disengage"
+            }
+          ],
+          "isInitial": false
+        },
+        "measured": {
+          "width": 240,
+          "height": 89
+        },
+        "selected": false,
+        "dragging": false
+      },
+      {
+        "id": "id_mo9y29ge",
+        "type": "stateNode",
+        "position": {
+          "x": 300,
+          "y": 1090
+        },
+        "data": {
+          "stepNumber": 7,
+          "label": "Step 7",
+          "actions": [
+            {
+              "id": "id_mo9y29gg",
+              "deviceId": "id_mo9y29ft",
+              "operation": "ServoMove",
+              "positionName": "Clear"
+            }
+          ],
+          "isInitial": false
+        },
+        "measured": {
+          "width": 240,
+          "height": 84
+        },
+        "selected": false,
+        "dragging": false
+      },
+      {
+        "id": "id_mo9y29gh",
+        "type": "stateNode",
+        "position": {
+          "x": 300,
+          "y": 1224
+        },
+        "data": {
+          "stepNumber": 8,
+          "label": "Step 8",
+          "actions": [
+            {
+              "id": "id_mo9y29gj",
+              "deviceId": "id_mo9y29fs",
+              "operation": "ServoMove",
+              "positionName": "Pick"
+            }
+          ],
+          "isInitial": false
+        },
+        "measured": {
+          "width": 240,
+          "height": 84
+        },
+        "selected": false,
+        "dragging": false
+      },
+      {
+        "id": "id_mo9y29gk",
+        "type": "stateNode",
+        "position": {
+          "x": 300,
+          "y": 1358
+        },
+        "data": {
+          "stepNumber": 9,
+          "label": "Step 9",
+          "actions": [],
+          "isInitial": false,
+          "isComplete": true,
+          "isFault": false
+        },
+        "measured": {
+          "width": 240,
+          "height": 64
+        },
+        "selected": false,
+        "dragging": false
+      }
+    ],
+    "edges": [
+      {
+        "id": "id_mo9y29fx",
+        "source": "id_mo9y29fv",
+        "sourceHandle": null,
+        "target": "id_mo9y29fw",
+        "targetHandle": null,
+        "type": "routableEdge",
+        "animated": false,
+        "style": {
+          "stroke": "#6b7280",
+          "strokeWidth": 2
+        },
+        "markerEnd": {
+          "type": "ArrowClosed",
+          "color": "#6b7280"
+        },
+        "label": "Ready",
+        "labelStyle": {
+          "fill": "#374151",
+          "fontWeight": 500,
+          "fontSize": 9,
+          "fontFamily": "Consolas, Menlo, Monaco, monospace",
+          "whiteSpace": "pre-line",
+          "textAlign": "left",
+          "lineHeight": "1.3"
+        },
+        "labelBgStyle": {
+          "fill": "#f9fafb",
+          "fillOpacity": 0.95
+        },
+        "data": {
+          "conditionType": "ready",
+          "label": "Ready"
+        }
+      },
+      {
+        "id": "id_mo9y29g0",
+        "source": "id_mo9y29fw",
+        "sourceHandle": null,
+        "target": "id_mo9y29fz",
+        "targetHandle": null,
+        "type": "routableEdge",
+        "animated": false,
+        "style": {
+          "stroke": "#6b7280",
+          "strokeWidth": 2
+        },
+        "markerEnd": {
+          "type": "ArrowClosed",
+          "color": "#6b7280"
+        },
+        "label": "Ready",
+        "labelStyle": {
+          "fill": "#374151",
+          "fontWeight": 500,
+          "fontSize": 9,
+          "fontFamily": "Consolas, Menlo, Monaco, monospace",
+          "whiteSpace": "pre-line",
+          "textAlign": "left",
+          "lineHeight": "1.3"
+        },
+        "labelBgStyle": {
+          "fill": "#f9fafb",
+          "fillOpacity": 0.95
+        },
+        "data": {
+          "conditionType": "ready",
+          "label": "Ready"
+        }
+      },
+      {
+        "id": "id_mo9y29g3",
+        "source": "id_mo9y29fz",
+        "sourceHandle": null,
+        "target": "id_mo9y29g2",
+        "targetHandle": null,
+        "type": "routableEdge",
+        "animated": false,
+        "style": {
+          "stroke": "#6b7280",
+          "strokeWidth": 2
+        },
+        "markerEnd": {
+          "type": "ArrowClosed",
+          "color": "#6b7280"
+        },
+        "label": "Ready",
+        "labelStyle": {
+          "fill": "#374151",
+          "fontWeight": 500,
+          "fontSize": 9,
+          "fontFamily": "Consolas, Menlo, Monaco, monospace",
+          "whiteSpace": "pre-line",
+          "textAlign": "left",
+          "lineHeight": "1.3"
+        },
+        "labelBgStyle": {
+          "fill": "#f9fafb",
+          "fillOpacity": 0.95
+        },
+        "data": {
+          "conditionType": "ready",
+          "label": "Ready"
+        }
+      },
+      {
+        "id": "id_mo9y29g6",
+        "source": "id_mo9y29g2",
+        "sourceHandle": null,
+        "target": "id_mo9y29g5",
+        "targetHandle": null,
+        "type": "routableEdge",
+        "animated": false,
+        "style": {
+          "stroke": "#6b7280",
+          "strokeWidth": 2
+        },
+        "markerEnd": {
+          "type": "ArrowClosed",
+          "color": "#6b7280"
+        },
+        "label": "Ready",
+        "labelStyle": {
+          "fill": "#374151",
+          "fontWeight": 500,
+          "fontSize": 9,
+          "fontFamily": "Consolas, Menlo, Monaco, monospace",
+          "whiteSpace": "pre-line",
+          "textAlign": "left",
+          "lineHeight": "1.3"
+        },
+        "labelBgStyle": {
+          "fill": "#f9fafb",
+          "fillOpacity": 0.95
+        },
+        "data": {
+          "conditionType": "ready",
+          "label": "Ready"
+        }
+      },
+      {
+        "id": "id_mo9y29g9",
+        "source": "id_mo9y29g5",
+        "sourceHandle": null,
+        "target": "id_mo9y29g8",
+        "targetHandle": null,
+        "type": "routableEdge",
+        "animated": false,
+        "style": {
+          "stroke": "#6b7280",
+          "strokeWidth": 2
+        },
+        "markerEnd": {
+          "type": "ArrowClosed",
+          "color": "#6b7280"
+        },
+        "label": "Ready",
+        "labelStyle": {
+          "fill": "#374151",
+          "fontWeight": 500,
+          "fontSize": 9,
+          "fontFamily": "Consolas, Menlo, Monaco, monospace",
+          "whiteSpace": "pre-line",
+          "textAlign": "left",
+          "lineHeight": "1.3"
+        },
+        "labelBgStyle": {
+          "fill": "#f9fafb",
+          "fillOpacity": 0.95
+        },
+        "data": {
+          "conditionType": "ready",
+          "label": "Ready"
+        },
+        "selected": false
+      },
+      {
+        "id": "id_mo9y29gc",
+        "source": "id_mo9y29g8",
+        "sourceHandle": null,
+        "target": "id_mo9y29gb",
+        "targetHandle": null,
+        "type": "routableEdge",
+        "animated": false,
+        "style": {
+          "stroke": "#6b7280",
+          "strokeWidth": 2
+        },
+        "markerEnd": {
+          "type": "ArrowClosed",
+          "color": "#6b7280"
+        },
+        "label": "Ready",
+        "labelStyle": {
+          "fill": "#374151",
+          "fontWeight": 500,
+          "fontSize": 9,
+          "fontFamily": "Consolas, Menlo, Monaco, monospace",
+          "whiteSpace": "pre-line",
+          "textAlign": "left",
+          "lineHeight": "1.3"
+        },
+        "labelBgStyle": {
+          "fill": "#f9fafb",
+          "fillOpacity": 0.95
+        },
+        "data": {
+          "conditionType": "ready",
+          "label": "Ready"
+        },
+        "selected": false
+      },
+      {
+        "id": "id_mo9y29gf",
+        "source": "id_mo9y29gb",
+        "sourceHandle": null,
+        "target": "id_mo9y29ge",
+        "targetHandle": null,
+        "type": "routableEdge",
+        "animated": false,
+        "style": {
+          "stroke": "#6b7280",
+          "strokeWidth": 2
+        },
+        "markerEnd": {
+          "type": "ArrowClosed",
+          "color": "#6b7280"
+        },
+        "label": "Ready",
+        "labelStyle": {
+          "fill": "#374151",
+          "fontWeight": 500,
+          "fontSize": 9,
+          "fontFamily": "Consolas, Menlo, Monaco, monospace",
+          "whiteSpace": "pre-line",
+          "textAlign": "left",
+          "lineHeight": "1.3"
+        },
+        "labelBgStyle": {
+          "fill": "#f9fafb",
+          "fillOpacity": 0.95
+        },
+        "data": {
+          "conditionType": "ready",
+          "label": "Ready"
+        },
+        "selected": false
+      },
+      {
+        "id": "id_mo9y29gi",
+        "source": "id_mo9y29ge",
+        "sourceHandle": null,
+        "target": "id_mo9y29gh",
+        "targetHandle": null,
+        "type": "routableEdge",
+        "animated": false,
+        "style": {
+          "stroke": "#6b7280",
+          "strokeWidth": 2
+        },
+        "markerEnd": {
+          "type": "ArrowClosed",
+          "color": "#6b7280"
+        },
+        "label": "Ready",
+        "labelStyle": {
+          "fill": "#374151",
+          "fontWeight": 500,
+          "fontSize": 9,
+          "fontFamily": "Consolas, Menlo, Monaco, monospace",
+          "whiteSpace": "pre-line",
+          "textAlign": "left",
+          "lineHeight": "1.3"
+        },
+        "labelBgStyle": {
+          "fill": "#f9fafb",
+          "fillOpacity": 0.95
+        },
+        "data": {
+          "conditionType": "ready",
+          "label": "Ready"
+        },
+        "selected": false
+      },
+      {
+        "id": "id_mo9y29gl",
+        "source": "id_mo9y29gh",
+        "sourceHandle": null,
+        "target": "id_mo9y29gk",
+        "targetHandle": null,
+        "type": "routableEdge",
+        "animated": false,
+        "style": {
+          "stroke": "#6b7280",
+          "strokeWidth": 2
+        },
+        "markerEnd": {
+          "type": "ArrowClosed",
+          "color": "#6b7280"
+        },
+        "label": "Ready",
+        "labelStyle": {
+          "fill": "#374151",
+          "fontWeight": 500,
+          "fontSize": 9,
+          "fontFamily": "Consolas, Menlo, Monaco, monospace",
+          "whiteSpace": "pre-line",
+          "textAlign": "left",
+          "lineHeight": "1.3"
+        },
+        "labelBgStyle": {
+          "fill": "#f9fafb",
+          "fillOpacity": 0.95
+        },
+        "data": {
+          "conditionType": "ready",
+          "label": "Ready"
+        },
+        "selected": false
+      }
+    ],
+    "devices": [
+      {
+        "id": "id_mo9y29fs",
+        "type": "ServoAxis",
+        "displayName": "PNP_XAxis",
+        "name": "PNPXAxis",
+        "sensorArrangement": "",
+        "homePosition": "ServoMove",
+        "axisNumber": 1,
+        "motionType": "linear",
+        "positions": [
+          {
+            "name": "Pick",
+            "defaultValue": 350,
+            "moveType": "Pos",
+            "isHome": true,
+            "isRecipe": false,
+            "type": "position"
+          },
+          {
+            "name": "Place",
+            "defaultValue": 50,
+            "moveType": "Pos",
+            "isHome": false,
+            "isRecipe": false,
+            "type": "position"
+          },
+          {
+            "name": "Reject",
+            "defaultValue": 100,
+            "moveType": "Pos",
+            "isHome": false,
+            "isRecipe": false,
+            "type": "position"
+          }
+        ],
+        "speedProfiles": [
+          {
+            "name": "Slow",
+            "speed": 100,
+            "accel": 1000,
+            "decel": 1000
+          },
+          {
+            "name": "Fast",
+            "speed": 2500,
+            "accel": 25000,
+            "decel": 25000
+          }
+        ],
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 300,
+        "disengageTimerMs": 300,
+        "vacOnTimerMs": 300,
+        "hasEject": false,
+        "timerMs": 1000
+      },
+      {
+        "id": "id_mo9y29ft",
+        "type": "ServoAxis",
+        "displayName": "PNP_ZAxis",
+        "name": "PNPZAxis",
+        "sensorArrangement": "",
+        "homePosition": "ServoMove",
+        "axisNumber": 1,
+        "motionType": "linear",
+        "positions": [
+          {
+            "name": "Clear",
+            "defaultValue": 10,
+            "moveType": "Pos",
+            "isHome": true,
+            "isRecipe": false,
+            "type": "position"
+          },
+          {
+            "name": "Pick",
+            "defaultValue": 75,
+            "moveType": "Pos",
+            "isHome": false,
+            "isRecipe": false,
+            "type": "position"
+          },
+          {
+            "name": "Place",
+            "defaultValue": 75,
+            "moveType": "Pos",
+            "isHome": false,
+            "isRecipe": false,
+            "type": "position"
+          }
+        ],
+        "speedProfiles": [
+          {
+            "name": "Slow",
+            "speed": 100,
+            "accel": 1000,
+            "decel": 1000
+          },
+          {
+            "name": "Fast",
+            "speed": 2500,
+            "accel": 25000,
+            "decel": 25000
+          }
+        ],
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 300,
+        "disengageTimerMs": 300,
+        "vacOnTimerMs": 300,
+        "hasEject": false,
+        "timerMs": 1000
+      },
+      {
+        "id": "id_mo9y29fu",
+        "type": "PneumaticGripper",
+        "displayName": "Part_Gripper",
+        "name": "PartGripper",
+        "sensorArrangement": "No sensors",
+        "homePosition": "Disengage",
+        "axisNumber": 1,
+        "extTimerMs": 500,
+        "retTimerMs": 500,
+        "engageTimerMs": 250,
+        "disengageTimerMs": 250,
+        "vacOnTimerMs": 300,
+        "hasEject": false,
+        "timerMs": 1000
+      }
+    ]
+  }
+]

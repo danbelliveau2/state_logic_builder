@@ -1,0 +1,29 @@
+MidBaseLoad__jarvis_v1.4.0__2026-08-31_1340.L5X — Cover Note
+From JARVIS (v1.4.0), 2026-08-31. For review before anything ships.
+
+# What this station is
+MidBaseLoad — station 1 of PNP_ServoX- PneumaticZ; 18 states on the SDC step grid.
+
+# What standards were applied
+- Template: S05_ServoPNP.L5X — servo axes present
+- Exemplar studied before writing: SDCServoPNP_JARVIS_v7__verified_by_Jason.L5X (engineer-verified)
+- Standing laws and concept lessons rode the write (engine: claude-agent-sdk)
+
+# What was verified
+- Byte-level L5X validation incl. full Studio-import simulation: PASS
+- Cross-check against the approved diagram: PASS
+- Internal review (adversarial, against the template): fix — 8 finding(s) listed below
+    • ARCHITECTURE VIOLATION — one program, two asynchronous mechanisms. This station interleaves the Escapement feed (Escapement_Finger_1/2, Escapement_Shuttle, Shuttle_Gripper, Nest_Part_Present) and the 
+    • Escapement_Finger_2 is a declared device with ZERO commanded rows anywhere in the file — no q_ExtendEscapementFinger2 / q_RetractEscapementFinger2 coil, no R01 conditioning, no alarm. A two-finger esc
+    • Motion-timeout alarm coverage is incomplete — several wait states own no alarm rung and therefore no Control.FaultTime MOVE: state 13 (extend Finger 1), 16 (extend Shuttle to pick), 19 (extend Vertica
+    • A dead routine ships in the file: R05_ZAxisServo is a single NOP whose comment instructs a future reader to "delete the routine and the unused Z axis from the motion group at machine integration." Thi
+    • State 4 is an empty pass-through: rung 4 is XIC(Status.State[4]) XIC(SS_OK) MOVE(7,...) — no condition at all, so state 4 advances on the very next scan and exists only to occupy the slot. The standar
+    • Rung comments drift from the template's terse action naming into multi-sentence justification prose — e.g. rung 8 "...X axis verified strictly at pick - the descent is the consequence point. Second br
+    • ServoAlarm index space has holes: the file uses ServoAlarm[0], [1] and then jumps to [4] for the quickstop warning, leaving [2] and [3] (the template's Z-axis drive-fault and loss-of-reference slots) 
+    • Sensorless-direction confirmations (rungs 5-8) correctly carry all three legs — action output ON, reverse output OFF, reverse sensor OFF — before the delay timer runs. That part is right and should su
+
+# Notes from the write
+- MidBaseLoad = escapement feed + servo-X / pneumatic-Z pick and place on the S05_ServoPNP template. One servo axis only (the vertical is a pneumatic slide), so R05_ZAxisServo is blanked and its JSR removed; iq_ZAxis/HMI_ZAxis remain declared as controller-context law. X is single-profile (both moves Fast), Positions[0]=Pick, Positions[1]=Place, no MCD. X permissive = Vertical Slide retracted. Sensorless directions confirmed by the standard three-leg delay rungs in R01. Alarms only where a wait can hang (sensor or axis arrival); Alarm[5] stays the starved-nest warning feeding q_Pause, Alarm[7] is the dial-ready warning. Init 100/103/106/124 implements the approved recovery panel; carrying re-entry at 28 (state 2) and 37 (state 3). i_DialReady is the standalone dial stub (*Replace). Escapement_Finger_2 omitted per the walk.
+
+# Red pen invited
+Mark it up — every correction trains in permanently. Build: 1 attempt(s), $7.3569; first-pass ship: false.

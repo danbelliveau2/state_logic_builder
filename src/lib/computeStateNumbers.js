@@ -5,8 +5,15 @@
  * VisionInspect nodes consume 5 sub-state slots (+12 total).
  * Fault nodes are always 127.
  *
+ * Numbering per "PLC Software Standardization, Rev2" §19 (CE standard, adopted
+ * 2026-08-21 per Dan's authority ruling): states 0-3 are fixed supervisor-mode
+ * states (0 Safety Stop, 1 Manual, 2 Auto Idle Not Ready, 3 Auto Idle Ready)
+ * and are NEVER assigned to user nodes. The working sequence starts at state 4,
+ * spaced +3 (4, 7, 10, ...). The main sequence also skips 99 (lockout) and the
+ * 100-127 init block if a long flowchart would run into them.
+ *
  * Options:
- *   - startAt:      first step number (default 1 main, 100 recovery)
+ *   - startAt:      first step number (default 4 main, 100 recovery)
  *   - completeStep: if provided, any node with data.isComplete (OR whose label
  *                   is "Cycle Complete", as a legacy safety net) gets exactly
  *                   this number and is skipped by the sequential counter. Used
@@ -29,7 +36,17 @@ function isCycleCompleteNode(n) {
 export function computeStateNumbers(nodes, edges, devices, options = {}) {
   if (!nodes || nodes.length === 0) return { stateMap: new Map(), visionSubStepsMap: new Map() };
 
-  const startAt = options.startAt ?? 1;
+  const startAt = options.startAt ?? 4;
+  // Main-sequence reserved numbers (99 lockout, 100-127 init block) — skipped
+  // so a long flowchart can't collide. Not applied to recovery sequences,
+  // which deliberately live inside the 100-127 block (startAt: 100).
+  const skipReserved = startAt < 99;
+  const isReserved = (n) => n === 99 || (n >= 100 && n <= 127);
+  const bump = (step, by = 3) => {
+    let next = step + by;
+    while (skipReserved && isReserved(next)) next += 3;
+    return next;
+  };
   const completeStep = options.completeStep; // e.g. 124 for recovery
   const stateMap = new Map();
   const visionSubStepsMap = new Map();
@@ -42,7 +59,7 @@ export function computeStateNumbers(nodes, edges, devices, options = {}) {
     let step = startAt;
     for (const n of sorted) {
       stateMap.set(n.id, step);
-      step += 3;
+      step = bump(step);
     }
     return { stateMap, visionSubStepsMap };
   }
@@ -95,10 +112,10 @@ export function computeStateNumbers(nodes, edges, devices, options = {}) {
       continue;
     }
 
-    currentStep += 3;
+    currentStep = bump(currentStep);
     // Skip `completeStep` in the sequential counter so a busy recovery flow
     // can't collide with the reserved complete number.
-    if (completeStep !== undefined && currentStep === completeStep) currentStep += 3;
+    if (completeStep !== undefined && currentStep === completeStep) currentStep = bump(currentStep);
     stateMap.set(n.id, currentStep);
 
     // Check if this node has a VisionSystem Inspect action.
@@ -125,7 +142,7 @@ export function computeStateNumbers(nodes, edges, devices, options = {}) {
 
     if (hasVisionInspect) {
       visionSubStepsMap.set(n.id, [currentStep, currentStep + 3, currentStep + 6, currentStep + 9, currentStep + 12]);
-      currentStep += 12; // consumed 4 extra slots (5 total sub-states including PT update)
+      currentStep = bump(currentStep, 12); // consumed 4 extra slots (5 total sub-states including PT update)
     }
   }
 

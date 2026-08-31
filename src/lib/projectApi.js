@@ -57,6 +57,70 @@ export async function deleteProjectFile(filename) {
   return res.json();
 }
 
+/**
+ * Save the project as a JSON file on the user's machine (Ctrl+S in BOTH
+ * shells — classic Toolbar and v2 AppV2). Moved here verbatim from
+ * l5xExporter.js: save identity is plumbing and must never ride along with
+ * codegen code. Electron → native dialog via IPC (path cached for direct
+ * overwrite); browser → File System Access API; fallback → <a download>.
+ */
+export async function exportProjectJSON(project) {
+  const json = JSON.stringify(project, null, 2);
+  const fileName = `${project.name ?? 'project'}.json`;
+
+  // Electron desktop app: use native dialog via IPC (avoids showSaveFilePicker
+  // createWritable() bug where the file is created but written as 0 KB).
+  // After the first save we cache the chosen path in localStorage so subsequent
+  // saves write directly — no dialog, no "replace?" prompt.
+  if (window.electronAPI?.saveFile) {
+    const cacheKey = `savePath_${project.id ?? project.name}`;
+    const cachedPath = localStorage.getItem(cacheKey);
+
+    if (cachedPath) {
+      // Known path — overwrite directly, no dialog
+      const result = await window.electronAPI.saveFileDirect(cachedPath, json);
+      if (result.success) return;
+      // If direct write failed (e.g. file moved), fall through to show dialog again
+      localStorage.removeItem(cacheKey);
+    }
+
+    // First save or path no longer valid — show dialog once, cache the result
+    const result = await window.electronAPI.saveFile(fileName, json);
+    if (result.success && result.filePath) {
+      localStorage.setItem(cacheKey, result.filePath);
+    }
+    return;
+  }
+
+  // Browser: use File System Access API — remembers last folder between saves.
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: fileName,
+        types: [{ description: 'JSON File', accept: { 'application/json': ['.json'] } }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(json);
+      await writable.close();
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return; // user cancelled — do nothing
+      // Any other error: fall through to legacy download below
+    }
+  }
+
+  // Fallback for browsers without showSaveFilePicker
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 /** Check if the project API server is available. */
 export async function isServerAvailable() {
   try {

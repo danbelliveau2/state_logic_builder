@@ -25,7 +25,8 @@ const path = require('path');
 
 const { PLAN_SCHEMA_DOC } = require('./editPlanSchema');
 const { buildIR } = require('./ir');
-const { loadConcepts } = require('./meKnowledge');
+const { loadConcepts, SUPREME_LAW } = require('./meKnowledge');
+const { renderPatternInventory } = require('./templatePatterns');
 
 const ROOT = path.join(__dirname, '..', '..', '..'); // -> repo root
 const RULES_PATH = path.join(__dirname, 'generationRules.md');
@@ -241,11 +242,15 @@ const COMMON_NOTES = `
   NEVER per-state ONS trigger rungs, OTL/OTU move-trigger latches, sub-step
   counters, or StateChanged droppers. MAM only fires on rung false→true and
   state bits swap atomically, so two CONSECUTIVE states in one axis's list
-  means the second move never executes: back-to-back moves on one axis use
-  the indexer's trigger/wait split — the move state (in the list) exits to a
-  wait/confirm state (NOT in the list), then the next move state. Position
-  and speed-profile staging live as parallel branches in the ONE Auto Mode
-  staging rung per axis — never as separate speed-profile rungs.`;
+  means the second move never executes: back-to-back DISTINCT moves on one
+  axis use the indexer's trigger/wait split — the move state (in the list)
+  exits to a wait/confirm state (NOT in the list), then the next move state.
+  Fast/slow segments of ONE stroke are NOT two moves — ONE MAM to the final
+  target plus the axis's "Use MCD For Speed Changes" rung keyed on the
+  speed-change segment states, which are NOT in the MAM list (Jason
+  2026-08-25). Position and speed-profile staging live as parallel branches
+  in the ONE Auto Mode staging rung per axis — never as separate
+  speed-profile rungs.`;
 
 const TEMPLATE_NOTES = {
   'S05_ServoPNP.L5X': `
@@ -258,14 +263,26 @@ Two servo axes (X horizontal, Z vertical) + a 2-solenoid gripper.
   (MOVE(...Positions[i], ...MotionParameters.Position) selected by state) and
   the MAM trigger rung (list of XIC(Status.State[n])) are the two rungs that
   bind states to axis moves — retarget their state lists with updateRung.
-- SPEED STAGING: AutoSpeed/Accel/Decel are arrays. The template ships every
-  move on AutoSpeed[0], but when the compiled sequence has fast/slow segments
-  the staging rung selects the profile per state exactly like it selects the
-  position — parallel branches, e.g.:
-  [ [XIC(Status.State[13]) ,XIC(Status.State[19]) ] [MOVE(HMI_ZAxis.Parameters.AutoSpeed[1],ZAxisMotionParameters.Speed) ,MOVE(HMI_ZAxis.Parameters.Accel[1],ZAxisMotionParameters.Accel) ,MOVE(HMI_ZAxis.Parameters.Decel[1],ZAxisMotionParameters.Decel) ] ,[MOVE(HMI_ZAxis.Parameters.AutoSpeed[0],ZAxisMotionParameters.Speed) ,MOVE(HMI_ZAxis.Parameters.Accel[0],ZAxisMotionParameters.Accel) ,MOVE(HMI_ZAxis.Parameters.Decel[0],ZAxisMotionParameters.Decel) ] ]
-  (slow states listed on the [1] branch, everything else falls to [0]).
-  A fast-then-slow stroke is TWO states: fast to the transition-point
-  Positions[i], slow to the final Positions[j].
+- SPEED STAGING (the MCD architecture — Jason's corrected file, 2026-08-25):
+  AutoSpeed/Accel/Decel are arrays. A multi-speed stroke is ONE MAM to the
+  FINAL Positions[i], staged with the stroke's STARTING profile; the staging
+  rung selects position AND starting profile per MAM-commanding state as
+  parallel branches keyed on Status.State[n] (state-keyed profile branches —
+  no unconditioned speed default when every move state stages its own), e.g.:
+  [ [XIC(Status.State[7]) ,XIC(Status.State[31]) ] [MOVE(HMI_ZAxis.Parameters.AutoSpeed[0],ZAxisMotionParameters.Speed) ,MOVE(HMI_ZAxis.Parameters.Accel[0],ZAxisMotionParameters.Accel) ,MOVE(HMI_ZAxis.Parameters.Decel[0],ZAxisMotionParameters.Decel) ] ,[XIC(Status.State[19]) ,XIC(Status.State[43]) ] [MOVE(HMI_ZAxis.Parameters.AutoSpeed[1],ZAxisMotionParameters.Speed) ,MOVE(HMI_ZAxis.Parameters.Accel[1],ZAxisMotionParameters.Accel) ,MOVE(HMI_ZAxis.Parameters.Decel[1],ZAxisMotionParameters.Decel) ] ]
+  The mid-stroke speed change is the axis's ONE "Use MCD For Speed Changes"
+  rung, keyed on the speed-change segment states (NOT in the MAM list), with
+  its OWN control tag ({Axis}_MCD) and OWN staging tags
+  ({Axis}MCDSpeed/{Axis}MCDAccel/{Axis}MCDDecel — stage the new profile's
+  speed into {Axis}MCDSpeed, never into {Axis}MotionParameters.Speed), e.g.:
+  [[XIC(Status.State[13]) ,XIC(Status.State[37]) ] [MOVE(HMI_ZAxis.Parameters.AutoSpeed[1],ZAxisMCDSpeed) ,MOVE(HMI_ZAxis.Parameters.Accel[1],ZAxisMCDAccel) ,MOVE(HMI_ZAxis.Parameters.Decel[1],ZAxisMCDDecel) ] ,[XIC(Status.State[25]) ,XIC(Status.State[49]) ] [MOVE(HMI_ZAxis.Parameters.AutoSpeed[0],ZAxisMCDSpeed) ,MOVE(HMI_ZAxis.Parameters.Accel[0],ZAxisMCDAccel) ,MOVE(HMI_ZAxis.Parameters.Decel[0],ZAxisMCDDecel) ] ]MCD(iq_ZAxis,ZAxis_MCD,Move,Yes,ZAxisMCDSpeed,Yes,ZAxisMCDAccel,Yes,ZAxisMCDDecel,No,0,No,0,Units per sec,Units per sec2,Units per sec2,Units per sec3);
+  R02 shape per stroke: command state exits on bare {Axis}_MAM.IP; the wait
+  state exits on the transition position's bare {Pos}.InPosWide (mid-flight);
+  the MCD segment state exits strict {Axis}_MAM.PC + {Target}.InPos (or the
+  wideband corner OR where a blend is sanctioned). Transition points remain
+  named Positions[i] slots with their own AOI_RangeCheck instances — they are
+  MCD anchors, never MAM targets. Never compile a speed change as a second
+  MAM segment.
 - BLENDING (rounded corners): the R02 transition out of a travel move uses the
   wideband OR so the next state (the other axis) starts before the move
   finishes:
@@ -274,6 +291,19 @@ Two servo axes (X horizontal, Z vertical) + a 2-solenoid gripper.
   clearance threshold, e.g. 5-15mm). Use the wideband OR ONLY on
   travel-to-travel corners the spec blends; grips/releases/process actions
   require strict XIC(Axis_MAM.PC) XIC({Pos}.InPos).
+  PER-CORNER BLEND VALUES (Dan, 2026-08-24): when the axis table carries
+  PickRetractBlend / PlaceRetractBlend named values, the two corners of the
+  pick-place U are independent — use PickRetractBlend as the wide deadband on
+  the pick-side corner (exit from pick) and PlaceRetractBlend on the
+  place-side corner (approach to place); a lone legacy {Level}WideBand value
+  applies to both. These corner blends are the ONLY named windows besides the
+  transition positions' own wide deadbands — {Pos}TransitionWideBand rows are
+  dead (Dan 2026-08-24). The speed change at a transition point fires
+  MID-FLIGHT on bare XIC({Pos}TransitionRangeCheck.InPosWide) entering the MCD
+  segment state (Jason 2026-08-25); strict XIC(Axis_MAM.PC) XIC({Pos}.InPos)
+  is reserved for final targets and grips/releases. The horizontal PNP axis
+  never has transition points at all (it decelerates on its accel/decel
+  settings).
 - Gripper command rungs in R03 use the latch/seal idiom keyed to the close
   and open state numbers.
 - q_ActuatorsSafe must be true only in dial-safe posture (axes homed, Z at
@@ -370,6 +400,23 @@ function buildGenerationPrompt(projectJson, smId, options = {}) {
   const translation = hasApprovedCompiledSequence(sm);
   const compiledIr = translation ? sm.compiledSequence.ir : null;
 
+  // INABILITY GUARD (SUPREME LAW, Dan 2026-08-25): a compiled sequence that
+  // decomposes into multiple state machines requires one PROGRAM per machine
+  // (CE standard, Program Structure: "Each program must have no more than one
+  // state machine"). Multi-program L5X emission is not built yet — emitting
+  // the station as one crammed program would violate the standard, so the
+  // ONLY legal move is to hold. See
+  // jarvis-knowledge/analysis/multi-program-emission-plan.md.
+  if (compiledIr && compiledIr.multiSm) {
+    const n = (compiledIr.stateMachines || []).length;
+    throw new Error(
+      `HOLD — standard prevents generation: this station's approved sequence decomposes into ${n} ` +
+      'state machines, and the SDC standard requires one program per state machine ' +
+      '("Each program must have no more than one state machine" — PLC Software Standardization Rev2). ' +
+      'Multi-program L5X emission is not built yet; generating a single crammed program would violate ' +
+      'the standard, so the build is held. Capability plan: jarvis-knowledge/analysis/multi-program-emission-plan.md.');
+  }
+
   const rulesText = fs.readFileSync(RULES_PATH, 'utf8');
   const ruleCount = countRules(rulesText);
 
@@ -382,7 +429,7 @@ function buildGenerationPrompt(projectJson, smId, options = {}) {
 
   const stationNumber = options.stationNumber ?? ir.stationNumber ?? 1;
 
-  const system = translation
+  const system = SUPREME_LAW + '\n\n' + (translation
     ? ('You are an SDC Automation controls engineer performing template surgery in ' +
        'TRANSLATION mode: the station\'s sequence was already compiled at Build time ' +
        'and APPROVED by the engineer. Every state, transition, and condition is ' +
@@ -395,7 +442,7 @@ function buildGenerationPrompt(projectJson, smId, options = {}) {
        'you adapt an SDC V4.2 standard template L5X to a specific station flowchart ' +
        'by authoring a surgical JSON edit plan. A deterministic merge engine applies ' +
        'your plan to the template; you never write XML. The template is the law — ' +
-       'change only what the flowchart requires, keep every idiom and all boilerplate.');
+       'change only what the flowchart requires, keep every idiom and all boilerplate.'));
 
   const concepts = loadConcepts();
 
@@ -427,6 +474,20 @@ function buildGenerationPrompt(projectJson, smId, options = {}) {
     `AOIs available: ${ctx.aois.join(', ')}`,
     `Controller-scope tags (unchangeable): ${ctx.ctlTags.join(', ')}`,
     '',
+    renderPatternInventory(choice.template),
+    '',
+    '## TEMPLATE CONSULTATION CONTRACT (mandatory)',
+    'For every STRUCTURAL decision your edit plan makes — state granularity, trigger',
+    'shape, staging structure, transition condition form, rung ordering — you follow',
+    'a pattern from the inventory above (or the template extracts below, which are',
+    'the same law in full fidelity). In translation mode the approved compiled',
+    'sequence\'s "Template conformance" section is the decided record: implement',
+    'exactly the cited patterns and sanctioned extensions, nothing else. In',
+    'authoring mode, a structural choice no inventory pattern covers must be an',
+    'explicit extension: SDC-style, with a rung comment beginning',
+    '"PROPOSED NON-STANDARD PATTERN:" naming why no template example exists.',
+    'An uncited invented structure is a defect and will be bounced by review.',
+    '',
     '## Template notes',
     notes,
     '',
@@ -448,6 +509,10 @@ function buildGenerationPrompt(projectJson, smId, options = {}) {
       'listed in the sequence need their tags (addTag) and their latch/unlatch and',
       'consume rungs. Remove or retarget template rungs for states the sequence',
       'does not have. This is mechanical translation, not design.',
+      'If the template\'s rung shapes genuinely FORCE a structural change vs this',
+      'approved sequence, declare it in "structuralChanges" (one plain sentence +',
+      'irPatch — see the edit plan format) so the diagram is updated to match and',
+      'the engineer gets a quick approve. NEVER silently diverge.',
       '',
       compiledIr.text,
       '',

@@ -1,0 +1,667 @@
+﻿<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--Creates a shared Alarm History array and a shared Active Alarms array.-->
+<RSLogix5000Content SchemaRevision="1.0" SoftwareRevision="37.00" TargetName="ProgramAlarmHandler" TargetType="AddOnInstructionDefinition" TargetClass="Standard" TargetRevision="3.0 a" TargetLastEdited="2025-07-17T18:51:56.055Z" ContainsContext="true" ExportDate="Wed Jul 30 14:11:12 2025" ExportOptions="References NoRawData L5KData DecoratedData Context Dependencies ForceProtectedEncoding AllProjDocTrans">
+<Controller Use="Context" Name="SoftwareStandardization">
+<DataTypes Use="Context">
+<DataType Name="AlarmData" Family="NoFamily" Class="User">
+<Members>
+<Member Name="ProgramID" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Unique ID given to each AOI instance.]]>
+</Description>
+</Member>
+<Member Name="AlarmID" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Index number of the alarm taken from the array attached to the AOI.]]>
+</Description>
+</Member>
+<Member Name="Severity" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Fault = 0, Warning = 1]]>
+</Description>
+</Member>
+<Member Name="Group" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Alarm group number.
+0 -31]]>
+</Description>
+</Member>
+<Member Name="Message" DataType="STRING100" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Message Description
+(Default Language)]]>
+</Description>
+</Member>
+<Member Name="TimeStamp" DataType="LINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[UTC microseconds. Time it went active.]]>
+</Description>
+</Member>
+<Member Name="Count" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Count of Alarm Occurrences]]>
+</Description>
+</Member>
+<Member Name="Duration" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Duration in seconds]]>
+</Description>
+</Member>
+<Member Name="ZZZZZZZZZZAlarmData8" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="Active" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZAlarmData8" BitNumber="0" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Alarm Active]]>
+</Description>
+</Member>
+<Member Name="DoNotSaveToHistory" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZAlarmData8" BitNumber="1" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Set this flag to prevent the alarm from cluttering up the history.]]>
+</Description>
+</Member>
+<Member Name="HMI_ResetCount" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZAlarmData8" BitNumber="2" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[HMI Reset input]]>
+</Description>
+</Member>
+</Members>
+<Dependencies>
+<Dependency Type="DataType" Name="STRING100"/>
+</Dependencies>
+</DataType>
+<DataType Name="CPU_TimeDate" Family="NoFamily" Class="User">
+<Description>
+<![CDATA[CPU Time And Date Array]]>
+</Description>
+<Members>
+<Member Name="Year" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Month" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Day" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Hour" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Minutes" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Seconds" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Milliseconds" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Microseconds" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="UTCMicroseconds" DataType="LINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+</DataType>
+<DataType Name="STRING100" Family="StringFamily" Class="User">
+<Members>
+<Member Name="LEN" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="DATA" DataType="SINT" Dimension="100" Radix="ASCII" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+</DataType>
+</DataTypes>
+<AddOnInstructionDefinitions Use="Context">
+<AddOnInstructionDefinition Use="Target" Name="ProgramAlarmHandler" Class="Standard" Revision="3.0" RevisionExtension="a" Vendor="Steven Douglas Corp." ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" CreatedDate="2017-08-23T18:02:02.410Z" CreatedBy="STEVENDOUGLAS\dshaner"
+ EditedDate="2025-07-17T18:51:56.055Z" EditedBy="STEVENDOUGLAS\jperry" SoftwareRevision="v37.00">
+<Description>
+<![CDATA[Creates a shared Alarm History array and a shared Active Alarms array.]]>
+</Description>
+<RevisionNote>
+<![CDATA[v3.0 : 2022-06-16 D.E.S. Added Alarm Group to the AlarmData UDT.]]>
+</RevisionNote>
+<AdditionalHelpText>
+<![CDATA[This AOI works in conjuction with the Alarms Porgram.
+
+ControllerProgramIDTag needs to be the exact same tag for all instances of this AOI in your project.This AOI then uses that tag to uniquely identify each instance of the AOI in your project.
+
+LocalAlarmsArrayTag is where you define each alarm for this AOI. Type in your Message and set the Severity when you create a new alarm. Severity is used on the HMI for coloring - found in the Alarm Display AOG background object's animation.
+
+Use output coils or latches on the Active bit to trigger the alarm.
+
+If you set DoNotSaveToHistory it will prevent the alarm from being put in the Alarm History array.
+
+HMIActiveArrayTag and HMIHistoryArrayTag are arrays of the AlarmData UDT. They are shared by all instances of this AOI.
+
+Alarm History is updated when an alarm becomes inactive so the Duration can be saved.
+
+Changelog:
+v3.0 : 2022-06-16 D.E.S. Added Alarm Group to the AlarmData UDT.
+v2.3a: 2022-06-16 D.E.S. For Beckett. Severity MOD 200 because of different zones
+v2.3 : 2022-06-14 D.E.S. Sort displayed alarm list by severity
+v2.2 : 2022-01-03 D.E.S. Don't add alarm to active array if full.
+v2.1 : 2021-05-11 D.E.S. Use UTC for date.
+v2.0 : 2019-12-12 D.E.S. variable array lengths!
+v1.2 : 2018-06-03 W.E.H. Changed NoFault to Faulted
+v1.1 : 2017-09-12 W.E.H.
+v1.0 : 2017-08-24 D.E.S.]]>
+</AdditionalHelpText>
+<Parameters>
+<Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Input - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Output - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="PublicProgramIDTag" TagType="Base" DataType="INT" Usage="InOut" Radix="Decimal" Required="true" Visible="true" Constant="false">
+<Description>
+<![CDATA[Master Program ID tag used for all handler instances to obtain a unique ID]]>
+</Description>
+</Parameter>
+<Parameter Name="LocalAlarmsArrayTag" TagType="Base" DataType="AlarmData" Dimensions="1" Usage="InOut" Required="true" Visible="true" Constant="false">
+<Description>
+<![CDATA[Local array tag.
+Faults,
+Warnings]]>
+</Description>
+</Parameter>
+<Parameter Name="AlarmActiveArrayTag" TagType="Base" DataType="AlarmData" Dimensions="1" Usage="InOut" Required="true" Visible="true" Constant="false">
+<Description>
+<![CDATA[Active array tag. \Alarms.Active]]>
+</Description>
+</Parameter>
+<Parameter Name="AlarmHistoryArrayTag" TagType="Base" DataType="AlarmData" Dimensions="1" Usage="InOut" Required="true" Visible="true" Constant="false">
+<Description>
+<![CDATA[History array tag. \Alarms.History]]>
+</Description>
+</Parameter>
+<Parameter Name="ControllerTimeClockTag" TagType="Base" DataType="CPU_TimeDate" Usage="InOut" Required="true" Visible="true" Constant="false"/>
+<Parameter Name="AlarmActiveTag" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="true" Visible="true" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</DefaultData>
+</Parameter>
+<Parameter Name="ActiveAlarmArrayIndex" TagType="Base" DataType="INT" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="INT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</Parameter>
+<Parameter Name="ActiveAlarmDuration" TagType="Base" DataType="DINT" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</Parameter>
+<Parameter Name="MyProgramID" TagType="Base" DataType="INT" Usage="Output" Radix="Decimal" Required="false" Visible="true" ExternalAccess="None">
+<Description>
+<![CDATA[This alarm handler's Program ID]]>
+</Description>
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="INT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</Parameter>
+<Parameter Name="WarningActiveTag" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="true" Visible="true" ExternalAccess="Read/Write">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</DefaultData>
+</Parameter>
+</Parameters>
+<LocalTags>
+<LocalTag Name="ActiveIndex" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="INT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="DataIndex" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="INT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="tempLength" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="INT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="ShiftIter" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="INT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="prevSecond" DataType="SINT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="SINT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="AlarmsActive_size" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="INT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="AlarmsHistory_size" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="INT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="OneSecond" DataType="BOOL" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="EmptyAlarmData" DataType="AlarmData" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[[0,0,0,0,[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'],0,0,0,0]]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<Structure DataType="AlarmData">
+<DataValueMember Name="ProgramID" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="AlarmID" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Severity" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Group" DataType="INT" Radix="Decimal" Value="0"/>
+<StructureMember Name="Message" DataType="STRING100">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING100" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
+<DataValueMember Name="TimeStamp" DataType="LINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Count" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Duration" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="Active" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DoNotSaveToHistory" DataType="BOOL" Value="0"/>
+<DataValueMember Name="HMI_ResetCount" DataType="BOOL" Value="0"/>
+</Structure>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="AlarmsLocal_size" DataType="INT" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[0]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="INT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+</LocalTags>
+<Routines>
+<Routine Name="Logic" Type="ST">
+<STContent>
+<Line Number="0">
+<![CDATA[PublicProgramIDTag := PublicProgramIDTag + 1;]]>
+</Line>
+<Line Number="1">
+<![CDATA[MyProgramID := PublicProgramIDTag;]]>
+</Line>
+<Line Number="2">
+<![CDATA[]]>
+</Line>
+<Line Number="3">
+<![CDATA[SIZE(AlarmActiveArrayTag, 0, AlarmsActive_size);]]>
+</Line>
+<Line Number="4">
+<![CDATA[SIZE(AlarmHistoryArrayTag, 0, AlarmsHistory_size);]]>
+</Line>
+<Line Number="5">
+<![CDATA[SIZE(LocalAlarmsArrayTag, 0, AlarmsLocal_size);]]>
+</Line>
+<Line Number="6">
+<![CDATA[]]>
+</Line>
+<Line Number="7">
+<![CDATA[if (ControllerTimeClockTag.Seconds <> prevSecond) then]]>
+</Line>
+<Line Number="8">
+<![CDATA[	prevSecond := ControllerTimeClockTag.Seconds;]]>
+</Line>
+<Line Number="9">
+<![CDATA[	OneSecond := 1;]]>
+</Line>
+<Line Number="10">
+<![CDATA[else]]>
+</Line>
+<Line Number="11">
+<![CDATA[	OneSecond := 0;]]>
+</Line>
+<Line Number="12">
+<![CDATA[end_if;]]>
+</Line>
+<Line Number="13">
+<![CDATA[]]>
+</Line>
+<Line Number="14">
+<![CDATA[//Check the active alarm array for alarms from this AOI's AlarmData array]]>
+</Line>
+<Line Number="15">
+<![CDATA[for ActiveIndex := 0 to AlarmsActive_size - 1 by 1 do]]>
+</Line>
+<Line Number="16">
+<![CDATA[	if (AlarmActiveArrayTag[ActiveIndex].ProgramID = PublicProgramIDTag) then]]>
+</Line>
+<Line Number="17">
+<![CDATA[		//Alarm came from this AOI's AlarmData array]]>
+</Line>
+<Line Number="18">
+<![CDATA[		DataIndex := AlarmActiveArrayTag[ActiveIndex].AlarmID;]]>
+</Line>
+<Line Number="19">
+<![CDATA[]]>
+</Line>
+<Line Number="20">
+<![CDATA[		if ((DataIndex < 0) OR (DataIndex >= AlarmsLocal_size)) then]]>
+</Line>
+<Line Number="21">
+<![CDATA[			//This was bad data. Index out of range. So to prevent CPU fault,]]>
+</Line>
+<Line Number="22">
+<![CDATA[			//erase the data just like below.]]>
+</Line>
+<Line Number="23">
+<![CDATA[			//Shift the active list up to cover the inactive alarm]]>
+</Line>
+<Line Number="24">
+<![CDATA[			tempLength := AlarmsActive_size - 1 - ActiveIndex;]]>
+</Line>
+<Line Number="25">
+<![CDATA[			if (tempLength > 0) then]]>
+</Line>
+<Line Number="26">
+<![CDATA[				COP(AlarmActiveArrayTag[ActiveIndex + 1], AlarmActiveArrayTag[ActiveIndex], tempLength);]]>
+</Line>
+<Line Number="27">
+<![CDATA[			end_if;]]>
+</Line>
+<Line Number="28">
+<![CDATA[]]>
+</Line>
+<Line Number="29">
+<![CDATA[			//Clear the last record]]>
+</Line>
+<Line Number="30">
+<![CDATA[			COP(EmptyAlarmData, AlarmActiveArrayTag[AlarmsActive_size - 1], 1);]]>
+</Line>
+<Line Number="31">
+<![CDATA[			exit; //This is an anomaly so exit this for loop and it'll fix itself next scan.]]>
+</Line>
+<Line Number="32">
+<![CDATA[		end_if;]]>
+</Line>
+<Line Number="33">
+<![CDATA[		]]>
+</Line>
+<Line Number="34">
+<![CDATA[		if (OneSecond) then]]>
+</Line>
+<Line Number="35">
+<![CDATA[			LocalAlarmsArrayTag[DataIndex].Duration := LocalAlarmsArrayTag[DataIndex].Duration +1;]]>
+</Line>
+<Line Number="36">
+<![CDATA[			AlarmActiveArrayTag[ActiveIndex].Duration := AlarmActiveArrayTag[ActiveIndex].Duration +1;]]>
+</Line>
+<Line Number="37">
+<![CDATA[		end_if;]]>
+</Line>
+<Line Number="38">
+<![CDATA[]]>
+</Line>
+<Line Number="39">
+<![CDATA[		if (NOT LocalAlarmsArrayTag[DataIndex].Active) then]]>
+</Line>
+<Line Number="40">
+<![CDATA[			//Alarm is no longer active so copy to history and clear from the active list.]]>
+</Line>
+<Line Number="41">
+<![CDATA[			]]>
+</Line>
+<Line Number="42">
+<![CDATA[			if (NOT LocalAlarmsArrayTag[DataIndex].DoNotSaveToHistory) then]]>
+</Line>
+<Line Number="43">
+<![CDATA[				//Shift the history down]]>
+</Line>
+<Line Number="44">
+<![CDATA[				for ShiftIter := AlarmsHistory_size - 2 to 0 by -1 do]]>
+</Line>
+<Line Number="45">
+<![CDATA[					COP(AlarmHistoryArrayTag[ShiftIter], AlarmHistoryArrayTag[ShiftIter + 1], 1);]]>
+</Line>
+<Line Number="46">
+<![CDATA[				end_for;]]>
+</Line>
+<Line Number="47">
+<![CDATA[]]>
+</Line>
+<Line Number="48">
+<![CDATA[				//Copy the data over]]>
+</Line>
+<Line Number="49">
+<![CDATA[				COP(AlarmActiveArrayTag[ActiveIndex], AlarmHistoryArrayTag[0], 1);]]>
+</Line>
+<Line Number="50">
+<![CDATA[			end_if;]]>
+</Line>
+<Line Number="51">
+<![CDATA[			//Shift the active list up to cover the inactive alarm]]>
+</Line>
+<Line Number="52">
+<![CDATA[			tempLength := AlarmsActive_size - 1 - ActiveIndex;]]>
+</Line>
+<Line Number="53">
+<![CDATA[			if (ActiveIndex < (AlarmsActive_size - 1)) then]]>
+</Line>
+<Line Number="54">
+<![CDATA[				//Skip the shift up if the last alarm in the list is no longer active]]>
+</Line>
+<Line Number="55">
+<![CDATA[				COP(AlarmActiveArrayTag[ActiveIndex + 1], AlarmActiveArrayTag[ActiveIndex], tempLength);]]>
+</Line>
+<Line Number="56">
+<![CDATA[			end_if;]]>
+</Line>
+<Line Number="57">
+<![CDATA[]]>
+</Line>
+<Line Number="58">
+<![CDATA[			//Clear the last record]]>
+</Line>
+<Line Number="59">
+<![CDATA[			COP(EmptyAlarmData, AlarmActiveArrayTag[AlarmsActive_size - 1], 1);]]>
+</Line>
+<Line Number="60">
+<![CDATA[		end_if;]]>
+</Line>
+<Line Number="61">
+<![CDATA[]]>
+</Line>
+<Line Number="62">
+<![CDATA[	end_if;]]>
+</Line>
+<Line Number="63">
+<![CDATA[end_for;]]>
+</Line>
+<Line Number="64">
+<![CDATA[]]>
+</Line>
+<Line Number="65">
+<![CDATA[AlarmActiveTag := 0;]]>
+</Line>
+<Line Number="66">
+<![CDATA[WarningActiveTag := 0;]]>
+</Line>
+<Line Number="67">
+<![CDATA[]]>
+</Line>
+<Line Number="68">
+<![CDATA[For DataIndex := 0 to AlarmsLocal_size - 1 By 1 Do]]>
+</Line>
+<Line Number="69">
+<![CDATA[	//Loop through each alarm in the data array]]>
+</Line>
+<Line Number="70">
+<![CDATA[	If (LocalAlarmsArrayTag[DataIndex].Active) Then]]>
+</Line>
+<Line Number="71">
+<![CDATA[		]]>
+</Line>
+<Line Number="72">
+<![CDATA[		//The alarm is active]]>
+</Line>
+<Line Number="73">
+<![CDATA[		If (LocalAlarmsArrayTag[DataIndex].Severity = 0) Then]]>
+</Line>
+<Line Number="74">
+<![CDATA[			AlarmActiveTag := 1;]]>
+</Line>
+<Line Number="75">
+<![CDATA[		End_If;]]>
+</Line>
+<Line Number="76">
+<![CDATA[		If (LocalAlarmsArrayTag[DataIndex].Severity = 1) Then]]>
+</Line>
+<Line Number="77">
+<![CDATA[			WarningActiveTag := 1;]]>
+</Line>
+<Line Number="78">
+<![CDATA[		End_If;]]>
+</Line>
+<Line Number="79">
+<![CDATA[]]>
+</Line>
+<Line Number="80">
+<![CDATA[		//Update informational outputs]]>
+</Line>
+<Line Number="81">
+<![CDATA[		ActiveAlarmArrayIndex := DataIndex;]]>
+</Line>
+<Line Number="82">
+<![CDATA[		ActiveAlarmDuration := LocalAlarmsArrayTag[DataIndex].Duration;]]>
+</Line>
+<Line Number="83">
+<![CDATA[]]>
+</Line>
+<Line Number="84">
+<![CDATA[		For ActiveIndex := 0 to AlarmsActive_size - 1 By 1 Do]]>
+</Line>
+<Line Number="85">
+<![CDATA[			//Check if it's already in the active array]]>
+</Line>
+<Line Number="86">
+<![CDATA[			If ((AlarmActiveArrayTag[ActiveIndex].ProgramID = PublicProgramIDTag) AND (AlarmActiveArrayTag[ActiveIndex].AlarmID = DataIndex)) Then]]>
+</Line>
+<Line Number="87">
+<![CDATA[				//Found it! So exit the For loop]]>
+</Line>
+<Line Number="88">
+<![CDATA[				Exit;]]>
+</Line>
+<Line Number="89">
+<![CDATA[			End_If;]]>
+</Line>
+<Line Number="90">
+<![CDATA[		End_For;]]>
+</Line>
+<Line Number="91">
+<![CDATA[		If (ActiveIndex > AlarmsActive_size - 1) Then]]>
+</Line>
+<Line Number="92">
+<![CDATA[			//Didn't find it! So add the new active alarm.]]>
+</Line>
+<Line Number="93">
+<![CDATA[			//Shift the data down the stack]]>
+</Line>
+<Line Number="94">
+<![CDATA[			For ShiftIter := AlarmsActive_size - 2 to 0 By -1 Do]]>
+</Line>
+<Line Number="95">
+<![CDATA[				COP(AlarmActiveArrayTag[ShiftIter], AlarmActiveArrayTag[ShiftIter + 1], 1);]]>
+</Line>
+<Line Number="96">
+<![CDATA[			End_For;]]>
+</Line>
+<Line Number="97">
+<![CDATA[]]>
+</Line>
+<Line Number="98">
+<![CDATA[			LocalAlarmsArrayTag[DataIndex].ProgramID := PublicProgramIDTag;]]>
+</Line>
+<Line Number="99">
+<![CDATA[			LocalAlarmsArrayTag[DataIndex].AlarmID := DataIndex;]]>
+</Line>
+<Line Number="100">
+<![CDATA[			COP(ControllerTimeClockTag, LocalAlarmsArrayTag[DataIndex].TimeStamp, 1);]]>
+</Line>
+<Line Number="101">
+<![CDATA[			LocalAlarmsArrayTag[DataIndex].Duration := 0;]]>
+</Line>
+<Line Number="102">
+<![CDATA[			LocalAlarmsArrayTag[DataIndex].Count := LocalAlarmsArrayTag[DataIndex].Count +1;]]>
+</Line>
+<Line Number="103">
+<![CDATA[]]>
+</Line>
+<Line Number="104">
+<![CDATA[			COP(LocalAlarmsArrayTag[DataIndex], AlarmActiveArrayTag[0], 1);]]>
+</Line>
+<Line Number="105">
+<![CDATA[]]>
+</Line>
+<Line Number="106">
+<![CDATA[		End_If;]]>
+</Line>
+<Line Number="107">
+<![CDATA[	End_If;]]>
+</Line>
+<Line Number="108">
+<![CDATA[End_For;]]>
+</Line>
+<Line Number="109">
+<![CDATA[]]>
+</Line>
+<Line Number="110">
+<![CDATA[if (AlarmActiveTag) then]]>
+</Line>
+<Line Number="111">
+<![CDATA[	//No active alarms found]]>
+</Line>
+<Line Number="112">
+<![CDATA[	ActiveAlarmArrayIndex := 9999;]]>
+</Line>
+<Line Number="113">
+<![CDATA[	ActiveAlarmDuration := 0;]]>
+</Line>
+<Line Number="114">
+<![CDATA[end_if;]]>
+</Line>
+<Line Number="115">
+<![CDATA[]]>
+</Line>
+</STContent>
+</Routine>
+</Routines>
+<Dependencies>
+<Dependency Type="DataType" Name="AlarmData"/>
+<Dependency Type="DataType" Name="CPU_TimeDate"/>
+</Dependencies>
+</AddOnInstructionDefinition>
+</AddOnInstructionDefinitions>
+</Controller>
+</RSLogix5000Content>

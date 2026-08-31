@@ -1837,30 +1837,112 @@ function ActionRow({ action, devices, allSMs, onClickName, onClickOp, onClickAdv
   // Light background colors need dark text
   const LIGHT_BG_COLORS = new Set(['#aacee8', '#befa4f', '#d9d9d9']);
   const isLightBg = LIGHT_BG_COLORS.has(opColor);
-  let opLabel;
-  // Speed profile + blend intent on servo moves — Dan: "so I know it's going
-  // high speed to this point then slow the rest of the way." Rendered as a
-  // muted suffix inside the chip ("→ Pick 60.0 · Fast") + a tiny "≈ blends"
-  // hint when the move's advance intent is wideband (rounded corner).
-  let speedSuffix = null; // e.g. "Fast 2500" — profile name + its speed value
-  let isBlend = false;
+
+  // ── ServoMove: dedicated multi-line row (Dan, Aug 2026) ──────────────────
+  // "Slow 100 doesn't really mean anything" crammed into one pill — and long
+  // position names spilled outside the node. Layout instead:
+  //   [Move]  ⚙ Vertical_Axis          ← action + device
+  //   → PickTransition — 70.0 mm       ← destination line
+  //   Slow — 100 mm/s   ≈ blends       ← speed line (+ blend hint)
+  //   Vertical_Axis_MAM.PC …           ← muted tag/operand hints (unchanged)
   if (action.operation === 'ServoMove') {
+    const posName  = action.positionName ?? '?';
+    const pos      = device.positions?.find(p => p.name === action.positionName);
+    const posVal   = pos?.defaultValue;
+    const isRotary = device.motionType === 'rotary';
+    const posUnit  = isRotary ? '°' : 'mm';
     const speedName = action.speedProfile ?? action.params?.speedProfile ?? null;
-    if (speedName) {
-      const prof = device.speedProfiles?.find(p => p.name === speedName);
-      const spdVal = prof && Number(prof.speed) > 0 ? ` ${Number(prof.speed)}` : '';
-      speedSuffix = `${speedName}${spdVal}`;
-    }
-    const adv = action.advance ?? action.params?.advance ?? null;
-    isBlend = adv === 'wideband';
+    const prof      = speedName ? device.speedProfiles?.find(p => p.name === speedName) : null;
+    const speedVal  = prof && Number(prof.speed) > 0 ? Number(prof.speed) : null;
+    const advIntent = action.advance ?? action.params?.advance ?? null;
+    const blends    = advIntent === 'wideband';
+    const servoVerifyText = buildActionVerifyText(action, device);
+    return (
+      <div className="action-row-wrap">
+        <div className="action-row action-row--servo" style={{ borderLeftColor: opColor }}>
+          <div className="servo-move__head">
+            <span
+              className={`action-op${onClickOp ? ' action-op--clickable nodrag' : ''}`}
+              style={{ background: opColor, color: isLightBg ? '#1e3a5f' : '#fff', borderColor: opColor }}
+              onClick={onClickOp}
+            >Move</span>
+            <span className="action-icon"><DeviceIcon type={device.type} size={18} /></span>
+            <span
+              className={`action-device servo-move__device${onClickName ? ' action-device--clickable nodrag' : ''}`}
+              onClick={onClickName}
+              title={device.displayName}
+            >{device.displayName}</span>
+          </div>
+          {/* Aligned label grid — POS / SPEED / END labels in one column so
+              the values line up (Dan: "like Fanuc code — move to this point
+              at this speed with this end condition"). Speed line is
+              color-coded (Fast = SDC blue, Slow = amber). Values NEVER
+              truncate: the font auto-shrinks to fit (like the device-name
+              scaler); only the position NAME may ellipsize as a last resort —
+              the number + unit is always fully visible. END renders only for
+              blended moves (strict moves save the line height). */}
+          {(() => {
+            const posValText = posVal !== undefined ? ` — ${Number(posVal).toFixed(1)} ${posUnit}` : '';
+            const speedValText = speedVal != null ? ` — ${speedVal} ${isRotary ? '°/s' : 'mm/s'}` : '';
+            const fit = (len) => (len <= 24 ? 10.5 : len <= 29 ? 9.5 : len <= 34 ? 8.5 : 8);
+            const posFont = fit((posName + posValText).length);
+            const speedFont = speedName ? fit((speedName + speedValText).length) : 10.5;
+            const speedColor = speedName
+              ? (/fast/i.test(speedName) ? '#0072B5' : /slow/i.test(speedName) ? '#d97706' : '#475569')
+              : '#475569';
+            return (
+              <div className="servo-move__grid">
+                <span className="servo-move__lbl">POS</span>
+                <span className="servo-move__line" style={{ fontSize: posFont }}
+                  title={`Move to ${posName}${posVal !== undefined ? ` (${Number(posVal).toFixed(1)} ${posUnit})` : ''}`}>
+                  <b className="servo-move__name">{posName}</b>
+                  {posValText && <span className="servo-move__num">{posValText}</span>}
+                </span>
+                {speedName && (
+                  <>
+                    <span className="servo-move__lbl" style={{ color: speedColor }}>SPEED</span>
+                    <span className="servo-move__line" style={{ color: speedColor, fontSize: speedFont }}
+                      title={`Speed profile: ${speedName}${speedVal ? ` (${speedVal} ${isRotary ? '°/s' : 'mm/s'})` : ''}`}>
+                      <b className="servo-move__name">{speedName}</b>
+                      {speedValText && <span className="servo-move__num">{speedValText}</span>}
+                    </span>
+                  </>
+                )}
+                {blends && (
+                  <>
+                    <span className="servo-move__lbl">END</span>
+                    <span className="servo-move__line" data-testid="action-blend-hint" style={{ fontSize: 10.5 }}
+                      title="Wideband advance — the transition may fire while the move is in process but already inside the wide in-position band; the next motion starts early (rounded corner)">
+                      <b className="servo-move__name">Blend</b>
+                      <span className="servo-move__num"> (InPosWide)</span>
+                    </span>
+                  </>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+        {showAdvance && servoVerifyText && (
+          <div className="action-verify">{servoVerifyText}</div>
+        )}
+        {action.offsetSource && (
+          <div className="action-offset action-offset--clickable nodrag"
+            onClick={(e) => {
+              e.stopPropagation();
+              useDiagramStore.getState().updateAction(smId, nodeId, action.id, { offsetSource: undefined });
+            }}
+            title="Click to remove offset">
+            <span className="action-offset__icon">📊</span>
+            <span className="action-offset__text">+ offset from <strong>{action.offsetSource}</strong></span>
+            <span className="action-offset__remove">✕</span>
+          </div>
+        )}
+      </div>
+    );
   }
-  if (action.operation === 'ServoMove') {
-    const posName = action.positionName ?? '?';
-    const pos = device.positions?.find(p => p.name === action.positionName);
-    const val = pos?.defaultValue;
-    opLabel = val !== undefined ? `→ ${posName} ${Number(val).toFixed(1)}` : `→ ${posName}`;
-    if (action.offsetSource) opLabel += ' +offset';
-  } else if (action.operation === 'ServoIncr') {
+
+  let opLabel;
+  if (action.operation === 'ServoIncr') {
     const dist = action.incrementDist ?? 1.0;
     opLabel = action.positionName ? `Δ ${action.positionName} ${dist}mm` : `Δ ${dist}mm`;
   } else if (action.operation === 'ServoIndex') {
@@ -1903,9 +1985,11 @@ function ActionRow({ action, devices, allSMs, onClickName, onClickOp, onClickAdv
   // Vision sub-step numbers injected from Canvas.jsx
   const visionSubSteps = action.visionSubSteps ?? [];
 
-  // Auto-scale device name font size based on name + badge length
+  // Auto-scale device name font size based on name + badge length.
+  // (ServoMove rows returned early above with their own multi-line layout —
+  // no speed suffix / blend hint exists on this generic path.)
   const nameLen = (device.displayName ?? '').length;
-  const badgeLen = (opLabel ?? '').length + (speedSuffix ? speedSuffix.length + 3 : 0);
+  const badgeLen = (opLabel ?? '').length;
   const totalLen = nameLen + badgeLen;
   const nameFontSize = totalLen <= 14 ? 13 : totalLen <= 18 ? 12 : totalLen <= 22 ? 11 : totalLen <= 28 ? 10 : 9;
 
@@ -1920,13 +2004,6 @@ function ActionRow({ action, devices, allSMs, onClickName, onClickOp, onClickAdv
           borderColor: opColor,
         }} onClick={onClickOp}>
           {opLabel}
-          {speedSuffix && (
-            <span
-              data-testid="action-speed-suffix"
-              style={{ opacity: 0.72, fontWeight: 400, marginLeft: 3 }}
-              title={`Speed profile: ${speedSuffix}`}
-            >· {speedSuffix}</span>
-          )}
         </span>
         <span className="action-icon"><DeviceIcon type={device.type} size={18} /></span>
         <span
@@ -1934,13 +2011,6 @@ function ActionRow({ action, devices, allSMs, onClickName, onClickOp, onClickAdv
           style={{ fontSize: nameFontSize }}
           onClick={onClickName}
         >{device.displayName}</span>
-        {isBlend && (
-          <span
-            data-testid="action-blend-hint"
-            style={{ fontSize: 8, color: '#94a3b8', whiteSpace: 'nowrap', marginLeft: 2 }}
-            title="Wideband advance — the next motion may start inside the clearance band (blended / rounded corner)"
-          >≈ blends</span>
-        )}
       </div>
       {/* Continuous mode banner */}
       {isVisionInspect && action.continuous && (
@@ -1952,19 +2022,7 @@ function ActionRow({ action, devices, allSMs, onClickName, onClickOp, onClickAdv
       {showAdvance && verifyText && (
         <div className="action-verify">{verifyText}</div>
       )}
-      {/* Offset source indicator for servo moves — click to remove */}
-      {action.operation === 'ServoMove' && action.offsetSource && (
-        <div className="action-offset action-offset--clickable nodrag"
-          onClick={(e) => {
-            e.stopPropagation();
-            useDiagramStore.getState().updateAction(smId, nodeId, action.id, { offsetSource: undefined });
-          }}
-          title="Click to remove offset">
-          <span className="action-offset__icon">📊</span>
-          <span className="action-offset__text">+ offset from <strong>{action.offsetSource}</strong></span>
-          <span className="action-offset__remove">✕</span>
-        </div>
-      )}
+      {/* (ServoMove offset indicator lives in the early-return servo block above) */}
       {/* Conditional parameter conditions — show what makes it ON */}
       {device.type === 'Parameter' &&
        (action.operation === 'WaitOn' || action.operation === 'WaitOff') &&
@@ -3801,13 +3859,16 @@ function InlinePicker({ smId, nodeId, devices, onClose, editActionId, editAction
             for (const t of targets) stack.push(t.id);
           }
         }
-        let curState = 1;
+        // Rev2 §19: sequence starts at state 4 (0-3 are Safety Stop / Manual /
+        // Idle states). Vision nodes consume 5 slots → next state at +15
+        // (matches computeStateNumbers).
+        let curState = 4;
         for (const nid of dfsOrder) {
           stateNums.set(nid, curState);
           const nd = allNodes.find(n => n.id === nid);
           const acts = nd?.data?.actions ?? [];
           const isVision = acts.some(a => a.operation === 'VisionInspect' || a.operation === 'Inspect');
-          curState += isVision ? 12 : 3;
+          curState += isVision ? 15 : 3;
         }
         // For unvisited nodes, assign remaining numbers
         for (const n of allNodes) {
@@ -4879,6 +4940,36 @@ export function StateNode({ data, selected, id }) {
   const [editingDecisionId, setEditingDecisionId] = useState(null); // id of _decision action being configured
   const [decisionPopupPos, setDecisionPopupPos] = useState(null); // {top,left} for DecisionEditPopup (portal)
   const nodeRootRef = useRef(null);
+  // Live horizontal inset for `pill`-shaped nodes. The pill's caps are
+  // semicircles of radius = height/2, so a flat 12px padding left the
+  // .action-row's opaque rectangle painting outside the outline. Measure the
+  // node's real height and reserve enough for the curve. 0.42*h is the inset
+  // needed at ~75% of the cap's vertical extent — where action-row edges
+  // actually sit — with a 12px floor for very short pills.
+  const [pill, setPill] = useState({ r: 22, inset: 12 });
+  useEffect(() => {
+    const el = nodeRootRef.current;
+    if (!el) return;
+    const PAD_TOP = 8;              // .state-node__body padding-top
+    const R_MAX = 26;               // cap — beyond this a "pill" eats its corners
+    const measure = (h) => {
+      if (!(h > 0)) return;
+      const r = Math.min(h / 2, R_MAX);
+      // Horizontal inset the cap actually steals at the content's top/bottom
+      // edge: at vertical distance (r - PAD_TOP) from the cap centre the cap's
+      // half-width is sqrt(r^2 - dy^2), so the corner eats (r - that).
+      const dy = Math.max(0, r - PAD_TOP);
+      const inset = Math.ceil(r - Math.sqrt(Math.max(0, r * r - dy * dy))) + 6;
+      const next = { r: Math.round(r), inset: Math.max(12, Math.min(inset, 40)) };
+      setPill(prev => (prev.r !== next.r || prev.inset !== next.inset ? next : prev));
+    };
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) measure(entry.contentRect.height);
+    });
+    ro.observe(el);
+    measure(el.getBoundingClientRect().height);
+    return () => ro.disconnect();
+  }, []);
   const addMenuRef = useRef(null);
 
   // Position the DecisionEditPopup to the right of the state node (same pattern as DecisionNode)
@@ -5039,7 +5130,11 @@ export function StateNode({ data, selected, id }) {
     <div
       ref={nodeRootRef}
       className={`state-node state-node--${shape}${selected ? ' state-node--selected' : ''}${isInitial ? ' state-node--initial' : ''}${isComplete ? ' state-node--complete' : ''}${isFault ? ' state-node--fault' : ''}`}
-      style={{ '--node-border': borderColor }}
+      style={{
+        '--node-border': borderColor,
+        '--pill-inset': `${pill.inset}px`,
+        '--pill-radius': `${pill.r}px`,
+      }}
       onContextMenu={handleContextMenu}
       onClick={handleNodeBodyClick}
     >
@@ -6063,10 +6158,11 @@ export function StateNode({ data, selected, id }) {
 
             {/* Legacy SM Output badges — shown at end of body for outputs triggered by this node */}
             {triggeredOutputs.length > 0 && (
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: '4px 4px 0' }}>
+              <div className="node-chip-strip" style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: '4px 4px 0' }}>
                 {triggeredOutputs.map(o => (
-                  <span key={o.id} style={{ fontSize: 9, background: '#0072B5', color: '#fff', borderRadius: 3, padding: '1px 5px' }}>
-                    ⤴ {o.name}
+                  <span key={o.id} className="node-chip" title={o.name} style={{ fontSize: 9, background: '#0072B5', color: '#fff', borderRadius: 3, padding: '1px 5px', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                    <span>⤴</span>
+                    <span className="node-chip__label">{o.name}</span>
                   </span>
                 ))}
               </div>
@@ -6080,12 +6176,13 @@ export function StateNode({ data, selected, id }) {
                 give the chips the z-index:1 content layer instead of clipping
                 them behind the shape background. */}
             {(onSideSignals.length > 0 || offSideSignals.length > 0) && (
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: '4px 4px 0' }}>
+              <div className="node-chip-strip" style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: '4px 4px 0' }}>
                 {onSideSignals.map(sig => {
                   const latched = !!sig.offCondition;
                   return (
                     <span
                       key={`sig-on-${sig.id}`}
+                      className="node-chip"
                       title={latched
                         ? `${sig.name} — latches ON at this state (OTL)`
                         : `${sig.name} — TRUE at/past this state (OTE)`}
@@ -6098,13 +6195,14 @@ export function StateNode({ data, selected, id }) {
                       }}
                     >
                       <span style={{ fontSize: 8 }}>●</span>
-                      {sig.name} = ON
+                      <span className="node-chip__label">{sig.name} = ON</span>
                     </span>
                   );
                 })}
                 {offSideSignals.map(sig => (
                   <span
                     key={`sig-off-${sig.id}`}
+                    className="node-chip"
                     title={`${sig.name} — latches OFF at this state (OTU)`}
                     onClick={e => e.stopPropagation()}
                     onMouseDown={e => e.stopPropagation()}
@@ -6115,7 +6213,7 @@ export function StateNode({ data, selected, id }) {
                     }}
                   >
                     <span style={{ fontSize: 8 }}>●</span>
-                    {sig.name} = OFF
+                    <span className="node-chip__label">{sig.name} = OFF</span>
                   </span>
                 ))}
               </div>
@@ -6156,10 +6254,11 @@ export function StateNode({ data, selected, id }) {
                 });
               if (ptPills.length === 0) return null;
               return (
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: '0 4px 4px' }}>
+                <div className="node-chip-strip" style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: '0 4px 4px' }}>
                   {ptPills.map((p, i) => (
                     <span
                       key={`pt-${i}-${p.name}`}
+                      className="node-chip"
                       title={`Logs ${p.name} (${p.type}) to Part Tracking`}
                       onClick={e => e.stopPropagation()}
                       onMouseDown={e => e.stopPropagation()}
@@ -6177,7 +6276,7 @@ export function StateNode({ data, selected, id }) {
                         background: 'rgba(255,255,255,0.25)',
                         padding: '0 3px', borderRadius: 2,
                       }}>PT</span>
-                      {p.name}
+                      <span className="node-chip__label">{p.name}</span>
                     </span>
                   ))}
                 </div>

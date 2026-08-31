@@ -1,0 +1,178 @@
+{
+  "experiment": "first-pass doctrine — ServoPNP regeneration (Dan, 2026-08-25)",
+  "ok": true,
+  "firstPassShip": false,
+  "roundsToShip": null,
+  "attempts": [
+    {
+      "attempt": 1,
+      "stage": "merge",
+      "ok": false,
+      "errors": 1,
+      "warnings": 0,
+      "continuations": 0,
+      "usage": {
+        "input": 10227,
+        "output": 31495,
+        "cacheRead": 0,
+        "cacheWrite": 106838
+      },
+      "costUSD": 1.9069,
+      "model": "claude-opus-5"
+    },
+    {
+      "attempt": 2,
+      "stage": "ok",
+      "ok": true,
+      "errors": 0,
+      "warnings": 4,
+      "continuations": 0,
+      "usage": {
+        "input": 28382,
+        "output": 17545,
+        "cacheRead": 106838,
+        "cacheWrite": 0
+      },
+      "costUSD": 0.634,
+      "model": "claude-opus-5"
+    }
+  ],
+  "repairRounds": 1,
+  "durationS": 689,
+  "costUSD": 5.0294,
+  "readiness": {
+    "ran": true,
+    "ready": true,
+    "model": "claude-haiku-4-5-20251001",
+    "costUSD": 0.0265
+  },
+  "study": {
+    "exemplar": {
+      "name": "ServoPNP__jarvis_v1.3.0__2026-08-24_v6_SHIP__corrected_by_Jason.L5X",
+      "kind": "engineer-corrected",
+      "complete": true,
+      "omittedRoutines": []
+    },
+    "sizes": {
+      "exemplarChars": 33760,
+      "lessonsChars": 5556,
+      "decisionsChars": 8878,
+      "totalChars": 49005
+    }
+  },
+  "tuition": {
+    "lessons": 3,
+    "applied": 3,
+    "costUSD": 1.3139
+  },
+  "held": null,
+  "validation": {
+    "ok": true,
+    "errors": [],
+    "warnings": 4
+  },
+  "internalReview": {
+    "verdict": "unsure",
+    "findings": [
+      {
+        "severity": "style",
+        "routine": "R02_StateTransitions",
+        "finding": "Rung comment drift: several rungs explain implementation mechanics or justify structural choices instead of naming the physical action/destination — rung 3 (\"One rung, one branch per entry path: cycle loop back from 55, idle ready, and the empty init exit posture...\"), rung 6 (\"Mid flight band detection, with the parallel strict arrival branch for a short resume stroke...\"), rung 8 (\"Second branch is the part in hand resume...\"), rung 12, rung 20, and the same habit in R04 rungs 15/16/22 and R05 rungs 14/15/16. Trim to the template's terse action naming; the state map in rung 0 already carries the narrative.",
+        "templateEvidence": "S05 R02 comments are terse action names (\"State 7: Extend z axis to pick position\", \"State 16: Extend x axis (Application dependent - add wideband positioning permissive...)\"); Jason 2026-08-25: comments name the physical action or destination, never segment mechanics or justifications."
+      },
+      {
+        "severity": "style",
+        "routine": "R04_XAxisServo",
+        "finding": "Rung 2 seeds ZAxisSafePosition as Retract + Positions[6] (PlaceRetractBlend) only. The ruling is Retract + the LARGER of the two corner blends; today both rows are 25 mm so it happens to match, but if the ME raises PickRetractBlend the permissive band becomes too tight and the pick-side corner blend gets quickstopped mid-traverse. Seed from the larger of Positions[5]/Positions[6] (a GT-selected branch or CPT) instead of hard-picking one row, and drop the \"adjust in Studio if they diverge\" caveat from the comment.",
+        "templateEvidence": "Jason Perry ruling 2026-08-25 (servo-motion.md, X-traverse permissive): \"seed it at first scan (S:FS) from Retract plus the larger corner blend\"; every sanctioned overlap window must be inside the safe zone by construction."
+      },
+      {
+        "severity": "style",
+        "routine": "R20_Alarms",
+        "finding": "Rung 4's quickstop reason uses XIO(XAxisPermissive) rather than the explicit complement of the permissive compare. It therefore also reports the Z-position reason when the real cause is Z not homed. Use GT(HMI_ZAxis.Status.ActualPosition, ZAxisSafePosition) as the reason branch so the message is the exact complement of the compare that dropped the permissive.",
+        "templateEvidence": "S05 R20 rung 4 conditions the reason string on the specific position condition (XIO(ZAxisRetract.InPos) XIO(ZAxisRetract.InPosWide)); Jason 2026-08-25: \"R20's quickstop reason is the exact complement of the same compare.\""
+      },
+      {
+        "severity": "note",
+        "routine": "R20_Alarms",
+        "finding": "Rungs 11/12 fold the MAM-command states (7/19 and 31/43) into the \"...To Reach Pick/Place Speed Transition\" alarms. Those states exit on ZAxis_MAM.IP — a timeout there means the move never STARTED, and the operator gets a message naming a milestone the axis was not yet waiting on. Coverage and FaultTime bookkeeping are otherwise clean (no state appears in two rungs). Filed as a standards question rather than a fix because the templates predate the three-state MCD stroke and do not show how the alarms partition.",
+        "templateEvidence": "S05 R20 rungs 5–9: one rung per wait, message names the destination the state is actually waiting on (\"Waiting For Z Axis To Extend To Pick\"), each owning its own MOVE(n,Control.FaultTime)."
+      },
+      {
+        "severity": "note",
+        "routine": "R03_StateLogic",
+        "finding": "Rungs 6 and 7 replace the template's \\S00_IndexerSP.q_WaitStationsComplete gate with XIC(g_MachineBasic.AlwaysOff) plus a *Replace comment, and rung 7 ORs in the standalone XIC(Status.State[55]) completion branch. Correct for the standalone proving scope and correctly commented — recorded so the two stubs are re-pointed at integration, not as a finding.",
+        "templateEvidence": "S05 R03 rungs 6/7 gate on \\S00_IndexerSP.q_WaitStationsComplete; template idiom for unbuilt conditions is an AlwaysOff placeholder with a *Replace comment (R02 rung 18, R01 rung 5)."
+      },
+      {
+        "severity": "note",
+        "routine": "R04_XAxisServo",
+        "finding": "Rung 22's XAxisPlace RangeCheck takes its wide band by direct reference to HMI_ZAxis.Parameters.Positions[6] (PlaceRetractBlend). This is declared as a PROPOSED NON-STANDARD PATTERN both in the approved sequence's Template conformance block and in the rung comment, so it is not a silent invention; it is the subject of the standards question below.",
+        "templateEvidence": "S05 R04 rung 21 uses a literal wide band (5); Jason's corrected file shows per-corner instances on the axis that OWNS the blend row — no template shows the corner's other (cross-axis) leg."
+      }
+    ],
+    "missingVsTemplate": [
+      "Nothing dropped: all S05 routines and boilerplate rungs are present (R01 19 rungs, R03 11 rungs, R20 handler/output rungs intact); R04 gains the S:FS ZAxisSafePosition seed rung and R05 gains the \"Use MCD For Speed Changes\" rung, both sanctioned.",
+      "Init block graph complete — 2→100 (empty) and 2→19 (carrying resume), 100→103/106 split on gripper, 103/106→124, 124→4 (empty) / 124→31 (carrying), 127→2.",
+      "Template's indexer completion gate (\\S00_IndexerSP.q_WaitStationsComplete) intentionally stubbed with AlwaysOff + *Replace in R03 rungs 6/7 per the standalone generation scope."
+    ],
+    "summary": "Structurally this is a clean piece of surgery: R02 sequence rungs run 4→55 strictly ascending ahead of the full override block, one MAM per axis with a plain state-list auto branch, the grouped multi-profile Z staging rung plus the single MCD rung with its own control/staging tags, per-position RangeCheck instances including one per corner, both init postures and both resume branches intact, EQ/NE/LT/GE family throughout — none of the old failure classes appear. Two real red-pen items: several R02/R04/R05 rung comments justify implementation choices instead of naming the action, and the ZAxisSafePosition seed hard-picks the place-side blend instead of the LARGER of the two blend rows (works only because both are 25 mm today). I am holding rather than shipping on two genuine standards unknowns the templates don't answer: the cross-axis corner-blend wide band (you declared it as a proposed non-standard pattern — good) and how R20 alarms partition across the three states of an MCD stroke. Get those two answers back and this ships with the comment trim and the safe-position seed fix.",
+    "costUSD": 1.1482,
+    "durationS": 250
+  },
+  "writingNotes": [
+    {
+      "text": "Translation of the approved S01 ServoPNP sequence onto the S05 template. Two divergences are declared rather than taken silently: (1) each transition-band wait exit (states 10/22/34/46) carries the mandatory parallel strict-final-arrival branch per Jason's 2026-08-25 ruling (a resume stroke can start beyond the band) - declared in structuralChanges with an irPatch; (2) the X-traverse permissive is implemented as Jason's Teams ruling - XIC(iq_ZAxis.AxisHomedStatus) LE(HMI_ZAxis.Status.ActualPosition,ZAxisSafePosition) - which explicitly supersedes the build's earlier parked-band/blend-bit enumeration flag. ZAxisSafePosition is seeded at first scan from Retract + the place-side corner blend row (both corner blends are 25 mm; adjust in Studio if they diverge). Z increases downward (Retract 5, Pick 60, Place 80) so at/above safe is LE, and the R20 quickstop reason is the exact complement XIO(XAxisPermissive). Z position slots: [0]=Retract [1]=PickTransition [2]=Pick [3]=PlaceTransition [4]=Place [5]=PickRetractBlend [6]=PlaceRetractBlend. X slots: [0]=Pick [1]=Place; the XAxisPlace wide band references HMI_ZAxis.Parameters.Positions[6] (the ME's single place-corner value) as flagged. No gripper alarms (sensorless timer-only gripper)."
+    },
+    {
+      "text": "Cost 1 fix round — merge: The merge engine could not apply your edit plan. Every anchor must match exactly once — for an ambiguous anchor, add \"occurrence\" (1-based index among the liste"
+    },
+    {
+      "text": "Tuition filed for 1 fix round(s): 3 lesson(s) into concept docs."
+    }
+  ],
+  "structuralChanges": [
+    {
+      "text": "Each transition-band wait exit (10->13, 22->25, 34->37, 46->49) gained a parallel strict final-arrival branch alongside the bare InPosWide test, because a resume/recovery stroke can start beyond the band and a band-only exit would then never fire (Jason Perry ruling, 2026-08-25).",
+      "irPatch": [
+        {
+          "op": "updateTransition",
+          "fromState": 10,
+          "toState": 13,
+          "patch": {
+            "conditionText": "XIC(Status.State[10]) [XIC(ZAxisPickTransition.InPosWide) ,XIC(ZAxis_MAM.PC) XIC(ZAxisPick.InPos) ] XIC(SS_OK) MOVE(13,Control.StateReg)"
+          }
+        },
+        {
+          "op": "updateTransition",
+          "fromState": 22,
+          "toState": 25,
+          "patch": {
+            "conditionText": "XIC(Status.State[22]) [XIC(ZAxisPickTransition.InPosWide) ,XIC(ZAxis_MAM.PC) XIC(ZAxisRetract.InPos) ] XIC(SS_OK) MOVE(25,Control.StateReg)"
+          }
+        },
+        {
+          "op": "updateTransition",
+          "fromState": 34,
+          "toState": 37,
+          "patch": {
+            "conditionText": "XIC(Status.State[34]) [XIC(ZAxisPlaceTransition.InPosWide) ,XIC(ZAxis_MAM.PC) XIC(ZAxisPlace.InPos) ] XIC(SS_OK) MOVE(37,Control.StateReg)"
+          }
+        },
+        {
+          "op": "updateTransition",
+          "fromState": 46,
+          "toState": 49,
+          "patch": {
+            "conditionText": "XIC(Status.State[46]) [XIC(ZAxisPlaceTransition.InPosWide) ,XIC(ZAxis_MAM.PC) XIC(ZAxisRetract.InPos) ] XIC(SS_OK) MOVE(49,Control.StateReg)"
+          }
+        }
+      ],
+      "approved": false
+    }
+  ],
+  "savedPath": "C:\\SDC-StateLogic\\generated\\Test_Project_v2\\ServoPNP__jarvis_v1.4.0__firstpass__2026-08-25_1936.L5X",
+  "jarvisVersion": "1.4.0",
+  "model": "claude-opus-5",
+  "ranAt": "2026-08-25T19:36:57.437Z"
+}

@@ -1,0 +1,222 @@
+﻿<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<RSLogix5000Content SchemaRevision="1.0" SoftwareRevision="37.00" TargetName="HMI" TargetType="Program" TargetClass="Standard" ContainsContext="true" ExportDate="Wed Jul 30 14:06:16 2025" ExportOptions="References NoRawData L5KData DecoratedData Context Dependencies ForceProtectedEncoding AllProjDocTrans">
+<Controller Use="Context" Name="SoftwareStandardization">
+<DataTypes Use="Context">
+</DataTypes>
+<Programs Use="Context">
+<Program Use="Target" Name="HMI" TestEdits="false" MainRoutineName="R00_Main" Disabled="false" Class="Standard" UseAsFolder="false">
+<Tags>
+<Tag Name="OneShot" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="None" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+<Tag Name="PopupHidden" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="None" OpcUaAccess="None">
+<Description>
+<![CDATA[Popup commanded to open but is already open, probably hidden in the background.]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+<Tag Name="p_CurrentPopupNum" TagType="Base" DataType="INT" Radix="Decimal" Usage="Public" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Current Popup Number Viewed On The HMI]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[90]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="INT" Radix="Decimal" Value="90"/>
+</Data>
+</Tag>
+<Tag Name="p_CurrentScreenNum" TagType="Base" DataType="DINT" Radix="Decimal" Usage="Public" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Current Screen Number Viewed On The HMI]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[1]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="1"/>
+</Data>
+</Tag>
+<Tag Name="p_PreviousScreenNum" TagType="Base" DataType="DINT" Radix="Decimal" Usage="Public" Constant="false" ExternalAccess="None" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[1]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="1"/>
+</Data>
+</Tag>
+<Tag Name="p_ReplaceScreenNum" TagType="Base" DataType="DINT" Radix="Decimal" Usage="Public" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Screen to open on HMI
+9999 - close popup
+8888 - previous]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+<Tag Name="QueuedPopupNum" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="None" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+<Tag Name="q_ScreenChangedOneShot" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Output" Constant="false" ExternalAccess="None" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+<Tag Name="ResendCurrentPopup" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="None" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[2109933,550,0]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="550"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</Data>
+</Tag>
+<Tag Name="ResetReplaceScreen" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="None" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[2363964,2000,0]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="2000"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</Data>
+</Tag>
+<Tag Name="SavedPopupNum" TagType="Base" DataType="DINT" Radix="Decimal" Constant="false" ExternalAccess="None" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[90]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="90"/>
+</Data>
+</Tag>
+</Tags>
+<Routines>
+<Routine Name="R00_Main" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Subroutine Calls]]>
+</Comment>
+<Text>
+<![CDATA[JSR(R01_Logic,0);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+<Routine Name="R01_Logic" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Comment>
+<![CDATA[Screen Change]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Text>
+<![CDATA[NE(p_CurrentScreenNum,p_PreviousScreenNum)[MOVE(p_CurrentScreenNum,p_PreviousScreenNum) ,OTE(q_ScreenChangedOneShot) ];]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Comment>
+<![CDATA[Main screen handshaking]]>
+</Comment>
+<Text>
+<![CDATA[EQ(p_ReplaceScreenNum,p_CurrentScreenNum)MOVE(0,p_ReplaceScreenNum);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Comment>
+<![CDATA[popup handshaking]]>
+</Comment>
+<Text>
+<![CDATA[NOP();]]>
+</Text>
+</Rung>
+<Rung Number="5" Type="N">
+<Text>
+<![CDATA[NE(p_ReplaceScreenNum,0)ONS(OneShot.0)EQ(p_ReplaceScreenNum,p_CurrentPopupNum)OTE(PopupHidden);]]>
+</Text>
+</Rung>
+<Rung Number="6" Type="N">
+<Comment>
+<![CDATA[Popup request to open but there's already one open.
+Save the screen number and open it when the current popup closes.]]>
+</Comment>
+<Text>
+<![CDATA[NE(p_ReplaceScreenNum,0)ONS(OneShot.1)LIMIT(80,p_ReplaceScreenNum,90)NE(p_ReplaceScreenNum,p_CurrentPopupNum)NE(p_CurrentPopupNum,0)[MOVE(p_ReplaceScreenNum,QueuedPopupNum) ,MOVE(0,p_ReplaceScreenNum) ];]]>
+</Text>
+</Rung>
+<Rung Number="7" Type="N">
+<Text>
+<![CDATA[EQ(p_ReplaceScreenNum,p_CurrentPopupNum)MOVE(0,p_ReplaceScreenNum);]]>
+</Text>
+</Rung>
+<Rung Number="8" Type="N">
+<Comment>
+<![CDATA[Current popup isn't being shown if the screen changes.
+ (assuming only 1 HMI screen)
+So force the popup back up by
+closing it and resending it.]]>
+</Comment>
+<Text>
+<![CDATA[[[XIC(q_ScreenChangedOneShot) ,XIC(PopupHidden) ] NE(p_CurrentPopupNum,0) [MOVE(p_CurrentPopupNum,SavedPopupNum) ,MOVE(9999,p_ReplaceScreenNum) ] ,XIC(ResendCurrentPopup.TT) XIO(ResendCurrentPopup.DN) ]TON(ResendCurrentPopup,?,?)XIC(ResendCurrentPopup.DN)MOVE(SavedPopupNum,p_ReplaceScreenNum);]]>
+</Text>
+</Rung>
+<Rung Number="9" Type="N">
+<Text>
+<![CDATA[GT(QueuedPopupNum,0)EQ(p_CurrentPopupNum,0)[MOVE(QueuedPopupNum,p_ReplaceScreenNum) ,MOVE(0,QueuedPopupNum) ];]]>
+</Text>
+</Rung>
+<Rung Number="10" Type="N">
+<Comment>
+<![CDATA[Prevent replace screen num from getting stuck.]]>
+</Comment>
+<Text>
+<![CDATA[[EQ(p_ReplaceScreenNum,9999) ,EQ(p_ReplaceScreenNum,8888) ]TON(ResetReplaceScreen,?,?)XIC(ResetReplaceScreen.DN)MOVE(0,p_ReplaceScreenNum);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</Program>
+</Programs>
+</Controller>
+</RSLogix5000Content>

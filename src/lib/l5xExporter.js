@@ -241,16 +241,17 @@ export const SCHEMA_REV = '1.0';
 // SDC Guide §15.11: default to Studio 5000 v37 (engineer's current standard).
 // Per-project override via project.machineConfig.softwareRevision.
 export const SOFTWARE_REV = '37.00';
-export const STEP_BASE = 1;          // Wait/Home state = 1
-export const STEP_INCREMENT = 3;     // First action = 4, then 7, 10, 13, …
+export const STEP_BASE = 1;          // Counter seed only — advanceStep() puts the FIRST flowchart state at 4 (Rev2 §19)
+export const STEP_INCREMENT = 3;     // Sequence = 4, 7, 10, 13, …
 export const DEFAULT_FAULT_TIME = 5000;
 // SDC Guide §15.11: controller name flows from project.machineConfig.controllerName.
 // Constant is a fallback only for un-named projects.
 export const CONTROLLER_NAME = 'SDCController';
 
-// SDC Guide §15.5: state numbers reserved across all SDC machines — DFS must skip.
-// 0 = pre-init; 1/2/3 = reserved; 99 = lockout; 100–127 = station-type init block.
-// Flowchart DFS numbers (1, 4, 7, ...) that fall within any reserved range jump forward.
+// PLC Software Standardization Rev2 §19: state numbers fixed across all SDC machines — DFS must skip.
+// 0 = Safety Stop; 1 = Manual; 2 = Auto Idle Not Ready; 3 = Auto Idle Ready;
+// 99 = lockout; 100–127 = station-type init block.
+// Flowchart DFS numbers (4, 7, 10, ...) that fall within any reserved range jump forward.
 export const RESERVED_STATE_NUMBERS = new Set([0, 1, 2, 3, 99]);
 export const RESERVED_STATE_RANGE_LOCKOUT = 99;
 export const RESERVED_STATE_RANGE_INIT_MIN = 100;
@@ -304,9 +305,10 @@ function orderNodes(nodes, edges) {
   return ordered;
 }
 
-// ── Step map (start at 4, increment by 3) ────────────────────────────────────
+// ── Step map (start at 4, increment by 3 — Rev2 §19) ─────────────────────────
 //
-// State 1 = auto-generated Wait/Home state
+// States 0-3 = fixed supervisor-mode states (Safety Stop / Manual / Idle Not
+// Ready / Idle Ready), emitted as boilerplate rungs in R02 — never node states
 // States 4, 7, 10, … = user's action nodes
 // Last step + 3 = auto-generated Complete state
 
@@ -648,8 +650,15 @@ function buildStatusTagXml(orderedNodes, stepMap, devices) {
   const completeStep = getCompleteStep(orderedNodes, devices);
   const comments = [];
 
+  // Fixed supervisor-mode states per Rev2 §19 (match the R02 boilerplate rungs).
+  // NOTE: waitStep (1) is intentionally covered by the 'Manual Mode' comment —
+  // the old 'Wait For Ready' label on STATE[1] contradicted R02's State 1 rung.
+  void waitStep;
   comments.push(
-    `<Comment Operand=".STATE[${waitStep}]">\n${cdata('Wait For Ready')}\n</Comment>`
+    `<Comment Operand=".STATE[0]">\n${cdata('Safety Stop')}\n</Comment>`,
+    `<Comment Operand=".STATE[1]">\n${cdata('Manual Mode')}\n</Comment>`,
+    `<Comment Operand=".STATE[2]">\n${cdata('Auto Idle Not Ready')}\n</Comment>`,
+    `<Comment Operand=".STATE[3]">\n${cdata('Auto Idle Ready')}\n</Comment>`
   );
 
   for (const node of orderedNodes) {
@@ -5356,61 +5365,4 @@ function crc32(data) {
     }
   }
   return (crc ^ 0xFFFFFFFF) >>> 0;
-}
-
-export async function exportProjectJSON(project) {
-  const json = JSON.stringify(project, null, 2);
-  const fileName = `${project.name ?? 'project'}.json`;
-
-  // Electron desktop app: use native dialog via IPC (avoids showSaveFilePicker
-  // createWritable() bug where the file is created but written as 0 KB).
-  // After the first save we cache the chosen path in localStorage so subsequent
-  // saves write directly — no dialog, no "replace?" prompt.
-  if (window.electronAPI?.saveFile) {
-    const cacheKey = `savePath_${project.id ?? project.name}`;
-    const cachedPath = localStorage.getItem(cacheKey);
-
-    if (cachedPath) {
-      // Known path — overwrite directly, no dialog
-      const result = await window.electronAPI.saveFileDirect(cachedPath, json);
-      if (result.success) return;
-      // If direct write failed (e.g. file moved), fall through to show dialog again
-      localStorage.removeItem(cacheKey);
-    }
-
-    // First save or path no longer valid — show dialog once, cache the result
-    const result = await window.electronAPI.saveFile(fileName, json);
-    if (result.success && result.filePath) {
-      localStorage.setItem(cacheKey, result.filePath);
-    }
-    return;
-  }
-
-  // Browser: use File System Access API — remembers last folder between saves.
-  if (window.showSaveFilePicker) {
-    try {
-      const handle = await window.showSaveFilePicker({
-        suggestedName: fileName,
-        types: [{ description: 'JSON File', accept: { 'application/json': ['.json'] } }],
-      });
-      const writable = await handle.createWritable();
-      await writable.write(json);
-      await writable.close();
-      return;
-    } catch (e) {
-      if (e.name === 'AbortError') return; // user cancelled — do nothing
-      // Any other error: fall through to legacy download below
-    }
-  }
-
-  // Fallback for browsers without showSaveFilePicker
-  const blob = new Blob([json], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }

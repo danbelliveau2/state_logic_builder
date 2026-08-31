@@ -5,7 +5,8 @@
 
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { useDiagramStore } from '../store/useDiagramStore.js';
-import { downloadL5X, downloadAllL5XAsZip, exportProjectJSON } from '../lib/l5xExporter.js';
+import { downloadL5X, downloadAllL5XAsZip } from '../lib/l5xExporter.js';
+import { exportProjectJSON } from '../lib/projectApi.js';
 import { downloadControllerL5X } from '../lib/controllerL5xExporter.js';
 import { buildProgramName } from '../lib/tagNaming.js';
 import { getProjectIoMap, IO_SECTION_ORDER, IO_SECTION_META } from '../lib/getProjectIoMap.js';

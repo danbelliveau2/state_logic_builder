@@ -1,0 +1,29 @@
+{
+  "verdict": "fix",
+  "scope": "delta",
+  "costUSD": 0.2071,
+  "model": "claude-opus-5",
+  "durationS": 37,
+  "findings": [
+    {
+      "severity": "style",
+      "routine": "R04_XAxisServo",
+      "finding": "Prior finding #1 NOT fixed. The logic is right (GE/LT-selected CPT taking Retract + the larger of Positions[5]/[6], correct mnemonics, correct polarity for the LE permissive), and the ZAxisSafePosition tag description was updated to the correct wording — but the RUNG comment still reads \"seeded at first scan from Retract plus the place side corner blend (both corner blends are 25 mm; adjust in Studio if they diverge)\". That misdescribes the rung (it is no longer the place-side row, and the 25 mm/Studio caveat is obsolete). Copy the corrected tag-description wording onto the rung: \"Z Axis safe clearance position for the X traverse permissive - Retract plus the larger corner blend, seeded at first scan\".",
+      "templateEvidence": "Comment doctrine (Jason 2026-08-25): rung comments name the physical action/destination, never stale mechanics or justification; template R04 rungs 20/21 comments describe only what the rung does."
+    },
+    {
+      "severity": "style",
+      "routine": "R20_Alarms",
+      "finding": "Two alarm rungs whose state lists changed in this delta kept their now-stale qualifier comments. Alarm[2] now covers states 7+13 but reads \"Waiting For Z Axis To Reach Pick Position - slow approach segment\" (it now also covers the fast MAM-command state); Alarm[3] likewise \"…Place Position - slow approach segment\" for 31+37. Conversely Alarm[6] reads \"…Pick Speed Transition - the pick side stroke command and transition band wait states\" but now covers only the band waits (10, 22), and Alarm[7] the same for 34/46. Trim all four to the plain milestone name, matching the template's terse alarm comments (\"Waiting For Z Axis To Extend To Pick\").",
+      "templateEvidence": "S05 R20 rungs 5-10: alarm rung comments are the bare milestone (\"Waiting For X Axis To Extend\") with no segment-mechanics qualifier; v7 verified partition uses milestone-named messages only."
+    },
+    {
+      "severity": "note",
+      "routine": "R20_Alarms",
+      "finding": "Delta alarm partition and FaultTimes now match the engineer-verified v7 exactly: destination-arrival rungs share the MAM-command + MCD states (7+13, 31+37, 19+25+43+49+100) at 3000 ms; transition-band rungs own their transition point (10+22, 34+46) at 5000 ms; no state appears twice. Quickstop reason is now the exact complement of the permissive compare, GT(HMI_ZAxis.Status.ActualPosition, ZAxisSafePosition). Correct.",
+      "templateEvidence": "Verified SDCServoPNP_JARVIS_v7.L5X R20 alarm partition + exact-complement quickstop reason (Jason Perry, 2026-08-26)."
+    }
+  ],
+  "standardsQuestions": [],
+  "summary": "The functional half of the delta is right: the safe-position seed, the exact-complement quickstop reason, and the whole R20 alarm partition/FaultTime set now match the verified v7 shape, and the servo/R02 comments you trimmed read like the template. What's left is the same red pen twice: the R04 safe-position rung comment I flagged last round still carries the obsolete place-side/25 mm text (you fixed the tag description but not the rung), and four R20 alarm comments kept segment qualifiers that no longer describe their new state lists. Four comment edits, no logic changes — do them and this ships."
+}

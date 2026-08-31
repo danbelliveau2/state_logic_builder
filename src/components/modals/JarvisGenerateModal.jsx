@@ -46,7 +46,9 @@ const STAGE_LABELS = {
   done: 'Complete',
 };
 
-export function JarvisGenerateModal({ onClose }) {
+// initialSelectedIds: preselect stations in the scope picker (the Code
+// Generation page passes its selection through so nothing is re-picked).
+export function JarvisGenerateModal({ onClose, initialSelectedIds = null }) {
   const store = useDiagramStore();
   const project = store.project;
   const activeSm = store.getActiveSm();
@@ -57,7 +59,8 @@ export function JarvisGenerateModal({ onClose }) {
 
   // ── Scope step state ──
   const [tier, setTier] = useState(1); // 1 = station sequence, 2 = multi-station integration
-  const [selectedIds, setSelectedIds] = useState(() => new Set(activeSm ? [activeSm.id] : []));
+  const [selectedIds, setSelectedIds] = useState(() =>
+    new Set(initialSelectedIds?.length ? initialSelectedIds : (activeSm ? [activeSm.id] : [])));
   const [avgCost, setAvgCost] = useState(null); // { avg, n } from benchmark history
   const [avgDuration, setAvgDuration] = useState(null); // avg seconds per station from history
   // smId -> pretranslation payload (code pre-built after approval). Only
@@ -637,12 +640,12 @@ export function JarvisGenerateModal({ onClose }) {
                     }}>
                       {scored[result.buildId] ? (
                         <div data-testid="score-saved-note" style={{ fontSize: 12, fontWeight: 700, color: '#166534' }}>
-                          ✓ Scored {scored[result.buildId].score}/10 — saved to Jarvis's track record
+                          ✓ Scored {scored[result.buildId].score} / 100 — saved to Jarvis's track record
                         </div>
                       ) : (
                         <>
                           <div style={{ fontSize: 11, fontWeight: 700, color: '#475569', marginBottom: 6 }}>
-                            Score this build (1 = unusable, 10 = ship it untouched)
+                            Score this build out of 100 (1 = unusable, 100 = ship it untouched)
                           </div>
                           <BuildScoreRow
                             buildId={result.buildId}

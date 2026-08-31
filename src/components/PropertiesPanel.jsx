@@ -144,7 +144,7 @@ function NodeProperties({ node, sm }) {
       {isComplete && (
         <div className="props-info-box">
           <div className="props-info-box__label">Behavior</div>
-          <div className="props-info-box__value">Transitions back to Wait (Step 1) to restart the cycle.</div>
+          <div className="props-info-box__value">Transitions back to Auto Idle Ready (state 3) to restart the cycle.</div>
         </div>
       )}
 
@@ -668,18 +668,18 @@ export function PropertiesPanel() {
     ? 'Transition Properties'
     : 'Program Properties';
 
+  // Collapsed state: a normal horizontal chip (top-right), NOT a vertical-text
+  // rail — Dan: the sideways "PROGRAM PROPERTIES ‹" tab was "really weird".
   if (collapsed) {
     return (
       <aside className="properties-panel properties-panel--collapsed">
         <button
-          className="properties-panel__expand-btn"
+          className="properties-panel__expand-chip"
           onClick={() => setCollapsed(false)}
-          title="Expand properties panel"
+          title="Show properties"
         >
-          <span style={{ fontSize: 10, writingMode: 'vertical-rl', textOrientation: 'mixed', letterSpacing: '0.05em' }}>
-            {headerLabel}
-          </span>
-          <span style={{ fontSize: 12, marginTop: 4 }}>‹</span>
+          <span>{headerLabel}</span>
+          <span className="properties-panel__expand-chip-caret">▾</span>
         </button>
       </aside>
     );

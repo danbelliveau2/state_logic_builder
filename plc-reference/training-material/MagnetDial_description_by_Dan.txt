@@ -1,0 +1,141 @@
+MAGNET DIAL STATION — EVERYTHING DAN SAID
+=========================================
+Compiled 2026-08-26 from projects/Magnet_Dial_v3.json (machineSpec on MagnetLoad)
+ahead of the clean restart through the new cascade flow.
+Paste the ORIGINAL EXPLANATION section (or this whole file) into the
+"+ Add Station" describe box to restart without re-explaining the station.
+
+
+============================================================
+ORIGINAL EXPLANATION
+(machineSpec.sourceDescription — the structured capture followed by the
+ full raw dictation, verbatim)
+============================================================
+
+DEVICES
+- Magnet Dial — Rotary servo indexer, 10 fixtures, 36° index
+- Stack Present Sensor — Verifies fixture holds a magnet stack
+- Vertical Shuttle Cylinder — Raises shuttle bar with single magnet
+- Horizontal Shuttle Cylinder — Strips one magnet off the stack
+- Hold Down Cylinder — Presses stack down; stays extended while stripping
+- Top Retainer Cylinder — Holds magnet flat during horizontal strip
+- Magnet In Place Sensor — Confirms stripped magnet at pick position
+- Pick Rotary Actuator — Swings pick head between pick and robot
+- Pick Linear Cylinder — Drives vacuum cup down onto magnet
+- Vacuum Cup — Holds magnet through pick and transfer
+- Vacuum_Verify_Sensor — Digital Sensor / PEC
+- Magnet_In_Position_To_Robot — Parameter
+- Robot_Clear — Parameter
+- Strip_Retry_Counter — Parameter
+- Reject_Flag — Parameter
+- Magnet_Ready — Parameter
+- Robot_In_Position — Parameter
+- Empty_Fixture_Counter — Parameter
+- Pick_Retry_Counter — Parameter
+
+SEQUENCE
+1. Index dial 36° to next magnet stack
+2. Index past any fixture with no stack
+3. Extend hold down; stays extended while stripping this stack
+4. Raise vertical shuttle cylinder
+5. Extend top retainer over magnet
+6. Extend horizontal shuttle, strip one magnet
+7. Retract top retainer
+8. Magnet-in-place sensor confirms; set magnet-ready bit
+9. Wait for pick sequence
+10. Rotate pick head clockwise to pick position
+11. Extend pick cylinder down onto magnet
+12. Turn vacuum on, grab magnet
+13. Retract pick cylinder clear of shuttle
+14. Verify magnet gone from shuttle position
+15. Shuttle retracts and strips next magnet, then waits
+16. Rotate counterclockwise to robot place position
+17. Extend pick cylinder
+18. Signal robot: magnet in position for pickup
+19. Wait for robot in-position signal
+20. Vacuum off, release magnet to robot
+21. Wait for robot clear signal
+22. Retract pick cylinder
+23. Rotate back to pick for next magnet
+
+FAILURE HANDLING
+- Fixture at station has no stack → Index dial past it, keep indexing until a stack is present
+- Full dial revolution with no magnets anywhere → Flag a reject and fault the machine
+- Horizontal shuttled over but no magnet in place → Retract horizontal and try the strip again (retries: 3; when exhausted: Retract everything clear, index dial to next stack with magnets, restart)
+- Vacuum on at pick but magnet not grabbed → Retract and retry the pick (when exhausted: Index dial to the next stack and start over)
+- Magnet dropped after pick → Check if magnet still in fixture — if yes retry the pick, if no get another magnet
+- Any retry path exhausted → Move on to the next stack rather than stopping the machine
+
+STATION INTERACTIONS
+- Robot (external, not shown): We signal magnet in position at place; robot signals in position
+- Robot (external, not shown): Vacuum off on robot in-position; retract and rotate back only on robot-clear
+- Robot (external, not shown): No robot interaction with the shuttle — pick head only
+
+IO & PNEUMATICS (optional capture)
+- sensor: Stack present / stack full verify — At the dial position before the work station
+- sensor: Magnet in place — Confirms stripped magnet at pick position
+- sensor: Vertical shuttle retract
+- sensor: Horizontal shuttle retract
+- sensor: Top retainer retract
+- sensor: Hold down retract
+- sensor: Vacuum verification — Confirms magnet grabbed / detects drop
+- valve: Vertical shuttle extend/retract
+- valve: Horizontal shuttle extend/retract
+- valve: Hold down extend/retract
+- valve: Top retainer extend/retract
+- valve: Pick linear cylinder extend/retract
+- valve: Pick rotary clockwise/counterclockwise
+- valve: Vacuum on/off
+- All four shuttle-section cylinders are retract-sensor only
+
+---
+Original explanation (reference only — the summary above is authoritative):
+
+Okay so this is a magnet load station it's a pretty complicated station no it consists of the magnet dial magnet dial has 10 fixtures pictures hold a stack of magnets there's the one station that verifies that the stack is full they're manually loaded by somebody but that's kind of irrelevant that's not really related to this process dial a Servo driven you index to the next stack there's one position where you work on the stack the station before has the sensor verification if you don't have a stack dial just index that one past and keep indexing until it sees it does have a stack so at the main station I like broken up into like a two main sections you have the magnet shuttle as a vertical pneumatic cylinder and a horizontal cylinder and then also have a hold down cylinder and a top retainer cylinder so when you think of sensor Arrangements the vertical cylinder has a retract same with the horizontal same with the top retainer and same with the hole down there I'll just ever attract the way the sequence works is you index of a stack into position you lower your hold down from the top to push on the magnet stack then you raise your vertical shuttle cylinderAnd then you shuttle over the horizontal, and kind of the way it works is the fixture bar has a little pocket that when you push the magnet stack down, one magnet fits into the pocket, and when you shuttle over, it, like, strips that one magnet away from the rest, kind of like a coin changer. The hold back cylinder, or sorry, the top retainer cylinder, it has to be extended before you extend the horizontal, because otherwise the magnet, as you extend that, will just flip up and stick to something. So before you extend the horizontal, you have to make sure the top retainer is extended, then you can shuttle the horizontal, pull your top retainer back. There's a sensor that verifies the magnet's in place. It does, you set a bit saying, Hey, I'm in place, and then you wait for the pick. Pick sequence has a pneumatic rotary actuator and then a linear cylinder and then a vacuum cup. Basically, you rotate to the vertical position, extend your pneumatic cylinder down, turn your vacuum on, grab the magnet, pull up, and then rotate again, and then you extend that cylinder, and then at that point you sit there and wait for— it's not shown in the image, but you have a robot that comes over that holds a part that gets the magnet off of our pick mechanism. So there is interaction there, like interaction with stations. You know, you have your shuttle has to interact with the pick, which has to interact with the robot, and, you know, all those have to interact with the dial. As far as retry and recovery, if you shuttle over your horizontal cylinder and you don't have a magnet, then just shuttle back and try again. You could do that up to three times. If you do up to three times and you can't get a magnet, then something's wrong with that stack. So you just retract everything, get out of the way, and then index your dial to the next pocket that has magnets, you know, and start over again. So you don't want to stop the machine. If you pick— if you have a magnet, you shuttle over, you come down and pick, and then turn your vacuum on, you know, and you see that you didn't grab the part, then you should get another magnet. If you come down, grab the part, raise up, and then, like, some point later you drop it, you know, you should check to see if the magnet's still in the fixture. If it is, go try to pick it again. If it's not, you know, try to get another one. And then if you think of, like, home positions for the shuttle: vertical cylinder retract is home, horizontal retract is home, same with top retainer and hold down. For the pick mechanism, retract for the pneumatic linear cylinder, rotation. Rotation would be, like, clockwise would be the home, which is the pick, and then counterclockwise would be the place to the robot. It's a servo indexer on the dial. You know, STC's done a million of those. You should copy logic we have, or at least look at logic and update it to our new standards. You need part tracking. Well, you don't need part tracking, really. All you need to know is if the stack has magnets or not. But all the other stuff, you know, that's kind of the gist.
+
+
+============================================================
+BUILD PURPOSE
+(his dictated purpose line for the build, verbatim)
+============================================================
+
+okay so here I want to generate all the code for the different a machines needed here let you decide how many are needed there's multiple State machines inside this one station I want all the code for the interactions between them and this is a dial so no fault recovery and initialization and all that stuff
+
+
+============================================================
+STATE MACHINES HE EXPECTS
+(machineSpec.expectedStateMachines — raw dictation, verbatim, including his
+ own back-and-forth about the robot)
+============================================================
+
+yeah so I think you're right you have the dial indexer is one state machine the magnet shuttle is one state machine the magnet picking place is a state machine and then the robot if we want to consider that in this you know is is another one I'm going to say it is so then the robot sequences well I'm going to say it's not I'm going to say the robots not involved in this we have to interact with it but it's not involved in this station itself I take that back the robot is involved so we do need the robot in here as well cuz the robot is going to load these take these magnets and load them onto the conveyor but in that case there's a Servo indexing conveyor you haven't talked about but it you don't it's not part of this at all but that's where the robot will drop the parts off so part of the robot sequence will be to load the parts onto that conveyor
+
+
+============================================================
+CORRECTIONS & CLARIFICATIONS
+(everything else of Dan's that persisted server-side)
+============================================================
+
+- IO note (his words): All four shuttle-section cylinders are retract-sensor only
+
+- Robot interactions (as he stated them):
+  - Robot (external, not shown): We signal magnet in position at place; robot signals in position
+  - Robot (external, not shown): Vacuum off on robot in-position; retract and rotate back only on robot-clear
+  - Robot (external, not shown): No robot interaction with the shuttle — pick head only
+
+- SM decomposition approval: Dan approved the 2-SM split
+  (S01_MagnetLoad + S02_MagnetPickHead, 5 handshakes) on 2026-08-25.
+  The Dial_Indexer rode as its own SM/program in the project.
+
+- Standing Magnet-Dial-relevant rules he taught Jarvis (from meKnowledge):
+  - SDC has existing servo dial indexer logic to reuse — copy it and update
+    to current standards rather than writing new.
+  - Rotary dial indexer positions are in degrees, not millimeters — index
+    increment = 360 deg / fixture count.
+
+NOTE ON THE CORRECTIONS CHAT: the describe-surface corrections thread
+(chatThread) persists only in the browser's localStorage
+(jarvis.createStationDrafts.*), never server-side, and no browser was
+connected when this file was compiled — those turns are NOT reproduced here.
+Every Jarvis question filed for this station is still open (no recorded
+answers), so nothing answered has been lost.

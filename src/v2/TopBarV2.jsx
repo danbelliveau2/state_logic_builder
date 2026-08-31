@@ -18,15 +18,12 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useDiagramStore } from '../store/useDiagramStore.js';
-import { downloadL5X, downloadAllL5XAsZip, exportProjectJSON } from '../lib/l5xExporter.js';
-import { downloadControllerL5X } from '../lib/controllerL5xExporter.js';
-import { JarvisGenerateModal } from '../components/modals/JarvisGenerateModal.jsx';
-import { JarvisPage } from '../components/jarvis/JarvisPage.jsx';
+// (The pipeline button/stepper is gone — superseded by the five-page pill in
+//  the StationBanner; Generate lives on the Diagram sub-bar.)
 import { ProjectPickerModal } from '../components/modals/ProjectPickerModal.jsx';
+import { JarvisPill } from './JarvisPill.jsx';
 import { useAutoSaveStatus } from './useAutoSaveStatus.js';
 import { useV2Shell, closeAllProjectsToHome } from './useV2Shell.js';
-import { canCompile, compileBlockReason } from './compiledSequence.js';
-import { servoGaps, servoGapDetail } from './servoValues.js';
 import {
   DEFAULT_SCALE, currentScale, isMaxScale, isMinScale, readScale,
   scaleLabel, stepScale, subscribeScale, writeScale,
@@ -153,205 +150,9 @@ function AutoSaveIndicator() {
   );
 }
 
-// ── Build ▾ menu ────────────────────────────────────────────────────────────
-function BuildMenu() {
-  const store = useDiagramStore();
-  const project = useDiagramStore(s => s.project);
-  const sm = store.getActiveSm();
-  const sms = project?.stateMachines ?? [];
-  const trackingFields = project?.partTracking?.fields ?? [];
-
-  const [open, setOpen] = useState(false);
-  const [legacyOpen, setLegacyOpen] = useState(false);
-  const [outputOpen, setOutputOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
-  // Generate modal trigger lives in the v2 shell so the canvas flow-guidance
-  // bar can open it too (not just this menu).
-  const generateOpen = useV2Shell(s => s.generateOpen);
-  const setGenerateOpen = (v) => (v ? useV2Shell.getState().openGenerate() : useV2Shell.getState().closeGenerate());
-  const menuRef = useRef(null);
-  const fileInputRef = useRef(null);
-
-  // Close on outside click / Esc (capture phase — same reasoning as the
-  // classic toolbar popups: React Flow handlers can swallow bubbled clicks).
-  useEffect(() => {
-    if (!open) return;
-    function onClick(e) {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setOpen(false); setLegacyOpen(false); setOutputOpen(false);
-      }
-    }
-    function onKey(e) { if (e.key === 'Escape') { setOpen(false); setLegacyOpen(false); setOutputOpen(false); } }
-    document.addEventListener('mousedown', onClick, true);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onClick, true);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-
-  // ── Handlers replicated from Toolbar (see file header) ──
-  function handleExportL5X() {
-    if (!sm) return alert('No state machine selected.');
-    if ((sm.nodes ?? []).length === 0) return alert('No states defined. Add at least one state before exporting.');
-    try {
-      downloadL5X(sm, sms, trackingFields, project?.machineConfig ?? null);
-    } catch (err) {
-      alert(`Export error: ${err.message}`);
-      console.error(err);
-    }
-  }
-  async function handleExportAllL5X() {
-    const exportable = sms.filter(s => (s.nodes ?? []).length > 0);
-    if (exportable.length === 0) return alert('No state machines with states to export.');
-    try {
-      await downloadAllL5XAsZip(sms, trackingFields, project);
-    } catch (err) {
-      alert(`Export error: ${err.message}`);
-      console.error(err);
-    }
-  }
-  function handleExportController() {
-    const exportable = sms.filter(s => (s.nodes ?? []).length > 0);
-    if (exportable.length === 0) return alert('No state machines with states to export.');
-    try {
-      downloadControllerL5X(project);
-    } catch (err) {
-      alert(`Export error: ${err.message}`);
-      console.error(err);
-    }
-  }
-  function handleFileChange(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const loaded = JSON.parse(ev.target.result);
-        if (!loaded.stateMachines) throw new Error('Invalid project file');
-        store.importProject(loaded);
-      } catch (err) {
-        alert(`Failed to load project: ${err.message}`);
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  }
-
-  // Server saves Jarvis output to generated/<clean project name>/ (server.js).
-  const outputPath = `generated/${(project?.name ?? 'project').replace(/[^a-zA-Z0-9_\- ]/g, '').trim()}/`;
-
-  async function copyOutputPath() {
-    try {
-      await navigator.clipboard.writeText(outputPath);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* clipboard blocked — path is still visible to copy manually */
-    }
-  }
-
-  return (
-    <div className="v2-build" ref={menuRef}>
-      <button
-        className={`v2-build__btn${open ? ' v2-build__btn--open' : ''}`}
-        onClick={() => { setOpen(o => !o); setLegacyOpen(false); setOutputOpen(false); }}
-      >
-        Build ▾
-      </button>
-      {open && (
-        <div className="v2-build__menu">
-          {/* Compile-first pipeline (JARVIS v1.1): think once at Build time,
-              review + approve the sequence, then Generate translates it. */}
-          <button
-            className="v2-build__item v2-build__item--primary"
-            data-testid="build-compile-item"
-            disabled={!canCompile(sm)}
-            title={compileBlockReason(sm) ?? undefined}
-            onClick={() => {
-              setOpen(false);
-              // Soft gate — servo position tables are a mechanical prerequisite;
-              // compile stays clickable (values sometimes defer to commissioning).
-              const gaps = servoGaps(sm);
-              if (gaps.length > 0) {
-                const ok = confirm(
-                  `Servo position values are still missing:\n\n${servoGapDetail(gaps)}\n\n` +
-                  'These normally come from the mechanical team before compile. Compile anyway?'
-                );
-                if (!ok) return;
-              }
-              useV2Shell.getState().openCompile(sm.id);
-            }}
-          >
-            <span className="v2-build__item-label">⚙ Compile sequence (Jarvis)…</span>
-            <span className="v2-build__item-hint">
-              {sm?.compiledSequence?.ir
-                ? (sm.compiledSequence.approved
-                    ? 'Compiled ✓ approved — re-compile replaces it'
-                    : 'Compiled — review & approve in Full Controls')
-                : 'Jarvis thinks the sequence through once — review & approve before Generate'}
-            </span>
-          </button>
-
-          <button
-            className="v2-build__item v2-build__item--primary"
-            disabled={!sm || (sm.nodes ?? []).length === 0}
-            onClick={() => { setOpen(false); setGenerateOpen(true); }}
-          >
-            <span className="v2-build__item-label">✨ Generate with Jarvis…</span>
-            <span className="v2-build__item-hint">
-              {sm?.compiledSequence?.approved
-                ? 'Approved sequence → fast translation mode'
-                : 'AI L5X with live progress + validation'}
-            </span>
-          </button>
-
-          <button
-            className="v2-build__item"
-            onClick={() => setOutputOpen(o => !o)}
-          >
-            <span className="v2-build__item-label">📁 Open output folder</span>
-            <span className="v2-build__item-hint">Where generated L5X files land</span>
-          </button>
-          {outputOpen && (
-            <div className="v2-build__output">
-              <code>{outputPath}</code>
-              <button className="v2-build__copy" onClick={copyOutputPath}>
-                {copied ? 'Copied ✓' : 'Copy path'}
-              </button>
-              <div className="v2-build__output-note">Relative to the app folder (where START_APP.bat runs).</div>
-            </div>
-          )}
-
-          <div className="v2-build__sep" />
-
-          <button className="v2-build__item" onClick={() => setLegacyOpen(o => !o)}>
-            <span className="v2-build__item-label">Legacy {legacyOpen ? '▴' : '▾'}</span>
-            <span className="v2-build__item-hint">Rule-based exporter + file load</span>
-          </button>
-          {legacyOpen && (
-            <div className="v2-build__sub">
-              <button className="v2-build__item" disabled={!sm} onClick={() => { setOpen(false); handleExportL5X(); }}>
-                <span className="v2-build__item-label">↓ Export L5X (legacy)</span>
-              </button>
-              <button className="v2-build__item" onClick={() => { setOpen(false); handleExportAllL5X(); }}>
-                <span className="v2-build__item-label">↓ Export All (ZIP)</span>
-              </button>
-              <button className="v2-build__item" onClick={() => { setOpen(false); handleExportController(); }}>
-                <span className="v2-build__item-label">↓ Export Controller</span>
-              </button>
-              <button className="v2-build__item" onClick={() => { setOpen(false); fileInputRef.current?.click(); }}>
-                <span className="v2-build__item-label">📂 Load from file…</span>
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-      <input ref={fileInputRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleFileChange} />
-      {generateOpen && <JarvisGenerateModal onClose={() => setGenerateOpen(false)} />}
-    </div>
-  );
-}
+// (Build ▾ is gone — Dan: ONE action button total. Compile/Generate live in
+//  the top-right PipelineButton; the output folder + legacy exports moved to
+//  the Jarvis page as the Files ▾ menu. See PipelineButton.jsx / FilesMenu.jsx.)
 
 // ── App-wide UI scale control (− / 100% / +) ────────────────────────────────
 // Same control as the other SDC Tools apps (estimate builder top bar,
@@ -390,86 +191,9 @@ function ScaleControl() {
   );
 }
 
-// ── Jarvis button (learning-being surface) ──────────────────────────────────
-function JarvisButton() {
-  const [open, setOpen] = useState(false);
-  const [openCount, setOpenCount] = useState(null);
-
-  async function refreshCount() {
-    try {
-      const r = await fetch('/api/jarvis/questions');
-      if (!r.ok) return;
-      const qs = await r.json();
-      setOpenCount(Array.isArray(qs) ? qs.filter(q => q.status === 'open').length : null);
-    } catch {
-      /* server offline — no badge, button still opens the page */
-    }
-  }
-  useEffect(() => { refreshCount(); }, []);
-
-  return (
-    <>
-      <button
-        className="v2-jarvis__btn"
-        data-testid="jarvis-open-btn"
-        onClick={() => setOpen(true)}
-        title="Jarvis — his questions for the controls team, knowledge, and track record"
-      >
-        Jarvis
-        {openCount != null && openCount > 0 && (
-          <span className="v2-jarvis__badge" data-testid="jarvis-topbar-badge">{openCount}</span>
-        )}
-      </button>
-      {open && <JarvisPage onClose={() => { setOpen(false); refreshCount(); }} />}
-    </>
-  );
-}
-
-// ── Code button — the generated-code page, promoted to a top-level destination
-// (Dan: "there should be a page — the code generation page — where you get the
-// stuff for the different stations"). Opens the Jarvis page directly on the
-// Generated code grid. Badge = number of builds in flight RIGHT NOW (from
-// GET /api/jarvis/active), so "is it generating?" is answerable from anywhere.
-function CodeButton() {
-  const [open, setOpen] = useState(false);
-  const [activeCount, setActiveCount] = useState(0);
-
-  useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      try {
-        const r = await fetch('/api/jarvis/active');
-        if (!r.ok) return;
-        const d = await r.json();
-        if (alive) setActiveCount(Array.isArray(d.active) ? d.active.length : 0);
-      } catch {
-        if (alive) setActiveCount(0); // server offline — no badge, button still opens
-      }
-    };
-    load();
-    const t = setInterval(load, 5000);
-    return () => { alive = false; clearInterval(t); };
-  }, []);
-
-  return (
-    <>
-      <button
-        className="v2-jarvis__btn"
-        data-testid="code-open-btn"
-        onClick={() => setOpen(true)}
-        title="Generated code — every build in one grid: download, review, upload the corrected version; live while it's generating"
-      >
-        Code
-        {activeCount > 0 && (
-          <span className="v2-jarvis__badge" data-testid="code-topbar-badge" title={`${activeCount} generating right now`}>
-            {activeCount}
-          </span>
-        )}
-      </button>
-      {open && <JarvisPage onClose={() => setOpen(false)} />}
-    </>
-  );
-}
+// (The Code button merged into the Jarvis page, opened from the Jarvis chip —
+//  Dan: they were the same thing. The chip lives HERE, top-bar right, since
+//  Aug 24 — the old floating / stations-panel-docked pill is gone.)
 
 export function TopBarV2() {
   return (
@@ -480,9 +204,7 @@ export function TopBarV2() {
       <div className="v2-topbar__spacer" />
       <AutoSaveIndicator />
       <ScaleControl />
-      <CodeButton />
-      <JarvisButton />
-      <BuildMenu />
+      <JarvisPill />
     </header>
   );
 }

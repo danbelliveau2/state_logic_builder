@@ -27,6 +27,7 @@ import {
   enforceNodeClearance,
   cleanWaypoints,
   findLongestVerticalSegment,
+  backwardRailGoRight,
 } from '../../lib/edgeRouting.js';
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -104,11 +105,10 @@ export function RoutableEdge({
   // waypoints, no shape changes, axis-locked.
   const isBackwardEdge = targetY < sourceY - 30;
   const isLoopBack = isBackwardEdge;
-  // Side defaults to whatever the auto-route picked: explicit `loopSide`
-  // wins; otherwise target's X relative to source. We pin the side on
-  // first drag so the rail can't flip across the source's mid-X.
-  const loopGoRight = data?.loopSide === 'right'
-                  || (data?.loopSide == null && targetX >= sourceX);
+  // Side matches computeAutoRoute exactly (shared helper): a SIDE-handle
+  // source always rails on its handle's face; bottom handles use stored
+  // `loopSide`, else the target's X relative to source. Pin on first drag.
+  const loopGoRight = backwardRailGoRight(sourceHandle, data, sourceX, targetX);
   const isSideHandleSrc = sourceHandle === 'exit-fail' || sourceHandle === 'exit-retry';
 
   const onLoopDrag = useCallback((e, paramKey, axis, sign) => {
@@ -363,6 +363,35 @@ export function RoutableEdge({
           } else {
             lx = seg.a.x;
             ly = (seg.a.y + seg.b.y) / 2;
+          }
+        }
+
+        // Collision nudge — pills render in the SVG edge layer, which sits
+        // UNDER the node layer, so a pill placed where a node stands is
+        // invisible ("wording behind nodes"). If the spot is occluded,
+        // slide the pill along the edge path until it lands in open canvas.
+        const allNodes = getNodes();
+        const pillClear = (cx, cy) => !allNodes.some(n => {
+          const nx = n.position?.x ?? 0;
+          const nny = n.position?.y ?? 0;
+          const nw = n.measured?.width ?? n.width ?? 240;
+          const nh = n.measured?.height ?? n.height ?? 80;
+          return cx + pillW / 2 > nx + 2 && cx - pillW / 2 < nx + nw - 2
+              && cy + pillH / 2 > nny + 2 && cy - pillH / 2 < nny + nh - 2;
+        });
+        if (!pillClear(lx, ly)) {
+          outer:
+          for (let si = 0; si < segments.length; si++) {
+            const seg2 = segments[si];
+            const len = Math.hypot(seg2.b.x - seg2.a.x, seg2.b.y - seg2.a.y);
+            if (len < 24) continue;
+            const ux = (seg2.b.x - seg2.a.x) / len;
+            const uy = (seg2.b.y - seg2.a.y) / len;
+            for (let d = si === 0 ? 36 : 14; d <= len - 10; d += 14) {
+              const cx = seg2.a.x + ux * d;
+              const cy = seg2.a.y + uy * d;
+              if (pillClear(cx, cy)) { lx = cx; ly = cy; break outer; }
+            }
           }
         }
 

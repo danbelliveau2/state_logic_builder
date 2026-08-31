@@ -13,7 +13,7 @@ This folder is **everything that isn't React**: tag naming, edge geometry, step 
 | `controllerL5xExporter.js`    | Controller-level L5X (combined).                 |
 | `tagNaming.js`                | Single source of truth for `i_/q_/p_/a_` tags.   |
 | `edgeRouting.js`              | `computeAutoRoute`, `enforceNodeClearance`.      |
-| `computeStateNumbers.js`      | DFS step numbering (1, 4, 7, …).                 |
+| `computeStateNumbers.js`      | DFS step numbering (4, 7, 10, …).                |
 | `conditionBuilder.js`         | Verify-text builder for edges.                   |
 | `entryRules.js`               | Entry-rule resolution + standards override.      |
 | `indexSync.js`                | Index-sync resolution + standards override.      |
@@ -24,7 +24,7 @@ This folder is **everything that isn't React**: tag naming, edge geometry, step 
 | `deviceLibrary.js`            | Curated device library entries.                  |
 | `standardsLibrary.js`         | Local standards cache + sync.                    |
 | `standardsApi.js`             | Server API for standards.                        |
-| `projectApi.js`               | Project save/load to server.                     |
+| `projectApi.js`               | Project save/load to server + `exportProjectJSON` (Ctrl+S save-to-disk, both shells). |
 | `useReactFlowZoomScale.js`    | Hook (only React thing here, unavoidable).       |
 
 ## Rules specific to this folder

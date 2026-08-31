@@ -1,0 +1,301 @@
+[
+  {
+    "id": "b_mt1iq1d3_0epw23",
+    "at": "2026-08-20T12:50:11.943Z",
+    "project": "Test_Project",
+    "sm": "stub",
+    "jarvisVersion": null,
+    "costUSD": 0,
+    "durationS": 35,
+    "attempts": 0,
+    "validationOk": true,
+    "score": null,
+    "scoredBy": null,
+    "scoreComment": null,
+    "filePath": null
+  },
+  {
+    "id": "b_mt1jh5tk_nk9wco",
+    "at": "2026-08-20T13:11:17.432Z",
+    "project": "Test_Project",
+    "sm": "SDCServoPNP",
+    "jarvisVersion": "1.0.2",
+    "costUSD": 3.1022,
+    "durationS": 1126,
+    "attempts": 3,
+    "validationOk": true,
+    "score": null,
+    "scoredBy": null,
+    "scoreComment": null,
+    "filePath": "C:\\SDC-StateLogic\\generated\\Test_Project\\SDCServoPNP__jarvis_v1.0.2__2026-08-20_1311.L5X",
+    "goodNotes": "",
+    "badNotes": ""
+  },
+  {
+    "id": "b_mt1knkes_9poqt7",
+    "at": "2026-08-20T13:44:15.892Z",
+    "project": "996-Magnet_Dial_AI",
+    "sm": "Magnet_Feed",
+    "jarvisVersion": "1.0.2",
+    "costUSD": 0.9479,
+    "durationS": 257,
+    "attempts": 1,
+    "validationOk": true,
+    "score": null,
+    "scoredBy": null,
+    "scoreComment": null,
+    "filePath": "C:\\SDC-StateLogic\\generated\\996-Magnet_Dial_AI\\Magnet_Feed__jarvis_v1.0.2__2026-08-20_1344.L5X"
+  },
+  {
+    "id": "b_mt1lbqzj_zpl4jd",
+    "at": "2026-08-20T14:03:04.159Z",
+    "project": "996-Magnet_Dial_AI",
+    "sm": "Magnet_Feed",
+    "jarvisVersion": "1.1.0",
+    "costUSD": 0.918,
+    "durationS": 246,
+    "attempts": 1,
+    "validationOk": true,
+    "mode": "translation",
+    "pretranslated": true,
+    "score": null,
+    "scoredBy": null,
+    "scoreComment": null,
+    "filePath": "C:\\SDC-StateLogic\\generated\\996-Magnet_Dial_AI\\Magnet_Feed__jarvis_v1.1.0__2026-08-20_1403.L5X"
+  },
+  {
+    "id": "b_mt1p0xfg_gu145g",
+    "at": "2026-08-20T15:46:37.756Z",
+    "project": "Test_Project",
+    "sm": "SDCServoPNP",
+    "jarvisVersion": "1.1.1",
+    "costUSD": 3.4863,
+    "durationS": 840,
+    "attempts": 5,
+    "validationOk": false,
+    "mode": "translation",
+    "pretranslated": true,
+    "score": null,
+    "scoredBy": null,
+    "scoreComment": null,
+    "filePath": "C:\\SDC-StateLogic\\generated\\Test_Project\\SDCServoPNP__jarvis_v1.1.1__2026-08-20_1546.L5X",
+    "correction": {
+      "filePath": "C:\\SDC-StateLogic\\generated\\Test_Project\\SDCServoPNP__jarvis_v1.1.1__2026-08-20_1546__corrected_by_Dan.L5X",
+      "uploadedBy": "Dan",
+      "at": "2026-08-20T17:36:36.829Z",
+      "status": "done",
+      "analyzedAt": "2026-08-20T17:36:58.391Z",
+      "durationS": 22,
+      "costUSD": 0.0436,
+      "diffStats": {
+        "changedRungs": 2,
+        "addedRungs": 0,
+        "removedRungs": 0,
+        "tagChanges": 1
+      },
+      "summary": "Dan tightened the State 10 transition by removing the 'in-motion + wide window' early-release branch from the horizontal axis, requiring a true motion-complete plus in-position confirmation before the pick move is allowed, while leaving that blended branch on the vertical retract axis. He also rewrote the X-axis absolute-position alarm text to state the fault and the required operator action, and increased the pneumatic gripper engage delay preset from 250 ms to 400 ms. The theme is that shortcuts (early position handoff, terse alarm text, optimistic actuator delays) are only acceptable where they cannot cost accuracy, recovery time, or part control.",
+      "lessons": [
+        {
+          "lesson": "The [PC + InPos , IP + InPosWide] blended-branch pattern is a clearance permissive, not a universal transition template. Use it only for an axis that merely has to be out of the way (e.g., a vertical retract clearing an interference zone) so the next motion can overlap; the axis that actually establishes the working position for the next state must show a real .PC with the tight .InPos window before you transition.",
+          "conceptArea": "servo-motion",
+          "confidence": 0.85,
+          "applied": true,
+          "conceptFile": "servo-motion.md"
+        },
+        {
+          "lesson": "Before copying a permissive branch onto a second axis in the same rung, ask what physically goes wrong if that axis is still moving. If the answer is a mispick, a crash, or a part dropped off-target, there is no wide-window shortcut — the shortcut only buys cycle time and it costs position integrity.",
+          "conceptArea": "coordination",
+          "confidence": 0.8,
+          "applied": true,
+          "conceptFile": "coordination.md"
+        },
+        {
+          "lesson": "Alarm messages are operator instructions, not fault labels. Write them as condition plus required recovery action ('Absolute Position Reference Lost - Rehome Required') so the person at the HMI knows what to do without consulting the print or a controls engineer.",
+          "conceptArea": "alarms",
+          "confidence": 0.8,
+          "applied": true,
+          "conceptFile": "alarms.md"
+        },
+        {
+          "lesson": "For pneumatic actuations confirmed only by a timer rather than a sensor, bias the preset conservatively toward the station's proven default instead of the theoretical minimum stroke time; an extra 100-150 ms of grip settle is cheap compared to releasing a part that was not fully clamped, and the value can be tuned down at buyoff with real hardware.",
+          "conceptArea": "pneumatics",
+          "confidence": 0.65,
+          "applied": false,
+          "conceptFile": null
+        }
+      ],
+      "learnedCount": 3,
+      "queuedCount": 1,
+      "note": "synthetic test correction — variant authored during v2.1.2 loop verification, not a real engineer review"
+    },
+    "goodNotes": "",
+    "badNotes": ""
+  },
+  {
+    "id": "b_mt2vlomk_55dx7q",
+    "at": "2026-08-21T11:38:29.996Z",
+    "project": "Test_Project_v2",
+    "sm": "ServoPNP",
+    "jarvisVersion": "1.1.1",
+    "costUSD": 2.468,
+    "durationS": 602,
+    "attempts": 3,
+    "validationOk": true,
+    "mode": "translation",
+    "pretranslated": true,
+    "score": null,
+    "scoredBy": null,
+    "scoreComment": null,
+    "filePath": "C:\\SDC-StateLogic\\generated\\Test_Project_v2\\ServoPNP__jarvis_v1.1.1__2026-08-21_1138.L5X"
+  },
+  {
+    "id": "b_mt2w1kaj_3a6gtl",
+    "at": "2026-08-21T11:50:50.875Z",
+    "project": "Test_Project_v2",
+    "sm": "ServoPNP",
+    "jarvisVersion": "1.1.1",
+    "costUSD": 1.9453,
+    "durationS": 538,
+    "attempts": 3,
+    "validationOk": true,
+    "mode": "translation",
+    "pretranslated": true,
+    "score": null,
+    "scoredBy": null,
+    "scoreComment": null,
+    "filePath": "C:\\SDC-StateLogic\\generated\\Test_Project_v2\\ServoPNP__jarvis_v1.1.1__2026-08-21_1150.L5X"
+  },
+  {
+    "id": "b_mt2yj8mt_8rhauk",
+    "at": "2026-08-21T13:00:34.805Z",
+    "project": "Test_Project",
+    "sm": "SDCServoPNP",
+    "jarvisVersion": "1.1.2",
+    "costUSD": 3.1853,
+    "durationS": 761,
+    "attempts": 4,
+    "validationOk": true,
+    "mode": "translation",
+    "pretranslated": true,
+    "score": null,
+    "scoredBy": null,
+    "scoreComment": null,
+    "filePath": "C:\\SDC-StateLogic\\generated\\Test_Project\\SDCServoPNP__jarvis_v1.1.2__2026-08-21_1300.L5X"
+  },
+  {
+    "id": "b_mt38pfn3_dw1v22",
+    "at": "2026-08-21T17:45:19.983Z",
+    "project": "Test_Project_v2",
+    "sm": "ServoPNP",
+    "jarvisVersion": "1.2.0",
+    "costUSD": 3.5178,
+    "durationS": 852,
+    "attempts": 3,
+    "validationOk": true,
+    "mode": "translation",
+    "pretranslated": true,
+    "internalReview": {
+      "verdict": "fix",
+      "findings": [
+        {
+          "severity": "blocker",
+          "routine": "R04_XAxisServo",
+          "finding": "Rung 21 builds the Pick in-position window with SUB/ADD/LIMIT + OTE(XAxisPickInPos) instead of an AOI_RangeCheck instance. The template DOES show this construct, so the lookup hierarchy forbids inventing one — a 'PROPOSED NON-STANDARD PATTERN' comment does not sanction replacing a shape the template already defines, and the approved sequence's own Template-conformance entry explicitly requires 'Per-position AOI_RangeCheck instances (XAxisHome/XAxisPick/XAxisPlace)'. The stated excuse (no spare backing tag, merge engine cannot declare one) is contradicted by the rung itself, which declares XAxisPickBand/XAxisPickLoLimit/XAxisPickHiLimit. Worse, XAxisPickBand is never written by any rung, so the window is zero-width and XAxisPickInPos never goes true — R02 rung 5 (7→10) and R01 rung 11 (Initialized) both hang on it. It also breaks the {PosName}.InPos naming every downstream rung is supposed to read.",
+          "templateEvidence": "S05_ServoPNP R04 rung 21: [AOI_RangeCheck(XAxisExtend,HMI_XAxis.Parameters.Positions[0],0.5,HMI_XAxis.Status.ActualPosition,5) ,AOI_RangeCheck(XAxisRetract,HMI_XAxis.Parameters.Positions[1],0.5,...,5)] — one instance per named position, windowed on its own Positions[i]; ad-hoc SUB/LT position math is not a template shape."
+        },
+        {
+          "severity": "blocker",
+          "routine": "R05_ZAxisServo",
+          "finding": "Rung 21 does the same thing for BOTH transition points: ZAxisPickTransition and ZAxisPlaceTransition are hand-built from SUB/ADD/LIMIT/OTE (four pseudo-bits ZAxisPickTransInPos/InPosWide, ZAxisPlaceTransInPos/InPosWide) instead of AOI_RangeCheck instances. Transition points are named Positions[i] slots and get instances like any other position — the sanctioned fast/slow extension explicitly says so. The band tags (ZAxisPickTransBand, ZAxisPickTransWideBand, ZAxisPlaceTransBand, ZAxisPlaceTransWideBand) are never loaded by any rung, so the whole two-segment stroke chain (52→13, 55→22, 58→31, 61→40) stalls on windows that are never true. Fix both R04 and R05 in the one pass: declare the AOI_RangeCheck backing tags and instance them the template way, with the *Verify wide-band values (10.0 retract blend-start, 2.0 transition) as the last argument.",
+          "templateEvidence": "S05_ServoPNP R05 rung 21: three AOI_RangeCheck instances (ZAxisPick/ZAxisPlace/ZAxisRetract) each on its own Positions[i] with tight 0.5 and wide 5 arguments; the .InPos/.InPosWide bits are what R02 rung 7/12 transitions consume."
+        },
+        {
+          "severity": "style",
+          "routine": "R01_Inputs",
+          "finding": "Gripper tag naming drifts from the fixed device verb convention and from the approved sequence: the outputs are q_OpenPartGripper/q_ClosePartGripper (template's Open/Close carried over) while the timers are PartGripperEngageDelay/PartGripperDisengageDelay. The approved sequence names them q_PartGripperEngage/q_PartGripperDisengage. Pick one — gripper = Engage/Disengage everywhere (outputs, delays, status bits, R03 seal rungs).",
+          "templateEvidence": "S05 R01 rungs 3/4 use the device's own verbs for the coil/timer pair (q_OpenGripper/OpenGripperDelay, q_CloseGripper/CloseGripperDelay) — coil and timer names always agree."
+        },
+        {
+          "severity": "style",
+          "routine": "R02_StateTransitions",
+          "finding": "Rung 3 (state 4) moves the template's rung-common XIC(CycleRunning) XIO(Lockout) gate into the individual branches, and the 124→4 branch carries neither. Even though the approved transition text lists only the posture conditions, the template's shape puts the cycle/lockout gate in series after the branch block so no path can re-enter the start of sequence with the cycle stopped or the station locked out. Express it the template way and let the branch carry only the posture terms.",
+          "templateEvidence": "S05 R02 rung 3: [[State[3] Initialized ,State[124]] GripperOpened , State[31] ...]XIC(CycleRunning)XIO(Lockout)MOVE(4,Control.StateReg)."
+        },
+        {
+          "severity": "style",
+          "routine": "R02_StateTransitions",
+          "finding": "Rung 0's comment carries the generated state map TWICE (the authoritative list, then a second 'State map: ...' restatement in flow order). One authoritative state map, terse, per the standard — the duplicate reads as leftover scaffolding and will drift the moment a state changes.",
+          "templateEvidence": "S05 R02 rung 0 is a single terse comment ('Start Of State Machine') with NOP(); the generated map replaces it — one map, not two."
+        },
+        {
+          "severity": "style",
+          "routine": "R04_XAxisServo",
+          "finding": "Rung 2 adds XIC(SafetyOK) to HorizontalAxisPermissive. The template permissive is a pure geometry statement and SafetyOK is already evaluated separately on the staging, motion-command and quickstop rungs; folding it into the permissive is redundant and changes the quickstop warning's meaning (a safety drop now also reads as a permissive loss). It is also not what the approved sequence's permissive decision states.",
+          "templateEvidence": "S05 R04 rung 2: XIC(iq_ZAxis.AxisHomedStatus)[XIC(ZAxisRetract.InPos) ,XIC(ZAxisRetract.InPosWide)]OTE(XAxisPermissive) — geometry only; rung 16 handles XIO(SafetyOK) separately."
+        },
+        {
+          "severity": "note",
+          "routine": "R03_StateLogic",
+          "finding": "Template rung 5's sealed PartStarted OTE is replaced by a bare XIC(PowerUpCP)OTU(PartStarted), with the latch/unlatch moved onto the R02 16→19 and 34→37 rungs. The approved sequence declares this, and OTL on a transition rung is a template idiom (Attempt/Success), so it is not a bounce — but the template's XIO(GripperClosed) drop condition is gone, so the part-in-hand memory no longer self-corrects if the gripper is opened outside state 34. Worth a look before commissioning.",
+          "templateEvidence": "S05 R03 rung 5: [XIC(Status.State[13]) ,XIC(PartStarted) XIO(Status.State[28]) XIO(g_MachineBasic.PowerUpCP) XIO(GripperClosed)]OTE(PartStarted)."
+        },
+        {
+          "severity": "note",
+          "routine": "R01_Inputs",
+          "finding": "Leftover template boilerplate that no longer belongs to this station: rung 2 debounces i_PartPresent but PartPresentDebounce is consumed nowhere (this sequence starts on CycleRunning, not part present), and R03 rung 6 still keys station lockout part tracking off \\S00_IndexerSP.q_WaitStationsComplete on a station the sequence describes as standalone. Neither breaks anything; flag them for the CE rather than leaving them silently dead.",
+          "templateEvidence": "S05 R02 rung 4 consumes PartPresentDebounce.On in the state-7 transition — in the template the debounce has a consumer; here it does not."
+        }
+      ],
+      "standardsQuestions": [
+        {
+          "topic": "Fast/slow transition point — confirm-state exit condition",
+          "question": "For the sanctioned fast/slow + transition-point extension, may the confirm state exit on the WIDEBAND branch (e.g. 52→13: [MAM.PC + ZAxisPickTransition.InPos , MAM.IP + ZAxisPickTransition.InPosWide]) so the axis is re-commanded ON THE FLY to the next segment while the first MAM is still in process — or must the confirm state wait for a strict MAM.PC + tight .InPos at the transition point (a momentary stop) before the second segment is commanded? The templates predate fast/slow and show only the indexer trigger/wait split, which confirms on MAM.PC; the learned guidance says the wideband OR is a clearance permissive for a DIFFERENT axis to start, not a same-axis re-command. The generated file uses the wideband form on all four junctions (52→13, 55→22, 58→31, 61→40) per the approved sequence — please confirm which form is standard, and if wideband is standard, what wide-band value at a transition point is (the file placeholders 2.0 mm)."
+        },
+        {
+          "topic": "AOI_RangeCheck backing-tag declaration",
+          "question": "Confirm for the record that the generator is expected to DECLARE new AOI_RangeCheck backing tags for every named position (including transition points) rather than fall back to any alternate in-position construct — i.e. there is no sanctioned SDC fallback shape when a template instance tag does not already exist. If a fallback ever is acceptable, name it, so this does not get re-invented per station."
+        }
+      ],
+      "questionIds": [],
+      "heldStatus": null,
+      "missingVsTemplate": [
+        "AOI_RangeCheck instances for XAxisPick, ZAxisPickTransition and ZAxisPlaceTransition in the Axis Position Monitor rungs (template R04/R05 rung 21: one instance per named position, windowed on its own Positions[i])",
+        "Template R02 rung 3's rung-common XIC(CycleRunning) XIO(Lockout) gate on the state-4 rung (now branch-local, absent on the 124→4 path)",
+        "Template R03 rung 5 sealed PartStarted OTE (replaced by a power-up OTU; the XIO(GripperClosed) drop condition is gone)"
+      ],
+      "summary": "Structurally this is close — R02 is in clean ascending order (4…61 then 99/100→124/restart/127/1/0/engine/timer), one MAM per axis with plain state lists, the trigger/confirm split for the same-axis segments is the indexer shape done right, and both staging rungs are defaults-first with the Fast override branch after them, exactly as the sanctioned extension requires. What bounces it is the position monitor: you invented SUB/ADD/LIMIT in-position windows for XAxisPick and both Z transition points instead of AOI_RangeCheck instances, on a construct the template plainly shows — and a PROPOSED NON-STANDARD PATTERN comment does not license replacing a shape that already exists. On top of the standards violation it doesn't even run: the band tags are never loaded, so those windows are zero-width and the machine stalls at 7→10 and at every transition point. Fix both rung 21s the template way in one pass, clean up the gripper Engage/Disengage naming and the state-4 gate, and answer the two standards questions about the on-the-fly transition-point exit before this goes to the floor.",
+      "costUSD": 0.787
+    },
+    "score": null,
+    "scoredBy": null,
+    "scoreComment": null,
+    "filePath": "C:\\SDC-StateLogic\\generated\\Test_Project_v2\\ServoPNP__jarvis_v1.2.0__2026-08-21_1745.L5X"
+  },
+  {
+    "id": "b_mt3bnrp3_7yxhic",
+    "at": "2026-08-21T19:08:01.143Z",
+    "project": "Test_Project_v2",
+    "sm": "ServoPNP",
+    "jarvisVersion": "1.2.0",
+    "costUSD": 14.19,
+    "durationS": 0,
+    "attempts": 12,
+    "validationOk": true,
+    "mode": "translation+iterative-review",
+    "pretranslated": false,
+    "internalReview": {
+      "verdict": "ship",
+      "findings": [],
+      "standardsQuestions": [],
+      "questionIds": [],
+      "heldStatus": null,
+      "missingVsTemplate": [],
+      "summary": "SDCServoPNP_JARVIS_v4 — fast/slow + transition-point extension of S05_ServoPNP. 12 adversarial review rounds (2 pipeline + 10 standalone iterate-and-fix); final verdict SHIP with 3 red-pen notes (*Verify band values, supervisor next-pick placeholder, first-in-line part-tracking).",
+      "costUSD": null
+    },
+    "score": null,
+    "scoredBy": null,
+    "scoreComment": null,
+    "filePath": "C:/SDC-StateLogic/generated/Test_Project_v2/ServoPNP__jarvis_v1.2.0__2026-08-21_v4_SHIP.L5X"
+  }
+]

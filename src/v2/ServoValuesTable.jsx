@@ -3,10 +3,11 @@
  * servo motors, there should be a table of servo values somewhere in the
  * builder that you can just go edit — and the tool will call that").
  *
- * One editable grid per station: Axis | Position name | Value (inline) |
- * Role tag (auto-inferred: home/pick/place/transition/safe-clear). A
+ * One editable grid per station: Axis | Position name | Value (inline). A
  * "+ add named value" row per axis makes values like SafeClear/BlendStart
  * first-class named positions on the axis — not floating questions.
+ * NO role tags on rows (Dan, Aug 24: "we know what the points are, we're
+ * the ones that told you") — only proposed/needed STATE indicators remain.
  *
  * Edits persist through the store's updateDevice (history push → undoable);
  * empty values render amber and count as the readiness gaps the Code grid's
@@ -19,35 +20,25 @@
  * compile-stage hint.
  */
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useDiagramStore } from '../store/useDiagramStore.js';
 import { useV2Shell } from './useV2Shell.js';
-import { inferPositionRole, positionValueMissing } from './servoValues.js';
+import { positionValueMissing } from './servoValues.js';
+import { mapVerifyFlagsToServoRows, requiredServoRowsOf, bandRowLabel, plainServoRowLabel, isSpeedWindowName, orderServoDisplayRows, groupServoRows } from '../lib/servoBands.js';
+import { axisGeometryIssues } from '../lib/geometrySanity.js';
 
-const ROLE_COLORS = {
-  home:        { bg: '#e8f0fa', fg: '#1574C4' },
-  pick:        { bg: '#e6f4ea', fg: '#3d7a2f' },
-  place:       { bg: '#e6f4ea', fg: '#3d7a2f' },
-  transition:  { bg: '#f3e8fa', fg: '#7a3da8' },
-  'safe-clear':{ bg: '#fdf6e3', fg: '#7a6220' },
-};
+const geomKey = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
-function RoleTag({ pos }) {
-  const role = inferPositionRole(pos);
-  if (!role) return null;
-  const c = ROLE_COLORS[role] ?? { bg: '#eef1f5', fg: '#5a6a7e' };
-  return (
-    <span style={{
-      fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
-      background: c.bg, color: c.fg, borderRadius: 999, padding: '1px 8px', whiteSpace: 'nowrap',
-    }}>{role}</span>
-  );
-}
-
-/** One editable value cell — commits on blur/Enter; '' stays a genuine gap. */
-function ValueCell({ value, onCommit, testId }) {
+/** One editable value cell — commits on blur/Enter; '' stays a genuine gap.
+ *  Exported for reuse by the Create Station data sheet (draft servo table). */
+export function ValueCell({ value, onCommit, testId, missingTone = 'amber' }) {
   const [draft, setDraft] = useState(value ?? '');
   const missing = draft === '' || draft === null || draft === undefined;
+  // 'amber' = proposed/soft gap; 'required' = truly-needed value, RED and
+  // unmistakable (Dan, Aug 24 — never confusable with role tags).
+  const tone = missingTone === 'required'
+    ? { border: '#fca5a5', bg: '#fef2f2' }
+    : { border: '#c9a643', bg: '#fdf6e3' };
   function commit() {
     const trimmed = String(draft).trim();
     if (trimmed === '') { onCommit(null); return; }
@@ -66,8 +57,8 @@ function ValueCell({ value, onCommit, testId }) {
       onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
       style={{
         width: 90, boxSizing: 'border-box', fontSize: 13, padding: '5px 8px',
-        border: `1px solid ${missing ? '#c9a643' : 'var(--color-border)'}`,
-        background: missing ? '#fdf6e3' : 'var(--color-surface)',
+        border: `1px solid ${missing ? tone.border : 'var(--color-border)'}`,
+        background: missing ? tone.bg : 'var(--color-surface)',
         borderRadius: 6, color: 'var(--color-text)', textAlign: 'right',
         fontFamily: 'Consolas, monospace',
       }}
@@ -76,11 +67,69 @@ function ValueCell({ value, onCommit, testId }) {
   );
 }
 
-function AxisSection({ smId, device }) {
+/** One RED proposed-value row — a compiled *Verify band flag mapped onto this
+ *  axis (Dan, Aug 23): Jarvis pre-fills an intelligent proposal from the axis
+ *  geometry. Accepting = doing nothing; editing = typing. The red clears once
+ *  the value is applied (Apply proposed values → re-compile). */
+function ProposedRow({ row, draft, onDraft, unit = 'mm' }) {
+  // Band rows arrive with a proposal; required-position rows (the compiled
+  // code moves to a position the table doesn't have) arrive EMPTY — a genuine
+  // blocker question until the ME types the value from the model.
+  const hasProposal = row.proposedValue != null;
+  const shown = draft !== undefined && draft !== ''
+    ? draft
+    : hasProposal ? String(row.proposedValue) : '';
+  return (
+    <>
+      <tr data-testid={`servo-proposed-${row.deviceName}-${row.rowName}`}>
+        {/* Plain-English label (Dan, Aug 24: "wideband? I don't know what
+            that means") — the SM keeps the PLC-safe rowName. The rationale
+            lives in the tooltip (no explainer lines, Aug 24 round 2). */}
+        <td style={{ padding: '6px 10px 0 0', fontSize: 13, color: '#991b1b', fontWeight: 600, whiteSpace: 'nowrap' }} title={row.rationale ?? row.question ?? row.flag ?? ''}>
+          {bandRowLabel(row)}
+        </td>
+        <td style={{ padding: '6px 10px 0 0' }}>
+          <input
+            data-testid={`servo-proposed-input-${row.deviceName}-${row.rowName}`}
+            value={shown}
+            inputMode="decimal"
+            placeholder="—"
+            onChange={e => onDraft(e.target.value)}
+            style={{
+              width: 90, boxSizing: 'border-box', fontSize: 13, padding: '5px 8px',
+              border: '1px solid #fca5a5', background: '#fef2f2', borderRadius: 6,
+              color: '#991b1b', textAlign: 'right', fontFamily: 'Consolas, monospace', fontWeight: 700,
+            }}
+            title={row.rationale ?? row.flag ?? row.question ?? ''}
+          />
+          <span style={{ fontSize: 11, color: 'var(--color-text-light)', marginLeft: 5 }}>{unit}</span>
+        </td>
+        <td style={{ padding: '6px 0 0' }}>
+          <span title={row.rationale ?? row.question ?? ''} style={{
+            fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+            background: '#fee2e2', color: '#991b1b', borderRadius: 3, padding: '1px 8px', whiteSpace: 'nowrap',
+          }}>{hasProposal ? 'proposed' : 'needed'}</span>
+        </td>
+      </tr>
+    </>
+  );
+}
+
+function AxisSection({ smId, device, proposals = [], proposalDrafts, onProposalDraft }) {
   const updateDevice = useDiagramStore(s => s.updateDevice);
   const positions = device.positions ?? [];
+  // ROTARY / DIAL axes think in degrees, never mm (Dan's Magnet Dial round).
+  const unit = String(device.motionType ?? '').toLowerCase() === 'rotary' ? '°' : 'mm';
   const [newName, setNewName] = useState('');
   const [newValue, setNewValue] = useState('');
+  // Named positions + corner blends as single-line peer rows. *WideBand rows
+  // no longer exist (Dan, Aug 24 round 3: speed windows are dead — the corner
+  // blends are the only windows; transitions take strict MAM.PC + InPos);
+  // legacy ones in old data are simply not rendered.
+  const indexed = positions.map((p, i) => ({ p, i }));
+  const visibleRows = orderServoDisplayRows(
+    indexed.filter(({ p }) => !isSpeedWindowName(p?.name)), (r) => r.p?.name);
+  const peerProposals = proposals.filter(r => !isSpeedWindowName(r.rowName));
 
   function commitPosition(idx, newVal) {
     const next = positions.map((p, i) => (i === idx ? { ...p, defaultValue: newVal } : p));
@@ -104,6 +153,31 @@ function AxisSection({ smId, device }) {
 
   const gapCount = positions.filter(positionValueMissing).length;
 
+  // GEOMETRIC SANITY (Dan, Aug 24: "PlaceTransition 450 is beyond Place 300"):
+  // arithmetic-impossible values flag RED on the offending row, plain sentence
+  // right under it, and count as blockers in the spec sheet's red strip.
+  const geomByRow = new Map(
+    axisGeometryIssues(
+      device.displayName || device.name,
+      positions.map(p => ({ name: p?.name, value: p?.defaultValue })),
+      { minMm: device.travelMinMm, maxMm: device.travelMaxMm }
+    ).map(g => [geomKey(g.rowName), g])
+  );
+
+  // HOME (Dan, Aug 24) — the ME-declared rest position of this axis. Stored
+  // as positions[].isHome (the 'dynamic' servo-home convention) plus
+  // homePositionName; the compile IR renders it so Home Conditions / init /
+  // recovery use the DECLARED home.
+  const normHome = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const homeName = device.homePositionName ?? positions.find(p => p?.isHome)?.name ?? null;
+  function commitHome(name) {
+    if (!name) return;
+    updateDevice(smId, device.id, {
+      homePositionName: name,
+      positions: positions.map(p => ({ ...p, isHome: normHome(p.name) === normHome(name) })),
+    });
+  }
+
   return (
     <div style={{ marginBottom: 18 }} data-testid={`servo-axis-${device.name}`}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
@@ -123,10 +197,46 @@ function AxisSection({ smId, device }) {
       </div>
       <table style={{ borderCollapse: 'collapse', width: '100%' }}>
         <tbody>
-          {positions.map((p, i) => (
-            <tr key={p.id || `${p.name}-${i}`}>
-              <td style={{ padding: '4px 10px 4px 0', fontSize: 13, color: 'var(--color-text)', width: '40%' }}>
-                {p.name}
+          {positions.length > 0 && (
+            <tr data-testid={`servo-home-row-${device.name}`}>
+              <td style={{ padding: '4px 10px 6px 0', fontSize: 13, color: 'var(--color-text)', width: '40%' }}>
+                Home position
+              </td>
+              <td colSpan={2} style={{ padding: '4px 0 6px' }}>
+                <select
+                  data-testid={`servo-home-${device.name}`}
+                  value={homeName ?? ''}
+                  onChange={e => commitHome(e.target.value)}
+                  style={{
+                    fontSize: 13, padding: '4px 6px', border: '1px solid var(--color-border)',
+                    borderRadius: 6, background: 'var(--color-surface)', color: 'var(--color-text)',
+                    maxWidth: 170,
+                  }}
+                >
+                  {homeName == null && <option value="">—</option>}
+                  {positions.filter(p => p?.name).map(p => (
+                    <option key={p.name} value={p.name}>{p.name}</option>
+                  ))}
+                </select>
+              </td>
+            </tr>
+          )}
+          {(() => {
+          // GROUPED ROWS (Dan, Aug 24 round 5): Positions / Speed
+          // transitions / Blends — headers only when there's something to
+          // separate.
+          const GroupHead = ({ label }) => (
+            <tr>
+              <td colSpan={3} style={{ padding: '8px 0 1px', fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-light)' }}>{label}</td>
+            </tr>
+          );
+          const renderValueRow = ({ p, i }) => {
+            const geo = geomByRow.get(geomKey(p.name));
+            return (
+            <Fragment key={p.id || `${p.name}-${i}`}>
+            <tr>
+              <td style={{ padding: '4px 10px 4px 0', fontSize: 13, color: geo ? '#991b1b' : 'var(--color-text)', fontWeight: geo ? 700 : 400, width: '40%', whiteSpace: 'nowrap' }} title={geo ? geo.message : (p.name !== plainServoRowLabel(p.name) ? p.name : undefined)}>
+                {plainServoRowLabel(p.name)}
                 {p.moveType && p.moveType !== 'Pos' && (
                   <span style={{ fontSize: 10, color: 'var(--color-text-light)', marginLeft: 6 }}>({p.moveType})</span>
                 )}
@@ -137,11 +247,61 @@ function AxisSection({ smId, device }) {
                   testId={`servo-value-${device.name}-${p.name}`}
                   onCommit={(v) => commitPosition(i, v)}
                 />
-                <span style={{ fontSize: 11, color: 'var(--color-text-light)', marginLeft: 5 }}>mm</span>
+                <span style={{ fontSize: 11, color: 'var(--color-text-light)', marginLeft: 5 }}>{unit}</span>
               </td>
-              <td style={{ padding: '4px 0' }}><RoleTag pos={p} /></td>
+              <td style={{ padding: '4px 0' }}>
+                {geo && (
+                  <span data-testid={`servo-geom-${device.name}-${p.name}`} title={geo.message} style={{
+                    fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+                    background: '#fee2e2', color: '#991b1b', borderRadius: 3, padding: '1px 8px', whiteSpace: 'nowrap',
+                  }}>impossible</span>
+                )}
+              </td>
             </tr>
-          ))}
+            {geo && (
+              <tr data-testid={`servo-geom-msg-${device.name}-${p.name}`}>
+                <td colSpan={3} style={{ padding: '0 0 5px', fontSize: 11.5, color: '#991b1b', fontWeight: 600, whiteSpace: 'normal', lineHeight: 1.45 }}>
+                  ⚠ {geo.message}
+                </td>
+              </tr>
+            )}
+            </Fragment>
+            );
+          };
+          const groups = groupServoRows(visibleRows, (r) => r.p?.name);
+          const hasBlendGroup = groups.some(g => g.key === 'blends');
+          // RED proposed rows — compiled band flags mapped onto this axis;
+          // they live in the Blends group.
+          const proposalsJsx = peerProposals.map(row => (
+            <ProposedRow
+              key={row.rowName}
+              row={row}
+              draft={proposalDrafts?.[`${row.deviceId}:${row.rowName}`]}
+              onDraft={v => onProposalDraft?.(`${row.deviceId}:${row.rowName}`, v)}
+              unit={unit}
+            />
+          ));
+          return (
+            <Fragment>
+              {groups.map(g => (
+                <Fragment key={g.key}>
+                  {g.label && <GroupHead label={g.label} />}
+                  {g.rows.map(renderValueRow)}
+                  {g.key === 'blends' && proposalsJsx}
+                </Fragment>
+              ))}
+              {!hasBlendGroup && peerProposals.length > 0 && (
+                <Fragment>
+                  <GroupHead label="Blends" />
+                  {proposalsJsx}
+                </Fragment>
+              )}
+            </Fragment>
+          );
+          })()}
+          {/* SPEED WINDOWS ARE DEAD (Dan, Aug 24 round 3) — no advanced
+              section: transitions take strict MAM.PC + InPos; the only
+              windows are the two corner blends above. */}
           {/* + add named value — SafeClear / BlendStart etc. become first-class positions */}
           <tr>
             <td style={{ padding: '6px 10px 2px 0' }}>
@@ -195,10 +355,65 @@ function AxisSection({ smId, device }) {
 export function ServoValuesTable() {
   const smId = useV2Shell(s => s.servoTableFor);
   const closeServoTable = useV2Shell(s => s.closeServoTable);
+  const openCompile = useV2Shell(s => s.openCompile);
+  const updateDevice = useDiagramStore(s => s.updateDevice);
   const sm = useDiagramStore(s => (s.project?.stateMachines ?? []).find(m => m.id === smId));
+  const [proposalDrafts, setProposalDrafts] = useState({});
   if (!smId || !sm) return null;
 
   const axes = (sm.devices ?? []).filter(d => d.type === 'ServoAxis');
+
+  // EVERY servo point the code uses must be a visible row (Dan, Aug 23):
+  // compiled *Verify band flags AND the compiled sequence's own required
+  // points (move targets + wideband blend anchors) → red rows. Unresolved
+  // only: once applied they exist as real named positions and the red is gone.
+  const flagRows = mapVerifyFlagsToServoRows(sm).filter(r => !r.unmapped && !r.resolved);
+  const requiredRows = requiredServoRowsOf(sm);
+  const seenRow = new Set(flagRows.map(r => `${r.deviceId}:${r.rowName.toLowerCase()}`));
+  const proposals = [
+    ...flagRows,
+    ...requiredRows.filter(r => !seenRow.has(`${r.deviceId}:${r.rowName.toLowerCase()}`)),
+  ];
+  const proposalsByDevice = new Map();
+  for (const r of proposals) {
+    if (!proposalsByDevice.has(r.deviceId)) proposalsByDevice.set(r.deviceId, []);
+    proposalsByDevice.get(r.deviceId).push(r);
+  }
+
+  /** Write every proposed value as a first-class named position on its axis,
+   *  then open the re-compile with the applied values spelled out. */
+  function applyProposals() {
+    const applied = [];
+    for (const [deviceId, rows] of proposalsByDevice) {
+      const device = axes.find(d => d.id === deviceId);
+      if (!device) continue;
+      const additions = rows.map(r => {
+        const draft = proposalDrafts[`${r.deviceId}:${r.rowName}`];
+        const n = Number(String(draft ?? '').trim());
+        const value = Number.isFinite(n) && String(draft ?? '').trim() !== '' ? n : r.proposedValue;
+        // Required-position rows without a typed value stay open — there is
+        // nothing safe to apply for them.
+        if (value == null) return null;
+        applied.push({ ...r, value });
+        return {
+          id: (crypto.randomUUID ? crypto.randomUUID() : 'pos_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)),
+          name: r.rowName,
+          defaultValue: value,
+          moveType: 'Pos', type: 'position', isHome: false, isRecipe: false,
+        };
+      }).filter(Boolean);
+      if (additions.length) {
+        updateDevice(sm.id, deviceId, { positions: [...(device.positions ?? []), ...additions] });
+      }
+    }
+    if (applied.length === 0) return;
+    const block =
+      'Verified band values from the ME — replace the placeholder wide bands with these:\n' +
+      applied.map(a => `- ${a.deviceName} ${a.rowName}: ${a.value} mm` + (a.flag ? `\n  (flag: ${a.flag})` : '')).join('\n');
+    setProposalDrafts({});
+    openCompile(sm.id, block);
+    closeServoTable();
+  }
 
   return (
     <div
@@ -243,8 +458,37 @@ export function ServoValuesTable() {
               This station has no servo axes.
             </div>
           )}
-          {axes.map(d => <AxisSection key={d.id} smId={sm.id} device={d} />)}
+          {axes.map(d => (
+            <AxisSection
+              key={d.id}
+              smId={sm.id}
+              device={d}
+              proposals={proposalsByDevice.get(d.id) ?? []}
+              proposalDrafts={proposalDrafts}
+              onProposalDraft={(k, v) => setProposalDrafts(o => ({ ...o, [k]: v }))}
+            />
+          ))}
         </div>
+        {proposals.length > 0 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px',
+            borderTop: '1px solid var(--color-border)', flexShrink: 0,
+          }}>
+            <span style={{ flex: 1, fontSize: 11, color: '#991b1b' }}>
+              {proposals.length} red row{proposals.length === 1 ? '' : 's'} the code needs — the proposed values stand unless
+              you change them; empty ones need the model's value.
+            </span>
+            <button
+              type="button"
+              data-testid="servo-apply-proposed-btn"
+              onClick={applyProposals}
+              style={{
+                background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 6,
+                fontSize: 12, fontWeight: 700, padding: '6px 16px', cursor: 'pointer',
+              }}
+            >Apply values (re-compile)</button>
+          </div>
+        )}
       </div>
     </div>
   );

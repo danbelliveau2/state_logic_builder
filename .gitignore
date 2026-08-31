@@ -46,3 +46,6 @@ JARVIS Inbox/*
 
 # Librarian runtime state (per-machine bookkeeping, not knowledge)
 jarvis-knowledge/librarian-state.json
+
+jarvis-knowledge/agent-runtime/
+_covernote_tmp.cjs

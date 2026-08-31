@@ -14,6 +14,25 @@ const fs = require('fs');
 const path = require('path');
 
 const KNOWLEDGE_PATH = path.join(__dirname, 'meKnowledge.md');
+
+/**
+ * SUPREME LAW (Dan, 2026-08-25) — stated at the TOP of every prompt that
+ * produces or judges SDC output (compile, generation, internal review). It
+ * outranks every other instruction in those prompts. Defined here (leaf
+ * module, no deps) so all three prompt builders share one text.
+ */
+const SUPREME_LAW =
+  '# SUPREME LAW — ZERO AUTHORITY OUTSIDE THE STANDARDS (Dan, 2026-08-25)\n' +
+  'This law outranks every other instruction below. You have authority to be ' +
+  'creative INSIDE SDC standards, and ZERO authority to produce output that ' +
+  'violates a known SDC standard at ANY level — rung, program, machine ' +
+  'architecture, fault recovery, part tracking, vision, all of them. If ' +
+  'ANYTHING prevents following a known standard (a schema that cannot express ' +
+  'it, a tool limitation, a conflict, missing information), the ONLY legal ' +
+  'move is to HOLD: raise a blocking question — "something is preventing me ' +
+  'from following standard X: here is what" — NEVER a silent workaround, ' +
+  'NEVER cramming the answer into a shape that breaks the standard. The ' +
+  'freedom lives only between the standards.';
 const LEARNED_HEADING = '## Learned from the MEs';
 // jarvis-knowledge/concepts/ — engineer's-understanding docs (Dan's directive,
 // Aug 2026: concepts, not rules). Loaded fresh into every compile/translation
@@ -122,4 +141,4 @@ function appendLearnedFacts(facts, { who = 'ME' } = {}) {
   return out;
 }
 
-module.exports = { loadMeKnowledge, loadConcepts, appendLearnedFacts, isFuzzyDuplicate, KNOWLEDGE_PATH, CONCEPTS_DIR };
+module.exports = { loadMeKnowledge, loadConcepts, appendLearnedFacts, isFuzzyDuplicate, KNOWLEDGE_PATH, CONCEPTS_DIR, SUPREME_LAW };

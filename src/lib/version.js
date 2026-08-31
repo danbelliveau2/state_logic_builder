@@ -4,10 +4,36 @@
  * Minor bumps (1.1 -> 1.2) on regular pushes.
  * Major bumps (1.x -> 2.0) on request for larger changes.
  */
-export const APP_VERSION = '3.4.1';
+export const APP_VERSION = '3.4.3';
 
 /** Changelog — newest first. Keep entries short. */
 export const CHANGELOG = [
+  {
+    version: '3.4.3',
+    date: '2026-08-25',
+    time: '12:30',
+    author: 'Dan Belliveau',
+    changes: [
+      'AUTOSAVE CAN NO LONGER SAVE ONE PROJECT UNDER ANOTHER\'S FILENAME (data-eater fix) — the debounced autosave captured the project content when a change happened but looked up the target filename 2s later when it fired, so switching/opening a project inside that window wrote the PREVIOUS project\'s content over the NEW project\'s file. Filename and content are now captured together at schedule time and re-verified at write time; any mismatch skips the save. The server\'s POST save route is the second line of defense: it refuses (409) any payload whose project name maps to a different filename than the file being written.',
+    ],
+  },
+  {
+    version: '3.4.2',
+    date: '2026-08-25',
+    time: '11:45',
+    author: 'Dan Belliveau',
+    changes: [
+      'COLUMNS ARE NOW CENTRE-ALIGNED — branchLayout placed every node in a column at the same LEFT EDGE, so nodes of different widths had misaligned centres. The bottom handle sits at the centre, so the edge left the handle and immediately jogged sideways at the node face to reach the next node\'s centre. Columns now carry a CENTRE x and each node is positioned at `centre - itsOwnWidth/2`. A spine is one straight vertical, no bends. Canvas now feeds REAL measured widths into the layout, not just heights.',
+      'BENDS CAN NEVER LAND AT A NODE FACE — the forward Z-bend\'s horizontal rail is clamped to the open band between the two nodes (>= 20px clear of both faces, new `MIN_STUB` in edgeRouting). Any residual centre mismatch now routes vertical stub -> jog in open space -> vertical stub into the target centre.',
+      'NEW "RE-LAYOUT" BUTTON (canvas bottom bar) — re-runs the column layout on the active sequence using real measured sizes. Use it on OLD stored diagrams laid out before centres were aligned. Magnet Dial + SDC Servo PNP have been re-laid out and saved.',
+      'NODE CONTENT NO LONGER PAINTS OUTSIDE THE NODE OUTLINE — signal latch chips, PT log pills, SM-output badges and retry badges rendered as siblings of `.action-row`, bypassing the node\'s only containment point; an unbreakable identifier like `Full_Revolution_No_Stack` painted straight through the border. Every chip strip and chip now clips, and the label ellipsizes inside it.',
+      'PILL NODES FIXED — `border-radius: 50vh` was VIEWPORT-dependent (600px on a 1200px-tall screen) and got clamped to min(w,h)/2, so a tall multi-row pill became a 115px-radius stadium whose top/bottom rows were guaranteed to sit outside the curve (the `SetValue Empty_Fixture_Counter` / `SetOn Reject_` spill). Radius and body inset are now measured from the node\'s own height and capped.',
+      'Polygon-shape body padding corrected — poly14/poly16 padded 12px against a 14px polygon corner inset; pentagon reserved 8px against a taper to a point. Both now clear the shape.',
+      'CENTER LAW FOR EVERY NODE TYPE — layout now estimates real widths per type (DecisionNode with 3+ exits renders max(240, exits*70), wider than the 240 StateNode cap) so wide nodes are centered on the column line too, not positioned as-if 240. Estimator lives in branchLayout.mjs so the server-side generator gets it as well.',
+      'ROOT CAUSE OF THE "EDGE MISSES THE HANDLE" DEFECT FOUND AND FIXED — the v2 shell\'s app-scale control applies CSS `zoom` on <html>; React Flow measures handles with getBoundingClientRect() (zoom-scaled) but computes in CSS px, so at 90% every handle anchor landed at 0.9x its true offset: every edge endpoint sat left of the rendered handle dot by a uniform (1-scale)x offset (12px on a 240px node). Invisible at 100%. Fix: the React Flow canvases (.canvas-wrapper, .v2-cf__canvas) are now un-zoom islands — `zoom: calc(1 / var(--app-scale))` in v2.css — so RF always operates at exactly 1:1 while the rest of the UI scales. Verified green at 80% / 90% / 100% on MagnetLoad and MagnetPickHead.',
+      'NEW "QA" OVERLAY (canvas bottom bar) — asserts the layout law against the LIVE RENDERED canvas: red circle at every edge violation (diagonal, missing perpendicular stub, entry off the target\'s rendered top-center, exit off the rendered handle, bend within 20px of a node face), red box on every node child painting outside the node shape. Green badge = clean. Reads the DOM transform, not React Flow\'s belief — it catches stale-measurement rendering (edges anchored to old node geometry after hot-reloads) that a fresh reload would hide. If the canvas ever looks wrong, hit QA: the red marks ARE the bug report. Badge shows the active UI scale; "Copy report" puts the full per-edge/per-node assertion table on the clipboard for pasting into a chat or issue. Zero rendered edges while the graph has edges counts as a violation — the badge can never show green on an empty assertion.',
+    ],
+  },
   {
     version: '3.4.1',
     date: '2026-05-21',
