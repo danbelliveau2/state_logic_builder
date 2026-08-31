@@ -13,6 +13,16 @@ these headings, so keep the `## Rule N —` format when editing.
 > `JARVIS_MODEL=claude-fable-5` in `.env`) — paying more for a station that
 > imports clean and runs right is always the correct trade.
 
+> **Ask-for-examples doctrine (Dan, 2026-08-23):** when a station needs a
+> mechanism, sequence, or device pattern that NO template, exemplar, or
+> studied concept shows, do NOT invent alone — file a question of kind
+> `example-request` ("I don't have a good SDC example for X — can you give me
+> one?") with your best-guess approach attached as the proposedSolution
+> (solutions-first, always). The team uploads a real SDC example, Jarvis
+> trains on it immediately, and the build continues on learned ground. This
+> applies only to genuinely example-less patterns — constructs the template
+> family or the concepts already answer are never example requests.
+
 ## Prime directive: machines that stop less
 
 SDC's #1 company goal. Generated code must RECOVER, not fault:
@@ -227,9 +237,84 @@ with a plain `XIC(Status.State[n])` list of the auto move states, gated by
 `ServoActionStatus` + `AxisHomedStatus` + `{Axis}Permissive`. Per-state ONS
 trigger rungs, OTL/OTU move-trigger latches, sub-step counters, and
 StateChanged droppers are forbidden shapes (Jason, Aug 2026: "the motion
-triggers have been reformatted"). Back-to-back moves on one axis are handled
-the indexer's way — a trigger state (in the MAM list) exits to a wait/confirm
-state (NOT in the list) so the rung drops false before the next move state.
-Position and speed staging are parallel branches in the ONE Auto Mode rung
-per axis. The validator rejects extra per-axis MAMs, trigger-latch gating,
-and consecutive same-axis move states.
+triggers have been reformatted"). Back-to-back DISTINCT moves on one axis are
+handled the indexer's way — a trigger state (in the MAM list) exits to a
+wait/confirm state (NOT in the list) so the rung drops false before the next
+move state. Fast/slow segments of ONE stroke are NOT two moves: one MAM to
+the final target, plus the axis's "Use MCD For Speed Changes" rung keyed on
+the speed-change segment states (NOT in the MAM list), with the MCD's own
+MOTION_INSTRUCTION control tag and its own `{Axis}MCDSpeed/Accel/Decel`
+staging tags (Jason's correction, 2026-08-25). Position and speed staging are
+parallel branches in the ONE Auto Mode rung per axis. The validator rejects
+extra per-axis MAMs, trigger-latch gating, and consecutive same-axis move
+states.
+
+## Rule 17 — Flow order owns the grid (inline renumbering)
+
+Walking the main flow's transitions from start of sequence to cycle complete,
+state numbers are STRICTLY ASCENDING on the +3 grid. A state synthesized into
+the middle of the flow (a confirm/wait between stroke segments, any splice)
+takes its inline flow position and every downstream state shifts up — the
+sequence reads 10 → 13 → 16, never 10 → 52 → back to 13. Appending at high
+numbers is only correct for genuine SIDE paths (recovery excursions, like the
+indexer's 31/34/37); only loop-backs (retry, next cycle) may transition
+numerically backward. Real CE failure (Jason Perry review of
+SDCServoPNP_JARVIS_v5, 2026-08-24, item 6): confirm states 52/55/58/61
+appended out of flow — "the sequence must go 10 → 13 → 16". Mechanically
+enforced twice: the compiler renumbers inline after compile
+(`renumberInlineOnGrid` in coordinationAuthor.js), and the validators reject
+the sandwich signature (flow runs a → X → b with a < b < X) at both IR and
+L5X level.
+
+## Rule 18 — Axis names are single-letter machine directions
+
+Servo axes are named by machine direction in every generated identifier:
+`XAxis` (horizontal traverse), `ZAxis` (vertical), `YAxis`, `RAxis` (rotary)
+— never the ME's descriptive words. `HorizontalAxis`/`VerticalAxis` in
+routine names, HMI tags, parameters, RangeCheck instances, or alarm text are
+defects (Jason Perry review of v5, 2026-08-24, item 1: "rename
+HorizontalAxis → XAxis; VerticalAxis → ZAxis"). Map the ME's description to
+the letter once, at naming time; the descriptive name survives only in
+comments/labels where it helps the reader. The validator warns (soft) on
+descriptive axis names.
+
+## Rule 19 — Alarms reference only positions that exist
+
+The alarm list is DERIVED from the positions the station actually has. No
+alarm may reference a position absent from the axis's declared position
+table — v5's "Waiting For Horizontal Axis To Reach Home Position" referenced
+an X home that must not exist (horizontal PNP axes have no home: pick and
+place only; init leaves the axis at pick — Jason Perry review of v5,
+2026-08-24, items 8/10/11, resolution relayed by Dan). Corollary: don't alarm
+the station's normal resting condition — with state 4 = Wait For Part
+Present, the template's single "Waiting For Part Present" Severity-1 warning
+is the shape; a second "waiting for cycle start" warning on the same idle is
+removed, not tuned. The cross-validators reject R20 "Waiting … To Reach"
+alarms naming undeclared positions.
+
+## Jason's corrections of MidBaseLoad v1.4.0 (2026-08-31) — LAW
+
+- **ONE PLC PROGRAM PER STATE MACHINE (CE bible §3).** An approved multi-machine
+  split emits SEPARATE programs, never interleaved into one. The cross-machine
+  signals (part-ready / part-gripped / part-clear / gripper-open class) are
+  controller-scope `p_` tags wired as the handshake interface: the producing
+  machine's program SETS its signal at the approved step; the consuming
+  machine's program reads it in its wait transition. The HANDSHAKE INTERFACE
+  block in the job text names every signal, its producer step, and its
+  consumer wait — wire exactly those, invent none.
+- **NO UNUSED DEVICES, EVER.** The emitted device set equals the sheet's device
+  set EXACTLY. A template/exemplar device the station does not have (e.g. the
+  S05 Z servo) is DELETED from the output — no tags, no UDTs, no axis blocks,
+  no NOP routines, no "unused — delete at integration" comments. The validator
+  hard-errors on any of these.
+- **INITIALIZATION, not "fault recovery"** — the controls team's word; it IS
+  the init block 100–127. And initialization must RE-ENTER THE SEQUENCE AT THE
+  CORRECT STATE for the situation: the approved initialization branches say
+  where each path rejoins (carrying part → the place-side state; empty →
+  pick/start). The init block's exit MOVs must land exactly on those states —
+  never blindly at the first sequence step.
+- **SCENARIO COVERAGE IS EXHAUSTIVE (Dan, 2026-08-31).** Initialization must
+  cover the FULL power-up state space the devices define (gripper engaged ×
+  part-known/unknown where sensorless × slide positions × axis position
+  known/unknown). Every combination maps to a defined init path; a genuinely
+  uncovered combination is a HOLD question for the engineer, never a guess.

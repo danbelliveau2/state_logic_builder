@@ -582,12 +582,50 @@ async function generateL5X(projectJson, smId, options = {}) {
     String(process.env.JARVIS_READINESS || 'on').toLowerCase() !== 'off';
   if (readinessEnabled && !options.resume) {
     onProgress(13, 'readiness', 'Readiness pass — anything unresolved that would cause a defect?');
+    // INIT SCENARIO COVERAGE (Dan, 2026-08-31: exhaustive, never sampled) —
+    // deterministic and FREE, before the model call: every power-up
+    // combination the devices define must map to a defined initialization
+    // path; a genuinely uncovered one HOLDS the build with a few-words
+    // policy question (the Jason case: sensorless gripper closed, part
+    // unknown). Runs on the approved split when one exists.
+    let covQuestions = [];
+    try {
+      const { checkInitCoverage } = require('./initCoverage');
+      const specMachines = smObj?.machineSpec?.smSplit ?? null;
+      if (Array.isArray(specMachines) && specMachines.length) {
+        const cov = checkInitCoverage({ machines: specMachines, devices: smObj?.devices ?? [] });
+        // An ANSWERED policy question covers its scenario — never re-hold on
+        // something the engineer already ruled (answers-exist law).
+        let answered = [];
+        try {
+          const qs = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'jarvis-knowledge', 'questions.json'), 'utf8'));
+          answered = (Array.isArray(qs) ? qs : (qs.questions ?? [])).filter(q => q?.status === 'answered').map(q => String(q.question).toLowerCase());
+        } catch { /* no queue — nothing answered */ }
+        const tok = (s) => String(s).toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 3);
+        const isAnswered = (q) => {
+          const qw = tok(q);
+          return answered.some(a => { const hits = qw.filter(w => a.includes(w)).length; return qw.length && hits / qw.length >= 0.6; });
+        };
+        covQuestions = (cov.uncovered ?? []).filter(u => !isAnswered(u.question)).map(u => ({
+          question: u.question,
+          proposedSolution: `${u.proposedSolution}${u.citation ? ` [${u.citation}]` : ''}`,
+          domain: 'mechanical', addressee: 'ME',
+        }));
+        onProgress(13.5, 'readiness', covQuestions.length
+          ? `Init scenario coverage: ${cov.covered.length} covered, ${covQuestions.length} UNCOVERED — holding for policy`
+          : `Init scenario coverage: all ${cov.covered.length} power-up scenarios covered`);
+      }
+    } catch (e) { onProgress(13.5, 'readiness', 'Init coverage check unavailable (build proceeds): ' + (e.message || e)); }
     const { readinessCheck } = require('./preWriteStudy');
     readiness = await readinessCheck({
       planText: jobText,
       studyText: (study && study.text) || '',
       signal: abortSignal,
     });
+    if (covQuestions.length) {
+      readiness.questions = [...covQuestions, ...(readiness.questions ?? [])];
+      readiness.ready = false;
+    }
     if (readiness.error) {
       onProgress(14, 'readiness', 'Readiness check unavailable (build proceeds): ' + readiness.error);
     } else if (readiness.decisions?.length) {
@@ -905,6 +943,8 @@ async function generateL5X(projectJson, smId, options = {}) {
             // side-path recovery excursions (legal backward re-entries).
             const v = validateL5X(l5x, {
               compiledIr: (mode === 'translation' && contractIr) ? contractIr : null,
+              // NO UNUSED DEVICES (Jason, 2026-08-31): emitted set == sheet set.
+              deviceNames: (ir.devices ?? []).map(d => d.displayName || d.name),
             });
             // In translation mode the APPROVED compiled sequence — not the
             // drawn diagram — is the approval contract: states/conditions the

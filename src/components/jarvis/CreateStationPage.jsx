@@ -110,8 +110,8 @@ const SCOPE_NOTYET_BASE = [
 const GEN_LEVELS = [
   {
     id: 'proving',
-    label: 'Sequence & fault recovery — proving the logic',
-    title: 'Standalone / test build: prove the sequence and the fault recovery; machine-level extras stay quietly deferred',
+    label: 'Sequence & initialization — proving the logic',
+    title: 'Standalone / test build: prove the sequence and the initialization; machine-level extras stay quietly deferred',
     scope: {
       generate: ['a standalone PROVING build — sequence & fault-recovery focus', ...SCOPE_GEN_BASE],
       notYet: SCOPE_NOTYET_BASE,
@@ -730,7 +730,7 @@ function diffSummaryChanges(prev, next) {
   const rows = [];
   const sentences = [];
   if (!isStructuredSummary(prev) || !isStructuredSummary(next)) return { rows, sentences };
-  const SECTION_WORD = { sequence: 'Sequence step', failureHandling: 'Fault recovery step' };
+  const SECTION_WORD = { sequence: 'Sequence step', failureHandling: 'Initialization step' };
   for (const key of ['sequence', 'failureHandling', 'interactions']) {
     const a = sectionToLines(key, prev[key] ?? []);
     const b = sectionToLines(key, next[key] ?? []);
@@ -746,7 +746,7 @@ function diffSummaryChanges(prev, next) {
       }
     });
     if (a.length > b.length) {
-      sentences.push({ section: key, text: `${a.length - b.length} line${a.length - b.length === 1 ? '' : 's'} removed from ${key === 'failureHandling' ? 'fault recovery' : key}` });
+      sentences.push({ section: key, text: `${a.length - b.length} line${a.length - b.length === 1 ? '' : 's'} removed from ${key === 'failureHandling' ? 'initialization' : key}` });
     }
   }
   // Devices: header line AND sheet fields (sensors, delays, positions…) count.
@@ -1417,7 +1417,7 @@ function hydrateSummaryFromSm(s, sm) {
 
 // Section cards: how each summary section renders + edits.
 // (Dan, Aug 23: ONE Devices section — the heard-list merged into the device
-// cards; "What can go wrong" reads "Fault recovery".)
+// cards; "What can go wrong" reads "Initialization".)
 // Colored identity headers — the SDC estimate-builder trio (dark navy /
 // light blue / green). Fault recovery renders INSIDE the Sequence section as
 // the second sequence (Dan, Aug 24) — it has no card of its own.
@@ -1428,7 +1428,7 @@ const SUMMARY_SECTIONS = [
   { key: 'interactions', covKey: 'interactions', title: 'Interactions', color: '#475569', headerNote: 'signals with the machine’s other stations', editHint: 'one per line:  Station: the interaction' },
   { key: 'devices', covKey: 'devices', title: 'Devices', color: '#061d39', headerNote: 'what the station actuates and senses', editHint: 'Name — what it is for' },
   { key: 'sequence', covKey: 'sequence', title: 'Sequence', color: '#334155', headerNote: 'the cycle in order — and how it recovers', editHint: 'one step per line, in order' },
-  { key: 'failureHandling', covKey: 'failures', title: 'Fault recovery', renderInside: 'sequence', editHint: 'one step per line, in order:  when → what to do' },
+  { key: 'failureHandling', covKey: 'failures', title: 'Initialization', renderInside: 'sequence', editHint: 'one step per line, in order:  when → what to do' },
 ];
 
 // ── Device-type GROUPS laid out ACROSS the page (Dan, Aug 24) ────────────────
@@ -1772,7 +1772,7 @@ function receiptFromAgentDiffs(diffs = []) {
     parts.push(`${n} change${n === 1 ? '' : 's'} to ${m}'s sequence${tagOnly && n === tagOnly ? ' (tags only — no lines touched)' : ''}, shown on its card`);
   }
   for (const [m, n] of recByMachine) {
-    parts.push(`${m}'s fault recovery updated (${n} line${n === 1 ? '' : 's'}) — shown in its FAULT RECOVERY panel`);
+    parts.push(`${m}'s initialization updated (${n} line${n === 1 ? '' : 's'}) — shown in its INITIALIZATION panel`);
   }
   const removed = diffs.filter(d => d.op === 'device.remove');
   for (const d of removed) {
@@ -8704,7 +8704,7 @@ export function CreateStationPage({ embedded = false }) {
     { key: 'sequence', title: 'Sequence' },
     // Fault recovery reviews on its own only when it renders as its own
     // column; in per-SM mode each machine's recovery rides with Sequence.
-    ...(!reviewPerSmRecovery ? [{ key: 'failureHandling', title: 'Fault recovery' }] : []),
+    ...(!reviewPerSmRecovery ? [{ key: 'failureHandling', title: 'Initialization' }] : []),
     ...((reviewIo.inputs.length + reviewIo.outputs.length) > 0 ? [{ key: 'io', title: 'Inputs & Outputs' }] : []),
     ...((smDecomp?.length ?? 0) >= 2 ? [{ key: 'stateMachines', title: 'State machines' }] : []),
   ];
@@ -10834,11 +10834,11 @@ export function CreateStationPage({ embedded = false }) {
                           const recoveryCol = (
                             <div style={{ minWidth: 0 }} data-testid="sequence-recovery">
                               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                                <SubHead color="#b45309">Fault recovery</SubHead>
+                                <SubHead color="#b45309">Initialization</SubHead>
                                 <span style={{ flex: 1 }} />
-                                {reviewBarFor('failureHandling', 'Fault recovery')}
+                                {reviewBarFor('failureHandling', 'Initialization')}
                               </div>
-                              {editPanelFor('failureHandling', 'Fault recovery')}
+                              {editPanelFor('failureHandling', 'Initialization')}
                               {(activeHostSection === 'sequence' ? [] : failNeeds).map((n, i) => (
                                 <NeedRow
                                   key={i}
@@ -10986,7 +10986,7 @@ export function CreateStationPage({ embedded = false }) {
                                         <div style={{ minWidth: 0 }} data-testid={`recovery-sm-${e.key}`}>
                                         {(e.faultRecovery?.length ?? 0) > 0 || recDiff?.byKey?.[e.key] ? (
                                           <>
-                                            <SubHead color="#b45309">Fault recovery</SubHead>
+                                            <SubHead color="#b45309">Initialization</SubHead>
                                             {/* RECOVERY IS A BRANCHING FLOW (Dan, 2026-08-30):
                                                 structured recoveries draw as a small branch
                                                 diagram; changes ring RED until ✓ got it. */}
@@ -11032,7 +11032,7 @@ export function CreateStationPage({ embedded = false }) {
                                              exists even when no content was drafted — say so
                                              honestly instead of hiding the review. */
                                           <div data-testid={`recovery-empty-${e.key}`} style={{ marginTop: 8 }}>
-                                            <SubHead color="#b45309">Fault recovery</SubHead>
+                                            <SubHead color="#b45309">Initialization</SubHead>
                                             <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>
                                               Nothing drafted yet — describe in the chat how {e.name || 'this machine'} gets
                                               home safe from a mid-cycle fault (part in the gripper vs empty), or

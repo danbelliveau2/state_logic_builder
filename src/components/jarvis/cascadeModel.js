@@ -39,7 +39,7 @@ export const KIND_NOUN = {
   smSplit: 'state machine breakup',
   devices: 'devices',
   sequence: 'sequence',
-  recovery: 'fault recovery',
+  recovery: 'initialization',
   // ONE WORD (Dan, 2026-08-28): "signal" — never "handshake" in step labels.
   interactions: 'signals with other machines',
 };
@@ -311,7 +311,7 @@ export function cascadeStepsOf({ decomp = null, approvedEntries = null, summary 
     // content does; empty content is the step's problem, not a reason to
     // skip the review.
     void hasRec;
-    steps.push({ key: `recovery:${e.key}`, kind: 'recovery', smKey: e.key, smName: e.name ?? '', label: single ? 'Fault recovery' : `${e.name} recovery` });
+    steps.push({ key: `recovery:${e.key}`, kind: 'recovery', smKey: e.key, smName: e.name ?? '', label: single ? 'Initialization' : `${e.name} initialization` });
   }
   return steps;
 }

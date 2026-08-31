@@ -462,6 +462,148 @@ function checkR02Order(rungs, errors) {
   }
 }
 
+// ── Flow order (Rule 17 — Jason Perry's review of v5, 2026-08-24) ───────────
+//
+// "States 52/55/58/61 were added out of order — the sequence must go
+// 10 → 13 → 16": numeric RUNG order (Rule 15) is necessary but not
+// sufficient. Walking the main flow's transitions, state numbers must be
+// strictly ascending: a state synthesized into the middle of the flow takes
+// its inline +3 grid position (downstream states shift up), never a high
+// appended number the flow jumps out to and back from. Loop-backs (retry,
+// next-cycle) and side-path returns go numerically backward as single edges
+// and are NOT flagged; the defect signature is the sandwich — the flow runs
+// a → X → b with a < b < X.
+
+/** Side-path states of a compiled IR: states with NO main-flow incoming edge
+ *  (every entry is a fail/retry branch, recovery, or timeout). Their backward
+ *  re-entries into the main flow are legal (the indexer's 31/34/37 shape) and
+ *  must not trip the sandwich check below. The main-flow definition mirrors
+ *  coordinationAuthor.isMainFlowEdge — kept in sync by the unit test (a
+ *  require here would cycle: coordinationAuthor → client → validator). */
+function sidePathStatesOf(compiledIr) {
+  const out = new Set();
+  if (!compiledIr || !Array.isArray(compiledIr.states)) return out;
+  const isMain = (t) => {
+    if (!t) return false;
+    if (!t.kind || t.kind === 'sequence' || t.kind === 'wait') return true;
+    if (t.kind === 'branch') return t.branch === 'pass' || t.branch == null;
+    return false;
+  };
+  const mainEntered = new Set();
+  for (const t of compiledIr.transitions || []) {
+    if (isMain(t)) mainEntered.add(t.toState);
+  }
+  for (const s of compiledIr.states) {
+    if (Number.isInteger(s.stateNumber) && !s.isInitial && !mainEntered.has(s.stateNumber)) {
+      out.add(s.stateNumber);
+    }
+  }
+  return out;
+}
+
+function checkFlowOrder(rungs, errors, sidePathStates = null) {
+  const incoming = new Map(); // state -> Set(fromState)
+  const outgoing = new Map(); // state -> Set(toState)
+  for (const r of rungs.filter(x => /R02/i.test(x.routine))) {
+    const tos = [...r.text.matchAll(/MOVE?\((\d+),\s*Control\.StateReg\)/g)]
+      .map(m => parseInt(m[1], 10)).filter(n => n >= 4 && n <= 97);
+    if (!tos.length) continue;
+    const froms = [...r.text.matchAll(/XIC\(Status\.State\[(\d+)\]\)/g)]
+      .map(m => parseInt(m[1], 10)).filter(n => n >= 4 && n <= 97);
+    for (const t of tos) for (const f of froms) {
+      if (f === t) continue;
+      if (!incoming.has(t)) incoming.set(t, new Set());
+      incoming.get(t).add(f);
+      if (!outgoing.has(f)) outgoing.set(f, new Set());
+      outgoing.get(f).add(t);
+    }
+  }
+  const seen = new Set();
+  for (const [x, outs] of outgoing) {
+    // A side-path state (recovery/abandon excursion — no main-flow entry in
+    // the compiled IR) legally re-enters the main flow backward.
+    if (sidePathStates && sidePathStates.has(x)) continue;
+    for (const b of outs) {
+      if (b >= x) continue;
+      for (const a of incoming.get(x) || new Set()) {
+        if (a >= b) continue;
+        const key = `${a}->${x}->${b}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        errors.push(`Flow order: the sequence runs ${a} → ${x} → back to ${b} — state ${x} was spliced into the ` +
+          'flow out of numeric order. Synthesized/confirm states are renumbered INLINE on the +3 grid with ' +
+          'downstream states shifted up, never appended at high numbers the flow jumps out to and back from ' +
+          '(Rule 17 — Jason Perry review of v5, 2026-08-24)');
+      }
+    }
+  }
+}
+
+// ── Axis naming (Rule 18 — Jason Perry's review of v5, 2026-08-24) ──────────
+//
+// "Rename HorizontalAxis → XAxis; VerticalAxis → ZAxis": an axis's program
+// identity is its single-letter machine direction (XAxis/ZAxis/YAxis/RAxis),
+// never the ME's descriptive words. Soft warning — a descriptive name imports
+// fine, it just isn't SDC.
+
+const DESCRIPTIVE_AXIS_WORDS =
+  /^(Horizontal|Vertical|Rotary|Rotate|Traverse|Lift|Slide|UpDown|InOut|LeftRight|Linear|Lateral|Longitudinal|Elevator|Gantry|Overhead)/i;
+
+function checkAxisNaming(xml, warnings) {
+  const names = new Set();
+  for (const m of xml.matchAll(/<Routine\b[^>]*\bName="R\d+_([A-Za-z0-9_]+?)Servo"/g)) names.add(m[1]);
+  for (const m of xml.matchAll(/\bName="HMI_([A-Za-z0-9_]*?Axis)"/g)) names.add(m[1]);
+  for (const n of names) {
+    if (DESCRIPTIVE_AXIS_WORDS.test(n)) {
+      warnings.push(`Axis naming: "${n}" is a descriptive axis name — SDC axes are named by single-letter machine ` +
+        'direction (XAxis, ZAxis, YAxis, RAxis); map the ME\'s description to the letter once and use it in every ' +
+        'routine name, HMI tag, parameter, and alarm message (Rule 18 — Jason Perry review of v5, 2026-08-24)');
+    }
+  }
+}
+
+// ── Alarm position references (Rule 19 — Jason Perry's review of v5, 2026-08-24)
+//
+// "Remove references to X home position" / "alarm 9 not needed": the alarm
+// list is derived from the positions that exist. Every R20 "Waiting … To
+// Reach {Position}" alarm must name a position declared in that axis's
+// position table; an alarm about a nonexistent position (v5's X "Home" —
+// horizontal PNP axes have no home) can never be the operator's truth.
+// IR-based: runs from the cross-checks, where the device tables are known.
+
+function checkAlarmPositionRefs(devices, rungs, errors) {
+  const axes = (devices || []).filter(d => /servo/i.test(d.type || ''));
+  if (!axes.length) return;
+  const variants = deviceVariants(axes);
+  const posOf = new Map(); // deviceId -> Set(normalized declared position names)
+  for (const d of axes) {
+    const list = Array.isArray(d.extras?.positions) ? d.extras.positions : [];
+    if (!list.length) continue; // no declared table — nothing to judge against
+    posOf.set(d.id, new Set(list.map(p => normIdent(p && p.name)).filter(Boolean)));
+  }
+  if (!posOf.size) return;
+  const nameOf = id => axes.find(d => d.id === id)?.name || id;
+  for (const r of rungs.filter(x => /R20/i.test(x.routine))) {
+    const m = String(r.comment || '').match(/Waiting For (.+?) To Reach (?:The )?(.+?) (?:Position|Point)/i);
+    if (!m) continue;
+    const axisWords = normIdent(m[1]);
+    let dev = null, bestLen = 0;
+    for (const [id, set] of variants) {
+      for (const v of set) if (axisWords.includes(v) && v.length > bestLen) { dev = id; bestLen = v.length; }
+    }
+    if (!dev || !posOf.has(dev)) continue;
+    const posName = normIdent(m[2]);
+    const declared = posOf.get(dev);
+    const known = [...declared].some(p => p === posName || p.includes(posName) || posName.includes(p));
+    if (!known) {
+      errors.push(`Alarm position reference: R20 alarm "${String(r.comment || '').split('\n')[0].trim()}" names ` +
+        `position "${m[2].trim()}" which is not in the declared position table for ${nameOf(dev)} — the alarm ` +
+        'list is derived from the positions that exist; an alarm on a nonexistent position is removed, not kept ' +
+        '(Rule 19 — Jason Perry review of v5, 2026-08-24; horizontal PNP axes have no home)');
+    }
+  }
+}
+
 // ── Motion trigger shape (Rule 16 — Jason's review, Aug 2026) ───────────────
 //
 // "The motion triggers have been reformatted": the template shape is ONE auto
@@ -472,8 +614,11 @@ function checkR02Order(rungs, errors) {
 // move-trigger latches, sub-step counters) are errors. Because MAM only
 // executes on rung false→true and state bits swap atomically, two states
 // that are CONSECUTIVE in R02 and both in one axis's MAM list mean the
-// second move never executes — that needs the template family's trigger/wait
-// split (the indexer's Trigger Index → Wait For Index Complete shape).
+// second move never executes — distinct back-to-back moves need the template
+// family's trigger/wait split (the indexer's Trigger Index → Wait For Index
+// Complete shape), and fast/slow segments of ONE stroke are ONE MAM to the
+// final target plus an MCD speed change keyed on segment states NOT in the
+// MAM list (Jason's correction of b_mt7qbdtl_7i0izo, 2026-08-25).
 
 function checkMotionTriggerShape(rungs, errors) {
   const seen = new Set();
@@ -532,8 +677,9 @@ function checkMotionTriggerShape(rungs, errors) {
       for (const [f, t] of flowEdges) {
         if (listed.has(f) && listed.has(t)) {
           emit(`Motion trigger shape: states ${f} and ${t} are consecutive in R02 and BOTH in the ${routine} MAM ` +
-            'state list — the MAM rung never goes false between them, so the second move NEVER EXECUTES; use the ' +
-            "template family's trigger/wait split (move state → wait/confirm state not in the list → next move state) (Rule 16)");
+            'state list — the MAM rung never goes false between them, so the second move NEVER EXECUTES; distinct ' +
+            "moves use the trigger/wait split (move state → wait/confirm state not in the list → next move state), " +
+            'and speed segments of one stroke are ONE MAM + the MCD rung (segment states NOT in the MAM list) (Rule 16)');
         }
       }
     }
@@ -551,6 +697,89 @@ function checkMotionTriggerShape(rungs, errors) {
       }
     }
   }
+}
+
+// ── One move per state (compiled-IR level — Dan, Aug 2026) ──────────────────
+//
+// The incident: Jarvis compiled states carrying TWO ServoMove actions on one
+// axis. The template's own structure (auto-derived — templatePatterns.js
+// ONE_MOVE_PER_STATE / ONE_MAM_PER_AXIS) makes that impossible to execute:
+// each axis has ONE auto MAM that edge-fires once per state, and the staging
+// rung maps each state to exactly one Positions[i]. This check runs at the
+// IR/edit-plan level so the defect dies at compile review, before any code.
+
+const SERVO_MOVE_OPS = /^servo(move|incr|index)$/i;
+// Detail text implying the second axis waits for the first to COMPLETE inside
+// the same state (that is sequencing, which the template expresses as a
+// transition — not overlap, which it expresses via permissive gating).
+const AFTER_COMPLETE_HINT = /(after|then|once|when)[^.;|]*\b(complete|finish|\.PC\b|reaches|at position|in ?pos)/i;
+
+/**
+ * Check a compiled IR (or any {states:[{stateNumber,label,actions}]} shape)
+ * for multi-move states. Pure function — used by validateAgainstCompiledIR,
+ * coordinationAuthor's compile validation, and tests.
+ * @returns {{ ok: boolean, errors: string[], warnings: string[] }}
+ */
+function checkOneMovePerState(ir) {
+  const errors = [];
+  const warnings = [];
+  const states = (ir && Array.isArray(ir.states)) ? ir.states : [];
+
+  // Template citation (auto-derived inventory) — best effort, never fatal.
+  let citation = '';
+  try {
+    const { getTemplatePatterns } = require('./templatePatterns');
+    const inv = getTemplatePatterns().patterns.invariants
+      .find(i => i.id === 'ONE_MOVE_PER_STATE' && i.holds);
+    if (inv) citation = ' [template pattern ONE_MOVE_PER_STATE: ' + inv.statement + ']';
+  } catch (_) { /* inventory unavailable — message still stands */ }
+
+  for (const s of states) {
+    const moves = (s.actions || []).filter(a => SERVO_MOVE_OPS.test(String(a.operation || '')));
+    if (moves.length < 2) continue;
+
+    // (1) two+ moves on the SAME axis in one state — structurally impossible:
+    // the axis's single MAM rung cannot edge-fire twice within one state.
+    const byDevice = new Map();
+    for (const m of moves) {
+      const key = m.deviceId || m.deviceName || m.device || '(unknown axis)';
+      if (!byDevice.has(key)) byDevice.set(key, []);
+      byDevice.get(key).push(m);
+    }
+    for (const [, list] of byDevice) {
+      if (list.length > 1) {
+        const dev = list[0].deviceName || list[0].device || 'one axis';
+        const positions = list.map(m => (m.params && m.params.positionName) || '?').join(' then ');
+        errors.push(`One-move-per-state: state ${s.stateNumber} ("${s.label}") has ${list.length} ServoMove actions on ${dev} (${positions}) — ` +
+          'an axis\'s single MAM rung edge-fires ONCE per state, so the second move never executes. ' +
+          'A multi-speed stroke is ONE ServoMove state to the FINAL target (advance:\'inflight\') plus synthesized ' +
+          'wait and ServoSpeedChange (MCD) segment states — never a second ServoMove (Jason 2026-08-25); ' +
+          'genuinely distinct back-to-back moves use the trigger/wait split.' + citation);
+      }
+    }
+
+    // (2) moves on DIFFERENT axes in one state: legitimate ONLY as
+    // permissive-gated overlap (the wideband corner). A chained
+    // "after the first completes" sequence inside one state is the same
+    // defect — the template expresses sequencing via transitions.
+    if (byDevice.size > 1) {
+      const chained = moves.some(m => AFTER_COMPLETE_HINT.test(String(m.detail || '')));
+      const devs = [...byDevice.keys()].map(k => {
+        const m = byDevice.get(k)[0];
+        return m.deviceName || m.device || String(k);
+      }).join(' + ');
+      if (chained) {
+        errors.push(`One-move-per-state: state ${s.stateNumber} ("${s.label}") chains moves on different axes (${devs}) with an after-complete dependency inside ONE state — ` +
+          'the template expresses cross-axis sequencing as a TRANSITION between states (strict MAM.PC+InPos, or the wideband OR for blended corners), never inside one state.' + citation);
+      } else {
+        warnings.push(`One-move-per-state: state ${s.stateNumber} ("${s.label}") commands ${byDevice.size} axes (${devs}) in one state — ` +
+          'acceptable ONLY as permissive-gated overlap (the wideband corner, where the second axis edge-fires when the first enters its clearance band). ' +
+          'If the intent is "move A, then move B", that is two states.');
+      }
+    }
+  }
+
+  return { ok: errors.length === 0, errors, warnings };
 }
 
 // ── Main entry points ────────────────────────────────────────────────────────
@@ -677,6 +906,19 @@ function validateL5X(xml, opts = {}) {
   // 5. L5K string LEN consistency
   checkL5kStrings(xml, errors);
 
+  // 5a. IMPORT SIMULATION — MANDATORY gate (second Jason import failure,
+  //     Aug 2026: AlarmList STRING[10] L5K blob lost its outer closing
+  //     bracket — well-formed XML, correct LENs, dead on import with "Data
+  //     type mismatch"). Structurally parses every tag's L5K literal against
+  //     DataType/Dimensions, cross-checks Decorated element-by-element, and
+  //     enforces ASCII in rung/tag-data CDATA. A file that fails this never
+  //     leaves the pipeline.
+  {
+    const sim = require('./importSimValidator').simulateImport(xml);
+    errors.push(...sim.errors);
+    warnings.push(...sim.warnings);
+  }
+
   // 5b. Studio 5000 import limits (Rule 12): description/comment lengths,
   //     name lengths, identifier legality — hard import gates.
   checkImportLimits(xml, errors, warnings);
@@ -692,6 +934,45 @@ function validateL5X(xml, opts = {}) {
   // 7. R02 rung order is template law (Rule 15): sequence rungs ascending,
   //    before the override block; State_Engine call after every state MOVE.
   checkR02Order(rungs, errors);
+
+  // 7b. Flow order (Rule 17 — Jason Perry review of v5, 2026-08-24): walking
+  //     the main flow's transitions, state numbers strictly ascend; a spliced
+  //     out-of-order confirm state (a → X → b with a < b < X) is an error.
+  checkFlowOrder(rungs, errors, opts.compiledIr ? sidePathStatesOf(opts.compiledIr) : null);
+
+  // 7c. Axis naming (Rule 18 — soft): descriptive axis names (HorizontalAxis)
+  //     warn toward the single-letter convention (XAxis/ZAxis).
+  checkAxisNaming(xml, warnings);
+
+  // 7d. NO UNUSED DEVICES (Jason's correction of MidBaseLoad v1.4.0,
+  //     2026-08-31): the emitted device set equals the sheet's device set —
+  //     template baggage (the S05 Z servo) never ships. Hard errors:
+  //     (a) any comment/text marking something unused or telling a future
+  //         reader to delete it, (b) a servo routine / axis InOut / HMI axis
+  //         structure for a device that is not on the sheet.
+  if (Array.isArray(opts.deviceNames) && opts.deviceNames.length) {
+    const nk = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const sheet = opts.deviceNames.map(nk).filter(Boolean);
+    const onSheet = (name) => { const k = nk(name); return !!k && sheet.some((s) => s === k || s.includes(k) || k.includes(s)); };
+    for (const m of xml.matchAll(/<Routine[^>]*Name="R\d+_([A-Za-z0-9]+?)Servo"/g)) {
+      if (!onSheet(m[1]) && !onSheet(m[1] + 'axis')) {
+        errors.push(`Unused device emitted: routine R##_${m[1]}Servo exists but "${m[1]}" is not on the sheet's device list — delete the routine, its JSR, and every ${m[1]} tag/UDT (no unused devices, ever — Jason 2026-08-31).`);
+      }
+    }
+    const STD = new Set(['toggle', 'momentary']);
+    for (const m of xml.matchAll(/<Tag[^>]*Name="(?:iq_|HMI_)([A-Za-z0-9]+)"[^>]*(?:DataType="(?:AXIS_CIP_DRIVE|ServoOverall)"|Usage="InOut")/g)) {
+      const bare = m[1].toLowerCase();
+      if (STD.has(bare)) continue;
+      if (!onSheet(m[1]) && !onSheet(m[1] + 'axis') && !onSheet(m[1].replace(/axis$/i, ''))) {
+        errors.push(`Unused device emitted: axis tag for "${m[1]}" (iq_/HMI_) but no such device on the sheet — remove it entirely (no unused devices, ever — Jason 2026-08-31).`);
+      }
+    }
+    for (const m of xml.matchAll(/Comment[^>]*>(?:<!\[CDATA\[)?([^<\]]{0,300})/g)) {
+      if (/\bunused\b|\bdelete (the|this) routine\b|delete .* at (machine )?integration/i.test(m[1] ?? '')) {
+        errors.push(`"Unused/delete-me" content shipped in a comment ("${String(m[1]).trim().slice(0, 80)}…") — anything unused is DELETED before emission, never annotated (Jason 2026-08-31).`);
+      }
+    }
+  }
 
   // 8. Motion trigger shape is template law (Rule 16): one MAM per axis,
   //    state-list gating, no invented trigger latches, no consecutive
@@ -746,7 +1027,22 @@ function deviceVariants(devices) {
         const v = words.slice(k).join('');
         if (k === 0 || v.length >= 4) set.add(v);
       }
+      // Word-prefix variants too: code tags keep the leading words and swap
+      // the trailing noun (PartPresentSensor -> i_PartPresent /
+      // PartPresentDebounce).
+      for (let k = 1; k < words.length; k++) {
+        const v = words.slice(0, k).join('');
+        if (v.length >= 4) set.add(v);
+      }
     }
+    // Machine-direction axis-letter aliases (Jason's v5 naming rule): axis
+    // names in code are single-letter machine directions (XAxis/ZAxis/RAxis)
+    // even when the ME's device name says Horizontal/Vertical/Rotary — the
+    // IR name will NEVER appear in the rungs for a correctly named axis.
+    const nameBlob = normIdent(`${d.name || ''} ${d.displayName || ''}`);
+    if (/horizontal|traverse/.test(nameBlob)) set.add(normIdent('XAxis'));
+    if (/vertical/.test(nameBlob)) set.add(normIdent('ZAxis'));
+    if (/rotary|rotational/.test(nameBlob)) set.add(normIdent('RAxis'));
     raw.set(d.id, set);
   }
   // drop ambiguous variants
@@ -1076,6 +1372,10 @@ function validateAgainstDiagram(projectJson, smId, l5x) {
   // (d) motion intent coverage: speed staging + blending (Rule 14)
   checkMotionIntent(ir.devices, flowStates, ir.machineSpec, rungs, errors, warnings, 'diagram');
 
+  // (e) alarm position references (Rule 19): every R20 "Waiting … To Reach"
+  //     alarm names a position declared in the axis's position table.
+  checkAlarmPositionRefs(ir.devices, rungs, errors);
+
   return { ok: errors.length === 0, errors, warnings };
 }
 
@@ -1198,9 +1498,19 @@ function validateAgainstCompiledIR(compiledIr, l5x) {
   // (c) state-label comment consistency against the approved compiled IR
   checkStateComments(gridStates, progXml, rungs, errors, warnings, 'approved compiled sequence');
 
+  // (c2) one move per state in the approval contract itself — a multi-move
+  // state that slipped past compile review must still die here.
+  const omps = checkOneMovePerState(compiledIr);
+  errors.push(...omps.errors);
+  warnings.push(...omps.warnings);
+
   // (d) motion intent coverage: speed staging + blending (Rule 14)
   checkMotionIntent(compiledIr.devices || [], gridStates, compiledIr.machineSpec, rungs, errors, warnings,
     'approved compiled sequence');
+
+  // (e) alarm position references (Rule 19): every R20 "Waiting … To Reach"
+  //     alarm names a position declared in the axis's position table.
+  checkAlarmPositionRefs(compiledIr.devices || [], rungs, errors);
 
   return { ok: errors.length === 0, errors, warnings };
 }
@@ -1215,5 +1525,5 @@ function formatReport(report) {
 
 module.exports = {
   validateL5X, validateAgainstDiagram, validateAgainstCompiledIR, formatReport,
-  isLegalState, detectCompareFamily,
+  isLegalState, detectCompareFamily, checkOneMovePerState, sidePathStatesOf,
 };

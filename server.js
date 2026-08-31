@@ -566,7 +566,9 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
 
       const releaseAi = beginAiWork_('generation', projectJson.name || null, sm.name);
       try {
-        const result = await gen.generateL5X(projectJson, sm.id, body.options || {});
+        // ONE PROGRAM PER SM (Jason, 2026-08-31): stations with an approved
+        // split emit one program per machine, handshakes wired.
+        const result = await require('./src/lib/agentGenerator/multiProgram.js').generateStationPrograms(projectJson, sm.id, body.options || {});
         sendJson(res, 200, result);
       } finally { releaseAi(); }
     } catch (e) {
@@ -936,7 +938,10 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       } catch (e) { console.warn('[generate] pretranslation check failed (full run proceeds):', e.message); }
 
       send('progress', { pct: 2, stage: 'start', detail: `Loaded ${safe}` });
-      const result = await gen.generateL5X(projectJson, sm.id, {
+      // ONE PROGRAM PER SM (Jason, 2026-08-31): split stations emit one
+      // program per machine, handshakes wired (multiProgram falls through
+      // to the single-program pipeline when there is no split).
+      const result = await require('./src/lib/agentGenerator/multiProgram.js').generateStationPrograms(projectJson, sm.id, {
         onProgress, signal: abort.signal,
       });
 

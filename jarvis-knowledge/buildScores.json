@@ -832,10 +832,10 @@
     "project": "PNP_ServoX- PneumaticZ",
     "sm": "MidBaseLoad",
     "jarvisVersion": "1.4.0",
-    "costUSD": 0.0528,
-    "durationS": 24,
-    "attempts": 0,
-    "validationOk": false,
+    "costUSD": 7.4097,
+    "durationS": 1011,
+    "attempts": 1,
+    "validationOk": true,
     "firstPassShip": null,
     "roundsToShip": null,
     "mode": "authoring",
@@ -850,10 +850,83 @@
       "studied": "studied: SDCServoPNP_JARVIS_v7__verified_by_Jason.L5X (engineer-verified, servo family match)"
     },
     "pretranslated": false,
-    "internalReview": null,
+    "internalReview": {
+      "verdict": "fix",
+      "findings": [
+        {
+          "severity": "blocker",
+          "routine": "(program architecture)",
+          "finding": "ARCHITECTURE VIOLATION — one program, two asynchronous mechanisms. This station interleaves the Escapement feed (Escapement_Finger_1/2, Escapement_Shuttle, Shuttle_Gripper, Nest_Part_Present) and the Pick-and-Place transfer (X_Axis, Vertical_Slide, PNP_Gripper) in ONE linear state machine (states 4-55). The escapement cannot strip/re-arm the next part until the whole PNP round trip (37 wait dial → 40 place move → 43 extend → 46 release → 49 retract → 52 return) completes — real concurrency is architecturally impossible, and states 31/34 (shuttle/finger return) are spliced into the PNP flow for exactly that reason. Correct shape: two programs — an Escapement SM owning the feed devices and a PickAndPlace SM owning X Axis / Vertical Slide / PNP Gripper — with p_ parameter signals both ways (part ready at nest; nest clear after the lift), each with its own complete R00/R01/R02/R03/R20 skeleton and its own state grid.",
+          "templateEvidence": "CE standard, Program Structure: \"Asynchronous sequences should be separated into multiple programs. Each program must have no more than one state machine.\" — plus the recorded MidBaseLoad diagram-review finding naming this exact escapement/PNP split (multi-state-machine concept file, 2026-08-31)."
+        },
+        {
+          "severity": "blocker",
+          "routine": "R03_StateLogic",
+          "finding": "Escapement_Finger_2 is a declared device with ZERO commanded rows anywhere in the file — no q_ExtendEscapementFinger2 / q_RetractEscapementFinger2 coil, no R01 conditioning, no alarm. A two-finger escapement that only ever moves one finger has no alternating singulation; a declared actuator with no output is dead on the drawing. Either add the Finger 2 extend/retract rungs at their points in the singulation sequence (paired/alternating with Finger 1) or the device must be removed from the station.",
+          "templateEvidence": "Recorded MidBaseLoad review finding: \"a physical actuator with zero commanded rows is dead on the diagram\" — same class as a declared handshake with no producer/consumer; every device in R03 gets its coil-first control rung with the adjacent opposite-direction rung (S05 R03 rungs 8/9)."
+        },
+        {
+          "severity": "blocker",
+          "routine": "R20_Alarms",
+          "finding": "Motion-timeout alarm coverage is incomplete — several wait states own no alarm rung and therefore no Control.FaultTime MOVE: state 13 (extend Finger 1), 16 (extend Shuttle to pick), 19 (extend Vertical Slide at pick), 22 (engage PNP Gripper), 25 (disengage Shuttle Gripper), 43 (extend Vertical Slide at dial), 46 (disengage PNP Gripper). A stall in any of them runs on whatever FaultTime the previous state happened to leave written and raises no message — worst case the station hangs with no alarm, never reaches 127, and the operator gets nothing. Every waiting state needs its own single-purpose rung carrying its own MOVE(n,Control.FaultTime) and its own message; the extend direction needs an alarm exactly as much as the retract direction does.",
+          "templateEvidence": "S05 R20 rungs 5-9: one rung per waiting milestone, each owning MOVE(3000,Control.FaultTime) and its own AlarmList[i] message, with BOTH directions covered (\"Waiting For X Axis To Extend\" rung 5 AND \"...To Retract\" rung 6; Z extend-to-pick, extend-to-place, retract all separately)."
+        },
+        {
+          "severity": "blocker",
+          "routine": "R05_ZAxisServo",
+          "finding": "A dead routine ships in the file: R05_ZAxisServo is a single NOP whose comment instructs a future reader to \"delete the routine and the unused Z axis from the motion group at machine integration.\" This station has no Z servo (vertical motion is pneumatic), so the routine must be deleted now, not stubbed with a to-do. A rung/routine that must not run is deleted, never smothered — and shipping a self-cancelling instruction to a downstream engineer is exactly the drift the standard exists to prevent.",
+          "templateEvidence": "Anti-pattern corpus item 8 (dead-code switches / disabled-but-shipped logic — AlwaysOff-gated rungs in _1028_Diamond_041024.L5X): \"a rung that must not run is deleted, not smothered.\" R00_Main in the template contains a JSR for every routine that exists; here R05 exists with no caller."
+        },
+        {
+          "severity": "blocker",
+          "routine": "R02_StateTransitions",
+          "finding": "State 4 is an empty pass-through: rung 4 is XIC(Status.State[4]) XIC(SS_OK) MOVE(7,...) — no condition at all, so state 4 advances on the very next scan and exists only to occupy the slot. The standard first sequence state IS the part wait: state 4 \"Start Of Sequence, Wait For Part Present\", consuming the debounced nest sensor. Fold the state-7 wait into state 4 (name it \"Start Of Sequence, Wait For Part In Shuttle Nest\", gate it on NestPartPresentDebounce.On / DryRun) and renumber the flow inline; the Severity-1 starved-feed warning then sits on the real idle state as the template does.",
+          "templateEvidence": "S05 R02 rung 3/4: state 4 = \"Start of sequence, wait for part present\" and its exit rung carries [XIC(PartPresentDebounce.On) ,XIC(DryRun)] XIC(SS_OK); S05 R20 rung 10 puts the 10000 ms Severity-1 warning on that same state 4."
+        },
+        {
+          "severity": "style",
+          "routine": "R02_StateTransitions",
+          "finding": "Rung comments drift from the template's terse action naming into multi-sentence justification prose — e.g. rung 8 \"...X axis verified strictly at pick - the descent is the consequence point. Second branch resumes here from initialization when the shuttle is already presenting a part.\", rung 11 \"...Second branch is the carrying restart - a part is in the PNP gripper, so the sequence rejoins the place flow\", and similar explanatory tails on R03 rungs 12-15. Comments name the physical action or destination only (\"State 19: Extend Vertical Slide At Pick\"); reasoning about why a branch exists goes stale the moment the design changes.",
+          "templateEvidence": "S05 R02 rung comments: \"State 7: Extend z axis to pick position\", \"State 13: Retract z axis\" — action/destination only. Jason's 2026-08-25 correction: rung comments name the physical action, never segment mechanics or justification."
+        },
+        {
+          "severity": "style",
+          "routine": "R20_Alarms",
+          "finding": "ServoAlarm index space has holes: the file uses ServoAlarm[0], [1] and then jumps to [4] for the quickstop warning, leaving [2] and [3] (the template's Z-axis drive-fault and loss-of-reference slots) unused on a single-axis station. Reindex the servo block contiguously (quickstop → ServoAlarm[2]) so ServoAlarmList[] carries no empty strings into the handler; the alarm list is derived from what exists.",
+          "templateEvidence": "S05 R20 rungs 0-4 use ServoAlarm[0..4] contiguously, one index per existing condition; Jason's v5 review: \"the alarm list is derived from what exists.\""
+        },
+        {
+          "severity": "note",
+          "routine": "R01_Inputs",
+          "finding": "Sensorless-direction confirmations (rungs 5-8) correctly carry all three legs — action output ON, reverse output OFF, reverse sensor OFF — before the delay timer runs. That part is right and should survive the rework.",
+          "templateEvidence": "PLC Software Standardization Rev2 §18: the delay timer runs only when the action output is on, the reverse output is off, and the reverse input is off."
+        }
+      ],
+      "standardsQuestions": [],
+      "missingVsTemplate": [
+        "Separate programs for the two asynchronous mechanisms (Escapement SM and PickAndPlace SM), each with its own R00/R01/R02/R03/R20 skeleton and its own state grid",
+        "Inter-SM p_ handshake parameters (part-ready-at-nest, nest-clear) declared with a producer set/clear on one side and a consuming wait on the other",
+        "Escapement_Finger_2 extend/retract control rungs, R01 conditioning, and alarm coverage — the device is declared but never actuated",
+        "R20 timeout alarm rungs (with their own Control.FaultTime MOVE and message) for states 13, 16, 19, 22, 25, 43, 46",
+        "Deletion of the unused R05_ZAxisServo routine rather than a NOP stub carrying a delete-me comment",
+        "Template state-4 semantic: the first sequence state is the part-present wait, not an unconditioned pass-through"
+      ],
+      "summary": "This bounces on architecture before anything else: MidBaseLoad is an escapement feeding a nest plus a pick-and-place carrying to the dial — two mechanisms that must overlap in time — and you compiled them as one interleaved state machine, so the escapement can't re-arm until the whole PNP round trip finishes. That is 'each program must have no more than one state machine,' and it's the exact defect already recorded against this station; split it into two programs with p_ signals both ways. Underneath that, Escapement_Finger_2 is declared but never commanded anywhere, seven wait states (13/16/19/22/25/43/46) have no alarm rung and therefore no FaultTime of their own — a stuck extend hangs the station silently — and R05 ships as a dead NOP routine telling someone else to delete it. Fix the architecture first, then re-derive the alarm partition and the state-4 part wait on the new PickAndPlace/Escapement split; the servo staging, permissive, quickstop and R01 three-leg delay work is sound and carries over.",
+      "questionIds": [],
+      "heldStatus": null,
+      "template": "S05_ServoPNP.L5X",
+      "scope": "full",
+      "model": "claude-opus-5",
+      "costUSD": 1.18,
+      "durationS": 101,
+      "at": "2026-08-31T13:40:38.535Z"
+    },
     "writingNotes": [
       {
         "text": "Held before writing — readiness pass filed 9 question(s) (write cost $0)."
+      },
+      {
+        "text": "MidBaseLoad = escapement feed + servo-X / pneumatic-Z pick and place on the S05_ServoPNP template. One servo axis only (the vertical is a pneumatic slide), so R05_ZAxisServo is blanked and its JSR removed; iq_ZAxis/HMI_ZAxis remain declared as controller-context law. X is single-profile (both moves Fast), Positions[0]=Pick, Positions[1]=Place, no MCD. X permissive = Vertical Slide retracted. Sensorless directions confirmed by the standard three-leg delay rungs in R01. Alarms only where a wait can hang (sensor or axis arrival); Alarm[5] stays the starved-nest warning feeding q_Pause, Alarm[7] is the dial-ready warning. Init 100/103/106/124 implements the approved recovery panel; carrying re-entry at 28 (state 2) and 37 (state 3). i_DialReady is the standalone dial stub (*Replace). Escapement_Finger_2 omitted per the walk."
       }
     ],
     "structuralChanges": [],
@@ -914,71 +987,24 @@
           "addressee": "CE"
         }
       ],
-      "status": "resumed",
-      "decisions": [
-        {
-          "questionId": "q_help_mth8wwzn_vprw1w",
-          "decision": "DialReady is an external input stub per the standalone pattern: XIC(i_DialReady) with the *Replace rung comment for the real dial condition.",
-          "by": "JARVIS (CE)",
-          "at": "2026-08-31T13:23:40.948Z",
-          "source": "shipped work / approved walk"
-        },
-        {
-          "questionId": "q_help_mth8wwzn_0z5ntz",
-          "decision": "EscapementFinger2 was DELETED during the walk (Dan, upthread) — omit entirely: no outputs, no tags, no state logic. Asking again violated the answers-exist law.",
-          "by": "JARVIS (CE)",
-          "at": "2026-08-31T13:23:40.948Z",
-          "source": "shipped work / approved walk"
-        },
-        {
-          "questionId": "q_help_mth8wwzn_1gfdti",
-          "decision": "Fault recovery is Dan's APPROVED recovery panel, verbatim: branch on ShuttleGripper — engaged: hold ready-for-pick; empty: open, retract, finger down, home. Build the R02 recovery rungs from it.",
-          "by": "JARVIS (CE)",
-          "at": "2026-08-31T13:23:40.948Z",
-          "source": "shipped work / approved walk"
-        },
-        {
-          "questionId": "q_help_mth8wwzn_ayq8my",
-          "decision": "Nest_Part_Present is a debounced digital input — standard AOI_Debounce (100 ms on/off) per R01 of the exemplar; timerMs=1000 is a generic default, ignore it.",
-          "by": "JARVIS (CE)",
-          "at": "2026-08-31T13:23:40.948Z",
-          "source": "shipped work / approved walk"
-        },
-        {
-          "questionId": "q_help_mth8wwzn_tjn1x1",
-          "decision": "Gate the State 40→43 transition on XAxis_MAM.PC + DN per the exemplar's motion-complete pattern; FaultTime 3000 ms.",
-          "by": "JARVIS (CE)",
-          "at": "2026-08-31T13:23:40.948Z",
-          "source": "shipped work / approved walk"
-        },
-        {
-          "questionId": "q_help_mth8wwzn_k04o1q",
-          "decision": "Sensorless grippers use the exemplar's delay pattern (output → TON → sensor-substitute), engage and disengage both.",
-          "by": "JARVIS (CE)",
-          "at": "2026-08-31T13:23:40.948Z",
-          "source": "shipped work / approved walk"
-        },
-        {
-          "questionId": "q_help_mth8wwzn_smsh96",
-          "decision": "10 s timeout on Wait-For-Dial-Ready per the verified exemplar's waiting-for-part pattern — Alarm 'Waiting For Dial Ready'.",
-          "by": "JARVIS (CE)",
-          "at": "2026-08-31T13:23:40.948Z",
-          "source": "shipped work / approved walk"
-        },
-        {
-          "questionId": "q_help_mth8wwzn_7zplnj",
-          "decision": "State 55 sets q_StationComplete (OTE) per the standalone template pattern — the dial's stub notification.",
-          "by": "JARVIS (CE)",
-          "at": "2026-08-31T13:23:40.948Z",
-          "source": "shipped work / approved walk"
-        }
-      ],
-      "note": "8 decisions made from shipped work — see build record; 1 question for the ME."
+      "status": "resolved"
     },
     "resumePath": "C:\\SDC-StateLogic\\generated\\PNP_ServoX-_PneumaticZ\\MidBaseLoad__held__mth8wwzq.resume.json",
     "score": null,
     "scoredBy": null,
     "scoreComment": null,
-    "filePath": null
+    "filePath": "C:\\SDC-StateLogic\\generated\\PNP_ServoX-_PneumaticZ\\MidBaseLoad__jarvis_v1.4.0__2026-08-31_1340.L5X",
+    "resumedAt": "2026-08-31T13:40:38.538Z",
+    "engineerVerdict": {
+      "verdict": "engineer-corrected",
+      "by": "Jason",
+      "at": "2026-08-31T15:23:18.713Z",
+      "findings": [
+        "two state machines combined into one program (architecture violation — one program per SM)",
+        "unused servo Z emitted from the template with an \"unused\" comment (no unused devices, ever)",
+        "\"fault recovery\" is INITIALIZATION, and init exit must re-enter the sequence at the correct state per the approved branches"
+      ],
+      "lessonsFiled": 3
+    }
   }
 ]

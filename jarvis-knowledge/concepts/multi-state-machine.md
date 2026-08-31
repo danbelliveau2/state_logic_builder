@@ -148,3 +148,31 @@ Terminology: in sequences and ME-facing speech the word is **signal** —
 "Wait for Dial's ready signal", "Signal part gripped". Never "handshake"
 as a step word. Interactions live as LINES IN THE SEQUENCES (both sides),
 never as a separate list — a separate list drifts.
+
+## Feeder bowl ownership on dial stations (2026-08-28)
+
+On dial stations, the vibratory feeder bowl is owned by the ESCAPEMENT state machine, never the pick-and-place — or it runs free/external, uncommanded by any station state machine. This is consistent across every dial station SDC has shipped; treat pick-and-place ownership of a feeder bowl as a red flag to reconsider, not a valid station-specific choice.
+
+_Source: Lesson notes - dial station feeder bowls.md (local inbox drop), ingested 2026-08-28 by the inbox librarian._
+
+## PartStarted / jump-state recovery pattern (2026-08-30)
+
+- State machines carry a standard 'PartStarted' flag plus a jump state (where applicable) so that on restart/recovery a station resumes from where the part actually is in the sequence rather than restarting the part from state 0 — this is the general-purpose version of the servo-PNP-specific recovery pattern (clear Z, check gripper, go pick/place) applied across state-machine station types generally.
+
+_Source: Revision History.md (network: Standards - Software), ingested 2026-08-30 by the inbox librarian._
+
+## PartStarted tracking for fault-recovery jump states (2026-08-30)
+
+- State machines track a **PartStarted** flag/logic so that on a fault or mode change, recovery can jump directly to the state matching where the part actually is in its cycle, instead of restarting the part from the beginning. This is the general recovery pattern behind per-device recovery logic (e.g. the gripper-open/closed branch already known for servo PNP) — PartStarted is the station-level version of 'where in the sequence is this part.'
+
+_Source: Revision History.md (network: Standards - Software), ingested 2026-08-30 by the inbox librarian._
+
+## PartStarted concept, jump-state pattern, and states-not-flags for pause (2026-08-30)
+
+Template v3.0 formalized a 'PartStarted' bit/logic block across all state machines, with an associated 'jump state' that a station's transition logic can route to when PartStarted is true and the ME's sequence calls for it (used to re-enter mid-sequence rather than restart from the top for tracked parts). 
+
+The indexer template's v4.1 pause feature is implemented as two dedicated states (40 & 42) added to S00_IndexerSP / S00_IndexerNoSP, not a pause flag layered onto existing states — consistent with the SDC preference for representing distinct machine behaviors as explicit numbered states in the sequence rather than as modifier bits checked everywhere.
+
+_Source: Revision History.md (network: Standards - Software), ingested 2026-08-30 by the inbox librarian._
+- (2026-08-31, from Jason's correction of build b_mth8wwzq_ucjbmc) ONE PLC PROGRAM PER STATE MACHINE (CE bible §3, Jason 2026-08-31): an approved multi-machine split emits SEPARATE programs — never interleaved into one — with the cross-machine signals (part-ready, part-gripped, part-clear, gripper-open class) wired as the handshake interface between them. Combining two asynchronous mechanisms into one program is an architecture violation, full stop.
+- (2026-08-31, from Jason's correction of build b_mth8wwzq_ucjbmc) INITIALIZATION, NOT 'FAULT RECOVERY' (controls team's word — it IS the init block 100–127; Jason 2026-08-31), and it must RE-ENTER THE SEQUENCE AT THE CORRECT STATE for the situation: the approved initialization branches say where each path rejoins (carrying part → the place-side state; empty → pick/start) and the init block's exit MOVs must land exactly there — never blindly at the first step. Re-entry-target correctness is a reviewer checklist item.

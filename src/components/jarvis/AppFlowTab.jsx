@@ -100,7 +100,7 @@ const STAGES = [
     },
   },
   {
-    n: '6', title: 'Fault recovery',
+    n: '6', title: 'Initialization',
     rows: {
       do: 'You review what this machine does when a step faults — what retracts, what disengages, where it lands. It renders in the same block as the sequence, side by side: the cycle in order, and how it recovers. Always its own approve step, for every machine.',
       loads: 'Standing knowledge and the archetype notes — recovery follows the shipped init patterns: retract vertical, then travel, land in a known safe state.',
