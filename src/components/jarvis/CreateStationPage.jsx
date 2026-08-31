@@ -2081,7 +2081,7 @@ function SectionLines({ sectionKey, items, onChange, editHint, preserveRich = fa
   );
 }
 
-function SummarySection({ section, items, cov, optional, onChange, agreedNeeds, onAgreeNeed, renderBody, savedTick, reviewBar, topPanel, dimmed = false }) {
+function SummarySection({ section, items, cov, optional, onChange, agreedNeeds, onAgreeNeed, renderBody, savedTick, reviewBar, topPanel, dimmed = false, collapsed = false, onToggleCollapse = null }) {
   // SILENCE = COVERED (Dan, Aug 24: "if it's not covered, you're going to
   // ask — so of course it's covered"). No verdict chips at all — a section
   // shows real content, or real NEEDS as NeedRow questions. Nothing else.
@@ -2109,20 +2109,31 @@ function SummarySection({ section, items, cov, optional, onChange, agreedNeeds, 
       <div style={{
         display: 'flex', alignItems: 'baseline', gap: 10,
         background: section.color ?? '#061d39', padding: '5px 14px',
-      }}>
+        ...(onToggleCollapse ? { cursor: 'pointer' } : {}),
+      }}
+        {...(onToggleCollapse ? { onClick: onToggleCollapse, title: collapsed ? 'expand' : 'collapse' } : {})}
+      >
+        {onToggleCollapse && (
+          <span data-testid={`section-collapse-${section.key}`} style={{ fontSize: 10, color: 'rgba(255,255,255,0.85)' }}>{collapsed ? '▸' : '▾'}</span>
+        )}
         <span style={{
           fontSize: 11, fontWeight: 800, color: '#fff',
           letterSpacing: '0.06em', textTransform: 'uppercase',
         }}>
           {section.title}
         </span>
-        {section.headerNote && (
+        {collapsed ? (
+          <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.75)' }}>
+            {items.length} line{items.length === 1 ? '' : 's'} — click to expand
+          </span>
+        ) : section.headerNote && (
           <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.75)' }}>{section.headerNote}</span>
         )}
         <SaveTick state={savedTick} onDark testId={`section-savetick-${section.key}`} />
         <span style={{ flex: 1 }} />
         {reviewBar}
       </div>
+      {collapsed ? null : (<>
       <div style={{ padding: '8px 14px 10px' }}>
       {topPanel}
 
@@ -2180,6 +2191,7 @@ function SummarySection({ section, items, cov, optional, onChange, agreedNeeds, 
           the ONE Corrections/Changes box — Jarvis routes them to the section
           they name. Inline click-to-edit on every line covers direct fixes. */}
       </div>
+      </>)}
     </div>
   );
 }
@@ -2958,10 +2970,14 @@ function PneumaticDraftCard({ device, idx, onPatch, headerProps }) {
 /** INPUTS & OUTPUTS — DERIVED, demoted (Dan, Aug 23): a collapsed secondary
  *  strip at the BOTTOM of the sheet. Generated from the device tables via the
  *  central tagNaming — there is nothing here for the ME to fill out. */
-function IoDerivedCard({ devices, ioNotes, reviewBar, topPanel }) {
+function IoDerivedCard({ devices, ioNotes, reviewBar, topPanel, collapsed = null, onToggleCollapse = null }) {
   // Starts OPEN (Dan, Aug 24): collapsible for tidiness, but visible by
-  // default so nobody misses that it exists.
-  const [open, setOpen] = useState(true);
+  // default so nobody misses that it exists. When the sheet-wide collapse
+  // state drives it (Dan, 2026-08-30: collapsible everything, per-draft),
+  // the controlled props win over the local toggle.
+  const [openLocal, setOpenLocal] = useState(true);
+  const open = collapsed == null ? openLocal : !collapsed;
+  const setOpen = (fn) => (onToggleCollapse ? onToggleCollapse() : setOpenLocal(fn));
   const { inputs, outputs } = deriveIoLists(devices);
   if (!inputs.length && !outputs.length) return null;
   const List = ({ title, rows, testId }) => (
@@ -4580,6 +4596,29 @@ export function CreateStationPage({ embedded = false }) {
     setInputsCollapsed((localCascade?.steps && Object.values(localCascade.steps).some(r => r?.approved === true)) ?? false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
+  // COLLAPSIBLE EVERYTHING (Dan, 2026-08-30): every sheet section collapses
+  // like the inputs do; the choice persists per draft. {sectionKey: true}.
+  const [collapsedSections, setCollapsedSections] = useState({});
+  const collapsePrefLoadedRef = useRef(null);
+  useEffect(() => {
+    const id = draftIdRef.current;
+    if (!id || collapsePrefLoadedRef.current === id) return;
+    collapsePrefLoadedRef.current = id;
+    try {
+      const stored = localStorage.getItem(`jarvis.sheetCollapsed.${id}`);
+      if (stored) setCollapsedSections(JSON.parse(stored) || {});
+    } catch { /* private mode */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+  const writeCollapsed = (next) => {
+    setCollapsedSections(next);
+    try { localStorage.setItem(`jarvis.sheetCollapsed.${draftIdRef.current}`, JSON.stringify(next)); } catch { /* private mode */ }
+  };
+  const toggleSectionCollapse = (key) => writeCollapsed({ ...collapsedSections, [key]: !collapsedSections[key] });
+  const setAllSectionsCollapsed = (on) => writeCollapsed(on
+    ? { interactions: true, devices: true, sequence: true, io: true }
+    : {});
+
   const fullExplanation = useMemo(() => [
     description,
     ...explLayers.map((L, i) => `\n\n--- CHANGE-ORDER LAYER ${i + 2} (added ${new Date(L.at).toISOString().slice(0, 10)}) ---\n${L.text}`),
@@ -9547,6 +9586,11 @@ export function CreateStationPage({ embedded = false }) {
                 {cascadeLive && (
                   <>
                     <BandHeader label="Station" note="the guided review — approve each step, it locks in below" />
+                    {/* COLLAPSIBLE EVERYTHING (Dan, 2026-08-30): one-click fold for the whole sheet. */}
+                    <div style={{ display: 'flex', gap: 12, margin: '-4px 0 8px' }}>
+                      <button type="button" data-testid="sheet-expand-all" onClick={() => setAllSectionsCollapsed(false)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10.5, color: C.muted, textDecoration: 'underline' }}>expand all</button>
+                      <button type="button" data-testid="sheet-collapse-all" onClick={() => setAllSectionsCollapsed(true)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10.5, color: C.muted, textDecoration: 'underline' }}>collapse all</button>
+                    </div>
                     {(() => {
                       const step = cascade.activeStep;
                       if (!step) return null; // all approved — the green card below closes it
@@ -9730,6 +9774,8 @@ export function CreateStationPage({ embedded = false }) {
                       reviewBar={reviewBarFor(section.key, section.title, true)}
                       topPanel={<>{stepPanelFor(section.key)}{editPanelFor(section.key, section.title)}</>}
                       dimmed={sectionQueued(section.key)}
+                      collapsed={!!collapsedSections[section.key]}
+                      onToggleCollapse={() => toggleSectionCollapse(section.key)}
                       onChange={items => {
                         // withSheetPrefill keeps the device line, the device
                         // card, and the IO list agreeing (ME's words win).
@@ -10376,6 +10422,11 @@ export function CreateStationPage({ embedded = false }) {
                       <>
                         {chatBlock}
                         <BandHeader label="Station" note="review and correct" />
+                        {/* COLLAPSIBLE EVERYTHING (Dan, 2026-08-30): one-click fold for the whole sheet. */}
+                        <div style={{ display: 'flex', gap: 12, margin: '-4px 0 8px' }}>
+                          <button type="button" data-testid="sheet-expand-all" onClick={() => setAllSectionsCollapsed(false)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10.5, color: C.muted, textDecoration: 'underline' }}>expand all</button>
+                          <button type="button" data-testid="sheet-collapse-all" onClick={() => setAllSectionsCollapsed(true)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10.5, color: C.muted, textDecoration: 'underline' }}>collapse all</button>
+                        </div>
                         {reviewSections.length > 0 && (
                           <div
                             data-testid="review-progress-line"
@@ -10456,6 +10507,8 @@ export function CreateStationPage({ embedded = false }) {
                     ioNotes={summary.io?.ioNotes}
                     reviewBar={reviewBarFor('io', 'Inputs & Outputs', true)}
                     topPanel={editPanelFor('io', 'Inputs & Outputs')}
+                    collapsed={!!collapsedSections.io}
+                    onToggleCollapse={() => toggleSectionCollapse('io')}
                   />
                 )}
 
