@@ -44,7 +44,6 @@ import { COVERAGE_ITEMS, assessCoverage } from '../../lib/coverageChecklist.js';
 import { DescribeSurface } from './DescribeSurface.jsx';
 import { downscaleImage } from '../../lib/imageUtils.js';
 import { DictatedTextarea } from './DictatedTextarea.jsx';
-import { StationViewToggle } from './StationViewToggle.jsx';
 import { SpecQuestionsSection, BlockingShell, ExtraBlockerRow } from './SpecQuestionsSection.jsx';
 import { GenerationScopeNote } from './GenerationScopeNote.jsx';
 import { useV2Shell } from '../../v2/useV2Shell.js';
@@ -8452,7 +8451,16 @@ export function CreateStationPage({ embedded = false }) {
     setError(null);
     const cleanName = name.trim().replace(/\s+/g, '');
     const stationNumber = Number(station) || 1;
-    const prog = startStagedProgress(linkedSmId ? REBUILD_STAGES : STAGES);
+    // THE APPROVED FLOW IS THE DIAGRAM (Dan, 2026-08-31): a walked draft's
+    // structured steps compile into the canvas deterministically — no model
+    // re-draw, no drift from what he approved. The model draw survives only
+    // for non-cascade paths (no structured proposal to compile from).
+    const compiledDraw = !linkedSmId && (smProposal?.stateMachines?.length ?? 0) > 0;
+    const stages = (linkedSmId ? REBUILD_STAGES : STAGES).map(s =>
+      compiledDraw && /^(Drawing the station sequence|Rebuilding the sequence)/.test(s.label)
+        ? { ...s, label: 'Compiling your approved flow…', ms: 1200 }
+        : s);
+    const prog = startStagedProgress(stages);
     let smId = null;
     // Once a summary exists, IT is the build input — the raw explanation
     // rides along as reference so nothing the engineer said is lost.
@@ -8460,24 +8468,41 @@ export function CreateStationPage({ embedded = false }) {
       ? `${summaryToText(summary)}\n\n---\nOriginal explanation (reference only — the summary above is authoritative):\n\n${description.trim()}`
       : description.trim();
     try {
-      // ── 1. Draw the station (one SM, Dan's layout rules) ────────────────
+      // ── 1. The diagram — COMPILED from the approved flow when a walked
+      // proposal exists (deterministic, instant, drift-free); the model draw
+      // survives only for paths with no structured steps to compile from. ──
       prog.jumpTo(1, 8);
-      const dRes = await fetch('/api/jarvis/diagram', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          description: desc,
-          images: images.filter(i => String(i.mediaType || '').startsWith('image/')).map(i => ({ name: i.name, base64: i.base64, mediaType: i.mediaType })),
-          station: {
-            name: cleanName,
+      let dData;
+      if (compiledDraw) {
+        const { compileApprovedFlow } = await import('../../lib/compileApprovedFlow.js');
+        dData = {
+          ok: true,
+          sm: compileApprovedFlow({
+            machines: smProposal.stateMachines,
+            sheetDevices: summary?.devices ?? [],
+            stationName: cleanName,
             displayName: name.trim(),
             stationNumber,
-            otherSms: otherSms.map(s => ({ name: s.name, displayName: s.displayName ?? s.name })),
-          },
-        }),
-      });
-      const dData = await dRes.json().catch(() => ({}));
-      if (!dRes.ok || !dData.ok) throw new Error(dData.error || `Diagram request failed (${dRes.status})`);
+          }),
+        };
+      } else {
+        const dRes = await fetch('/api/jarvis/diagram', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            description: desc,
+            images: images.filter(i => String(i.mediaType || '').startsWith('image/')).map(i => ({ name: i.name, base64: i.base64, mediaType: i.mediaType })),
+            station: {
+              name: cleanName,
+              displayName: name.trim(),
+              stationNumber,
+              otherSms: otherSms.map(s => ({ name: s.name, displayName: s.displayName ?? s.name })),
+            },
+          }),
+        });
+        dData = await dRes.json().catch(() => ({}));
+        if (!dRes.ok || !dData.ok) throw new Error(dData.error || `Diagram request failed (${dRes.status})`);
+      }
 
       // ── 2. Insert into the CURRENT project via store actions ────────────
       prog.jumpTo(2, 63);
@@ -8882,22 +8907,12 @@ export function CreateStationPage({ embedded = false }) {
             ← Back
           </button>
         )}
-        {/* Embedded sheets get their toggle from the persistent StationBanner
-            above — never a second copy here (Dan: one toggle that never
-            moves). Full-viewport fresh drafts keep the disabled-Diagram hint. */}
-        {!embedded && (
-          <StationViewToggle
-            active="sheet"
-            onDiagram={() => { if (!busy) handleBack(); }}
-            diagramDisabledReason={
-              busy ? 'Wait for the current step to finish'
-                : linkedSmId ? null
-                  : 'Build the station first — the sheet creates the diagram'
-            }
-          />
-        )}
+        {/* (Spec Sheet | Diagram toggle DELETED — Dan, 2026-08-31: "it's
+            just one sheet — station sheet". The flow IS on the sheet; the
+            classic canvas stays reachable for v1-era stations via their
+            own banner.) */}
         <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>
-          {linkedSmId ? `Station Specs — ${name.trim() || 'Station'}` : 'Create Station'}
+          {linkedSmId ? `Station Sheet — ${name.trim() || 'Station'}` : 'Station Sheet'}
         </span>
         {inSummary && (
           <span style={{

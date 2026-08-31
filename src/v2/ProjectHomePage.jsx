@@ -174,6 +174,32 @@ function StationCard({ sm, latestBuild, blockers, onOpen }) {
           >{blockers}</span>
         )}
       </div>
+      {/* AT-A-GLANCE NUMBERS (Dan, 2026-08-31): state machines + devices by
+          family — one quiet line, cards stay clean. */}
+      {(() => {
+        const smCount = (sm.machineSpec?.smSplit?.length ?? 0) || 1;
+        const devs = sm.devices ?? [];
+        const fam = { servo: 0, pneumatic: 0, sensor: 0, other: 0 };
+        for (const d of devs) {
+          const t = String(d.type ?? '');
+          if (/servo|axis/i.test(t)) fam.servo++;
+          else if (/pneumatic|gripper|cylinder|slide|escapement/i.test(t)) fam.pneumatic++;
+          else if (/sensor/i.test(t)) fam.sensor++;
+          else fam.other++;
+        }
+        const bits = [
+          `${smCount} state machine${smCount === 1 ? '' : 's'}`,
+          fam.servo > 0 && `${fam.servo} servo${fam.servo === 1 ? '' : 's'}`,
+          fam.pneumatic > 0 && `${fam.pneumatic} pneumatic${fam.pneumatic === 1 ? '' : 's'}`,
+          fam.sensor > 0 && `${fam.sensor} sensor${fam.sensor === 1 ? '' : 's'}`,
+          fam.other > 0 && `${fam.other} other`,
+        ].filter(Boolean);
+        return (
+          <div data-testid={`home-station-stats-${sm.name}`} style={{ fontSize: 10.5, color: 'var(--color-text-muted)', margin: '2px 0 4px' }}>
+            {bits.join(' · ')}
+          </div>
+        );
+      })()}
       <div className="v2-phome__stages">
         {stages.map(st => (
           <span
