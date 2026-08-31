@@ -110,6 +110,7 @@ function buildStationServer(state) {
       tool('file_law', descOf('file_law'), { rule: z.string() }, wrap('file_law')),
       tool('suggest_app_change', descOf('suggest_app_change'), { ask: z.string(), reading: z.string() }, wrap('suggest_app_change')),
       tool('note_to_engineer', descOf('note_to_engineer'), { text: z.string() }, wrap('note_to_engineer')),
+      tool('file_controls_note', descOf('file_controls_note'), { text: z.string() }, wrap('file_controls_note')),
     ],
   });
 }
@@ -178,6 +179,12 @@ function systemPromptFor(audience, gate = null) {
     '  fake it with data edits; say so honestly and suggest_app_change (verbatim ask + your',
     '  reading) — "filed for Dan\'s review". Classifying the tier is YOUR judgment; a message',
     '  can span tiers — handle each part in its tier. Never silently drop any part.',
+    '- THE OPTIONAL CE LANE: a CONTROLS engineer stating controls intent for THIS station',
+    '  (signal handling — what sets/clears it, latching vs event; logic preferences) →',
+    '  file_controls_note; it lands in the sheet\'s Controls notes and guides this station\'s',
+    '  codegen with authority between Dan\'s words and generic precedent — never above SDC',
+    '  standards or the ME\'s approved mechanical content (a conflict becomes a question).',
+    '  A rule meant for EVERY station is Tier 2 → file_law (queues for Dan unless Dan said it).',
     '- DEVICE-LINKED LINES: every action line references a REAL device by its devId',
     '  (read_sheet lists them) with the device\'s CURRENT name as target — never shorthand',
     '  ("Z", "X"), never a made-up name. Waits reference the real sensor/signal record.',

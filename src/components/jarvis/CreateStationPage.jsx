@@ -4424,6 +4424,10 @@ export function CreateStationPage({ embedded = false }) {
   // Non-standard requests Jarvis flagged (description contradicts an SDC
   // standard) — rendered as the amber callout, persisted into machineSpec.
   const [nonStandardFlags, setNonStandardFlags] = useState(draft?.nonStandardFlags ?? []);
+  // THE OPTIONAL CE LANE (Dan, 2026-08-30): station-scoped controls intent,
+  // filed conversationally (CE toggle + chat → file_controls_note), rendered
+  // in the inputs area, rides into codegen between Dan's words and precedent.
+  const [controlsNotes, setControlsNotes] = useState(draft?.controlsNotes ?? []);
   // In-place edit tracking: baseline = the summary as Jarvis last returned
   // it; ANY inline edit sets dirty and raises the sticky Resubmit bar.
   const [dirty, setDirty] = useState(false);
@@ -4673,7 +4677,7 @@ export function CreateStationPage({ embedded = false }) {
     images: withImages ? images : [],
     phase: phaseOverride ?? ((phase === 'summary' || phase === 'summarizing') ? 'summary' : 'input'),
     summary, jarvisCoverage, questions, nonStandardFlags, summarizeCost,
-    purpose, genLevel, expectedSms, referenceText, agreedNeeds: [...agreedNeeds], sheetAhead,
+    purpose, genLevel, expectedSms, referenceText, controlsNotes, agreedNeeds: [...agreedNeeds], sheetAhead,
     // Corrections chat — persisted capped (last 40 turns) so the sheet's
     // conversation survives reopen without bloating localStorage.
     chatThread: chatThread.slice(-40),
@@ -4761,7 +4765,7 @@ export function CreateStationPage({ embedded = false }) {
     }, 1000);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, station, description, images, phase, summary, jarvisCoverage, questions, nonStandardFlags, summarizeCost, purpose, genLevel, expectedSms, referenceText, agreedNeeds, sheetAhead, chatThread, localCascade, smProposal, deviceAssignments, draftKey, linkedSmId]);
+  }, [name, station, description, images, phase, summary, jarvisCoverage, questions, nonStandardFlags, summarizeCost, purpose, genLevel, expectedSms, referenceText, controlsNotes, agreedNeeds, sheetAhead, chatThread, localCascade, smProposal, deviceAssignments, draftKey, linkedSmId]);
 
   // ── Pictures persist FOREVER — hardened after the Aug 24 SECOND loss ─────
   // The server copy is authoritative and its merge is ADDITIVE (union by
@@ -4999,6 +5003,7 @@ export function CreateStationPage({ embedded = false }) {
     // stored thread, silently WIPING the draft's chat history on resume.
     setChatThread(Array.isArray(d.chatThread) ? d.chatThread : []);
     setStationAccepted(d.stationAccepted ?? null);
+    setControlsNotes(Array.isArray(d.controlsNotes) ? d.controlsNotes : []);
     setExplLayers(Array.isArray(d.explanationLayers) ? d.explanationLayers : []);
     setExplAddingLayer(false); setExplLayerDraft('');
     reconciledDraftRef.current = null; // re-run the load reconcile for this draft
@@ -5146,6 +5151,7 @@ export function CreateStationPage({ embedded = false }) {
           // ME's expected SM decomposition (Dan, 2026-08-25) — raw text; the
           // compile weighs it against the asynchrony test.
           expectedStateMachines: expectedSms.trim(),
+          ...(controlsNotes.length ? { controlsNotes } : {}),
           generationPreset: genLevel,
           // null clears an earlier preset back to the pipeline default.
           generationScope: lvl.scope ?? null,
@@ -6402,7 +6408,7 @@ export function CreateStationPage({ embedded = false }) {
         clientId: CLIENT_ID, // echo suppression on the live draft channel
         draft: {
           name: name.trim(), description: fullExplanation.trim(),
-          summary, smProposal, jarvisCoverage,
+          summary, smProposal: proposalForTurn, jarvisCoverage, controlsNotes,
           agreedNeeds: [...agreedNeeds], deviceAssignments,
           chatThread: chatThread.slice(-24).map(t => ({ role: t.role, text: String(t.text ?? '').slice(0, 300) })),
         },
@@ -6439,6 +6445,7 @@ export function CreateStationPage({ embedded = false }) {
         if (d.draft.jarvisCoverage) setJarvisCoverage(normCoverage(d.draft.jarvisCoverage));
         if (Array.isArray(d.draft.agreedNeeds)) setAgreedNeeds(new Set(d.draft.agreedNeeds));
         if (d.draft.deviceAssignments) setDeviceAssignments(d.draft.deviceAssignments);
+        if (Array.isArray(d.draft.controlsNotes)) setControlsNotes(d.draft.controlsNotes);
         setDirty(true);
       }
       // LINKED SHEET MAP-BACK (Phase 2): the pseudo-proposal's edits land in
@@ -8525,6 +8532,7 @@ export function CreateStationPage({ embedded = false }) {
           ...(purpose.trim() ? { purpose: purpose.trim() } : {}),
           ...(expectedSms.trim() ? { expectedStateMachines: expectedSms.trim() } : {}),
           ...(summary?.expectedStateMachines?.length ? { expectedSmPills: summary.expectedStateMachines } : {}),
+          ...(controlsNotes.length ? { controlsNotes } : {}),
           generationPreset: genLevel,
           ...(genLevelOf(genLevel).scope ? { generationScope: genLevelOf(genLevel).scope } : {}),
           ...(referenceText.trim() ? { referenceJobs: [{ text: referenceText.trim(), at: Date.now() }] } : {}),
@@ -8619,6 +8627,7 @@ export function CreateStationPage({ embedded = false }) {
           ...(purpose.trim() ? { purpose: purpose.trim() } : {}),
           ...(expectedSms.trim() ? { expectedStateMachines: expectedSms.trim() } : {}),
           ...(summary?.expectedStateMachines?.length ? { expectedSmPills: summary.expectedStateMachines } : {}),
+          ...(controlsNotes.length ? { controlsNotes } : {}),
           generationPreset: genLevel,
           ...(genLevelOf(genLevel).scope ? { generationScope: genLevelOf(genLevel).scope } : {}),
           ...(referenceText.trim() ? { referenceJobs: [{ text: referenceText.trim(), at: Date.now() }] } : {}),
@@ -9534,6 +9543,48 @@ export function CreateStationPage({ embedded = false }) {
                             }}
                           >Cancel</button>
                         </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* THE OPTIONAL CE LANE (Dan, 2026-08-30): station-scoped
+                    controls intent. Fills conversationally — flip the chat
+                    toggle to CE and talk; the engine files each statement
+                    here (attributed, dated, edited via chat like everything
+                    else). Codegen authority: between Dan's words and generic
+                    precedent — never above SDC standards or the ME's
+                    approved mechanical content. Absent = build as today. */}
+                {!(cascadeLive && inputsCollapsed) && (
+                  <div data-testid="controls-notes-section" style={{ maxWidth: 900, marginBottom: 10, border: `1px solid ${C.border}`, borderRadius: 8, background: '#fff', overflow: 'hidden' }}>
+                    <div
+                      onClick={() => toggleSectionCollapse('controlsNotes')}
+                      title={collapsedSections.controlsNotes ? 'expand' : 'collapse'}
+                      style={{ display: 'flex', alignItems: 'baseline', gap: 10, cursor: 'pointer', background: '#475569', padding: '5px 14px' }}
+                    >
+                      <span style={{ fontSize: 11, fontWeight: 800, color: '#fff', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                        {collapsedSections.controlsNotes ? '▸' : '▾'} Controls notes
+                      </span>
+                      <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.75)' }}>
+                        optional — a controls engineer's intent for this station's code
+                      </span>
+                    </div>
+                    {!collapsedSections.controlsNotes && (
+                      <div style={{ padding: '8px 14px 10px' }}>
+                        {controlsNotes.length === 0 ? (
+                          <div data-testid="controls-notes-empty" style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.6 }}>
+                            Empty is fine — the code builds from SDC standards and shipped precedent as always.
+                            A controls engineer can sharpen this station's code here: flip the chat toggle to <b>CE</b> and
+                            talk — how a signal should be handled (what sets and clears it, latching vs event), logic
+                            preferences. Each statement files here, attributed and dated.
+                            Rules meant for <b>every</b> station go to Dan for approval as standards instead.
+                          </div>
+                        ) : controlsNotes.map((n, i) => (
+                          <div key={i} data-testid={`controls-note-${i}`} style={{ fontSize: 12, color: C.text, lineHeight: 1.6, padding: '2px 0' }}>
+                            {n.text}
+                            <span style={{ fontSize: 10.5, color: C.light }}> — {n.by ?? 'CE'}, {String(n.at ?? '').slice(0, 10)}</span>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>

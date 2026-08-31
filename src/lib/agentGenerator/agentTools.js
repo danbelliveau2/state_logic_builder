@@ -541,6 +541,11 @@ const TOOL_DEFINITIONS = [
     description: 'ONE plain sentence, only when a request was honored somewhere other than a visible line — say where it went. Never for style notes or internals.',
     input_schema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'], additionalProperties: false },
   },
+  {
+    name: 'file_controls_note',
+    description: 'THE OPTIONAL CE LANE (Dan, 2026-08-30): a CONTROLS engineer states controls intent for THIS station — how a signal is handled (what turns it on/off, latching vs event), logic preferences, anything that sharpens this station\'s code. File each such statement here (attributed, dated); it lands in the sheet\'s Controls notes section and rides into codegen with authority between Dan\'s words and generic precedent — never above SDC standards or the ME\'s approved mechanical content (conflicts become questions). STATION-SCOPED only: a rule meant for every station is TIER 2 — file_law instead (it queues for Dan\'s approval as a standard).',
+    input_schema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'], additionalProperties: false },
+  },
 ];
 
 // Human phrasing for the streamed activity line.
@@ -556,6 +561,7 @@ function eventLabelFor(name, input) {
     case 'close_question': return 'closing a question…';
     case 'ask_engineer': return 'writing you a question…';
     case 'note_to_engineer': return 'noting where a change went…';
+    case 'file_controls_note': return 'filing the controls intent on the sheet…';
     default: return `${name}…`;
   }
 }
@@ -586,6 +592,8 @@ function executeTool(state, name, input) {
         devices, machines,
         stationSequence: d.summary?.sequence ?? [],
         stationRecovery: d.summary?.failureHandling ?? [],
+        // THE OPTIONAL CE LANE: station-scoped controls intent, attributed.
+        controlsNotes: (d.controlsNotes ?? []).map((n2) => ({ text: n2.text, by: n2.by, at: n2.at })),
         openQuestions: openNeeds(state).map((n) => ({ covKey: n.covKey, question: n.question, device: n.device ?? null })),
       };
     }
@@ -741,6 +749,16 @@ function executeTool(state, name, input) {
       const text = String(input?.text ?? '').trim();
       if (text) state.notes.push(text);
       return { noted: !!text };
+    }
+    case 'file_controls_note': {
+      // THE OPTIONAL CE LANE (Dan, 2026-08-30): station-scoped controls
+      // intent — attributed + dated, lands in the sheet's Controls notes.
+      const text = String(input?.text ?? '').trim();
+      if (!text) return { error: 'file_controls_note needs text' };
+      const note = { text, by: state.speaker || 'CE', at: new Date().toISOString() };
+      state.draft.controlsNotes = [...(state.draft.controlsNotes ?? []), note];
+      pushDiff(state, { op: 'controls.note', after: text, before: null });
+      return { filed: 'Controls notes (this station)', by: note.by };
     }
     default:
       return { error: `Unknown tool "${name}".` };

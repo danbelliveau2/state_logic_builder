@@ -41,6 +41,8 @@ const STATE_BASE = 4;      // first flowchart state (template convention)
 const STATE_STEP = 3;      // SDC grid: 4, 7, 10, ...
 const VISION_SLOTS = 12;   // VisionInspect nodes consume 4 extra sub-states
 
+const { normalizeGenerationScope, renderGenerationScopeText } = require('./generationScope.js');
+
 function isVisionNode(node, devicesById) {
   return (node.data?.actions || []).some(a => {
     const op = (a.operation || '').toLowerCase();
@@ -323,6 +325,9 @@ function buildIR(projectJson, smId) {
     waits,
     stateRanges,
     machineSpec: buildMachineSpecIR(sm, sms),
+    // Scope contract (Dan, Aug 23): internal default unless machineSpec ever
+    // sets it — rendered into the IR text so the compile prompt carries it.
+    generationScope: normalizeGenerationScope(sm.machineSpec && sm.machineSpec.generationScope),
     warnings,
   };
   ir.text = renderIRText(ir);
@@ -343,10 +348,12 @@ function specHasContent(spec) {
   if (!spec) return false;
   return Boolean(
     (spec.purpose || '').trim() ||
+    (spec.expectedStateMachines || '').trim() ||
     Object.keys(spec.devicePurposes || {}).length ||
     (spec.sequence || []).length ||
     (spec.outcomeRules || []).length ||
-    (spec.relationships || []).length
+    (spec.relationships || []).length ||
+    (spec.controlsNotes || []).length
   );
 }
 
@@ -385,6 +392,10 @@ function buildMachineSpecIR(sm, allSms) {
 
   return {
     purpose: spec?.purpose || '',
+    // ME's expected SM decomposition (Dan, 2026-08-25) — raw free text from
+    // the sheet ("dial indexer SM, magnet shuttle SM, maybe robot?"). GUIDANCE,
+    // not command: the compile weighs it against the asynchrony test.
+    expectedStateMachines: String(spec?.expectedStateMachines || '').trim(),
     devicePurposes: Object.entries(spec?.devicePurposes || {}).map(([deviceId, purpose]) => ({
       deviceName: deviceNameById.get(deviceId) || deviceId,
       purpose,
@@ -401,6 +412,17 @@ function buildMachineSpecIR(sm, allSms) {
       kind: r.kind || 'custom',
       description: r.description || '',
     })),
+    // DEVIATION HANDSHAKE (Dan, Aug 24): ME-confirmed departures from SDC
+    // standards, recorded after CE-style pushback. The compile HONORS them.
+    approvedDeviations: (spec?.approvedDeviations || []).map(d => ({
+      what: d?.what || '', reason: d?.reason || '', approvedBy: d?.approvedBy || 'ME',
+    })).filter(d => d.what),
+    // THE OPTIONAL CE LANE (Dan, 2026-08-30): station-scoped controls intent,
+    // attributed. Authority: between Dan's words and generic precedent —
+    // never above SDC standards or the ME's approved mechanical content.
+    controlsNotes: (spec?.controlsNotes || []).map(cn => ({
+      text: cn?.text || '', by: cn?.by || 'CE', at: String(cn?.at || '').slice(0, 10),
+    })).filter(cn => cn.text),
     partnerDeclarations,
   };
 }
@@ -412,6 +434,33 @@ function renderMachineSpecText(ms, lines) {
   lines.push('realize it. EVERY wait you create must have an exit for every partner');
   lines.push('failure mode listed here PLUS a timeout — no exitless waits.');
   if (ms.purpose) lines.push('', `Station purpose: ${ms.purpose}`);
+  if (ms.expectedStateMachines) {
+    lines.push('', "### ME'S EXPECTED STATE MACHINES (guidance — weigh it, never rubber-stamp it)");
+    lines.push(`The mechanical engineer expects this decomposition: "${ms.expectedStateMachines}"`);
+    lines.push('Weigh it seriously against the asynchrony test. Agree where the test supports');
+    lines.push('it; counter where it does not — and either way your stateMachines[] decision');
+    lines.push('must SHOW the reasoning (deviation-handshake spirit): when your decomposition');
+    lines.push('differs from this expectation, add ONE reviewFlag naming their expectation and');
+    lines.push('the asynchrony-test reasoning for the difference. Never silently ignore this,');
+    lines.push('never blindly obey it.');
+  }
+  if (ms.approvedDeviations?.length) {
+    lines.push('', 'APPROVED DEVIATIONS (ME-confirmed after the standard was stated once —');
+    lines.push('HONOR these: build exactly this way. Do NOT re-flag, question, or');
+    lines.push('"correct" them back to standard; reviewers must never raise an approved');
+    lines.push('deviation as a finding):');
+    for (const d of ms.approvedDeviations) {
+      lines.push(`- ${d.what}${d.reason ? ` (ME's reason: ${d.reason})` : ''} — approved by ${d.approvedBy}`);
+    }
+  }
+  if (ms.controlsNotes?.length) {
+    lines.push('', "### CONTROLS NOTES (the CE's intent for THIS station — the optional CE lane)");
+    lines.push('Authority order: SDC standards (supreme) > the ME\'s approved mechanical content >');
+    lines.push('THESE notes > generic precedent. Explicit CE intent here outranks a generic');
+    lines.push('precedent pattern; it NEVER outranks a standard or approved mechanical content —');
+    lines.push('when it conflicts with either, do not silently pick: raise it as a question.');
+    for (const cn of ms.controlsNotes) lines.push(`- ${cn.text} (${cn.by}, ${cn.at})`);
+  }
   if (ms.devicePurposes.length) {
     lines.push('', '### Device purposes');
     for (const d of ms.devicePurposes) lines.push(`- ${d.deviceName}: ${d.purpose}`);
@@ -457,10 +506,40 @@ function renderIRText(ir) {
   if (ir.description) lines.push(`Description: ${ir.description}`);
 
   lines.push('', '## Devices');
+  // ME-declared HOME per device (Dan, Aug 24): servo home = positions[].isHome
+  // (or homePositionName), pneumatic home = homePosition op value. Rendered
+  // explicitly so Home Conditions / init / recovery use the DECLARED home,
+  // never an inferred one.
+  const declaredHomeOf = (d) => {
+    const x = d.extras || {};
+    if (d.type === 'ServoAxis') {
+      const flagged = (Array.isArray(x.positions) ? x.positions : []).find(p => p && p.isHome);
+      return x.homePositionName || (flagged && flagged.name) || null;
+    }
+    return x.homePosition || x.homeState || null;
+  };
+  if (ir.devices.some(declaredHomeOf)) {
+    lines.push('(HOME= is the ME-declared home — Home Conditions, init, and recovery MUST use it, never infer a different home.)');
+  }
+  // Corner-based blend values (Dan's sketch, 2026-08-24): explain their
+  // meaning once so the compile uses each corner's own number.
+  const hasCornerBlend = ir.devices.some(d =>
+    (Array.isArray(d.extras?.positions) ? d.extras.positions : [])
+      .some(p => /^(Pick|Place).+Blend$/i.test(String(p?.name ?? ''))));
+  if (hasCornerBlend) {
+    lines.push('(Pick{Level}Blend / Place{Level}Blend positions are the INDEPENDENT corner blend values (mm): '
+      + 'the pick-side corner exit uses Pick{Level}Blend as its wideband/InPosWide deadband, the place-side '
+      + 'approach uses Place{Level}Blend. These corner blends are the ONLY windows in the system — speed windows '
+      + 'do not exist; arrival at a *Transition point is strict MAM.PC + InPos.)');
+  }
   for (const d of ir.devices) {
-    const extras = Object.entries(d.extras).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(' ');
+    const home = declaredHomeOf(d);
+    const extras = Object.entries(d.extras)
+      .filter(([k]) => !['homePosition', 'homeState', 'homePositionName'].includes(k))
+      .map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(' ');
     lines.push(`- [${d.type}] ${d.name}` +
       (d.displayName !== d.name ? ` "${d.displayName}"` : '') +
+      (home ? ` HOME=${home}` : '') +
       (extras ? ` ${extras}` : ''));
   }
 
@@ -472,7 +551,10 @@ function renderIRText(ir) {
       s.type === 'decisionNode' ? `DECISION(${s.decisionType})` : null,
     ].filter(Boolean).join(', ');
     const num = s.stateNumber != null ? `State ${s.stateNumber}` : 'UNREACHABLE';
-    lines.push(`- ${num}: "${s.label}"` + (flags ? ` {${flags}}` : ''));
+    // The drawn node id travels with each state so the compiler can echo it
+    // back as sourceNodeId — UI views join compiled states to drawn nodes by
+    // this stable id, never by state number (numbers can shift).
+    lines.push(`- ${num} [node ${s.nodeId}]: "${s.label}"` + (flags ? ` {${flags}}` : ''));
     for (const a of s.actions) {
       lines.push(`    action: ${a.operation} -> ${a.deviceName || a.deviceId || '(no device)'}` +
         (a.detail ? ` (${a.detail})` : ''));
@@ -495,6 +577,10 @@ function renderIRText(ir) {
   }
 
   if (ir.machineSpec) renderMachineSpecText(ir.machineSpec, lines);
+
+  // Scope contract — always rendered (defaults apply on standalone stations
+  // with no authored spec) so out-of-scope questions are unaskable.
+  for (const l of renderGenerationScopeText(ir.generationScope, ir.machineSpec && ir.machineSpec.purpose)) lines.push(l);
 
   if (ir.warnings.length) {
     lines.push('', '## IR warnings');

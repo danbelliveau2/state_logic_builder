@@ -271,7 +271,16 @@ export function AppFlowTab() {
           approval quietly runs the pre-write study on the sheet so far;
           anything the code will need surfaces as a numbered question DURING
           the walk, so Generate starts with nothing left to ask. No code is
-          written until you hit Generate.
+          written until you hit Generate.{' '}
+          <b>The optional CE lane</b> — a controls engineer can flip the chat
+          to CE and state controls intent for the station (how a signal is
+          set and cleared, latching vs event, logic preferences); it files
+          into the sheet's Controls notes, attributed and dated, and guides
+          that station's code with authority between Dan's words and generic
+          precedent — never above SDC standards or the ME's approved
+          mechanical content. Absent, the build runs exactly as today. A rule
+          meant for every station graduates through the pending-laws queue
+          instead.
         </div>
       </div>
 
