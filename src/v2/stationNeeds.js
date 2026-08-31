@@ -8,7 +8,7 @@
  *     questions — they become red proposed rows in the Servo values table
  *     (servoBands.js) with an intelligent pre-filled proposal. Accepting is
  *     doing nothing, so a mapped flag does NOT count toward the red pill.
- *   - *Replace flags are Jarvis's own stub decisions on a standalone build —
+ *   - *Replace flags are SDC Engineer's own stub decisions on a standalone build —
  *     never blocking, never red; one quiet line in the sheet's interactions
  *     section.
  *   - The red pill counts ONLY genuinely-stuck asks: held-build questions +
@@ -39,7 +39,7 @@ export function parseBlankFlag(text) {
   };
 }
 
-/** The station's *Replace stub notes (Jarvis's own decisions — never asks). */
+/** The station's *Replace stub notes (SDC Engineer's own decisions — never asks). */
 export function replaceFlagsOf(sm) {
   return (sm?.compiledSequence?.ir?.reviewFlags ?? [])
     .map(String)

@@ -1,14 +1,14 @@
 /**
  * SpecQuestionsSection — "Blocking code generation (N)" (Dan, Aug 23): the
  * spec sheet's one red section, listing ONLY what genuinely blocks code
- * generation — each item with Jarvis's proposed solution and a talk-or-type
+ * generation — each item with SDC Engineer's proposed solution and a talk-or-type
  * answer. The banner's red pill count IS this count.
  *
  * What does NOT appear here (Dan's rulings, Aug 23 live review):
  *   - Servo band *Verify flags — those are VALUES: red proposed rows in the
  *     Servo values table with an intelligent pre-fill (servoBands.js).
  *     Accepting = doing nothing, so they never block.
- *   - *Replace stub notes — Jarvis's own standalone-build decisions; one
+ *   - *Replace stub notes — SDC Engineer's own standalone-build decisions; one
  *     quiet line in the interactions section (GenerationScopeSection.jsx).
  *
  * Sources (both graceful when absent):
@@ -152,7 +152,7 @@ export function BlockingShell({ count, readyText = 'Nothing blocking — ready t
   );
 }
 
-/** Addressee chip: Jarvis's opinion of who answers this question. */
+/** Addressee chip: SDC Engineer's opinion of who answers this question. */
 function addresseeLabel(a) {
   const s = String(a ?? '').toLowerCase();
   if (!s) return null;
@@ -162,7 +162,7 @@ function addresseeLabel(a) {
 }
 
 /**
- * Example-request blocker (Dan, Aug 23): Jarvis asks for a real SDC example
+ * Example-request blocker (Dan, Aug 23): SDC Engineer asks for a real SDC example
  * of something he has no good reference for. Renders a file-drop (.L5X /
  * .docx / images) posting JSON {filename, base64, topic, sm} to
  * POST /api/jarvis/examples (trainer-agent endpoint). 404 → quiet fallback
@@ -282,7 +282,7 @@ function HeldBuildCard({ build, onResumed }) {
   if (resumed) {
     return (
       <div data-testid="spec-help-resumed" style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-success)', margin: '4px 0' }}>
-        ✓ Answers sent — Jarvis is continuing the build.
+        ✓ Answers sent — SDC Engineer is continuing the build.
       </div>
     );
   }
@@ -292,7 +292,7 @@ function HeldBuildCard({ build, onResumed }) {
       <div style={{ fontSize: 11.5, fontWeight: 700, color: '#991b1b', marginBottom: 4 }}>
         {realQuestions.length > 0
           ? `⏸ Code generation is paused on ${realQuestions.length === 1 ? 'this question' : 'these questions'}:`
-          : '⏸ Code generation is paused — Jarvis left these notes:'}
+          : '⏸ Code generation is paused — SDC Engineer left these notes:'}
       </div>
       {questions.map((q, i) => (
         // FULL TEXT ALWAYS (Dan's no-truncate law): questions wrap and grow —
@@ -312,7 +312,7 @@ function HeldBuildCard({ build, onResumed }) {
           {q.kind === 'example-request' ? (
             <ExampleRequestBlock q={q} smName={build.sm} idx={i} />
           ) : (
-          // Jarvis's proposal PREFILLED in the box (Dan, Aug 24: his proposal
+          // SDC Engineer's proposal PREFILLED in the box (Dan, Aug 24: his proposal
           // in the input, never an empty demand) — edit it or leave it.
           <DictatedTextarea
             value={answers[i] ?? q.proposedSolution ?? ''}
@@ -334,7 +334,7 @@ function HeldBuildCard({ build, onResumed }) {
         }}>
           <span style={{ fontWeight: 700, marginRight: 6 }}>Note</span>
           {q.question ?? q.text}
-          {q.proposedSolution && <div style={{ fontStyle: 'italic', marginTop: 2 }}>Jarvis's take: {q.proposedSolution}</div>}
+          {q.proposedSolution && <div style={{ fontStyle: 'italic', marginTop: 2 }}>SDC Engineer's take: {q.proposedSolution}</div>}
         </div>
         )
       ))}
@@ -387,7 +387,7 @@ function ValueAsks({ sm }) {
   return (
     <div data-testid="spec-value-asks" style={{ marginTop: 4 }}>
       <div style={{ fontSize: 11.5, fontWeight: 700, color: '#92400e', marginBottom: 4 }}>
-        {blanks.length} value{blanks.length === 1 ? '' : 's'} Jarvis couldn't derive — fill what you know:
+        {blanks.length} value{blanks.length === 1 ? '' : 's'} SDC Engineer couldn't derive — fill what you know:
       </div>
       {shown.map((b, i) => {
         const home = deviceHomeForAsk(sm, b.full);
@@ -490,7 +490,7 @@ function FlagNotes({ sm }) {
           <button
             type="button"
             data-testid={`spec-flag-note-agree-${i}`}
-            title="Noted — Jarvis's decision stands; this note won't come back"
+            title="Noted — SDC Engineer's decision stands; this note won't come back"
             onClick={() => acknowledgeFlag(sm.id, p.full)}
             style={{
               flexShrink: 0, background: 'none', border: '1px solid var(--color-border)',
@@ -532,7 +532,7 @@ function RequiredPositionAsks({ sm }) {
 
 /**
  * One extra-blocker line. When the item carries onAnswer (a blocking
- * question with Jarvis's proposed solution — Dan's Magnet Dial round,
+ * question with SDC Engineer's proposed solution — Dan's Magnet Dial round,
  * 2026-08-25), it renders an INLINE answer box PREFILLED with the proposal
  * plus a per-question Answer button: accepting = one click, typing over =
  * override. Both ride the sheet's corrections pipeline via onAnswer.
@@ -556,7 +556,7 @@ export function ExtraBlockerRow({ it }) {
       >
         <span style={{ minWidth: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
           <span style={{ fontWeight: 700, marginRight: 6 }}>Note</span>{it.label}
-          {it.proposal && <span style={{ fontStyle: 'italic' }}> — Jarvis's take: {it.proposal}</span>}
+          {it.proposal && <span style={{ fontStyle: 'italic' }}> — SDC Engineer's take: {it.proposal}</span>}
         </span>
         {it.onAgree && (
           <button
@@ -640,7 +640,7 @@ export function ExtraBlockerRow({ it }) {
         <SignalRows rows={sigRows} testId={`spec-extra-signals-${it.key}`} />
         {it.proposal && (
           <div style={{ fontSize: 11.5, fontStyle: 'italic', color: 'var(--color-text-muted)' }}>
-            Jarvis proposes: {it.proposal}
+            SDC Engineer proposes: {it.proposal}
           </div>
         )}
         {fieldRow}
@@ -652,7 +652,7 @@ export function ExtraBlockerRow({ it }) {
       {label}
       <SignalRows rows={sigRows} testId={`spec-extra-signals-${it.key}`} />
       {fieldRow}
-      {/* Jarvis's proposal PREFILLED — an untouched Answer accepts it. */}
+      {/* SDC Engineer's proposal PREFILLED — an untouched Answer accepts it. */}
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, marginTop: 3 }}>
         <DictatedTextarea
           value={val}
@@ -671,7 +671,7 @@ export function ExtraBlockerRow({ it }) {
           disabled={busy}
           title={val.trim() === String(it.proposal ?? '').trim()
             ? 'Go with the proposed answer'
-            : 'Send your answer — Jarvis folds it into the sheet'}
+            : 'Send your answer — SDC Engineer folds it into the sheet'}
           onClick={async () => {
             setBusy(true);
             try { await it.onAnswer(val); } finally { setBusy(false); }

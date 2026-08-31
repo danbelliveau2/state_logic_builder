@@ -1,7 +1,7 @@
 /**
  * v2 entry point — mounted by /v2.html.
  *
- * The v2 shell is a ground-up interface rebuild around the Jarvis-centered
+ * The v2 shell is a ground-up interface rebuild around the SDC Engineer-centered
  * workflow. It shares EVERYTHING below the shell with the classic app:
  * the Zustand store (same localStorage key, same server API), the React
  * Flow canvas, nodes/edges, and the existing modals. Only the frame

@@ -645,7 +645,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       const date = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '');
       const dir = path.join(__dirname, 'generated', cleanPathPart_(projectJson.name || safe.replace('.json', '')));
       fs.mkdirSync(dir, { recursive: true });
-      savedPath = path.join(dir, `${cleanPathPart_(result.meta?.smName)}__jarvis_v${ver}__${date}.L5X`);
+      savedPath = path.join(dir, `${cleanPathPart_(result.meta?.smName)}__sdce_v${ver}__${date}.L5X`);
       fs.writeFileSync(savedPath, result.l5x, 'utf8');
     } catch (e) {
       console.warn('[generate] auto-save failed:', e.message);
@@ -661,7 +661,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         const states = (result.ir?.states ?? []).filter(s => Number.isInteger(s.stateNumber));
         const note = [
           `${path.basename(savedPath)} — Cover Note`,
-          `From JARVIS (v${m.jarvisVersion ?? '?'}), ${new Date().toISOString().slice(0, 10)}. For review before anything ships.`,
+          `From the SDC Engineer (v${m.jarvisVersion ?? '?'}), ${new Date().toISOString().slice(0, 10)}. For review before anything ships.`,
           '',
           '# What this station is',
           `${m.smName ?? result.ir?.smName ?? 'Station'} — station ${m.stationNumber ?? '?'} of ${projectJson.name ?? 'the project'};`
@@ -670,7 +670,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
           '# What standards were applied',
           `- Template: ${m.template ?? '(selected at build)'}${m.templateReason ? ` — ${m.templateReason}` : ''}`,
           ...(m.study?.exemplar ? [`- Exemplar studied before writing: ${m.study.exemplar.name} (${m.study.exemplar.kind})`] : []),
-          `- Standing laws and concept lessons rode the write (engine: ${m.engine ?? m.model ?? 'JARVIS'})`,
+          `- Standing laws and concept lessons rode the write (engine: ${m.engine ?? m.model ?? 'SDC Engineer'})`,
           ...(Array.isArray(result.structuralChanges) && result.structuralChanges.length
             ? ['- DECLARED deviations from the approved sequence (each needs your approve):',
               ...result.structuralChanges.map(c => `    • ${c.text}`)] : []),
@@ -1041,7 +1041,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       if (String(query.source || '') === 'compiled') {
         if (!sm.compiledSequence || !sm.compiledSequence.ir) {
           return sendJson(res, 404, {
-            error: 'No compiled sequence yet — compile this station with Jarvis Build first',
+            error: 'No compiled sequence yet — compile this station with SDC Engineer Build first',
             project: projectJson.name || safe.replace('.json', ''),
             smName: sm.name,
           });
@@ -1075,7 +1075,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       }
       if (!candidates.length) {
         return sendJson(res, 404, {
-          error: 'No compiled build yet — generate this station with Jarvis first',
+          error: 'No compiled build yet — generate this station with the SDC Engineer first',
           project: projectJson.name || safe.replace('.json', ''),
           smName: sm.name,
         });
@@ -1854,7 +1854,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         const date = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '');
         const dir = generatedDirFor_(projectJson, safe);
         fs.mkdirSync(dir, { recursive: true });
-        savedPath = path.join(dir, `${cleanGenName_(sm.name)}__jarvis_v${ver}__${date}.L5X`);
+        savedPath = path.join(dir, `${cleanGenName_(sm.name)}__sdce_v${ver}__${date}.L5X`);
         fs.writeFileSync(savedPath, result.l5x, 'utf8');
         if (result.ir && result.ir.irVersion) {
           try {
@@ -2784,7 +2784,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
           if (/__corrected_by_/i.test(d.name)) continue;
           if (referenced.has(path.resolve(fp).toLowerCase())) continue;
           const rel = path.relative(GENERATED_DIR_, fp).split(path.sep).join('/');
-          const m = d.name.match(/^(.*?)__jarvis_v([^_]+)__/);
+          const m = d.name.match(/^(.*?)__(?:sdce|jarvis)_v([^_]+)__/); // both namings: legacy files on disk keep __jarvis_v
           let mtime = null;
           try { mtime = fs.statSync(fp).mtime.toISOString(); } catch (_) {}
           orphans.push({
@@ -2863,7 +2863,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       if (!decisionText) return sendJson(res, 400, { error: 'decisionText is required' });
       if (!verdict) return sendJson(res, 400, { error: "verdict must be 'good' or 'denied'" });
       if (!reviewer) return sendJson(res, 400, { error: 'reviewer is required' });
-      if (verdict === 'denied' && !why) return sendJson(res, 400, { error: 'A denial needs a why — that is what Jarvis learns from' });
+      if (verdict === 'denied' && !why) return sendJson(res, 400, { error: 'A denial needs a why — that is what the SDC Engineer learns from' });
 
       const fp = path.join(DATA_DIR_, safe);
       if (!fs.existsSync(fp)) return sendJson(res, 404, { error: 'Project not found: ' + safe });
@@ -3094,7 +3094,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       if (!build) return sendJson(res, 404, { error: 'Build not found' });
       // The file the engineer actually read: delivered copy first, then the
       // engineer-corrected file, then the generated file.
-      const deliveredPath = build.shippedAs ? path.join(__dirname, 'JARVIS Deliveries', build.shippedAs) : null;
+      const deliveredPath = build.shippedAs ? path.join(__dirname, 'SDC Engineer Deliveries', build.shippedAs) : null;
       const srcPath = (deliveredPath && fs.existsSync(deliveredPath)) ? deliveredPath
         : (build.correction?.filePath && fs.existsSync(build.correction.filePath)) ? build.correction.filePath
         : (build.filePath && fs.existsSync(build.filePath)) ? build.filePath : null;
@@ -4139,7 +4139,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
   });
 
   // ── JARVIS Inbox librarian — on-start scan + daily run (Dan, 2026-08-28:
-  //    "Jarvis reads new files daily"). Both fire the same run the "Learn
+  //    "the SDC Engineer reads new files daily"). Both fire the same run the "Learn
   //    now" button uses; the single-flight lock inside runLibrarian makes
   //    overlap harmless. Timers are unref'd so they never hold the process.
   const runLibrarian_ = (trigger) => {

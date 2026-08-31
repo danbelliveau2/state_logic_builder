@@ -68,7 +68,7 @@ export function ValueCell({ value, onCommit, testId, missingTone = 'amber' }) {
 }
 
 /** One RED proposed-value row — a compiled *Verify band flag mapped onto this
- *  axis (Dan, Aug 23): Jarvis pre-fills an intelligent proposal from the axis
+ *  axis (Dan, Aug 23): SDC Engineer pre-fills an intelligent proposal from the axis
  *  geometry. Accepting = doing nothing; editing = typing. The red clears once
  *  the value is applied (Apply proposed values → re-compile). */
 function ProposedRow({ row, draft, onDraft, unit = 'mm' }) {

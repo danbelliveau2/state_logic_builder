@@ -110,7 +110,7 @@ export function StartScreen() {
       <div className="v2-start__card">
         <div className="v2-start__brand">SDC State Logic <b>v2</b></div>
         <h1 className="v2-start__title">Start a project</h1>
-        <p className="v2-start__sub">A project holds a machine's stations. Create one, then add stations by describing them to Jarvis.</p>
+        <p className="v2-start__sub">A project holds a machine's stations. Create one, then add stations by describing them to SDC Engineer.</p>
 
         {!serverAvailable && (
           <div className="v2-start__warn">

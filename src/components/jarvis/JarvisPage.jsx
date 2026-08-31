@@ -3,7 +3,7 @@
  * pattern as CreateStationPage: fixed, opaque, explicit ← Back, no
  * outside-click dismissal).
  *
- * Jarvis is a developing SDC controls engineer. He accumulates questions
+ * SDC Engineer is a developing SDC controls engineer. He accumulates questions
  * while working; the controls team (Jason, Tim) answers them; answers become
  * permanent standing knowledge (meKnowledge.md "## Learned from the MEs").
  * His knowledge and track record are browsable here.
@@ -20,8 +20,8 @@
  *   2. Questions for Controls — open questions grouped by source, inline
  *      answer box + answerer name, Dismiss. Answering POSTs
  *      /api/jarvis/questions/:id/answer which ALSO appends the answer to
- *      meKnowledge.md, so the very next Jarvis prompt includes it.
- *   3. What Jarvis knows — read-only render of meKnowledge.md + the
+ *      meKnowledge.md, so the very next SDC Engineer prompt includes it.
+ *   3. What SDC Engineer knows — read-only render of meKnowledge.md + the
  *      generationRules.md rule headings.
  *
  * All data comes from the API server (GET /api/jarvis/generations, /questions,
@@ -184,7 +184,7 @@ function AnswerBox({ q, onAnswered, onDismissed }) {
         micTestId={`answer-mic-${q.id}`}
         value={answer}
         onChange={setAnswer}
-        placeholder="Type the answer Jarvis should learn — or hit the mic and talk…"
+        placeholder="Type the answer SDC Engineer should learn — or hit the mic and talk…"
         rows={2}
         style={{
           width: '100%', boxSizing: 'border-box', resize: 'vertical',
@@ -218,7 +218,7 @@ function AnswerBox({ q, onAnswered, onDismissed }) {
             borderRadius: 6, padding: '6px 16px', fontSize: 12, fontWeight: 700,
             cursor: canSubmit ? 'pointer' : 'default',
           }}
-        >{busy ? 'Teaching Jarvis…' : 'Answer'}</button>
+        >{busy ? 'Teaching SDC Engineer…' : 'Answer'}</button>
         <button
           onClick={dismiss}
           disabled={busy}
@@ -226,7 +226,7 @@ function AnswerBox({ q, onAnswered, onDismissed }) {
             background: 'none', border: `1px solid ${C.border}`, color: C.muted,
             borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer',
           }}
-          title="Remove without teaching Jarvis anything"
+          title="Remove without teaching SDC Engineer anything"
         >Dismiss</button>
         {error && <span style={{ color: C.danger, fontSize: 12 }}>{error}</span>}
       </div>
@@ -274,7 +274,7 @@ function QuestionCard({ q, onUpdate }) {
             data-testid={`learned-note-${q.id}`}
             style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: C.success }}
           >
-            ✓ Jarvis learned this — it's now part of his standing knowledge
+            ✓ SDC Engineer learned this — it's now part of his standing knowledge
           </div>
         </div>
       )}
@@ -298,14 +298,14 @@ function QuestionsTab({ questions, onUpdate }) {
   return (
     <div>
       <p style={{ fontSize: 13, color: C.muted, margin: '0 0 16px', lineHeight: 1.6 }}>
-        Jarvis collects questions he can't resolve on his own while describing stations,
+        SDC Engineer collects questions he can't resolve on his own while describing stations,
         generating code, and studying reference programs. Answer them here — every answer
         becomes a permanent line in his standing knowledge, applied to his very next job.
       </p>
 
       {groups.length === 0 && (
         <div style={{ padding: '32px 0', textAlign: 'center', color: C.light, fontSize: 13 }}>
-          No open questions — Jarvis has nothing pending for the controls team.
+          No open questions — SDC Engineer has nothing pending for the controls team.
         </div>
       )}
 
@@ -439,7 +439,7 @@ function LearnedLine({ raw, onReload }) {
           data-testid="learned-remove-btn"
           title="Remove this learned fact permanently"
           disabled={busy}
-          onClick={() => { if (confirm('Remove this learned fact from Jarvis permanently?\n\n' + display)) put(''); }}
+          onClick={() => { if (confirm('Remove this learned fact from SDC Engineer permanently?\n\n' + display)) put(''); }}
           style={{ background: 'none', border: 'none', color: C.light, fontSize: 11, cursor: 'pointer', padding: '0 2px' }}
         >Remove</button>
       </span>
@@ -505,7 +505,7 @@ function InboxLibrarianPanel() {
       </div>
       <p style={{ fontSize: 12, color: C.muted, margin: '4px 0 8px', lineHeight: 1.5 }}>
         Drop anything into <code>JARVIS Inbox\</code> (engineer-verified L5X goes in <code>verified\</code>) —
-        Jarvis reads new files daily, files what he learns into his one knowledge store, and
+        SDC Engineer reads new files daily, files what he learns into his one knowledge store, and
         ledgers every read in <code>_learned\LEDGER.md</code>. Conflicts become questions, never silent overrides.
       </p>
       {error && (
@@ -567,12 +567,12 @@ function InboxLibrarianPanel() {
   );
 }
 
-// ── "What Jarvis knows and where it came from" — the source manifest ────────
+// ── "What SDC Engineer knows and where it came from" — the source manifest ────────
 // Dan: "make sure you have access to all the right things and looking at the
 // right places... then we'll see what's missing and what we need to fill you
 // in on." One compact card per ingested source (jarvis-knowledge/sources.json
 // via GET /api/jarvis/sources): name + location, an access chip, last-ingested
-// date, and the bullet takeaways. Sources Jarvis CAN'T fully read render as
+// date, and the bullet takeaways. Sources SDC Engineer CAN'T fully read render as
 // attention items — the gaps are the point.
 
 const ACCESS_CHIP = {
@@ -601,10 +601,10 @@ function KnowledgeSourcesPanel() {
   return (
     <div style={{ marginBottom: 18 }} data-testid="knowledge-sources">
       <h3 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 4px', color: C.primary }}>
-        What Jarvis knows — and where it came from
+        What SDC Engineer knows — and where it came from
       </h3>
       <p style={{ fontSize: 12, color: C.muted, margin: '0 0 10px', lineHeight: 1.5 }}>
-        Every source Jarvis has ingested, with what he took from it. Amber chips are
+        Every source SDC Engineer has ingested, with what he took from it. Amber chips are
         the gaps — places he can't fully see yet.
       </p>
       {state.status === 'loading' && (
@@ -620,7 +620,7 @@ function KnowledgeSourcesPanel() {
         >
           No source manifest yet — the ingestion pipeline writes
           <code style={{ margin: '0 4px' }}>jarvis-knowledge/sources.json</code>
-          as it catalogs what Jarvis reads. This panel fills in on its own.
+          as it catalogs what SDC Engineer reads. This panel fills in on its own.
         </div>
       )}
       {state.status === 'ok' && Array.isArray(sources) && sources.length === 0 && (
@@ -788,7 +788,7 @@ function GuideRailsPanel() {
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: '14px 18px', marginBottom: 16 }} data-testid="guide-rails-panel">
       <h3 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 4px', color: C.primary }}>Guide rails (concepts)</h3>
       <div style={{ fontSize: 11.5, color: C.light, marginBottom: 10 }}>
-        How SDC thinks, one topic per file — Jarvis consults these on every compile.
+        How SDC thinks, one topic per file — SDC Engineer consults these on every compile.
         Open a topic to read it; Edit to tweak and teach (saved straight back to the file).
       </div>
       {concepts === null && <div style={{ color: C.light, fontSize: 13 }}>Loading…</div>}
@@ -855,7 +855,7 @@ function IntakeQueues() {
             <div key={s.id} data-testid={`app-suggestion-${s.id}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: '#eef3f8', border: '1px solid #b8c4d0', borderRadius: 6, padding: '6px 10px', marginBottom: 4 }}>
               <div style={{ flex: 1, fontSize: 12, color: C.text, lineHeight: 1.5 }}>
                 <b>{s.speaker}</b>: “{s.ask}”
-                {s.reading && <div style={{ color: C.muted, fontSize: 11.5 }}>Jarvis's reading: {s.reading}</div>}
+                {s.reading && <div style={{ color: C.muted, fontSize: 11.5 }}>SDC Engineer's reading: {s.reading}</div>}
                 <span style={{ color: C.light, fontSize: 10.5 }}>{fmtET(Date.parse(s.at))}</span>
               </div>
               <button type="button" onClick={() => decideSugg(s.id, 'accepted')} style={{ cursor: 'pointer', fontSize: 11.5, fontWeight: 800, color: '#2f6b3c', background: '#e9f5ec', border: '1px solid #bfe0c8', borderRadius: 5, padding: '3px 10px' }}>Accept</button>
@@ -906,7 +906,7 @@ function KnowledgeTab({ knowledge, onReload }) {
         background: '#fdf6e3', border: `1px solid ${C.warning}`, color: '#7a6220',
         borderRadius: 6, padding: '8px 12px', fontSize: 12, marginBottom: 16, lineHeight: 1.5,
       }}>
-        Facts Jarvis <b>learned from the MEs</b> can be adjusted or removed below.
+        Facts SDC Engineer <b>learned from the MEs</b> can be adjusted or removed below.
         Standing sections are maintained with the controls leads (<code>meKnowledge.md</code> /
         <code>generationRules.md</code>); new facts arrive by <b>answering his questions</b> (previous tab).
       </div>
@@ -915,11 +915,11 @@ function KnowledgeTab({ knowledge, onReload }) {
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: '14px 18px', marginBottom: 16 }}>
         <h3 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 4px', color: C.primary }}>Learned from the MEs</h3>
         <div style={{ fontSize: 11.5, color: C.light, marginBottom: 10 }}>
-          Grouped by topic. Every line here rides into Jarvis's very next prompt — edits apply immediately.
+          Grouped by topic. Every line here rides into SDC Engineer's very next prompt — edits apply immediately.
         </div>
         {groups.length === 0 && (
           <div style={{ color: C.light, fontSize: 13 }}>
-            Nothing learned yet — answers to Jarvis's questions land here.
+            Nothing learned yet — answers to SDC Engineer's questions land here.
           </div>
         )}
         {groups.map(g => {
@@ -972,7 +972,7 @@ function KnowledgeTab({ knowledge, onReload }) {
             ? <div style={{ marginTop: 8 }}><MdLight md={standingMd} /></div>
             : (
               <div style={{ color: C.light, fontSize: 13, padding: '10px 0' }}>
-                Jarvis's ME-facing knowledge file (<code>meKnowledge.md</code>) doesn't exist yet.
+                SDC Engineer's ME-facing knowledge file (<code>meKnowledge.md</code>) doesn't exist yet.
                 It's created the first time a question is answered or a lead seeds it.
               </div>
             )
@@ -982,7 +982,7 @@ function KnowledgeTab({ knowledge, onReload }) {
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: '14px 18px' }}>
         <h3 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 4px', color: C.primary }}>Generation rules (headings)</h3>
         <div style={{ fontSize: 11.5, color: C.light, marginBottom: 10 }}>
-          The law Jarvis generates L5X by — full text in <code>src/lib/agentGenerator/generationRules.md</code>.
+          The law SDC Engineer generates L5X by — full text in <code>src/lib/agentGenerator/generationRules.md</code>.
         </div>
         {(rulesHeadings || []).length === 0
           ? <div style={{ color: C.light, fontSize: 13 }}>generationRules.md not found.</div>
@@ -1071,7 +1071,7 @@ function ReviewSection({ build, onSaved }) {
           <div style={{ fontSize: 12, fontWeight: 700, color: C.success, marginBottom: 4 }}>What was good?</div>
           <DictatedTextarea
             rows={2} value={good} onChange={setGood}
-            placeholder="What did Jarvis get right — talk or type…"
+            placeholder="What did SDC Engineer get right — talk or type…"
             data-testid={`review-good-${build.id}`} micTestId={`review-good-mic-${build.id}`}
             style={noteStyle}
           />
@@ -1153,7 +1153,7 @@ function UploadCorrected({ build, onUploaded }) {
       let { r, data } = await post(base64, false);
       if (r.status === 409 && data.needsConfirm) {
         const ok = confirm(
-          `A corrected version by ${data.existing?.uploadedBy || '?'} (${String(data.existing?.at || '').slice(0, 10)}) already exists for this build.\n\nReplace it with this file? Jarvis will re-learn from the new diff.`
+          `A corrected version by ${data.existing?.uploadedBy || '?'} (${String(data.existing?.at || '').slice(0, 10)}) already exists for this build.\n\nReplace it with this file? SDC Engineer will re-learn from the new diff.`
         );
         if (!ok) { setBusy(false); return; }
         ({ r, data } = await post(base64, true));
@@ -1198,7 +1198,7 @@ function UploadCorrected({ build, onUploaded }) {
 }
 
 /** Correction state on a build: analyzing spinner, honest failure, or the
- *  "Jarvis learned N things" expander with lessons + summary. */
+ *  "SDC Engineer learned N things" expander with lessons + summary. */
 function CorrectionStatus({ build, onUpdated }) {
   const [open, setOpen] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -1226,7 +1226,7 @@ function CorrectionStatus({ build, onUpdated }) {
   if (corr.status === 'analyzing') {
     return (
       <div data-testid={`corr-analyzing-${build.id}`} style={{ fontSize: 12.5, color: C.primary, fontWeight: 600 }}>
-        ⏳ Corrected version uploaded by {corr.uploadedBy} — Jarvis is studying the differences…
+        ⏳ Corrected version uploaded by {corr.uploadedBy} — SDC Engineer is studying the differences…
         <span style={{ color: C.light, fontWeight: 400 }}> (refreshes automatically)</span>
       </div>
     );
@@ -1261,7 +1261,7 @@ function CorrectionStatus({ build, onUpdated }) {
         onClick={() => setOpen(o => !o)}
         style={{ background: 'none', border: 'none', padding: 0, color: C.success, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
       >
-        ✓ Corrected version uploaded — Jarvis learned {corr.learnedCount ?? 0} thing{(corr.learnedCount ?? 0) === 1 ? '' : 's'} ({open ? 'hide' : 'view'})
+        ✓ Corrected version uploaded — SDC Engineer learned {corr.learnedCount ?? 0} thing{(corr.learnedCount ?? 0) === 1 ? '' : 's'} ({open ? 'hide' : 'view'})
       </button>
       {corr.queuedCount > 0 && (
         <span style={{ fontSize: 11.5, color: C.muted, marginLeft: 8 }}>
@@ -1299,7 +1299,7 @@ function CorrectionStatus({ build, onUpdated }) {
 }
 
 // ── Pre-delivery internal review (the "pre-Jason pass") ─────────────────────
-// Jarvis's own adversarial review of the generated file against the template,
+// SDC Engineer's own adversarial review of the generated file against the template,
 // run as the last pipeline stage. 'ship' = clean; 'fix' = NOT ready for
 // external delivery — a human decides (never auto-regenerated).
 
@@ -1335,9 +1335,9 @@ function InternalReviewChip({ ir, build = null }) {
     : unsure ? `⏸ internal review: held — ${nq || 1} standards question${nq === 1 ? '' : 's'}`
     : `⚠ internal review: ${n} finding${n === 1 ? '' : 's'}${roundsNote}`;
   const title = failed ? `Internal review did not complete: ${ir?.error || 'unknown error'}`
-    : ship ? `Jarvis reviewed this file the way a senior CE would — clean to send${fin.rounds.length > 1 ? ` (${fin.rounds.length} review/fix rounds → ship)` : ''}`
-    : unsure ? 'Jarvis could not determine whether a structural choice meets SDC standards — build HELD; standards question(s) filed for the controls team (see the Questions queue)'
-    : 'Jarvis\'s own review found issues — NOT ready for external delivery until a human decides';
+    : ship ? `SDC Engineer reviewed this file the way a senior CE would — clean to send${fin.rounds.length > 1 ? ` (${fin.rounds.length} review/fix rounds → ship)` : ''}`
+    : unsure ? 'SDC Engineer could not determine whether a structural choice meets SDC standards — build HELD; standards question(s) filed for the controls team (see the Questions queue)'
+    : 'SDC Engineer\'s own review found issues — NOT ready for external delivery until a human decides';
   return (
     <span
       title={title}
@@ -1408,7 +1408,7 @@ function InternalReviewDetail({ ir, build = null }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 12.5, fontWeight: 800, color: failed ? C.muted : ship ? C.success : unsure ? C.warning : C.danger }}>
           {failed ? 'Internal review did not complete'
-            : ship ? `✓ Internal review: ship — Jarvis put his name on it${fin.rounds.length > 1 ? ` (${fin.rounds.length} rounds → ship)` : ''}`
+            : ship ? `✓ Internal review: ship — SDC Engineer put his name on it${fin.rounds.length > 1 ? ` (${fin.rounds.length} rounds → ship)` : ''}`
             : unsure ? `⏸ Internal review: unsure — ${ir.heldStatus || `held, ${nq || 1} standards question${nq === 1 ? '' : 's'} filed for the controls team`}`
             : '⚠ Internal review: fix — NOT ready for external delivery'}
         </span>
@@ -1430,13 +1430,13 @@ function InternalReviewDetail({ ir, build = null }) {
       </div>
       {unsure && (
         <div style={{ fontSize: 11.5, color: C.warning, marginTop: 6, fontWeight: 600 }}>
-          Unsure is not a violation — Jarvis hit a structural choice the standards knowledge doesn't answer.
+          Unsure is not a violation — SDC Engineer hit a structural choice the standards knowledge doesn't answer.
           The build is HELD (not shipped, not guessed at) until the controls team answers the filed question{nq === 1 ? '' : 's'} in the Questions queue.
         </div>
       )}
       {!ship && !failed && !unsure && (
         <div style={{ fontSize: 11.5, color: C.danger, marginTop: 6, fontWeight: 600 }}>
-          Jarvis never regenerates on his own verdict — review the findings and decide: fix and rebuild, or overrule.
+          SDC Engineer never regenerates on his own verdict — review the findings and decide: fix and rebuild, or overrule.
         </div>
       )}
       {open && (
@@ -1649,7 +1649,7 @@ function GenerationDetail({ row, onUpdated }) {
         )}
       </div>
 
-      {/* ── THE DOSSIER (Dan, 2026-08-25): what Jarvis knew, decided, and
+      {/* ── THE DOSSIER (Dan, 2026-08-25): what SDC Engineer knew, decided, and
           checked to make THIS file — all from what's already recorded on the
           build + compiledSequence; surfaced, never invented. ── */}
 
@@ -1675,7 +1675,7 @@ function GenerationDetail({ row, onUpdated }) {
           <ReviewSection build={row} onSaved={onUpdated} />
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.muted, marginBottom: 8 }}>
-              The real correct version — Jarvis learns from the diff
+              The real correct version — SDC Engineer learns from the diff
             </div>
             {row.correction && <div style={{ marginBottom: 8 }}><CorrectionStatus build={row} onUpdated={onUpdated} /></div>}
             {(!row.correction || row.correction.status !== 'analyzing') && (
@@ -1763,7 +1763,7 @@ function stationStatus(sm, activeList, pretrans, gaps) {
         const n = (p.internalReview?.findings || []).length;
         return { key: 'ready-review', label: `⚠ Code built — internal review: ${n || 'open'} finding${n === 1 ? '' : 's'}, not ready to send`, tone: 'warn' };
       }
-      // 'unsure' = HELD: Jarvis couldn't determine whether a structural choice
+      // 'unsure' = HELD: SDC Engineer couldn't determine whether a structural choice
       // meets SDC standards — questions filed, controls team answers first.
       if (fv === 'unsure') {
         const nq = (p.internalReview?.standardsQuestions || []).length || (p.internalReview?.questionIds || []).length || 1;
@@ -1837,7 +1837,7 @@ function DecisionLine({ text, review, onReview }) {
             >✓</button>
             <button
               disabled={busy}
-              title="Deny — say why (Jarvis learns from it)"
+              title="Deny — say why (SDC Engineer learns from it)"
               onClick={() => setDenying(d => !d)}
               style={{ background: '#fdecec', border: `1px solid ${C.danger}`, color: C.danger, borderRadius: 5, width: 26, height: 22, fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }}
             >✗</button>
@@ -1848,7 +1848,7 @@ function DecisionLine({ text, review, onReview }) {
         <div style={{ marginTop: 6 }}>
           <DictatedTextarea
             rows={2} value={why} onChange={setWhy}
-            placeholder="Why is this wrong? Jarvis files this as a lesson — talk or type…"
+            placeholder="Why is this wrong? SDC Engineer files this as a lesson — talk or type…"
             style={{
               width: '100%', boxSizing: 'border-box', resize: 'vertical', fontSize: 12,
               border: `1px solid ${C.border}`, borderRadius: 6, padding: '6px 9px',
@@ -1924,7 +1924,7 @@ function StationDetail({ sm, projectName, status, stationQuestions, onQuestionUp
       {/* 2 — open questions for this station, answerable inline */}
       {stationQuestions.length > 0 && (
         <div>
-          {sectionHead(`Questions Jarvis needs answered (${stationQuestions.length})`)}
+          {sectionHead(`Questions SDC Engineer needs answered (${stationQuestions.length})`)}
           {stationQuestions.map(q => <QuestionCard key={q.id} q={q} onUpdate={onQuestionUpdate} />)}
         </div>
       )}
@@ -1933,7 +1933,7 @@ function StationDetail({ sm, projectName, status, stationQuestions, onQuestionUp
       {flags.length > 0 && (
         <div data-testid={`station-decisions-${sm.name}`}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            {sectionHead(`Jarvis's decisions & assumptions (${flags.length})`)}
+            {sectionHead(`SDC Engineer's decisions & assumptions (${flags.length})`)}
             <span style={{ fontSize: 11, color: C.light, marginLeft: 'auto' }}>reviewing as</span>
             <select
               value={reviewer} onChange={e => setReviewer(e.target.value)}
@@ -1948,7 +1948,7 @@ function StationDetail({ sm, projectName, status, stationQuestions, onQuestionUp
             ))}
           </div>
           <div style={{ fontSize: 11, color: C.light, marginTop: 4 }}>
-            ✓ records the decision as good. ✗ asks why — the why is filed into Jarvis's concept
+            ✓ records the decision as good. ✗ asks why — the why is filed into SDC Engineer's concept
             knowledge, attributed to you.
           </div>
         </div>
@@ -2004,7 +2004,7 @@ function StationPipeline({ active, gens, questions, onQuestionUpdate, onRowUpdat
         {project?.name || 'Current project'} — station pipeline
       </div>
       <div style={{ fontSize: 11.5, color: C.light, marginBottom: 10 }}>
-        Live status per station: compile → approve → code. Open a row for Jarvis's questions,
+        Live status per station: compile → approve → code. Open a row for SDC Engineer's questions,
         his decisions to approve or deny, and the file with its review.
       </div>
       <table data-testid="station-pipeline" style={{ borderCollapse: 'collapse', width: '100%' }}>
@@ -2216,7 +2216,7 @@ function GenerationsTab({ gens, track, active, questions, onQuestionUpdate, onRo
   // the "latest — in JARVIS Deliveries" tag.
   const latestDeliveredId = deliveredRows.length ? deliveredRows[0].id : null;
 
-  // Avg score per Jarvis version — only versions that actually have scores.
+  // Avg score per SDC Engineer version — only versions that actually have scores.
   const avgByVersion = [];
   {
     const acc = new Map();
@@ -2249,9 +2249,9 @@ function GenerationsTab({ gens, track, active, questions, onQuestionUpdate, onRo
       />
 
       <p style={{ fontSize: 13, color: C.muted, margin: '0 0 14px', lineHeight: 1.6 }}>
-        Every program Jarvis has generated, in one grid. Open a row to download the L5X,
+        Every program SDC Engineer has generated, in one grid. Open a row to download the L5X,
         review it (what was good, what was bad — talk or text — and a score out of 100), and
-        upload the real correct version — Jarvis diffs it against his own output and learns.
+        upload the real correct version — SDC Engineer diffs it against his own output and learns.
       </p>
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -2274,14 +2274,14 @@ function GenerationsTab({ gens, track, active, questions, onQuestionUpdate, onRo
       </div>
 
       {/* No horizontal scroll (Dan): compact date, project truncates with a
-          tooltip, MODE is one glyph, and the valuable columns — Jarvis
+          tooltip, MODE is one glyph, and the valuable columns — SDC Engineer
           version, duration, cost, score — stay prominent. */}
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: '14px 18px', marginBottom: 16 }}>
         <table data-testid="generations-grid" style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'auto' }}>
           <thead>
             <tr>
               <th style={th}></th>
-              <th style={th}>Name</th><th style={th}>Project</th><th style={th}>Jarvis</th>
+              <th style={th}>Name</th><th style={th}>Project</th><th style={th}>SDC Engineer</th>
               <th style={th}>Date (ET)</th><th style={th}>Dur</th><th style={th}>Cost</th>
               <th style={th}>L5X</th><th style={th}>Score /100</th>
             </tr>
@@ -2321,7 +2321,7 @@ function GenerationsTab({ gens, track, active, questions, onQuestionUpdate, onRo
                     )}
                     {row.correction && (
                       <span
-                        title={row.correction.status === 'done' ? `Corrected by ${row.correction.uploadedBy} — Jarvis learned ${row.correction.learnedCount ?? 0}`
+                        title={row.correction.status === 'done' ? `Corrected by ${row.correction.uploadedBy} — SDC Engineer learned ${row.correction.learnedCount ?? 0}`
                           : row.correction.status === 'failed' ? `Analysis failed: ${row.correction.error || 'unknown error'} — open the row to retry`
                           : `Correction ${row.correction.status}`}
                         style={{
@@ -2387,7 +2387,7 @@ function GenerationsTab({ gens, track, active, questions, onQuestionUpdate, onRo
               ...(showWorking ? workingRows.map(renderRow) : []),
             ];
             })()}
-            {rows.length === 0 && !hasActive && <tr><td style={td} colSpan={9}>No generations yet — the grid fills in as Jarvis builds stations.</td></tr>}
+            {rows.length === 0 && !hasActive && <tr><td style={td} colSpan={9}>No generations yet — the grid fills in as SDC Engineer builds stations.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -2435,7 +2435,7 @@ function TrackRecordDetails({ track }) {
         <h3 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 2px', color: C.primary }}>Benchmarks</h3>
         <div style={{ fontSize: 11.5, color: C.light, marginBottom: 10 }}>
           Every run in <code>benchmarks/</code> — fails included. "oldgen" rows are the
-          pre-Jarvis rule-based exporter. ME builds live in the grid above.
+          pre-SDC Engineer rule-based exporter. ME builds live in the grid above.
         </div>
         <table data-testid="benchmark-table" style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead>
@@ -2468,11 +2468,11 @@ function TrackRecordDetails({ track }) {
   );
 }
 
-// ── "How Jarvis works" tab — REBUILT (Dan, 2026-08-26: "I'm asking how
-//    Jarvis THINKS to generate good code — not how the app works"). The tab
+// ── "How SDC Engineer works" tab — REBUILT (Dan, 2026-08-26: "I'm asking how
+//    SDC Engineer THINKS to generate good code — not how the app works"). The tab
 //    is now the THINKING CONTRACT: Jason Perry's 14-step process VERBATIM
 //    (jarvis-knowledge/concepts/how-jason-writes-code.md), one card per step
-//    — the step, HOW Jarvis executes it, and WHAT INFORMATION it needs from
+//    — the step, HOW SDC Engineer executes it, and WHAT INFORMATION it needs from
 //    the ME. "If he follows the same structure a controls engineer uses,
 //    there's a much higher success chance." The app-mechanics walkthrough is
 //    demoted to a small secondary section below. ──────────────────────────────
@@ -2483,7 +2483,7 @@ function TrackRecordDetails({ track }) {
 const JASON_STEPS = [
   {
     step: 'Read Project Release to gain understanding of project',
-    how: 'HONEST GAP — no release intake exists yet: your explanation and Reference material stand in for it during the pre-write study, and Jarvis asks when project-level context is clearly missing.',
+    how: 'HONEST GAP — no release intake exists yet: your explanation and Reference material stand in for it during the pre-write study, and SDC Engineer asks when project-level context is clearly missing.',
     needs: ['Project context in your explanation — or the release extract dropped into Reference material'],
     gap: true,
   },
@@ -2515,7 +2515,7 @@ const JASON_STEPS = [
   },
   {
     step: 'Follow SDC standard program structure',
-    how: 'The merge engine owns the template bytes — Jarvis never retypes SDC boilerplate; THE CHECK verifies the structure survived.',
+    how: 'The merge engine owns the template bytes — SDC Engineer never retypes SDC boilerplate; THE CHECK verifies the structure survived.',
     needs: [],
   },
   {
@@ -2559,27 +2559,27 @@ const HOW_STEPS = [
   {
     icon: '📋',
     title: 'You fill out the Spec Sheet',
-    body: 'Describe the station in plain words — talk or type. Jarvis reads it against his standing SDC knowledge (the device taxonomy, standing facts, and everything the MEs have taught him) and fills the spec’s tables: devices, named positions, sensors & timers. Anything only you can know — mechanical intent, geometry, positions — he asks right on the sheet, always with his own proposed answer.',
+    body: 'Describe the station in plain words — talk or type. SDC Engineer reads it against his standing SDC knowledge (the device taxonomy, standing facts, and everything the MEs have taught him) and fills the spec’s tables: devices, named positions, sensors & timers. Anything only you can know — mechanical intent, geometry, positions — he asks right on the sheet, always with his own proposed answer.',
   },
   {
     icon: '🧠',
-    title: 'Compile — Jarvis plans the sequence',
+    title: 'Compile — SDC Engineer plans the sequence',
     body: 'One deep reasoning pass takes your drawn sequence, the spec’s tables, and the SDC template pattern notes, and plans the complete sequence: every state on the SDC number grid, real tag conditions on every transition, waits with all their exits, retries, fault recovery, handshakes. Every structural choice must cite the SDC template pattern it follows or declare itself an extension — that record is the "How I planned this" panel on the Diagram page.',
   },
   {
     icon: '✅',
     title: 'You approve',
-    body: 'Read the flowchart and the plan, fill any values he flagged, click Approve. Approve means "I agree with this sequence" — Jarvis immediately pre-builds the code in the background, so Generate is near-instant when you get to it.',
+    body: 'Read the flowchart and the plan, fill any values he flagged, click Approve. Approve means "I agree with this sequence" — SDC Engineer immediately pre-builds the code in the background, so Generate is near-instant when you get to it.',
   },
   {
     icon: '⚙️',
-    title: 'Generate — Jarvis writes the code',
-    body: 'Jarvis authors an edit plan against the SDC standard template, guided by the generation rules and targeted template extracts — the merge engine owns the template bytes, so he never retypes SDC boilerplate. Approved stations translate fast from their compiled sequence; unapproved ones go through the full reasoning lane. If he genuinely gets stuck he pauses the build and asks, with a proposed solution attached.',
+    title: 'Generate — SDC Engineer writes the code',
+    body: 'SDC Engineer authors an edit plan against the SDC standard template, guided by the generation rules and targeted template extracts — the merge engine owns the template bytes, so he never retypes SDC boilerplate. Approved stations translate fast from their compiled sequence; unapproved ones go through the full reasoning lane. If he genuinely gets stuck he pauses the build and asks, with a proposed solution attached.',
   },
   {
     icon: '🔍',
     title: 'THE CHECK — every build, both lanes',
-    body: 'Jarvis reviews the finished file the way a senior CE would: against the template family and the CE-authored standards documents. Findings land with the build. If writing the code changed the planned structure, the change is highlighted for your quick approve — never a silent divergence between diagram and code.',
+    body: 'SDC Engineer reviews the finished file the way a senior CE would: against the template family and the CE-authored standards documents. Findings land with the build. If writing the code changed the planned structure, the change is highlighted for your quick approve — never a silent divergence between diagram and code.',
   },
   {
     icon: '📦',
@@ -2604,7 +2604,7 @@ const CHECK_STEPS = [
   {
     icon: '⚖️',
     title: 'Three verdicts',
-    body: 'ship — clean to send. fix — the findings go back to the writer and the loop runs again. unsure — the build HOLDS and a standards question is filed for the leads; Jarvis never guesses past a standard.',
+    body: 'ship — clean to send. fix — the findings go back to the writer and the loop runs again. unsure — the build HOLDS and a standards question is filed for the leads; SDC Engineer never guesses past a standard.',
   },
   {
     icon: '🔁',
@@ -2622,11 +2622,11 @@ function HowJarvisWorksTab({ onSeeKnowledge }) {
   const [showAppFlow, setShowAppFlow] = useState(false);
   return (
     <div data-testid="jarvis-how-tab">
-      {/* THE THINKING CONTRACT (Dan, 2026-08-26): how Jarvis THINKS to
+      {/* THE THINKING CONTRACT (Dan, 2026-08-26): how SDC Engineer THINKS to
           generate good code — Jason's process, step for step. */}
       <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.55, marginBottom: 4 }}>
-        <b style={{ color: C.text }}>How Jarvis thinks — Jason Perry's 14-step process, verbatim.</b>{' '}
-        Jarvis follows the same structure a senior SDC controls engineer uses;
+        <b style={{ color: C.text }}>How SDC Engineer thinks — Jason Perry's 14-step process, verbatim.</b>{' '}
+        SDC Engineer follows the same structure a senior SDC controls engineer uses;
         each card says how he executes the step and what it needs from you.
       </div>
       <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5, marginBottom: 14 }}>
@@ -2654,7 +2654,7 @@ function HowJarvisWorksTab({ onSeeKnowledge }) {
               </span>
             </div>
             <div style={{ fontSize: 11.5, color: s.gap ? '#6b5513' : C.muted, lineHeight: 1.55 }}>
-              <b style={{ fontSize: 10, letterSpacing: '0.05em', textTransform: 'uppercase', color: s.gap ? '#92400e' : C.muted }}>How Jarvis does it — </b>
+              <b style={{ fontSize: 10, letterSpacing: '0.05em', textTransform: 'uppercase', color: s.gap ? '#92400e' : C.muted }}>How SDC Engineer does it — </b>
               {s.how}
             </div>
             <div style={{ fontSize: 11.5, lineHeight: 1.55 }}>
@@ -2739,7 +2739,7 @@ function HowJarvisWorksTab({ onSeeKnowledge }) {
             background: 'none', border: 'none', padding: 0, cursor: 'pointer',
             color: C.primary, fontWeight: 700, fontSize: 12, textDecoration: 'underline',
           }}
-        >What Jarvis knows</button> — one card per ingested source.
+        >What SDC Engineer knows</button> — one card per ingested source.
       </div>
     </div>
   );
@@ -2750,8 +2750,8 @@ function HowJarvisWorksTab({ onSeeKnowledge }) {
 const TABS = [
   { id: 'generations', label: 'Generated code' },
   { id: 'questions', label: 'Questions for Controls' },
-  { id: 'knowledge', label: 'What Jarvis knows' },
-  { id: 'how', label: 'How Jarvis works' },
+  { id: 'knowledge', label: 'What SDC Engineer knows' },
+  { id: 'how', label: 'How SDC Engineer works' },
   // APP FLOW (Dan, 2026-08-28): the layers of how the pipeline is actually
   // constructed — so he can see the thinking/checking/loading and improve it.
   { id: 'appflow', label: 'App flow' },
@@ -2845,7 +2845,7 @@ export function JarvisPage({ onClose, focusSmName = null }) {
             color: '#fff', borderRadius: 6, fontSize: 13, fontWeight: 600, padding: '6px 14px', cursor: 'pointer',
           }}
         >← Back</button>
-        <div style={{ color: '#fff', fontSize: 15, fontWeight: 700 }}>Jarvis</div>
+        <div style={{ color: '#fff', fontSize: 15, fontWeight: 700 }}>SDC Engineer</div>
         <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12 }}>
           A developing SDC controls engineer — his code, questions, knowledge, and track record
         </div>
@@ -2898,7 +2898,7 @@ export function JarvisPage({ onClose, focusSmName = null }) {
         <div style={{ maxWidth: tab === 'generations' ? 1280 : 900, margin: '0 auto' }}>
           {loadError && (
             <div style={{ background: '#fdecec', border: `1px solid ${C.danger}`, color: C.danger, borderRadius: 6, padding: '8px 12px', fontSize: 12, marginBottom: 14 }}>
-              Couldn't reach the Jarvis API: {loadError} — is the project server running?
+              Couldn't reach the SDC Engineer API: {loadError} — is the project server running?
             </div>
           )}
           {tab === 'questions' && (

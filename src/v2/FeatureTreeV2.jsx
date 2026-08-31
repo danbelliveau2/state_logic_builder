@@ -14,15 +14,15 @@
  *                (estimate nature lives in the hover tooltip, not a ~ prefix)
  *   ├─ Stations  (+ New action on the row)        → right-value: station count
  *   │   ├─ S## station (square colored by state:  → right-value: node count
- *   │   │   amber = no spec · red = last Jarvis build failed validation ·
+ *   │   │   amber = no spec · red = last SDC Engineer build failed validation ·
  *   │   │   green ✓ = spec + drawn · blue = spec, nothing drawn yet)
  *   │   │   ├─ Spec line (✓ / —, opens SpecEditorModal)
  *   │   │   └─ devices (DeviceIcon + name + muted type subtext)
  *   │   └─ Drafts (unfinished Create-Station drafts — they ARE stations
  *   │      in progress, so they live in the Stations section, not per station)
  *   └─ Documents (opens the drawer)               → right-value: doc count
- *   (No Jarvis node — Dan: "questions about Jarvis don't go on the tree";
- *    the machine structure only. Jarvis lives in the top bar.)
+ *   (No SDC Engineer node — Dan: "questions about SDC Engineer don't go on the tree";
+ *    the machine structure only. SDC Engineer lives in the top bar.)
  *
  * THE TREE IS MASTER: clicking a station drives the canvas (setActiveSm);
  * expansion state is an openKeys Set ('station:{id}' keys) mirrored both
@@ -97,7 +97,7 @@ function Value({ children, small = false }) {
 
 // ── Data helpers ─────────────────────────────────────────────────────────────
 
-/** Latest Jarvis build per SM name for this project → true when it FAILED
+/** Latest SDC Engineer build per SM name for this project → true when it FAILED
  *  validation. Best-effort: server offline ⇒ empty map (no red squares). */
 function useBuildFailures(projectName) {
   const [failed, setFailed] = useState(() => new Set());
@@ -146,7 +146,7 @@ function useDocCount(currentFilename, bump) {
 function stationStatus(sm, buildFailed) {
   const hasSpec = !!sm.machineSpec;
   const drawn = (sm.nodes ?? []).length > 0;
-  if (buildFailed) return { color: RED, check: false, hint: 'Last Jarvis build FAILED validation' };
+  if (buildFailed) return { color: RED, check: false, hint: 'Last SDC Engineer build FAILED validation' };
   if (!hasSpec) return { color: AMBER_BORDER, check: false, hint: 'Incomplete — no machine spec yet' };
   if (drawn) return { color: GREEN, check: true, hint: 'Spec saved + logic drawn' };
   return { color: BLUE, check: false, hint: 'Spec saved — nothing drawn yet' };
@@ -542,7 +542,7 @@ export function FeatureTreeV2() {
           <button
             className="v2-tree__add"
             data-testid="new-station-btn"
-            title="Add a new station to this project (describe it to Jarvis)"
+            title="Add a new station to this project (describe it to SDC Engineer)"
             onClick={(e) => { e.stopPropagation(); store.openNewSmModal(); }}
           >
             + New
@@ -648,7 +648,7 @@ export function FeatureTreeV2() {
           role="button" tabIndex={0}
           onClick={() => setDocsOpen(true)}
           onKeyDown={(e) => { if (e.key === 'Enter') setDocsOpen(true); }}
-          title="Project documents — Jarvis reads these for context when building stations"
+          title="Project documents — SDC Engineer reads these for context when building stations"
         >
           <span className="v2-tree__caret-spacer" />
           <Square color="#8896a8" />

@@ -348,7 +348,7 @@ export function Toolbar() {
   // I/O quick-look popup
   const [ioPopupOpen, setIoPopupOpen] = useState(false);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
-  // JARVIS AI modals + dropdown
+  // SDC ENGINEER AI modals + dropdown
   const [jarvisGenerateOpen, setJarvisGenerateOpen] = useState(false);
   const [jarvisDescribeOpen, setJarvisDescribeOpen] = useState(false);
   const [specEditorOpen, setSpecEditorOpen] = useState(false);
@@ -356,7 +356,7 @@ export function Toolbar() {
   const ioPopupRef = useRef(null);
   const jarvisMenuRef = useRef(null);
 
-  // Jarvis dropdown — close on outside click / Esc (capture phase, same
+  // SDC Engineer dropdown — close on outside click / Esc (capture phase, same
   // reasoning as the I/O popup below).
   useEffect(() => {
     if (!jarvisMenuOpen) return;
@@ -588,13 +588,13 @@ export function Toolbar() {
       >
         ⚙ Setup
       </button>
-      {/* Jarvis dropdown — groups the Jarvis entry points (Describe, Station
+      {/* SDC Engineer dropdown — groups the SDC Engineer entry points (Describe, Station
           Spec) behind one button; the toolbar is width-crowded at 1280px. */}
       <div style={{ position: 'relative' }} ref={jarvisMenuRef}>
         <button
           className="btn btn--ghost"
           onClick={() => setJarvisMenuOpen(o => !o)}
-          title="JARVIS — describe your station or explain it for the station spec"
+          title="SDC ENGINEER — describe your station or explain it for the station spec"
           style={{
             fontWeight: 600,
             color: '#fff',
@@ -603,7 +603,7 @@ export function Toolbar() {
             borderRadius: 6,
           }}
         >
-          ✨ Jarvis ▾
+          ✨ SDC Engineer ▾
         </button>
         {jarvisMenuOpen && (
           <div style={{
@@ -615,12 +615,12 @@ export function Toolbar() {
             {[
               {
                 icon: '🎙', label: 'Describe Station',
-                hint: 'Talk through the station; JARVIS drafts the diagram',
+                hint: 'Talk through the station; SDC ENGINEER drafts the diagram',
                 onClick: () => { setJarvisMenuOpen(false); setJarvisDescribeOpen(true); },
               },
               {
                 icon: '📋', label: 'Station Spec',
-                hint: 'Explain the station in your own words; JARVIS extracts the spec',
+                hint: 'Explain the station in your own words; SDC ENGINEER extracts the spec',
                 onClick: () => { setJarvisMenuOpen(false); setSpecEditorOpen(true); },
                 disabled: !sm,
               },
@@ -845,9 +845,9 @@ export function Toolbar() {
           className="btn btn--primary"
           onClick={() => setJarvisGenerateOpen(true)}
           disabled={!sm || (sm.nodes ?? []).length === 0}
-          title="Generate L5X with JARVIS AI — live progress, validation, and auto-save"
+          title="Generate L5X with SDC ENGINEER AI — live progress, validation, and auto-save"
         >
-          ✨ Generate (Jarvis)
+          ✨ Generate (SDC Engineer)
         </button>
 
         <button
@@ -908,7 +908,7 @@ export function Toolbar() {
         />
       )}
 
-      {/* JARVIS modals */}
+      {/* SDC ENGINEER modals */}
       {jarvisGenerateOpen && (
         <JarvisGenerateModal onClose={() => setJarvisGenerateOpen(false)} />
       )}

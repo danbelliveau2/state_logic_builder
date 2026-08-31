@@ -30,7 +30,7 @@ export const useV2Shell = create((set) => ({
 
   // ── Center PAGE — Dan's TWO-PILL model (Aug 23: the Code Generation page
   //    is GONE — Generate lives on the Diagram page's sub-bar; history lives
-  //    in the Jarvis pill):
+  //    in the SDC Engineer pill):
   //   'sheet'    — the station data sheet (rides on sheetLinkedSmId below)
   //   'mech'     — Diagram, Sequence view: canvas, NO state numbers, no
   //                controls-domain nodes (waits/decisions filtered), PT visible
@@ -55,7 +55,7 @@ export const useV2Shell = create((set) => ({
     lastDiagramView: view === 'mech' || view === 'controls' ? view : s.lastDiagramView,
   })),
 
-  // ── Compile-sequence modal (JARVIS v1.1 Build-time compile).
+  // ── Compile-sequence modal (SDC ENGINEER v1.1 Build-time compile).
   // compileFor = { smId, corrections } | null. Opened from the Build menu,
   // the Full Controls empty state, and the edit-by-explaining loop.
   compileFor: null,

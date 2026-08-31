@@ -7,7 +7,7 @@
  *   GET/POST   /api/projects/:filename/docs
  *   GET/DELETE /api/projects/:filename/docs/:docname
  *
- * Jarvis does NOT read these yet — the purpose note below sets that
+ * SDC Engineer does NOT read these yet — the purpose note below sets that
  * expectation honestly (consumption is a later milestone).
  */
 
@@ -135,7 +135,7 @@ export function DocumentsDrawer({ onClose }) {
         </div>
         <div className="modal__body v2-docs__body">
           <p className="v2-docs__purpose">
-            Project documents — Jarvis reads these for context when building stations.
+            Project documents — SDC Engineer reads these for context when building stations.
           </p>
 
           {!currentFilename && (

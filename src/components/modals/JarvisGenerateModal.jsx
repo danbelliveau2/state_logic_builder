@@ -1,5 +1,5 @@
 /**
- * JarvisGenerateModal — AI (JARVIS) L5X generation with live progress.
+ * JarvisGenerateModal — AI (SDC ENGINEER) L5X generation with live progress.
  *
  * Flow (Dan's ask, Aug 2026): the modal opens to a SCOPE step first —
  * "What are you generating?" — instead of auto-starting on the active
@@ -177,7 +177,7 @@ export function JarvisGenerateModal({ onClose, initialSelectedIds = null }) {
       resolveRef.current = (status = 'cancelled') => settle({ status });
 
       const programName = buildProgramName(sm.stationNumber, sm.name);
-      pushStatus(`Starting JARVIS generation for ${programName}…`);
+      pushStatus(`Starting SDC ENGINEER generation for ${programName}…`);
       const es = new EventSource(
         `/api/generate/stream?filename=${encodeURIComponent(filename)}&smId=${encodeURIComponent(sm.id)}`
       );
@@ -323,7 +323,7 @@ export function JarvisGenerateModal({ onClose, initialSelectedIds = null }) {
     const blob = new Blob([result.l5x], { type: 'application/xml' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `${buildProgramName(sm?.stationNumber ?? 1, smName)}_JARVIS.L5X`;
+    a.download = `${buildProgramName(sm?.stationNumber ?? 1, smName)}_SDCEngineer.L5X`;
     a.click();
     URL.revokeObjectURL(a.href);
   }
@@ -336,7 +336,7 @@ export function JarvisGenerateModal({ onClose, initialSelectedIds = null }) {
   const currentProgram = currentSm ? buildProgramName(currentSm.stationNumber, currentSm.name) : '—';
   const totalCost = outcomes.reduce((a, o) => a + (o.result?.meta?.costEstimate?.totalUSD ?? 0), 0);
 
-  // Cross-station signals Jarvis authored (Tier 2 post-run note) — from each
+  // Cross-station signals SDC Engineer authored (Tier 2 post-run note) — from each
   // result's IR waits: entries tied to a partner SM or handshake conditions.
   const crossSignals = tier === 2 && finished
     ? outcomes.flatMap(o => (o.result?.ir?.waits ?? [])
@@ -350,7 +350,7 @@ export function JarvisGenerateModal({ onClose, initialSelectedIds = null }) {
       <style>{'@keyframes jarvisPulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.25; transform: scale(0.7); } }'}</style>
       <div className="modal" style={{ width: 640, maxHeight: '86vh', display: 'flex', flexDirection: 'column' }}>
         <div className="modal__header">
-          <span>✨ Generate with JARVIS</span>
+          <span>✨ Generate with SDC ENGINEER</span>
           <button className="icon-btn" onClick={() => { if (running) handleCancel(); onClose(); }}>✕</button>
         </div>
 
@@ -524,7 +524,7 @@ export function JarvisGenerateModal({ onClose, initialSelectedIds = null }) {
                       : (stage === 'model' || stage === 'repair')
                         ? (streamedTokens > 0
                             ? `Writing the edit plan — ${streamedTokens.toLocaleString()} tokens`
-                            : 'Jarvis is reasoning through the sequence — the slow, important part (typically 3–6 min before writing starts)')
+                            : 'SDC Engineer is reasoning through the sequence — the slow, important part (typically 3–6 min before writing starts)')
                         : (STAGE_LABELS[stage] ?? stage)}
                   </span>
                 </div>
@@ -640,7 +640,7 @@ export function JarvisGenerateModal({ onClose, initialSelectedIds = null }) {
                     }}>
                       {scored[result.buildId] ? (
                         <div data-testid="score-saved-note" style={{ fontSize: 12, fontWeight: 700, color: '#166534' }}>
-                          ✓ Scored {scored[result.buildId].score} / 100 — saved to Jarvis's track record
+                          ✓ Scored {scored[result.buildId].score} / 100 — saved to SDC Engineer's track record
                         </div>
                       ) : (
                         <>
@@ -671,14 +671,14 @@ export function JarvisGenerateModal({ onClose, initialSelectedIds = null }) {
               );
             })}
 
-            {/* Tier 2 post-run note — cross-station signals Jarvis authored */}
+            {/* Tier 2 post-run note — cross-station signals SDC Engineer authored */}
             {finished && tier === 2 && (
               <div data-testid="cross-station-note" style={{
                 marginTop: 12, background: '#fffbeb', border: '1px solid #fde68a',
                 borderRadius: 6, padding: '8px 12px', fontSize: 11, color: '#78350f',
               }}>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>
-                  Cross-station signals Jarvis authored ({crossSignals.length})
+                  Cross-station signals SDC Engineer authored ({crossSignals.length})
                 </div>
                 {crossSignals.length > 0 ? (
                   <ul style={{ margin: 0, paddingLeft: 18 }}>

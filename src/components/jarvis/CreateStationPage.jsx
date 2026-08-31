@@ -233,7 +233,7 @@ function SaveTick({ state, onDark = false, testId }) {
  *  machineSpec.expectedStateMachines. GUIDANCE, not command: the compile
  *  weighs it against the asynchrony test — agrees or counters WITH the
  *  reasoning shown — never silently ignores it, never blindly obeys it. */
-/** One small SM pill — used for both the ME's expected machines and Jarvis's
+/** One small SM pill — used for both the ME's expected machines and SDC Engineer's
  *  proposed ones. */
 function SmPill({ label, note, tone = 'neutral', testId }) {
   const tones = {
@@ -254,7 +254,7 @@ function SmPill({ label, note, tone = 'neutral', testId }) {
 }
 
 /** RETIRED (Dan, 2026-08-25): "State machines you're expecting" is gone as an
- *  input — Jarvis proposes from the overall description and the ME argues with
+ *  input — SDC Engineer proposes from the overall description and the ME argues with
  *  the PROPOSAL. Kept only as a reference for the pills styling. */
 // eslint-disable-next-line no-unused-vars
 function ExpectedSmsField({ value, onChange, pills = [], disabled, savedTick }) {
@@ -282,7 +282,7 @@ function ExpectedSmsField({ value, onChange, pills = [], disabled, savedTick }) 
       <label className="form-label" style={{ marginTop: 0 }}>
         State machines you're expecting
         <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400, color: C.light, marginLeft: 6 }}>
-          optional — Jarvis weighs it and agrees or counters with his reasoning
+          optional — SDC Engineer weighs it and agrees or counters with his reasoning
         </span>
         <SaveTick state={savedTick} testId="expected-sms-savetick" />
       </label>
@@ -309,8 +309,8 @@ function ExpectedSmsField({ value, onChange, pills = [], disabled, savedTick }) 
   );
 }
 
-/** "Jarvis needs from the model:" — the station's OPEN MECHANICAL-domain
- *  questions from the Jarvis queue, surfaced HERE on the spec sheet because
+/** "SDC Engineer needs from the model:" — the station's OPEN MECHANICAL-domain
+ *  questions from the SDC Engineer queue, surfaced HERE on the spec sheet because
  *  they belong to the ME (positions, clearances, heights live in the
  *  mechanical model — never on a controls surface; 2026-08-22 ServoPNP
  *  incident). Renders nothing when the model has answered everything. */
@@ -803,8 +803,8 @@ function flashSummaryRows(rows) {
 }
 
 /** One turn in the Corrections chat (Dan, Aug 24: corrections is a chat with
- *  Jarvis — the same layer that generates the code). ME turns right-aligned
- *  SDC-blue; Jarvis turns left with the computed what-changed bullets. */
+ *  SDC Engineer — the same layer that generates the code). ME turns right-aligned
+ *  SDC-blue; SDC Engineer turns left with the computed what-changed bullets. */
 function ChatTurn({ turn, idx, onRetry = null }) {
   const me = turn?.role === 'me';
   return (
@@ -1422,7 +1422,7 @@ function hydrateSummaryFromSm(s, sm) {
 // light blue / green). Fault recovery renders INSIDE the Sequence section as
 // the second sequence (Dan, Aug 24) — it has no card of its own.
 // ORDER = render order: Interactions FIRST — it's initial info the ME gives
-// Jarvis, so it lives in the INPUT band above the review sections (Dan,
+// SDC Engineer, so it lives in the INPUT band above the review sections (Dan,
 // Aug 24 two-band restructure).
 const SUMMARY_SECTIONS = [
   { key: 'interactions', covKey: 'interactions', title: 'Interactions', color: '#475569', headerNote: 'signals with the machine’s other stations', editHint: 'one per line:  Station: the interaction' },
@@ -1513,7 +1513,7 @@ function normCoverage(cov) {
   return out;
 }
 
-/** Corrections text for "Resubmit to Jarvis" after in-place edits: every
+/** Corrections text for "Resubmit to SDC Engineer" after in-place edits: every
  *  section that differs from the last-summarized baseline is restated in
  *  full, marked as the engineer's exact wording. */
 function buildEditCorrections(baseline, current) {
@@ -1942,7 +1942,7 @@ function BandHeader({ label, note, first = false }) {
 // have to hit edit — it should be editable automatically"). Enter/blur
 // commits, Escape cancels, an emptied line is removed, "+ add a line"
 // appends. Any change bubbles up and the page shows the sticky
-// "Resubmit to Jarvis" bar.
+// "Resubmit to SDC Engineer" bar.
 
 /** Bare line input: Enter/blur commits (onDone(value)), Escape cancels
  *  (onDone(null)). Enter/Escape resolve directly (not via blur() — focusout
@@ -2302,7 +2302,7 @@ function SummarySection({ section, items, cov, optional, onChange, agreedNeeds, 
       )}
 
       {/* Per-section change boxes are GONE (Dan, Aug 24): corrections live in
-          the ONE Corrections/Changes box — Jarvis routes them to the section
+          the ONE Corrections/Changes box — SDC Engineer routes them to the section
           they name. Inline click-to-edit on every line covers direct fixes. */}
       </div>
       </>)}
@@ -2313,7 +2313,7 @@ function SummarySection({ section, items, cov, optional, onChange, agreedNeeds, 
 // ── "Not SDC standard" callout (nonStandardFlags) ───────────────────────────
 //
 // Amber card listing every place the engineer's description contradicts an
-// SDC standard. Jarvis flags and PROCEEDS — never a gate, never a refusal.
+// SDC standard. SDC Engineer flags and PROCEEDS — never a gate, never a refusal.
 // Flags persist into machineSpec.nonStandardFlags on Build.
 
 function NonStandardCard({ flags }) {
@@ -2800,7 +2800,7 @@ function ServoDraftCard({ device, idx, onPatch, headerProps, bandRows = [], onCo
           // named position on the axis.
           const renderBandRow = (r) => {
             // PROPOSED rows are amber with an explicit "✓ agree" checkbox
-            // (Dan, Aug 24): checking commits Jarvis's proposed value through
+            // (Dan, Aug 24): checking commits SDC Engineer's proposed value through
             // the same persistence path as typing it — the tag then clears
             // because the row becomes a real named position. A band row with
             // NO proposal is a genuine need — red, like the empty cells.
@@ -3391,11 +3391,11 @@ function ReferenceMaterialSection({ items, onItemsChange, syncStates, sm, refere
 }
 
 /** THE SM DECOMPOSITION AS AN APPROVAL ARTIFACT (Dan, 2026-08-25):
- *  the ME's expected pills on one side, Jarvis's PROPOSED machines (name +
+ *  the ME's expected pills on one side, SDC Engineer's PROPOSED machines (name +
  *  oneLiner + owned devices) on the other, an agree/counter one-liner when
  *  they differ, and Approve. Approved (machineSpec.smSplitApproval) → the
  *  split is THE authority (grouping, diagrams, per-program codegen). Inline
- *  rename clears approval (Jarvis tweaks → re-approve); move/merge/split goes
+ *  rename clears approval (SDC Engineer tweaks → re-approve); move/merge/split goes
  *  through the corrections chat. Expectation with no proposal yet → one line
  *  saying the proposal comes at the next Build/compile (the loop is always
  *  visible — Dan hit a sheet where his expectation changed nothing). */
@@ -3425,7 +3425,7 @@ function SmDecompositionSection({ decomp, approval, expectedPills, expectationRa
           State machines
         </div>
         <div data-testid="sm-split-inconsistent" style={{ fontSize: 12, color: '#991b1b', fontWeight: 600, lineHeight: 1.5 }}>
-          Jarvis's proposal is inconsistent — his reasoning says {inconsistent.claimed} machines
+          SDC Engineer's proposal is inconsistent — his reasoning says {inconsistent.claimed} machines
           but the proposal carries {inconsistent.actual}. Not rendering the contradiction — re-proposing.
         </div>
         <button
@@ -3456,7 +3456,7 @@ function SmDecompositionSection({ decomp, approval, expectedPills, expectationRa
           </div>
         )}
         <div data-testid="sheet-state-machines-pending" style={{ fontSize: 11.5, color: C.muted, fontStyle: 'italic' }}>
-          Jarvis proposes the state machines at the next Build / compile — your expectation rides along.
+          SDC Engineer proposes the state machines at the next Build / compile — your expectation rides along.
         </div>
       </div>
     );
@@ -3499,7 +3499,7 @@ function SmDecompositionSection({ decomp, approval, expectedPills, expectationRa
           >Approve</button>
         )}
       </div>
-      {/* YOUR COUNT vs JARVIS'S — Dan expected ~4 machines and got 2; the
+      {/* YOUR COUNT vs SDC ENGINEER'S — Dan expected ~4 machines and got 2; the
           disagreement is stated plainly so he can argue with it. */}
       {(expectedPills?.length ?? 0) > 0 && (
         <div data-testid="sm-split-expected-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 5 }}>
@@ -3509,7 +3509,7 @@ function SmDecompositionSection({ decomp, approval, expectedPills, expectationRa
       )}
       {(expectedCount ?? 0) > 0 && expectedCount !== decomp.length && (
         <div data-testid="sm-split-counter-note" style={{ fontSize: 11, color: '#6b5513', marginBottom: 5 }}>
-          You expected {expectedCount} state machines — Jarvis proposes {decomp.length}
+          You expected {expectedCount} state machines — SDC Engineer proposes {decomp.length}
           {reasoning ? '.' : ' (per-machine reasoning below).'}
         </div>
       )}
@@ -3590,12 +3590,12 @@ function SmDecompositionSection({ decomp, approval, expectedPills, expectationRa
           proposal by default. */}
       {chatMode ? (
         <div data-testid="sm-split-chat-note" style={{ marginTop: 8, fontSize: 11, color: C.muted }}>
-          Not how you'd split it? Say it in the chat above — it applies to this proposal and Jarvis re-proposes.
+          Not how you'd split it? Say it in the chat above — it applies to this proposal and SDC Engineer re-proposes.
         </div>
       ) : (
       <div style={{ marginTop: 8, maxWidth: 760 }}>
         <div style={{ fontSize: 11, color: C.muted, marginBottom: 3 }}>
-          Not how you'd split it? Tell Jarvis what you want instead — he re-proposes.
+          Not how you'd split it? Tell SDC Engineer what you want instead — he re-proposes.
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
           <DictatedTextarea
@@ -3627,7 +3627,7 @@ function SmDecompositionSection({ decomp, approval, expectedPills, expectationRa
               color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700,
               padding: '8px 14px', cursor: (busy || !counter.trim()) ? 'not-allowed' : 'pointer', flexShrink: 0,
             }}
-          >{busy ? 'Working…' : 'Send to Jarvis'}</button>
+          >{busy ? 'Working…' : 'Send to SDC Engineer'}</button>
         </div>
       </div>
       )}
@@ -3707,7 +3707,7 @@ function SectionReviewControls({ sectionKey, reviewed, editOpen, onEdit, onMarkR
         type="button"
         data-testid={`section-edit-btn-${sectionKey}`}
         onClick={onEdit}
-        title="Review this section — say what should change and why; Jarvis proposes, you approve"
+        title="Review this section — say what should change and why; SDC Engineer proposes, you approve"
         style={{
           ...base,
           color: onDark ? '#fff' : C.primary,
@@ -3931,7 +3931,7 @@ const STEP_INFO_NEEDED = {
 };
 
 /** THE STEP-BY-STEP GUIDE (side, sticky): how this is going to go and, per
- *  step, what information Jarvis needs to continue. Replaces the rail. */
+ *  step, what information SDC Engineer needs to continue. Replaces the rail. */
 function CascadeGuide({ steps, hasExplanation, allApproved, onJump, onExpandAll = null, onCollapseAll = null }) {
   if (!steps?.length) return null;
   const tone = {
@@ -4321,7 +4321,7 @@ function CascadeStepBar({ step, stepNo, stepCount, needsCount = 0, valuesCount =
 }
 
 /** NUMBERED QUESTIONS (Dan, 2026-08-27): Q1/Q2/… at the TOP of the active
- *  section — their ONE home. Each carries Jarvis's proposal + Agree; the chat
+ *  section — their ONE home. Each carries SDC Engineer's proposal + Agree; the chat
  *  understands numbered answers ("1 — yes; 2 — actually …"). Value-asks ride
  *  as jump links, counted in the header's needs line. */
 function StepQuestionsPanel({ step, needs = [], valueAsks = [], onAgreeNeed, onFocusChat, pendingNote = null }) {
@@ -4371,7 +4371,7 @@ function StepQuestionsPanel({ step, needs = [], valueAsks = [], onAgreeNeed, onF
             type="button"
             data-testid={`cascade-need-agree-${step.key}-${i}`}
             onClick={() => onAgreeNeed?.(n)}
-            title="Go with Jarvis's proposal — recorded, never re-asked"
+            title="Go with SDC Engineer's proposal — recorded, never re-asked"
             style={{
               ...chipBase, cursor: 'pointer', color: '#2f6b3c', background: '#e9f5ec',
               border: '1px solid #bfe0c8', flexShrink: 0,
@@ -4407,7 +4407,7 @@ function StepQuestionsPanel({ step, needs = [], valueAsks = [], onAgreeNeed, onF
   );
 }
 
-/** "Jarvis is proposing the state machines…" — live elapsed-based progress
+/** "SDC Engineer is proposing the state machines…" — live elapsed-based progress
  *  while the auto-kicked compile runs (Dan, 2026-08-26: send → GO). */
 function SmProposalWait({ startedAt, typicalS = 45 }) {
   const [now, setNow] = useState(Date.now());
@@ -4600,7 +4600,7 @@ export function CreateStationPage({ embedded = false }) {
     draft?.genLevel
     ?? (draft?.smId ? sms.find(s => s.id === draft.smId)?.machineSpec?.generationPreset : null)
     ?? 'standard');
-  // Build purpose (Dan, Aug 23): optional one-liner that changes how Jarvis
+  // Build purpose (Dan, Aug 23): optional one-liner that changes how SDC Engineer
   // approaches the build — persists on machineSpec.purpose. Now the free
   // "specifics" line under the Level of code generation presets.
   const [purpose, setPurpose] = useState(() =>
@@ -4624,7 +4624,7 @@ export function CreateStationPage({ embedded = false }) {
     draft?.referenceText
     ?? (draft?.smId ? referenceJobsText(sms.find(s => s.id === draft.smId)?.machineSpec?.referenceJobs) : '')
     ?? '');
-  // Non-standard requests Jarvis flagged (description contradicts an SDC
+  // Non-standard requests SDC Engineer flagged (description contradicts an SDC
   // standard) — rendered as the amber callout, persisted into machineSpec.
   const [nonStandardFlags, setNonStandardFlags] = useState(draft?.nonStandardFlags ?? []);
   // THE OPTIONAL CE LANE (Dan, 2026-08-30): station-scoped controls intent,
@@ -4641,12 +4641,12 @@ export function CreateStationPage({ embedded = false }) {
     persistDraftNow({ builtSnapshot: rec });
   };
 
-  // In-place edit tracking: baseline = the summary as Jarvis last returned
+  // In-place edit tracking: baseline = the summary as SDC Engineer last returned
   // it; ANY inline edit sets dirty and raises the sticky Resubmit bar.
   const [dirty, setDirty] = useState(false);
   const baselineRef = useRef(draftSummary);
   // Corrections: ONE high-level talk/type box (Dan, Aug 24 — the per-section
-  // boxes are gone). Jarvis routes each correction to the section it names
+  // boxes are gone). SDC Engineer routes each correction to the section it names
   // implicitly; direct fixes happen inline on the lines themselves.
   const [changes, setChanges] = useState('');
   const [applying, setApplying] = useState(false);
@@ -4669,15 +4669,15 @@ export function CreateStationPage({ embedded = false }) {
     const t = setInterval(() => setAgentElapsed(Math.floor((Date.now() - agentStartRef.current) / 1000)), 1000);
     return () => clearInterval(t);
   }, [agentState ? 1 : 0]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Standing rules JARVIS just learned from the engineer's answers —
+  // Standing rules SDC ENGINEER just learned from the engineer's answers —
   // only facts the model explicitly returned AND the server recorded.
   const [learnedNotes, setLearnedNotes] = useState([]);
   // Question-loop guards: how many Apply-changes rounds have run (after 2,
-  // JARVIS is told to ask ZERO new questions) and the full Q&A history
+  // SDC ENGINEER is told to ask ZERO new questions) and the full Q&A history
   // (sent with every re-summarize so nothing is ever re-asked).
   const [qaRounds, setQaRounds] = useState(0);
   // ── Corrections CHAT (Dan, Aug 24: "corrections becomes a chat interface —
-  // and it's Jarvis, the same layer generating the code"). ONE persisted
+  // and it's SDC Engineer, the same layer generating the code"). ONE persisted
   // history: chatThread [{role:'me'|'jarvis', text, items?, questions?, at}].
   // qaHistory (the prompt's asked-and-answered discipline) is DERIVED from it
   // on restore — never a second stored history.
@@ -4851,7 +4851,7 @@ export function CreateStationPage({ embedded = false }) {
   ].join(''), [description, explLayers]);
   const [explDraft, setExplDraft] = useState('');
   // NO UNASSIGNED, EVER (Dan, 2026-08-27: "you know what goes to what —
-  // assign them and I'll tell you if it's right or wrong"). Jarvis COMMITS a
+  // assign them and I'll tell you if it's right or wrong"). SDC Engineer COMMITS a
   // machine for every device; committed guesses persist here (name-keyed) so
   // a refresh keeps them, and fallback guesses ask a numbered question on
   // their machine's own devices step.
@@ -5249,11 +5249,11 @@ export function CreateStationPage({ embedded = false }) {
 
   // ── Gating ───────────────────────────────────────────────────────────────
   const applicable = COVERAGE_ITEMS.filter(i => !(i.optionalWhenAlone && !hasPeers));
-  // Once a Jarvis summary exists AND we're in the summary phase, Jarvis's
+  // Once a SDC Engineer summary exists AND we're in the summary phase, SDC Engineer's
   // covered/needs verdicts replace the local heuristics. Heuristics keep
   // running for the live-typing (input) phase.
   const usingJarvisVerdicts = phase === 'summary' && !!jarvisCoverage;
-  /** A need the ME already agreed to is settled — Jarvis's proposal stands. */
+  /** A need the ME already agreed to is settled — SDC Engineer's proposal stands. */
   const needKey = (covKey, n) => `${covKey}:${n.question}`;
   const openNeedsOf = (covKey) =>
     (jarvisCoverage?.[covKey]?.needs ?? []).filter(n => !agreedNeeds.has(needKey(covKey, n)));
@@ -5332,7 +5332,7 @@ export function CreateStationPage({ embedded = false }) {
   }
 
   /** "✓ Agree" on a need: free, local — record it as answered so no future
-   *  re-summarize re-asks it; Jarvis's proposal stands. */
+   *  re-summarize re-asks it; SDC Engineer's proposal stands. */
   function agreeNeed(section, need) {
     setAgreedNeeds(s => new Set([...s, needKey(section.covKey, need)]));
     setQaHistory(h => [...h, { questions: [need.question], answer: 'Go with your proposed solution.' }]);
@@ -5340,7 +5340,7 @@ export function CreateStationPage({ embedded = false }) {
 
   /** Inline answer on a BLOCKING question (Dan's Magnet Dial round,
    *  2026-08-25: "do I respond to them?" — yes, right there). The box comes
-   *  PREFILLED with Jarvis's proposal: an untouched Answer = one-click accept
+   *  PREFILLED with SDC Engineer's proposal: an untouched Answer = one-click accept
    *  (free, recorded); typing over = override, sent down the SAME corrections
    *  pipeline as the chat (answer lands in knowledge, blocker clears,
    *  receipt shows what changed). */
@@ -5394,7 +5394,7 @@ export function CreateStationPage({ embedded = false }) {
         },
       });
       // Understanding-affecting fields move the sheet ahead of the build
-      // (Dan, 2026-08-25): Rebuild is the one commit point where Jarvis
+      // (Dan, 2026-08-25): Rebuild is the one commit point where SDC Engineer
       // re-thinks with the new info.
       markSheetAhead();
     }, 1200);
@@ -5404,9 +5404,9 @@ export function CreateStationPage({ embedded = false }) {
 
   const preview = name ? buildProgramName(station || 1, name.replace(/[^a-zA-Z0-9_]/g, '')) : '—';
   // Coverage NEVER blocks the Build (v2.0.3): with real input, Build is always
-  // clickable. Thin coverage just adds one confirm — Jarvis fills the gaps with
+  // clickable. Thin coverage just adds one confirm — SDC Engineer fills the gaps with
   // SDC-standard assumptions and flags them for review. Open questions never
-  // gate either: Jarvis decides them per SDC standards and notes them.
+  // gate either: SDC Engineer decides them per SDC standards and notes them.
   const hasBuildInput = !!name.trim()
     && !!(usingJarvisVerdicts ? summaryHasContent(summary) : description.trim());
 
@@ -5420,7 +5420,7 @@ export function CreateStationPage({ embedded = false }) {
   /** Patch one draft device's data-sheet fields (undefined values delete the
    *  key → back to "(default)"). Persisted by the draft autosave; does NOT
    *  raise the Resubmit bar — table values are machine data, not a change to
-   *  what Jarvis understood. */
+   *  what SDC Engineer understood. */
   function updateSheetDevice(idx, patch) {
     setSummary(s => ({
       ...s,
@@ -5509,7 +5509,7 @@ export function CreateStationPage({ embedded = false }) {
     setSummary(s => {
       const devices = s.devices.slice();
       // READ-ONLY OUTPUT: an emptied header is a no-op, never a delete —
-      // removing a device is a structural change (tell Jarvis instead).
+      // removing a device is a structural change (tell SDC Engineer instead).
       if (!t) return s;
       {
         const parsed = linesToSection('devices', t)[0];
@@ -5529,7 +5529,7 @@ export function CreateStationPage({ embedded = false }) {
     touchSection('devices');
     touchCascade('devices'); // a locked devices step re-opens on content edits
     // RENAME CASCADES (Dan, 2026-08-25: "sometimes I just want to change the
-    // wording of device names" — one rename, everywhere consistent). Jarvis's
+    // wording of device names" — one rename, everywhere consistent). SDC Engineer's
     // proposed standard names stand at extraction; the ME's rename WINS after.
     if (newName && oldName && newName !== oldName) renameDeviceEverywhere(oldName, newName);
   }
@@ -5687,7 +5687,7 @@ export function CreateStationPage({ embedded = false }) {
   // The ME's expected pills — extraction-distilled (never the raw paragraph).
   const expectedSmPills = summary?.expectedStateMachines
     ?? linkedSm?.machineSpec?.expectedSmPills ?? [];
-  // Jarvis's agree/counter one-liner: the compile's reviewFlag naming the
+  // SDC Engineer's agree/counter one-liner: the compile's reviewFlag naming the
   // expectation difference (per the asynchrony-test rule). Graceful absent.
   const smSplitReasoning = useMemo(() => {
     const flags = linkedSm?.compiledSequence?.ir?.reviewFlags ?? [];
@@ -5771,7 +5771,7 @@ export function CreateStationPage({ embedded = false }) {
     if (!t) return false;
     const framed =
       'Correction to the STATE MACHINE decomposition. The engineer disagrees with '
-      + `the proposed split (Jarvis proposed ${smDecomp?.length ?? 0}: `
+      + `the proposed split (SDC Engineer proposed ${smDecomp?.length ?? 0}: `
       + `${(smDecomp ?? []).map(e => e.name).join(', ')}). He wants:\n${t}\n`
       + 'Re-propose the state machines accordingly — name each machine, the devices it '
       + 'owns, its sequence, and ONE line saying why it must run asynchronously from '
@@ -5848,7 +5848,7 @@ export function CreateStationPage({ embedded = false }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panelModel.inconsistent, linkedSmId]);
 
-  /** Inline rename on a split entry — the edit RE-OPENS approval (Jarvis
+  /** Inline rename on a split entry — the edit RE-OPENS approval (SDC Engineer
    *  tweaks -> re-approve). Move/merge/split goes through the corrections
    *  chat (the agentic path), never client-side merge rules. */
   function renameSmSplitEntry(entry, newName) {
@@ -6122,7 +6122,7 @@ export function CreateStationPage({ embedded = false }) {
     setSumPct(0);
     setSumStage('sent');
     // AGENTIC corrections (Dan, Aug 24: "corrections inside the app have to
-    // be an agentic layer"): a corrections round sends Jarvis the COMPLETE
+    // be an agentic layer"): a corrections round sends SDC Engineer the COMPLETE
     // current sheet state and trusts the returned sheet as the merge — no
     // client-side keep-rules fighting the model (the double-gripper
     // resurrection). The prompt carries the standing laws as guidance.
@@ -6134,7 +6134,7 @@ export function CreateStationPage({ embedded = false }) {
       sm: {
         name: name.trim().replace(/\s+/g, ''), displayName: name.trim() || 'New Station',
         // Deviation handshake: already-approved deviations ride along so
-        // Jarvis honors them silently and never re-asks.
+        // SDC Engineer honors them silently and never re-asks.
         approvedDeviations: (linkedSmId
           ? store.project?.stateMachines?.find(x => x.id === linkedSmId)?.machineSpec?.approvedDeviations
           : null) ?? [],
@@ -6299,7 +6299,7 @@ export function CreateStationPage({ embedded = false }) {
       // A real change the model never explained on a corrections round where
       // it DID explain others — surface it, the ME may not have asked for it.
       ...(model.length && !model.some(c => c.section === s.section)
-        ? { warn: true, text: `${s.text} — ⚠ Jarvis didn't mention this change` }
+        ? { warn: true, text: `${s.text} — ⚠ SDC Engineer didn't mention this change` }
         : {}),
     }));
     // Model claims that did NOT survive into the landed sheet: flag honestly —
@@ -6539,7 +6539,7 @@ export function CreateStationPage({ embedded = false }) {
   // (The auto-run-everywhere effect lives BELOW the cascade derivation — its
   //  dependency list needs `cascade` initialized. Dan, 2026-08-26 round 2.)
 
-  /** The ONE Corrections box, framed so Jarvis routes it: the ME's wording
+  /** The ONE Corrections box, framed so SDC Engineer routes it: the ME's wording
    *  names its target section implicitly — apply it there, touch nothing else. */
   function combinedCorrections(msgText = changes) {
     const body = String(msgText ?? '').trim();
@@ -6551,7 +6551,7 @@ export function CreateStationPage({ embedded = false }) {
       ? cascade.activeStep : null;
     const stepFrame = step
       ? (step.kind === 'smSplit'
-        ? `The engineer is currently reviewing the STATE MACHINE decomposition proposal${(smDecomp?.length ?? 0) ? ` (Jarvis proposed ${smDecomp.length}: ${(smDecomp ?? []).map(e => e.name).join(', ')})` : ''} — a correction about the split re-proposes it. `
+        ? `The engineer is currently reviewing the STATE MACHINE decomposition proposal${(smDecomp?.length ?? 0) ? ` (SDC Engineer proposed ${smDecomp.length}: ${(smDecomp ?? []).map(e => e.name).join(', ')})` : ''} — a correction about the split re-proposes it. `
         : `The engineer is currently reviewing ${step.smKey && step.smKey !== 'station' ? `the ${step.smName} state machine's ` : "the station's "}${KIND_NOUN[step.kind] ?? step.kind} — corrections default there unless they clearly name another section. `)
       : '';
     // OTHER-MACHINE CONTENT IS STORED SILENTLY (Dan, 2026-08-28): apply it
@@ -7622,7 +7622,7 @@ export function CreateStationPage({ embedded = false }) {
   }, [phase, cascade, proposeRun, applying]);
 
   // ── STRICT REVEAL (Dan, 2026-08-26): steps below the current one are
-  // HIDDEN entirely — not previews. Jarvis keeps the full extraction
+  // HIDDEN entirely — not previews. SDC Engineer keeps the full extraction
   // internally; only the reveal is gated. ──────────────────────────────────
   const stepStateOf = (kind, smKey = null) => {
     const s = cascade.steps.find(x => x.kind === kind && (smKey == null || x.smKey === smKey));
@@ -8577,7 +8577,7 @@ export function CreateStationPage({ embedded = false }) {
   }, [phase, draftKey]);
 
   // ONE COMMUNICATION STREAM (Dan, 2026-08-30): when a step's questions
-  // surface, they ALSO post into the chat as one Jarvis turn — the history
+  // surface, they ALSO post into the chat as one SDC Engineer turn — the history
   // holds question and answer together. The step cards stay (same objects).
   const postedStepQsRef = useRef(new Set());
   useEffect(() => {
@@ -9133,7 +9133,7 @@ export function CreateStationPage({ embedded = false }) {
           ...(nonStandardFlags.length ? { nonStandardFlags: nonStandardFlags.map(f => ({ ...f })) } : {}),
         },
       });
-      // Hand open questions to Jarvis's question queue (best effort — the
+      // Hand open questions to SDC Engineer's question queue (best effort — the
       // pendingQuestions copy above guarantees nothing is lost either way).
       // The diagram extraction's own open questions go to the queue too —
       // there is no post-build review layer to show them in (Dan: "we just
@@ -9146,7 +9146,7 @@ export function CreateStationPage({ embedded = false }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             question: q,
-            context: `Create Station "${name.trim()}" — built with this question open; Jarvis decided per SDC standards.`,
+            context: `Create Station "${name.trim()}" — built with this question open; SDC Engineer decided per SDC standards.`,
             source: 'create-station',
           }),
         }).catch(() => { /* queue endpoint unavailable — pendingQuestions has it */ });
@@ -9202,7 +9202,7 @@ export function CreateStationPage({ embedded = false }) {
         if (!sRes.ok || !sData.ok) throw new Error(sData.error || `Spec request failed (${sRes.status})`);
       } catch (specErr) {
         // Station is drawn and saved — spec can be re-run later from
-        // Jarvis ▾ -> Station Spec. Don't throw the whole build away.
+        // SDC Engineer ▾ -> Station Spec. Don't throw the whole build away.
         prog.stop();
         setSpecFailMsg(specErr.message);
         setPhase('specFailed');
@@ -9250,7 +9250,7 @@ export function CreateStationPage({ embedded = false }) {
       // The summary loop (or the engineer's raw explanation on the direct
       // path) WAS the review. Spec-extraction questions join the queue with
       // the rest; the spec itself is saved above and reachable any time via
-      // Jarvis ▾ → Station Spec.
+      // SDC Engineer ▾ → Station Spec.
       const specQuestions = (sData.questions ?? []).filter(q => !isTabularQuestion(q));
       for (const q of specQuestions) {
         fetch('/api/jarvis/questions', {
@@ -9258,7 +9258,7 @@ export function CreateStationPage({ embedded = false }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             question: q,
-            context: `Create Station "${name.trim()}" — spec extraction question; Jarvis decided per SDC standards.`,
+            context: `Create Station "${name.trim()}" — spec extraction question; SDC Engineer decided per SDC standards.`,
             source: 'create-station',
           }),
         }).catch(() => { /* queue endpoint unavailable */ });
@@ -9295,14 +9295,14 @@ export function CreateStationPage({ embedded = false }) {
   if (mode === 'blank') return <NewStateMachineModal />;
 
   // (No post-build review layer — a successful Build closes this page and
-  //  lands on the canvas with a toast. Jarvis ▾ → Station Spec opens the
+  //  lands on the canvas with a toast. SDC Engineer ▾ → Station Spec opens the
   //  saved spec later.)
 
   const busy = phase === 'building' || phase === 'summarizing';
   const inSummary = phase === 'summary';
 
   // ── THE ONE CHAT (Dan, 2026-08-26): the conversation channel — he says
-  // something, Jarvis responds, fixes happen. Collapsible so the long thread
+  // something, SDC Engineer responds, fixes happen. Collapsible so the long thread
   // gets out of the way (the sanctioned scroll exception applies inside).
   // Rendered right below the inputs in cascade mode; in the legacy spot
   // otherwise. Step response boxes are gone — a message while a step is
@@ -9936,7 +9936,7 @@ export function CreateStationPage({ embedded = false }) {
                   onDictationEnd={() => setPulseDone(true)}
                 />
 
-                {/* Action row — real progress ring while JARVIS summarizes */}
+                {/* Action row — real progress ring while SDC ENGINEER summarizes */}
                 {phase === 'summarizing' ? (
                   <div
                     data-testid="summarize-progress"
@@ -9999,7 +9999,7 @@ export function CreateStationPage({ embedded = false }) {
                 </div>
                 )}
                 <div style={{ fontSize: 11, color: C.light, marginTop: 8, textAlign: 'right', lineHeight: 1.5 }}>
-                  Jarvis proposes the machine split from your words, then walks
+                  SDC Engineer proposes the machine split from your words, then walks
                   you through it step by step — devices, sequence, recovery —
                   each approved before the next. Code builds at the end.
                 </div>
@@ -10008,7 +10008,7 @@ export function CreateStationPage({ embedded = false }) {
           )}
 
           {/* ══ SUMMARY phase — TWO BANDS (Dan, Aug 24): INPUT (what you give
-              Jarvis: reference material, notes, interactions, corrections)
+              SDC Engineer: reference material, notes, interactions, corrections)
               then REVIEW (the station: devices, sequence, IO). Full page
               width — no right rail. ══ */}
           {inSummary && (
@@ -10080,7 +10080,7 @@ export function CreateStationPage({ embedded = false }) {
                         Your explanation
                       </span>
                       <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.78)' }}>
-                        {explEditing ? 'add or rewrite — Jarvis re-thinks and reconciles with what you approved' : ''}
+                        {explEditing ? 'add or rewrite — SDC Engineer re-thinks and reconciles with what you approved' : ''}
                       </span>
                       <span style={{ flex: 1 }} />
                       {/* EDITABLE (Dan, 2026-08-28: "maybe I thought about
@@ -10156,7 +10156,7 @@ export function CreateStationPage({ embedded = false }) {
                               background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 6,
                               fontSize: 12, fontWeight: 700, padding: '5px 16px', cursor: 'pointer',
                             }}
-                          >Apply — Jarvis re-thinks</button>
+                          >Apply — SDC Engineer re-thinks</button>
                           <button
                             type="button"
                             data-testid="explanation-edit-cancel"
@@ -10236,7 +10236,7 @@ export function CreateStationPage({ embedded = false }) {
                               background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 6,
                               fontSize: 12, fontWeight: 700, padding: '5px 16px', cursor: 'pointer',
                             }}
-                          >Add Layer {explLayers.length + 2} — Jarvis thinks the delta</button>
+                          >Add Layer {explLayers.length + 2} — SDC Engineer thinks the delta</button>
                           <button
                             type="button"
                             data-testid="explanation-layer-cancel"
@@ -10439,7 +10439,7 @@ export function CreateStationPage({ embedded = false }) {
                                   </div>
                                 )}
                                 <div data-testid="sm-propose-single" style={{ fontSize: 12, color: C.text, lineHeight: 1.5, marginBottom: 6 }}>
-                                  Jarvis proposes <b>ONE state machine</b> — the whole station runs as a single
+                                  SDC Engineer proposes <b>ONE state machine</b> — the whole station runs as a single
                                   sequence. Not what you meant? Say it in the chat and he re-proposes.
                                 </div>
                                 <button
@@ -10467,7 +10467,7 @@ export function CreateStationPage({ embedded = false }) {
                                 )}
                                 <div data-testid="sm-propose-starting" style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>
                                   {description.trim()
-                                    ? 'Starting — Jarvis proposes how this station breaks into state machines…'
+                                    ? 'Starting — SDC Engineer proposes how this station breaks into state machines…'
                                     : 'Explain the station first — the proposal starts by itself when you\'re done.'}
                                 </div>
                               </>
@@ -10571,7 +10571,7 @@ export function CreateStationPage({ embedded = false }) {
                               {(() => {
                                 // NO UNASSIGNED, EVER (Dan, 2026-08-27):
                                 // every device row renders under the machine
-                                // Jarvis COMMITTED for it (devAssign — claims
+                                // SDC Engineer COMMITTED for it (devAssign — claims
                                 // → persisted assignment → name semantics →
                                 // fallback with a numbered question). Single-
                                 // SM stations render exactly as today.
@@ -10765,7 +10765,7 @@ export function CreateStationPage({ embedded = false }) {
                               })()}
                             </div>
                             {/* (DeviceAddLine removed — devices are added by
-                                telling Jarvis, never by hand-sculpting the
+                                telling SDC Engineer, never by hand-sculpting the
                                 output; Dan's ruling 2026-08-25.) */}
                             {/* MOTION PATH (Dan, Aug 24: "show me a diagram of
                                 what each point is") — the PNP inverted-U drawn
@@ -11067,7 +11067,7 @@ export function CreateStationPage({ embedded = false }) {
                                 <SubHead color="#1574C4">Main sequence</SubHead>
                                 {/* READ-ONLY projection (Dan's ruling): the
                                     output is never hand-sculpted out of sync
-                                    with what Jarvis would regenerate. */}
+                                    with what SDC Engineer would regenerate. */}
                                 <SectionLines
                                   sectionKey="sequence"
                                   items={(summary.sequence ?? []).map(stripSeqItem)}
@@ -11216,7 +11216,7 @@ export function CreateStationPage({ embedded = false }) {
                 )}
 
 
-                {/* Standing rules JARVIS learned from the engineer's answers */}
+                {/* Standing rules SDC ENGINEER learned from the engineer's answers */}
                 {learnedNotes.length > 0 && (
                   <div
                     data-testid="jarvis-learned-note"
@@ -11701,7 +11701,7 @@ export function CreateStationPage({ embedded = false }) {
               }}>
                 Spec extraction failed: {specFailMsg}
                 <div style={{ marginTop: 4 }}>
-                  Run it later from <strong>Jarvis ▾ → Station Spec</strong> — your
+                  Run it later from <strong>SDC Engineer ▾ → Station Spec</strong> — your
                   explanation is already filled in there.
                 </div>
               </div>

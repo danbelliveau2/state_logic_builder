@@ -944,7 +944,7 @@ function renderCompiledText(ir) {
   const lines = [];
   lines.push(`# COMPILED SEQUENCE — ${ir.smName}` +
     (ir.displayName !== ir.smName ? ` (${ir.displayName})` : ''));
-  lines.push(`Station number: ${ir.stationNumber} | Compiler: JARVIS v${ir.compilerVersion}`);
+  lines.push(`Station number: ${ir.stationNumber} | Compiler: SDC Engineer v${ir.compilerVersion}`);
   if (ir.summary) lines.push('', ir.summary);
 
   lines.push('', '## Devices');
@@ -1144,7 +1144,7 @@ async function compileSequence({ projectJson, smId, onProgress = () => {}, corre
     } catch (e) {
       if (attempt === 2) throw new Error('Compile response was not valid JSON (after retry): ' + e.message);
       retryNote = '\n\n(Your previous response was not parseable JSON. Respond with ONLY one valid JSON object — no prose, no fences.)';
-      onProgress(30, 'model', 'Response was malformed — asking Jarvis to restate it');
+      onProgress(30, 'model', 'Response was malformed — asking the model to restate it');
     }
   }
   const ir = normalizeCompiledIR(parsed, baseIr);

@@ -11,7 +11,7 @@
  *   - held-build pointer → answer on the Spec Sheet (QUESTION HOME)
  *
  * Shows for a FRESH build (last 30 min) or right after the generate window
- * closes; ✕ dismisses it for the session. Full history lives in the Jarvis
+ * closes; ✕ dismisses it for the session. Full history lives in the SDC Engineer
  * pill's generations grid — the single home for past builds.
  */
 
@@ -158,7 +158,7 @@ export function GenerationResultCard() {
 
   if (!sm || !latest || generateOpen) return null;
   if (dismissedId === latest.id) return null;
-  // Fresh results only — the full history lives in the Jarvis pill's grid.
+  // Fresh results only — the full history lives in the SDC Engineer pill's grid.
   const age = Date.now() - new Date(latest.at ?? 0).getTime();
   const closedThisSession = generateClosedBump > bumpAtMount;
   if (!closedThisSession && (!Number.isFinite(age) || age > FRESH_MS)) return null;
@@ -194,7 +194,7 @@ export function GenerationResultCard() {
           aria-label="Dismiss"
           data-testid="generation-result-dismiss"
           onClick={() => setDismissedId(latest.id)}
-          title="Dismiss — it stays in the Jarvis pill's history"
+          title="Dismiss — it stays in the SDC Engineer pill's history"
           style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--color-text-muted)', fontSize: 13, lineHeight: 1, padding: '0 2px' }}
         >✕</button>
       </div>

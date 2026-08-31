@@ -48,7 +48,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '..', '..', '.env'),
 
 const ROOT = path.join(__dirname, '..', '..', '..');
 const GENERATED_DIR = path.join(ROOT, 'generated');
-const DELIVERIES_DIR = path.join(ROOT, 'JARVIS Deliveries');
+const DELIVERIES_DIR = path.join(ROOT, 'SDC Engineer Deliveries');
 const VERIFIED_DIR = path.join(ROOT, 'plc-reference', 'verified');
 const SOURCES_FILE = path.join(ROOT, 'jarvis-knowledge', 'sources.json');
 const QUESTIONS_FILE = path.join(ROOT, 'jarvis-knowledge', 'questions.json');

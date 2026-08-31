@@ -5,12 +5,12 @@
  *   1. DESCRIBE — one large free-form textarea ("Explain this station like you
  *      would to a new engineer") + a light checklist hint + image drag-drop
  *      (CAD screenshots). Room left for future voice input.
- *   2. EXTRACT — POST /api/jarvis/spec. JARVIS extracts machineSpec (purpose,
+ *   2. EXTRACT — POST /api/jarvis/spec. SDC ENGINEER extracts machineSpec (purpose,
  *      devicePurposes, outcomeRules, relationships) AND a devices delta:
  *      proposed new devices (typed via deviceTypes vocabulary) + configured
  *      devices the text never mentioned.
  *   3. REVIEW — the four sections rendered with inline click-to-edit,
- *      proposed devices as accept/reject rows, JARVIS's clarifying questions
+ *      proposed devices as accept/reject rows, SDC ENGINEER's clarifying questions
  *      at the top. Save Spec persists machineSpec (+ accepted devices via
  *      store.addDevice).
  *   4. RE-DESCRIBE — back to the text, append more, re-extract. Merge keeps
@@ -387,7 +387,7 @@ export function SpecEditorModal({ onClose, initial = null }) {
     }
   }
 
-  /** Answer JARVIS's clarifying questions right in the banner — re-runs the
+  /** Answer SDC ENGINEER's clarifying questions right in the banner — re-runs the
    *  extraction with the answers as corrections, exactly like CreateStation-
    *  Page's Apply-changes loop. Answered questions drop off; the Q&A history
    *  guarantees nothing is re-asked in reworded form. */
@@ -441,7 +441,7 @@ export function SpecEditorModal({ onClose, initial = null }) {
         ...(questions.length ? { pendingQuestions: questions.slice() } : {}),
       },
     });
-    // Hand open questions to Jarvis's question queue for the controls team
+    // Hand open questions to SDC Engineer's question queue for the controls team
     // (best effort — the pendingQuestions copy above guarantees nothing is
     // lost either way). Mirrors CreateStationPage's Save behavior.
     for (const q of questions) {
@@ -509,7 +509,7 @@ export function SpecEditorModal({ onClose, initial = null }) {
               }} />
               <style>{'@keyframes spin { to { transform: rotate(360deg); } }'}</style>
               <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
-                JARVIS is reading your explanation…
+                SDC ENGINEER is reading your explanation…
               </div>
               <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
                 Extracting devices, sequence intent, failure handling, and station relationships.
@@ -526,7 +526,7 @@ export function SpecEditorModal({ onClose, initial = null }) {
                   padding: '10px 14px', marginBottom: 14,
                 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#8a6d1a', marginBottom: 4 }}>
-                    JARVIS wants to clarify — answer below, edit the fields, or Re-describe:
+                    SDC ENGINEER wants to clarify — answer below, edit the fields, or Re-describe:
                   </div>
                   <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: '#6b5513', lineHeight: 1.6 }}>
                     {questions.map((q, i) => <li key={i}>{q}</li>)}
@@ -556,7 +556,7 @@ export function SpecEditorModal({ onClose, initial = null }) {
                       </button>
                       {applying && (
                         <span style={{ fontSize: 11, color: '#8a6d1a' }}>
-                          JARVIS is folding your answers into the spec…
+                          SDC ENGINEER is folding your answers into the spec…
                         </span>
                       )}
                       {error && !applying && (
@@ -566,7 +566,7 @@ export function SpecEditorModal({ onClose, initial = null }) {
                   </div>
 
                   <div style={{ fontSize: 10, color: '#8a6d1a', marginTop: 6, fontStyle: 'italic' }}>
-                    Unanswered questions go to Jarvis's queue for the controls team when you Save.
+                    Unanswered questions go to SDC Engineer's queue for the controls team when you Save.
                   </div>
                 </div>
               )}
@@ -580,7 +580,7 @@ export function SpecEditorModal({ onClose, initial = null }) {
               <Section
                 number={1}
                 title="Devices"
-                hint="What JARVIS understood each device is for. Click a purpose to edit."
+                hint="What SDC ENGINEER understood each device is for. Click a purpose to edit."
               >
                 {devices.map(d => (
                   <div key={d.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 5 }}>
@@ -612,7 +612,7 @@ export function SpecEditorModal({ onClose, initial = null }) {
 
                 {proposals.length > 0 && (
                   <div style={{ marginTop: 10 }}>
-                    <div style={smallLabel}>New devices JARVIS found in your explanation</div>
+                    <div style={smallLabel}>New devices SDC ENGINEER found in your explanation</div>
                     {proposals.map((p, i) => (
                       <div key={p.name} style={{
                         display: 'flex', gap: 8, alignItems: 'center', marginTop: 5,

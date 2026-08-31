@@ -6,7 +6,7 @@
  * The generation scope itself is an internal default (see
  * lib/agentGenerator/generationScope.js — machineSpec.generationScope feeds
  * the compile/generation prompts); this component only tells the ME what that
- * means in plain words. *Replace stub flags are Jarvis's own standalone-build
+ * means in plain words. *Replace stub flags are SDC Engineer's own standalone-build
  * decisions — never questions, never red (SpecQuestionsSection excludes
  * them); the raw flags ride in this line's tooltip for the curious.
  */

@@ -8,7 +8,7 @@
  * Dan (Aug 22, hard rejection of the plan panel): "the diagram page is the
  * diagram" — this row and the diagram are ALL the page carries. The approve
  * control is the single small action; questions live on the SPEC SHEET;
- * assumptions/standards live with the build on the Jarvis page.
+ * assumptions/standards live with the build on the SDC Engineer page.
  *
  * Legend chips render only when the row has room (CSS media query — hidden
  * under 1400px, replaced by an ⓘ with the legend as its tooltip).
@@ -63,7 +63,7 @@ function SlimApprove({ sm }) {
         data-testid="diagbar-compile-btn"
         disabled={!ok}
         title={ok
-          ? 'Compile the sequence — Jarvis thinks the full sequence through once (~4 min)'
+          ? 'Compile the sequence — SDC Engineer thinks the full sequence through once (~4 min)'
           : (compileBlockReason(sm) ?? 'Draw or build the station first')}
         onClick={() => ok && openCompile(sm.id)}
       >⚙ Compile</button>
@@ -91,7 +91,7 @@ function SlimApprove({ sm }) {
           className="v2-diagbar__action v2-diagbar__action--approve"
           data-testid="diagbar-approve-btn"
           disabled={busy}
-          title="I agree with this sequence — Jarvis pre-builds the code so Generate is instant"
+          title="I agree with this sequence — SDC Engineer pre-builds the code so Generate is instant"
           onClick={() => setApproved(true)}
         >{busy ? 'Saving…' : '✓ Approve'}</button>
       )}

@@ -159,7 +159,7 @@ export function smDecompositionOf(sm, sheetDevices = null) {
   const compiled = compiledDecompositionOf(sm) ?? [];
   // A NEWER compile supersedes a stale applied split (Dan's Magnet Dial round:
   // the old 2-way split kept winning over the fresh 4-machine proposal — the
-  // ME must see, and approve, what Jarvis actually proposes NOW). Tolerant
+  // ME must see, and approve, what SDC Engineer actually proposes NOW). Tolerant
   // timestamps: missing dates keep the split's authority.
   const splitAt = Date.parse(str(sm.machineSpec?.smSplitAppliedAt)) || 0;
   const compiledAt = Date.parse(str(sm.compiledSequence?.compiledAt)) || 0;
@@ -254,7 +254,7 @@ export function stationSmDecompositionOf(stationSms) {
   const list = arr(stationSms);
   if (list.length < 2) return null;
   // Split entries persisted anywhere on the station carry the per-SM sequence,
-  // devices, handshakes and reasoning Jarvis compiled — match them by name.
+  // devices, handshakes and reasoning SDC Engineer compiled — match them by name.
   const splitEntries = [];
   for (const s of list) {
     for (const e of arr(s.machineSpec?.smSplit)) {

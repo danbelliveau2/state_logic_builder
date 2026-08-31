@@ -319,7 +319,7 @@ export function DescribeSurface({
               value={description}
               onChange={e => onDescriptionChange(e.target.value)}
               placeholder={placeholder
-                ?? 'Just talk — JARVIS pulls the spec out of what you write.\n\ne.g. "This station feeds magnets to the pick. There\'s a vertical shuttle that raises the stack, a horizontal shuttle that slides one magnet over coin-changer style…"'}
+                ?? 'Just talk — SDC ENGINEER pulls the spec out of what you write.\n\ne.g. "This station feeds magnets to the pick. There\'s a vertical shuttle that raises the stack, a horizontal shuttle that slides one magnet over coin-changer style…"'}
             />
             {listening && interim && (
               <div

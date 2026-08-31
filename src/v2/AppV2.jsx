@@ -1,5 +1,5 @@
 /**
- * AppV2 — v2 application shell (Jarvis-centered workflow).
+ * AppV2 — v2 application shell (SDC Engineer-centered workflow).
  *
  * Layout (CSS grid, see v2.css):
  *   ┌──────────────── TopBarV2 (48px) ────────────────┐
@@ -18,7 +18,7 @@
  * ONE page — the mechanical canvas by default, an ON-PAGE "Controls detail"
  * toggle flips to the compiled flowchart (ControlsFlowView), the sub-bar
  * carries Approve and ✨ Generate, and fresh results land in place as the
- * GenerationResultCard. History lives in the Jarvis pill. The view state
+ * GenerationResultCard. History lives in the SDC Engineer pill. The view state
  * lives in useV2Shell so the compile modal can land the user on the controls
  * detail after a compile finishes.
  */
@@ -328,7 +328,7 @@ export function AppV2() {
                     <Canvas hideHeader mechanicalView={view === 'mech'} />
                     {/* Controls detail — SAME page, more nodes/edges: the
                         compiled flowchart overlays the canvas AREA ONLY, so
-                        the stations panel, Jarvis pill dock, and every other
+                        the stations panel, SDC Engineer pill dock, and every other
                         piece of page chrome stays exactly where the Sequence
                         view has it (true view parity — Dan, Aug 22). */}
                     {view === 'controls' && (
@@ -347,7 +347,7 @@ export function AppV2() {
                     )}
                     {/* Fresh generation results land IN PLACE on the diagram
                         page (Dan, Aug 23: "grab it right where you made it") —
-                        history lives in the Jarvis pill. */}
+                        history lives in the SDC Engineer pill. */}
                     {!projectHomeOpen && <GenerationResultCard />}
                   </main>
                   {/* Right-side Program Properties panel removed — Dan,
@@ -355,7 +355,7 @@ export function AppV2() {
                       properties remain reachable in the classic app. */}
                 </div>
                 {/* (The Code Generation page is retired — Generate lives on
-                    the Diagram sub-bar; history lives in the Jarvis pill.) */}
+                    the Diagram sub-bar; history lives in the SDC Engineer pill.) */}
                 {/* Page 1 — the EMBEDDED built-station spec sheet, above all
                     covers; the pill never moves when flipping. */}
                 {/* key = project + station identity: a project switch (or a
@@ -374,7 +374,7 @@ export function AppV2() {
         {/* v2 uses the describe-first Create Station flow as a FULL-VIEWPORT
             page (round-2 rework — was CreateStationModal): overlays the whole
             shell on showNewSmModal, no outside-click dismissal, draft
-            autosave, JARVIS summary loop. "start blank instead" inside it
+            autosave, SDC ENGINEER summary loop. "start blank instead" inside it
             still reaches the classic NewStateMachineModal. */}
         {/* Full-viewport create page — ONLY for fresh "+ New" drafts; a
             built station's sheet renders embedded below the banner above. */}

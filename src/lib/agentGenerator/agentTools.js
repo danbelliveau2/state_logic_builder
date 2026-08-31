@@ -742,7 +742,7 @@ function executeTool(state, name, input) {
         arr.push({ id: 'pl_' + Date.now().toString(36), kind: 'law', rule, speaker: state.speaker, at: new Date().toISOString(), status: 'pending' });
         writeJsonFile(PENDING_LAWS_PATH, arr);
         pushDiff(state, { op: 'law.pending', after: rule, before: null, speaker: state.speaker });
-        return { filed: 'pending Dan\'s approval — queued on the Jarvis page; not active until approved' };
+        return { filed: 'pending Dan\'s approval — queued on the SDC Engineer page; not active until approved' };
       } catch (e) { return { error: `filing failed: ${e.message}` }; }
     }
     case 'suggest_app_change': {

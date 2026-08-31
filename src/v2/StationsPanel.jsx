@@ -52,7 +52,7 @@ export function StationsPanel() {
         <FeatureTreeV2 />
       </div>
 
-      {/* (The Jarvis chip lives in the top bar's right side now — Dan, Aug 24.) */}
+      {/* (The SDC Engineer chip lives in the top bar's right side now — Dan, Aug 24.) */}
 
       {/* Footer: project switcher */}
       <div className="v2-stations__project">

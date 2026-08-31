@@ -503,11 +503,11 @@ export function ProjectHomePage() {
             className="v2-phome__card v2-phome__card--add"
             data-testid="home-add-station"
             onClick={addStation}
-            title="Describe a new station to Jarvis — the describe-first Create Station flow"
+            title="Describe a new station to SDC Engineer — the describe-first Create Station flow"
           >
             <span className="v2-phome__add-plus">＋</span>
             <span className="v2-phome__add-label">Add Station</span>
-            <span className="v2-phome__add-hint">describe it to Jarvis</span>
+            <span className="v2-phome__add-hint">describe it to SDC Engineer</span>
           </button>
         </div>
       </div>

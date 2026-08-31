@@ -1,5 +1,5 @@
 /**
- * compiledSequence.js — client helpers for the JARVIS v1.1 Build-time
+ * compiledSequence.js — client helpers for the SDC ENGINEER v1.1 Build-time
  * compiled sequence (pipeline inversion).
  *
  * Endpoints consumed (owned by the server/agentGenerator side — this file
@@ -71,7 +71,7 @@ export function mirrorApproved(smId, approved) {
   }));
 }
 
-/** Mirror a decision review (Code grid ✓/✗ on Jarvis's decisions) into the
+/** Mirror a decision review (Code grid ✓/✗ on SDC Engineer's decisions) into the
  *  in-memory store — same store-consistency rule as compile/approve: the
  *  server wrote decisionReviews into the project FILE; auto-save would
  *  clobber it unless the in-memory project carries it too. */

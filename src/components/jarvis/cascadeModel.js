@@ -34,7 +34,7 @@ export const KIND_SECTION = {
   interactions: 'interactions',
 };
 
-/** Plain noun per kind, for talk-back framing sent to Jarvis. */
+/** Plain noun per kind, for talk-back framing sent to SDC Engineer. */
 export const KIND_NOUN = {
   smSplit: 'state machine breakup',
   devices: 'devices',

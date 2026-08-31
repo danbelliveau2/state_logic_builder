@@ -354,7 +354,7 @@ export function Canvas({ headerExtra = null, hideHeader = false, recoveryState =
     }
   }, [sm, store, getNodes]);
 
-  // ── One-shot measured-height auto-layout for Jarvis-generated diagrams ────
+  // ── One-shot measured-height auto-layout for SDC Engineer-generated diagrams ────
   // The diagram author lays generated nodes out from ESTIMATED heights and
   // flags every node `data._autoLayout`. Real render heights differ (Home
   // Conditions pills, multi-line servo rows), which caused generated nodes to
@@ -1306,7 +1306,7 @@ export function Canvas({ headerExtra = null, hideHeader = false, recoveryState =
         <div className="canvas-empty" data-testid="canvas-empty-v2">
           <div className="canvas-empty__content">
             <h2>No station selected</h2>
-            <p>Pick a station on the left — or describe a new one to Jarvis.</p>
+            <p>Pick a station on the left — or describe a new one to SDC Engineer.</p>
             <button className="btn btn--primary btn--lg" onClick={store.openNewSmModal}>
               + New Station
             </button>

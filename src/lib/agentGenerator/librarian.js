@@ -119,7 +119,7 @@ const NETWORK_README = [
   '  ' + CATEGORIES.join('  |  '),
   '',
   'QUESTIONS FROM THE SDC ENGINEER',
-  '  If he has questions about your drop, a "Questions from Jarvis - ...docx"',
+  '  If he has questions about your drop, a "Questions from SDC Engineer - ...docx"',
   '  appears next to your files. Type your answers directly under each',
   '  question and save — he reads them on his next pass, files what he',
   '  learned under your name, and renames the doc "(answered)".',
@@ -182,7 +182,7 @@ function appendLedger(lines) {
   if (!entries.length) return;
   let md = '';
   try { md = fs.readFileSync(LEDGER_PATH, 'utf8'); } catch (_) {
-    md = '# JARVIS Inbox — learning ledger\n\n---\n';
+    md = '# SDC Engineer Inbox — learning ledger\n\n---\n';
   }
   const sep = md.indexOf('\n---\n');
   const block = entries.map(l => `- ${l}`).join('\n') + '\n';
@@ -215,7 +215,7 @@ function fileToConcept({ concept, heading, markdown, sourceName, origin }) {
   } else {
     const title = name.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
     const header = `# ${title} — how SDC thinks about it\n\n` +
-      '> CONCEPTS, NOT RULES — when Jarvis gets something wrong, deepen the\n' +
+      '> CONCEPTS, NOT RULES — when the SDC Engineer gets something wrong, deepen the\n' +
       '> understanding here; do not append a rule. (Dan, Aug 2026)\n';
     fs.writeFileSync(fp, header + section, 'utf8');
   }
@@ -318,10 +318,14 @@ try {
 // ── the submission form (Dan, 2026-08-28: the CE two-way channel) ────────────
 
 const FORM_TEMPLATE_NAME = 'SUBMISSION FORM.docx';
-const QUESTIONS_DOC_PREFIX = 'Questions from Jarvis';
+const QUESTIONS_DOC_PREFIX = 'Questions from SDC Engineer';
+const QUESTIONS_DOC_PREFIX_LEGACY = 'Questions from Jarvis'; // pre-rename docs on the share still carry this
 
 function isFormTemplate(name) { return name.toLowerCase() === FORM_TEMPLATE_NAME.toLowerCase(); }
-function isQuestionsDoc(name) { return name.toLowerCase().startsWith(QUESTIONS_DOC_PREFIX.toLowerCase()); }
+function isQuestionsDoc(name) {
+  const n = name.toLowerCase();
+  return n.startsWith(QUESTIONS_DOC_PREFIX.toLowerCase()) || n.startsWith(QUESTIONS_DOC_PREFIX_LEGACY.toLowerCase());
+}
 function looksLikeSubmissionForm(name, text) {
   return (!isFormTemplate(name) && /submission/i.test(name) && /\.docx?$/i.test(name))
     || /(JARVIS|SDC ENGINEER) SUBMISSION FORM/i.test(String(text ?? '').slice(0, 600));
@@ -354,7 +358,7 @@ function parseSubmissionForm(text) {
     }
     return v.replace(/[\n_]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
   };
-  const L = ['Your name', 'Date', 'Machine / job', 'What’s attached', "What's attached", 'What should Jarvis study', 'Engineer-verified working code', 'Notes', 'What happens next'];
+  const L = ['Your name', 'Date', 'Machine / job', 'What’s attached', "What's attached", 'What should Jarvis study', 'What should the SDC Engineer study', 'Engineer-verified working code', 'Notes', 'What happens next'];
   const verifiedRaw = grab('Engineer-verified working code', ['Notes', 'What happens next']);
   const hasYes = /\bYES\b/i.test(verifiedRaw); const hasNo = /\bNO\b/i.test(verifiedRaw);
   return {
@@ -362,7 +366,7 @@ function parseSubmissionForm(text) {
     date: grab('Date', L.slice(2)),
     machine: grab('Machine / job', L.slice(3)),
     attached: grab('What’s attached', L.slice(5)) || grab("What's attached", L.slice(5)),
-    focus: grab('What should Jarvis study', L.slice(6)).replace(/^\?\s*/, ''),
+    focus: (grab('What should the SDC Engineer study', L.slice(7)) || grab('What should Jarvis study', L.slice(6))).replace(/^\?\s*/, ''),
     verified: hasYes && !hasNo ? true : hasNo && !hasYes ? false : null,
     notes: grab('Notes', ['What happens next']),
   };
@@ -586,8 +590,8 @@ async function processLocalFile(item, summaryLines, ctx = null) {
       // Unverified L5X — never rank it silently; ask.
       const learnedAs = moveToLearned(item.path);
       fileQuestion({
-        question: `"${item.file}" was dropped in the JARVIS Inbox root (not verified\\). Is it engineer-verified SDC code I should rank as an exemplar, or reference-only?`,
-        proposedSolution: `If verified, say so (or re-drop it into JARVIS Inbox\\verified\\) and I will file it into plc-reference/verified/ and re-harvest precedents. Until then I hold it in _learned/${learnedAs} as reference-only.`,
+        question: `"${item.file}" was dropped in the SDC Engineer Inbox root (not verified\\). Is it engineer-verified SDC code I should rank as an exemplar, or reference-only?`,
+        proposedSolution: `If verified, say so (or re-drop it into SDC Engineer Inbox\\verified\\) and I will file it into plc-reference/verified/ and re-harvest precedents. Until then I hold it in _learned/${learnedAs} as reference-only.`,
         context: 'Inbox librarian — unverified L5X drop',
       });
       appendLedger(`${stamp} · **${item.file}** (local inbox) — L5X without verification → held reference-only in \`_learned/${learnedAs}\`; question filed asking whether it is engineer-verified.`);
@@ -613,7 +617,7 @@ async function processLocalFile(item, summaryLines, ctx = null) {
   const learnedAs = moveToLearned(item.path);
   updateSourcesManifest({
     name: item.file,
-    location: `JARVIS Inbox/_learned/${learnedAs}`,
+    location: `SDC Engineer Inbox/_learned/${learnedAs}`,
     accessStatus: 'copied-locally',
     takeaways: result.takeaways || [],
   });
@@ -671,11 +675,11 @@ async function writeQuestionsDoc(state, { dir, submitter, questions, sourceLabel
   .a { border: 1pt solid #b8c4d0; background: #f7fafc; min-height: 48pt; padding: 6pt; margin-bottom: 4pt; }
   .alabel { font-size: 8.5pt; color: #8a99a8; }
 </style></head><body>
-<h1>QUESTIONS FROM JARVIS</h1>
+<h1>QUESTIONS FROM THE SDC ENGINEER</h1>
 <div class="sub">About: ${esc(sourceLabel)}${submitter ? ` — submitted by ${esc(submitter)}` : ''}, ${today()}.
 Type your answers in the boxes and save this document — Jarvis reads it on his next pass,
 files what he learns under your name, and renames this doc &ldquo;(answered)&rdquo;.</div>
-${items.map((it, i) => `<div class="q">${i + 1}. ${esc(it.question)}</div>${it.proposed ? `<div class="p">Jarvis's best guess: ${esc(it.proposed)}</div>` : ''}<div class="alabel">Your answer:</div><div class="a">&nbsp;</div>`).join('\n')}
+${items.map((it, i) => `<div class="q">${i + 1}. ${esc(it.question)}</div>${it.proposed ? `<div class="p">SDC Engineer's best guess: ${esc(it.proposed)}</div>` : ''}<div class="alabel">Your answer:</div><div class="a">&nbsp;</div>`).join('\n')}
 </body></html>`;
   await htmlToDocx(html, dest);
   const st = fs.statSync(dest);
@@ -726,7 +730,7 @@ async function checkQuestionsDocs(state, summaryLines) {
     const qArr = readJson(QUESTIONS_PATH, []);
     for (const a of answers) {
       const it = doc.items[a.n - 1];
-      fileToMeKnowledge([`${String(a.answer).trim()} (${who} answering Jarvis's question: "${it.question}")`], path.basename(doc.path));
+      fileToMeKnowledge([`${String(a.answer).trim()} (${who} answering the SDC Engineer's question: "${it.question}")`], path.basename(doc.path));
       const qe = qArr.find(q => q && q.id === it.qid);
       if (qe) { qe.status = 'answered'; qe.answer = String(a.answer).trim(); qe.answeredBy = who; qe.answeredAt = nowIso(); }
       it.answered = true;

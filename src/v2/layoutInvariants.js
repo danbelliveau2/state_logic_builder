@@ -405,6 +405,26 @@ export const INVARIANTS = [
     },
   },
   {
+    id: 'no-visible-jarvis',
+    what: 'No rendered page text says "Jarvis" — the product voice is "SDC Engineer" everywhere a user can read (Dan, 2026-08-31)',
+    run() {
+      // Scan rendered text only — attributes, testids, and code identifiers
+      // are internals and out of scope for this pass.
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      const hits = [];
+      let n;
+      while ((n = walker.nextNode())) {
+        if (!/jarvis/i.test(n.nodeValue)) continue;
+        const el = n.parentElement;
+        if (!el || !vis(el)) continue;
+        if (el.closest('script,style,noscript')) continue;
+        hits.push(n.nodeValue.trim().slice(0, 60));
+        if (hits.length >= 3) break;
+      }
+      return hits.length ? { fail: `visible "Jarvis" text: ${hits.join(' | ')}` } : {};
+    },
+  },
+  {
     id: 'no-horizontal-page-scroll',
     what: 'The page body never scrolls horizontally — wide content scrolls inside its own container',
     run() {

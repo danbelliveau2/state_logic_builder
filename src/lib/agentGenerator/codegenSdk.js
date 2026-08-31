@@ -60,7 +60,7 @@ const READING_NOTE = [
   '- plc-reference/verified/   — engineer-VERIFIED exemplars (gold: v7-class files)',
   '- generated/                — prior builds incl. *__corrected_by_* engineer corrections',
   '- jarvis-knowledge/concepts/ — distilled lessons per area',
-  '- JARVIS Deliveries/        — files already delivered',
+  '- SDC Engineer Deliveries/  — files already delivered',
   'Open what you need while writing — verify a rung shape against the exemplar instead of',
   'recalling it. Do NOT write files, ever: the deliverable is the JSON edit plan in your',
   'final message, nothing else. Never dump whole large files into your reply.',

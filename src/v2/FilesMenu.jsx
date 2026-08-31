@@ -1,7 +1,7 @@
 /**
  * FilesMenu — "Files ▾": the output folder + legacy exporters, moved OUT of
  * the top bar's Build ▾ menu (which is gone — Dan: one action button total)
- * and INTO the Jarvis/code page, because they're about output files and
+ * and INTO the SDC Engineer/code page, because they're about output files and
  * that's where the files live.
  *
  * Contents (verbatim from the old BuildMenu, minus Compile/Generate which

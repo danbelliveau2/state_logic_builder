@@ -1,6 +1,6 @@
 /**
  * buildMeta — tiny shared helpers for generated-build rows
- * (used by the Code Generation page and the Jarvis page grid).
+ * (used by the Code Generation page and the SDC Engineer page grid).
  */
 
 /** Version label from the build's filename — Dan: "v4 findable by name".

@@ -18,8 +18,8 @@ const MAX_IMAGES = 6;
 // Staged progress while the single POST runs — honest about being staged:
 // each stage advances on a timer, capped below the next stage boundary.
 const STAGES = [
-  { until: 15, label: 'Sending description to JARVIS…', ms: 1200 },
-  { until: 75, label: 'JARVIS is authoring your station diagram…', ms: 90000 },
+  { until: 15, label: 'Sending description to SDC ENGINEER…', ms: 1200 },
+  { until: 75, label: 'SDC ENGINEER is authoring your station diagram…', ms: 90000 },
   { until: 90, label: 'Validating the draft project…', ms: 15000 },
 ];
 
@@ -114,7 +114,7 @@ export function JarvisDescribeModal({ onClose }) {
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget && !running) onClose(); }}>
       <div className="modal" style={{ width: 620, maxHeight: '86vh', display: 'flex', flexDirection: 'column' }}>
         <div className="modal__header">
-          <span>🎙 Describe Your Station (JARVIS)</span>
+          <span>🎙 Describe Your Station (SDC ENGINEER)</span>
           <button className="icon-btn" onClick={onClose} disabled={running}>✕</button>
         </div>
 
@@ -224,7 +224,7 @@ export function JarvisDescribeModal({ onClose }) {
                   {(result.openQuestions?.length ?? 0) > 0 && (
                     <div style={{ marginTop: 12 }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', marginBottom: 4 }}>
-                        ❓ JARVIS wants to clarify — review these before trusting the draft:
+                        ❓ SDC ENGINEER wants to clarify — review these before trusting the draft:
                       </div>
                       <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: '#78350f', lineHeight: 1.6 }}>
                         {result.openQuestions.map((q, i) => <li key={i}>{q}</li>)}

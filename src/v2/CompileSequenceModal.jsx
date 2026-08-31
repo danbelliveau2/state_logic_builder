@@ -1,5 +1,5 @@
 /**
- * CompileSequenceModal — "Compile sequence (Jarvis)" (JARVIS v1.1 pipeline
+ * CompileSequenceModal — "Compile sequence (SDC Engineer)" (SDC ENGINEER v1.1 pipeline
  * inversion: the thinking happens ONCE, at Build time).
  *
  * Flow: confirm step (what/cost/time, corrections preview when re-compiling
@@ -164,7 +164,7 @@ export function CompileSequenceModal() {
   function handleClose() {
     if (phase === 'running') {
       const ok = window.confirm(
-        'Jarvis is still compiling. Closing this window hides the progress, but the compile keeps running on the server and the result will appear on the Diagram page when it finishes. Close anyway?'
+        'SDC Engineer is still compiling. Closing this window hides the progress, but the compile keeps running on the server and the result will appear on the Diagram page when it finishes. Close anyway?'
       );
       if (!ok) return;
     }
@@ -185,7 +185,7 @@ export function CompileSequenceModal() {
       <style>{'@keyframes jarvisPulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.25; transform: scale(0.7); } }'}</style>
       <div className="modal" style={{ width: 560, maxHeight: '84vh', display: 'flex', flexDirection: 'column' }}>
         <div className="modal__header">
-          <span>⚙ Compile sequence (Jarvis)</span>
+          <span>⚙ Compile sequence (SDC Engineer)</span>
           <button className="icon-btn" onClick={handleClose}>✕</button>
         </div>
 
@@ -197,7 +197,7 @@ export function CompileSequenceModal() {
                 {isRecompile ? 'Re-compile' : 'Compile'} {stationLabel}
               </div>
               <p style={{ fontSize: 12, color: '#475569', lineHeight: 1.6, margin: '0 0 10px' }}>
-                Jarvis reads the station spec and the drawn diagram, and thinks
+                SDC Engineer reads the station spec and the drawn diagram, and thinks
                 through the FULL sequence once — every state, transition, wait
                 and handshake — so you can review and approve it before any
                 code is generated. Approved sequences make Generate a fast,
@@ -250,7 +250,7 @@ export function CompileSequenceModal() {
                       : phase === 'done' ? 'Compiled'
                       : elapsed > TYPICAL_S
                         ? 'Still reasoning — running past the typical time (that’s fine; complex stations take longer)'
-                        : 'Jarvis is reasoning through the full sequence — one deliberate pass, nothing streams back until it’s done'}
+                        : 'SDC Engineer is reasoning through the full sequence — one deliberate pass, nothing streams back until it’s done'}
                   </span>
                 </div>
                 <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
@@ -290,7 +290,7 @@ export function CompileSequenceModal() {
               )}
               {questions.length > 0 && (
                 <div style={{ marginTop: 8, fontSize: 11, color: '#7a6220' }}>
-                  {questions.length} open question{questions.length === 1 ? '' : 's'} for the leads' queue — on the Jarvis page.
+                  {questions.length} open question{questions.length === 1 ? '' : 's'} for the leads' queue — on the SDC Engineer page.
                 </div>
               )}
               {result?.correctionsAcked === false && (

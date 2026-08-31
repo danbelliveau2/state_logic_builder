@@ -26,7 +26,7 @@ const C = {
 // Row labels inside every stage card — Dan's framing, kept verbatim.
 const ROWS = [
   ['do', 'What I do'],
-  ['loads', 'What Jarvis loads'],
+  ['loads', 'What SDC Engineer loads'],
   ['think', 'The thinking'],
   ['check', 'The check'],
   ['back', 'What comes back'],
@@ -73,7 +73,7 @@ const STAGES = [
       loads: 'Shipped-work precedents and archetype notes — device placement is decided from what SDC has actually built, with the evidence named.',
       think: 'An assignment agent decides each device’s home. Precedent-backed placements are made confidently and cite the shipped pattern — a feeder bowl belongs to the feeding machine because every dial station we’ve shipped does it that way.',
       check: 'A checker pass audits every ownership claim and every cited precedent. A claim the knowledge doesn’t support is a violation.',
-      back: 'Each device on its machine, and where the call was precedent-backed, the citation. Where there is no precedent, Jarvis says so plainly — I searched our shipped work and standards and found no example — and asks you once. Your answer files as dated doctrine and is never asked again.',
+      back: 'Each device on its machine, and where the call was precedent-backed, the citation. Where there is no precedent, SDC Engineer says so plainly — I searched our shipped work and standards and found no example — and asks you once. Your answer files as dated doctrine and is never asked again.',
       moves: 'Approve locks this machine’s devices and reveals its sequence step. Or move a device by saying so — an explicit move is your directive; the engine records it as ME-decided.',
     },
   },
@@ -84,7 +84,7 @@ const STAGES = [
       loads: 'The full load, plus this draft’s chat history — a garbled dictated word resolves against the sheet’s real names from context, never from an alias table.',
       think: 'A correction re-thinks this machine’s whole sequence against your words. Approval with comments is approval plus edits — every comment must land.',
       check: 'The checker verifies each of your edits actually shows up in the revision, the SDC way. A missing edit is named precisely and bounced once.',
-      back: 'The updated sequence with a live diff on the card: removed lines struck through, new or changed lines highlighted, until you click got it. One-line receipt in the chat. If something you asked for was honored somewhere other than a visible line — say, folded into a device parameter — Jarvis tells you where it went. Your request never silently vanishes.',
+      back: 'The updated sequence with a live diff on the card: removed lines struck through, new or changed lines highlighted, until you click got it. One-line receipt in the chat. If something you asked for was honored somewhere other than a visible line — say, folded into a device parameter — SDC Engineer tells you where it went. Your request never silently vanishes.',
       moves: 'Approve reveals this machine’s interactions step. Or correct — same engine, same diff. Feedback about a machine you haven’t walked yet is stored silently; you find it applied when the walk arrives.',
     },
   },
@@ -131,7 +131,7 @@ const STAGES = [
     },
   },
   {
-    n: '9', title: 'Verify — and Jarvis learns',
+    n: '9', title: 'Verify — and SDC Engineer learns',
     rows: {
       do: 'A controls lead runs the code, scores it, files corrections or confirms it.',
       loads: '—',
@@ -178,7 +178,7 @@ export function AppFlowTab() {
     <div data-testid="jarvis-appflow-tab" style={{ maxWidth: 780 }}>
       <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6, marginBottom: 14 }}>
         <b style={{ color: C.text }}>How the create-station pipeline is built, layer by layer.</b>{' '}
-        This is the actual current wiring — what you do, what Jarvis pulls in,
+        This is the actual current wiring — what you do, what SDC Engineer pulls in,
         how he thinks, how he checks himself, and what your approval fires.
         When the pipeline changes, this page changes with it.
       </div>
@@ -189,7 +189,7 @@ export function AppFlowTab() {
         style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: '12px 16px', marginBottom: 14 }}
       >
         <div style={{ fontSize: 12.5, fontWeight: 800, color: C.text, marginBottom: 8 }}>
-          What Jarvis pulls from — the six sources
+          What SDC Engineer pulls from — the six sources
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '170px 1fr', gap: '6px 14px' }}>
           {SOURCES.map(([name, what]) => (
@@ -211,11 +211,11 @@ export function AppFlowTab() {
         <div style={{ fontSize: 12.5, fontWeight: 800, color: C.text, marginBottom: 6 }}>The memory model — how this actually works</div>
         <div style={{ fontSize: 12, color: C.text, lineHeight: 1.65 }}>
           A model call knows only what rides in with it — nothing else. So
-          Jarvis does not remember projects the way you do. Instead, shipped
+          SDC Engineer does not remember projects the way you do. Instead, shipped
           projects are distilled offline into compact knowledge — the
           precedent digest, the archetype notes, the standing laws — and that
           distillate is physically carried on every single call, cached so it
-          costs almost nothing. When we say Jarvis learned something, we mean
+          costs almost nothing. When we say SDC Engineer learned something, we mean
           the distillate grew: your ruling was filed, a correction became a
           lesson, a verified build became an exemplar. That is the whole
           mechanism — no magic, and it is why filing your answers matters.
@@ -311,7 +311,7 @@ export function AppFlowTab() {
         data-testid="appflow-ask-decide"
         style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: '12px 16px' }}
       >
-        <div style={{ fontSize: 12.5, fontWeight: 800, color: C.text, marginBottom: 6 }}>When Jarvis asks vs. when he decides</div>
+        <div style={{ fontSize: 12.5, fontWeight: 800, color: C.text, marginBottom: 6 }}>When SDC Engineer asks vs. when he decides</div>
         <div style={{ fontSize: 12, color: C.text, lineHeight: 1.65 }}>
           Precedent-backed means he decides — confidently, citing the shipped
           work or the standard that backs the call. No precedent means he asks,

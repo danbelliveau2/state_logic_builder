@@ -152,7 +152,7 @@ function AutoSaveIndicator() {
 
 // (Build ▾ is gone — Dan: ONE action button total. Compile/Generate live in
 //  the top-right PipelineButton; the output folder + legacy exports moved to
-//  the Jarvis page as the Files ▾ menu. See PipelineButton.jsx / FilesMenu.jsx.)
+//  the SDC Engineer page as the Files ▾ menu. See PipelineButton.jsx / FilesMenu.jsx.)
 
 // ── App-wide UI scale control (− / 100% / +) ────────────────────────────────
 // Same control as the other SDC Tools apps (estimate builder top bar,
@@ -191,7 +191,7 @@ function ScaleControl() {
   );
 }
 
-// (The Code button merged into the Jarvis page, opened from the Jarvis chip —
+// (The Code button merged into the SDC Engineer page, opened from the SDC Engineer chip —
 //  Dan: they were the same thing. The chip lives HERE, top-bar right, since
 //  Aug 24 — the old floating / stations-panel-docked pill is gone.)
 

@@ -3,12 +3,12 @@
  * Two-pill model (Aug 23): [ Spec Sheet | Diagram ].
  * One pill, click-through pages, the content flips beneath it.
  *
- *   1 Spec Sheet — the station data sheet (embedded) + Jarvis's questions
+ *   1 Spec Sheet — the station data sheet (embedded) + SDC Engineer's questions
  *   2 Diagram    — ONE page: the clean sequence by default, an ON-PAGE
  *                  "Controls detail" toggle for the compiled flowchart, the
  *                  sub-bar's Approve + ✨ Generate, and the in-place result
  *                  card. (The Code Generation page is retired — history
- *                  lives in the Jarvis pill's generations grid.)
+ *                  lives in the SDC Engineer pill's generations grid.)
  *
  * High-contrast per Dan ("really hard to see"): white pill on the light
  * banner, bold labels, solid primary active state. Layout: station identity
@@ -26,10 +26,10 @@ import { stationOfSm, primarySmOf, smLabelOf } from '../lib/stationModel.js';
 
 // Dan's TWO-PILL model (Aug 23): the Code Generation page is GONE — Generate
 // lives on the Diagram page's sub-bar next to Approve (review → approve →
-// generate, right there); history lives in the Jarvis pill. The Diagram is
+// generate, right there); history lives in the SDC Engineer pill. The Diagram is
 // ONE page (sequence view + an on-page "Controls detail" toggle).
 const PAGES = [
-  { id: 'sheet', label: 'Spec Sheet', title: 'The station data sheet — description, devices, servo values, sensors & timers, IO — and where Jarvis asks his questions' },
+  { id: 'sheet', label: 'Spec Sheet', title: 'The station data sheet — description, devices, servo values, sensors & timers, IO — and where SDC Engineer asks his questions' },
   { id: 'diagram', label: 'Diagram', title: 'The station\'s sequence — flip on Controls detail for the compiled code\'s flowchart, Approve, and ✨ Generate' },
 ];
 
@@ -196,7 +196,7 @@ export function StationBanner() {
               data-testid={`page-${p.id}`}
               className={`v2-pagenav__btn${active ? ' v2-pagenav__btn--active' : ''}${attn ? ' v2-pagenav__btn--attn' : ''}`}
               title={blocked ? 'Wait for the current step to finish — nothing is lost'
-                : attn ? `Jarvis is waiting on ${openNeeds} answer${openNeeds === 1 ? '' : 's'} — they're on the Spec Sheet`
+                : attn ? `SDC Engineer is waiting on ${openNeeds} answer${openNeeds === 1 ? '' : 's'} — they're on the Spec Sheet`
                 : p.title}
               aria-disabled={blocked}
               onClick={blocked ? undefined : () => goTo(p.id)}

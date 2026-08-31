@@ -171,7 +171,7 @@ export function ChangeLogPanel({ sm, bare = false }) {
         at: str(e.at), what: str(e.what ?? e.text), class: str(e.class ?? e.kind) || 'section',
         replanned: str(e.replanned) || null,
         costUSD: Number.isFinite(Number(e.costUSD)) ? Number(e.costUSD) : null,
-        by: str(e.by) || 'Jarvis',
+        by: str(e.by) || 'SDC Engineer',
       }))
       .filter((e) => e.what && !seen.has(`${e.at}|${e.what}`)),
   ].sort((a, b) => (Date.parse(b.at) || 0) - (Date.parse(a.at) || 0));
