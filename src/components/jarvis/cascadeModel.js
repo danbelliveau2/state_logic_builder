@@ -227,6 +227,38 @@ export function checkHandshakes(machines = []) {
   return findings;
 }
 
+/** THE MACHINE SIGNAL MAP (Dan's homepage, 2026-08-30): every cross-machine
+ *  handshake pair across the given machines — [{from, to, signal, matched}].
+ *  Same parse as checkHandshakes; grows as stations accept. */
+export function signalPairsOf(machines = []) {
+  const NUMW = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+  const sigKey = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '').replace(/[0-9]/g, (c) => NUMW[+c]).replace(/signal$/, '');
+  const nk = (x) => String(x ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const keysMatch = (a, b) => !!a && !!b && (a === b || a.includes(b) || b.includes(a));
+  const ms = (machines ?? []).filter(m => m?.name).map((m) => ({
+    name: m.name, key: nk(m.name),
+    sets: [], waits: [],
+  }));
+  for (const m of ms) {
+    const src = (machines.find(x => x?.name === m.name)?.sequence ?? []).map(String);
+    for (const t of src) {
+      let mm = t.match(/^(?:signal|set)\s+(.+?)\s+to\s+([A-Za-z0-9 '’.&-]+?)\s*$/i);
+      if (mm) { m.sets.push({ sig: sigKey(mm[1]), label: mm[1].trim(), to: mm[2].trim() }); continue; }
+      mm = t.match(/^wait\s+for\s+(.+?)['’]s\s+(.+?)\s*(?:signal)?\s*$/i);
+      if (mm) m.waits.push({ sig: sigKey(mm[2]), label: mm[2].trim(), from: mm[1].trim() });
+    }
+  }
+  const pairs = [];
+  for (const m of ms) {
+    for (const s of m.sets) {
+      const partner = ms.find(x => x !== m && (keysMatch(nk(s.to), x.key) || keysMatch(x.key, nk(s.to))));
+      const matched = !!partner && partner.waits.some(w => keysMatch(w.sig, s.sig));
+      pairs.push({ from: m.name, to: partner?.name ?? s.to, signal: s.label, matched });
+    }
+  }
+  return pairs;
+}
+
 /** Home/tree label for an unfinished draft: where its cascade sits (Dan,
  *  2026-08-26: "MidBaseLoad — draft · at step 1 · Continue"). */
 export function draftCascadeStepNote(draft) {

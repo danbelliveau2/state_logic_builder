@@ -29,7 +29,7 @@ import { useDiagramStore } from '../store/useDiagramStore.js';
 import { useV2Shell } from './useV2Shell.js';
 import { computeMachineTotals } from '../lib/machineTotals.js';
 import { ensureStationSheetDraft, requestResumeDraft, draftsKeyFor, loadDrafts, onDraftsChanged, draftLabel, timeAgo } from '../components/jarvis/createStationDrafts.js';
-import { draftCascadeStepNote } from '../components/jarvis/cascadeModel.js';
+import { draftCascadeStepNote, signalPairsOf } from '../components/jarvis/cascadeModel.js';
 import { heldBuildsOf, needsCount } from './stationNeeds.js';
 import { buildLabel } from './buildMeta.js';
 import { fmtET, fmtETFull } from './fmtTime.js';
@@ -354,6 +354,81 @@ export function ProjectHomePage() {
             </div>
           </>
         )}
+
+        {/* THE MACHINE SIGNAL MAP (Dan, 2026-08-30): the cross-station
+            handshakes, growing as stations are accepted. */}
+        {(() => {
+          const acceptedMachines = drafts
+            .filter(d => d.stationAccepted)
+            .flatMap(d => d.smProposal?.stateMachines ?? []);
+          const builtMachines = sms.flatMap(sm => (sm.machineSpec?.smSplit ?? []));
+          const pairs = signalPairsOf([...acceptedMachines, ...builtMachines]);
+          const accepted = drafts.filter(d => d.stationAccepted).length;
+          return (
+            <>
+              <div className="v2-phome__section">Machine signal map</div>
+              <div className="v2-phome__card" data-testid="home-signal-map" style={{ marginBottom: 14 }}>
+                {pairs.length === 0 ? (
+                  <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)' }}>
+                    Grows as stations are accepted — every cross-station handshake lands here.
+                  </div>
+                ) : pairs.map((p, i) => (
+                  <div key={i} data-testid={`home-signal-${i}`} style={{ fontSize: 12, lineHeight: 1.7, color: 'var(--color-text)' }}>
+                    <span style={{ fontWeight: 700 }}>{p.signal}</span>
+                    <span style={{ color: 'var(--color-text-muted)' }}> — {p.from} → {p.to}</span>
+                    {!p.matched && <span style={{ marginLeft: 8, fontSize: 10.5, color: '#8a3b3b' }}>no matching wait yet</span>}
+                  </div>
+                ))}
+                {/* MACHINE-LEVEL BUILD — unlocks when every station is
+                    accepted; wired to the multi-program build when it lands. */}
+                <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <button
+                    type="button"
+                    data-testid="home-build-machine"
+                    disabled
+                    title="Builds one program per station machine, handshakes wired — lands with the multi-program build. Accept every station to arm it."
+                    style={{
+                      fontSize: 12.5, fontWeight: 800, padding: '7px 16px', borderRadius: 6,
+                      border: '1px solid var(--color-border)', background: 'var(--color-sidebar)',
+                      color: 'var(--color-text-muted)', cursor: 'not-allowed',
+                    }}
+                  >
+                    Build Machine Code — {accepted + sms.length} of {drafts.length + sms.length} stations accepted
+                  </button>
+                  <span style={{ fontSize: 10.5, color: 'var(--color-text-muted)' }}>coming — the whole machine builds once every station is accepted</span>
+                </div>
+              </div>
+            </>
+          );
+        })()}
+
+        {/* BOM SLOT (Dan, 2026-08-30): registration now; ingestion (seeding
+            the station list from the BOM) builds later. */}
+        <div className="v2-phome__section">Bill of materials</div>
+        <div className="v2-phome__card" data-testid="home-bom-slot" style={{ marginBottom: 14 }}>
+          {project.bomFile ? (
+            <div style={{ fontSize: 12, color: 'var(--color-text)' }}>
+              <span style={{ fontWeight: 700 }}>{project.bomFile.name}</span>
+              <span style={{ color: 'var(--color-text-muted)' }}> — registered {String(project.bomFile.at ?? '').slice(0, 10)}. Station seeding from the BOM is coming.</span>
+            </div>
+          ) : (
+            <label style={{ fontSize: 12, color: 'var(--color-text-muted)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontWeight: 700, color: 'var(--color-primary)', textDecoration: 'underline' }}>Register the machine's BOM</span>
+              <span>— seeds the station list once BOM ingestion lands</span>
+              <input
+                type="file"
+                data-testid="home-bom-input"
+                accept=".csv,.xlsx,.xls,.pdf"
+                style={{ display: 'none' }}
+                onChange={e => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  useDiagramStore.setState(st => ({ project: { ...st.project, bomFile: { name: f.name, at: new Date().toISOString() } } }));
+                }}
+              />
+            </label>
+          )}
+        </div>
 
         <div className="v2-phome__section">Stations</div>
         <div className="v2-phome__grid">

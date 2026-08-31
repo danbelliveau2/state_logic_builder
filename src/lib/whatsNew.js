@@ -10,12 +10,24 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.35';
+export const UI_BUILD = 'v2.6.36';
 
 export const BUILT_AT = '2026-08-30';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.36',
+    date: '2026-08-30',
+    items: [
+      'BUILD CARD, STACKED — Accept Station on top, Build Station Code directly below it inside the card with its optional note nested underneath; nothing orphaned at the page bottom',
+      'SIGNALS ARE NOT DEVICES — the SIGNALS group is gone from the devices section: signals are the controls layer, auto-generated from the sequence\'s events ("part gripped" happens, so the signal exists). The data keeps them; the code and the handshake check derive every signal from its event. Filed as a standing law',
+      'MACHINE-CENTRIC HOME — the homepage grows a machine signal map (every cross-station handshake, growing as stations accept), a Build Machine Code button that arms when every station is accepted (the multi-program build is coming), and a BOM slot (register it now; seeding the station list from it is coming)',
+      'THE OPTIONAL CE LANE — a collapsible "Controls notes" section on the station inputs: a controls engineer flips the chat to CE and states intent for this station (what sets/clears a signal, latching vs event); each statement files attributed and dated and guides this station\'s code — above generic precedent, never above SDC standards or your approved mechanical content. Empty = builds exactly as today; every-station rules go to Dan for approval as standards',
+      'COLLAPSIBLE EVERYTHING — every sheet section folds from its header; expand all / collapse all at the top; your fold choices stick per draft',
+      'Stations built through the walk lose the top Diagram pill — the diagram lives on the sequence card; classic stations keep theirs',
+    ],
+  },
   {
     version: 'v2.6.35',
     date: '2026-08-30',
