@@ -121,6 +121,30 @@ export const INVARIANTS = [
     },
   },
   {
+    id: 'uniform-section-bars',
+    what: 'Every sheet region is one consistent section bar — same header anatomy (dark band, chevron, uppercase title), no odd-one-out (Dan, 2026-08-31)',
+    run() {
+      const barSel = ['[data-testid="inputs-band-header"]', '[data-testid="controls-notes-section"]', '[data-testid="corrections-block"]',
+        '[data-testid^="summary-section-"]', '[data-testid="changelog-section"]', '[data-testid="generate-scope-card"]'];
+      const bars = barSel.flatMap((s) => q(s)).filter(vis);
+      if (bars.length < 3) return { skip: 'not enough section bars on screen' };
+      const bad = [];
+      const heights = [];
+      for (const b of bars) {
+        const head = b.firstElementChild;
+        if (!head) { bad.push(`${b.dataset.testid}: no header band`); continue; }
+        const cs = getComputedStyle(head);
+        if (cs.backgroundColor === 'rgba(0, 0, 0, 0)' || cs.backgroundColor === 'transparent') bad.push(`${b.dataset.testid}: header band not tinted`);
+        const title = [...head.querySelectorAll('span')].find((sp) => getComputedStyle(sp).textTransform === 'uppercase');
+        if (!title) bad.push(`${b.dataset.testid}: no uppercase title`);
+        heights.push(head.getBoundingClientRect().height);
+      }
+      const min = Math.min(...heights); const max = Math.max(...heights);
+      if (max - min > 14) bad.push(`header heights vary ${Math.round(min)}–${Math.round(max)}px`);
+      return bad.length ? { fail: [...new Set(bad)].join('; ') } : {};
+    },
+  },
+  {
     id: 'single-call-to-action',
     what: 'ONE call to action: the Build card is THE place — no banner build button, no resubmit footer on walked drafts (Dan, 2026-08-31)',
     run() {

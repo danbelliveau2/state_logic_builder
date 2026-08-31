@@ -2080,6 +2080,33 @@ function SectionLines({ sectionKey, items, onChange, editHint, preserveRich = fa
   );
 }
 
+/** ONE CONSISTENT STACK (Dan, 2026-08-31): every sheet region is a section
+ *  bar with the SAME anatomy — dark SDC band, chevron, uppercase title,
+ *  "N … — click to expand" when folded, status slot on the right. Built to
+ *  match the DEVICES/SEQUENCE header he likes; no odd-one-out styling. */
+function SectionBar({ title, color = '#061d39', note = null, foldedNote = null, status = null, collapsed, onToggle, children, testId, maxWidth = 900, marginBottom = 10 }) {
+  return (
+    <div data-testid={testId} style={{ maxWidth, marginBottom, border: `1px solid ${C.border}`, borderRadius: 8, background: '#fff', overflow: 'hidden' }}>
+      <div
+        onClick={onToggle}
+        title={collapsed ? 'expand' : 'collapse'}
+        style={{ display: 'flex', alignItems: 'baseline', gap: 10, cursor: 'pointer', background: color, padding: '5px 14px' }}
+      >
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.85)' }}>{collapsed ? '▸' : '▾'}</span>
+        <span style={{ fontSize: 11, fontWeight: 800, color: '#fff', letterSpacing: '0.06em', textTransform: 'uppercase' }}>{title}</span>
+        {(collapsed ? (foldedNote ?? note) : note) && (
+          <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.75)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {collapsed ? (foldedNote ?? note) : note}
+          </span>
+        )}
+        <span style={{ flex: 1 }} />
+        {status ? <span onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}>{status}</span> : null}
+      </div>
+      {!collapsed && children != null && <div style={{ padding: '8px 14px 10px' }}>{children}</div>}
+    </div>
+  );
+}
+
 function SummarySection({ section, items, cov, optional, onChange, agreedNeeds, onAgreeNeed, renderBody, savedTick, reviewBar, topPanel, dimmed = false, collapsed = false, onToggleCollapse = null, onOpenQuestions = null }) {
   // SILENCE = COVERED (Dan, Aug 24: "if it's not covered, you're going to
   // ask — so of course it's covered"). No verdict chips at all — a section
@@ -4674,9 +4701,18 @@ export function CreateStationPage({ embedded = false }) {
     try { localStorage.setItem(`jarvis.sheetCollapsed.${draftIdRef.current}`, JSON.stringify(next)); } catch { /* private mode */ }
   };
   const toggleSectionCollapse = (key) => writeCollapsed({ ...collapsedSections, [key]: !collapsedSections[key] });
-  const setAllSectionsCollapsed = (on) => writeCollapsed(on
-    ? { interactions: true, devices: true, sequence: true, io: true }
-    : {});
+  // ONE CONSISTENT STACK (Dan, 2026-08-31): expand/collapse-all governs EVERY
+  // bar — inputs, controls information, chat, change log and build included.
+  // changeLog defaults collapsed, so expand-all writes it explicitly false.
+  const setAllSectionsCollapsed = (on) => {
+    writeCollapsed(on
+      ? { interactions: true, devices: true, sequence: true, io: true, controlsNotes: true, chat: true, changeLog: true, build: true }
+      : { changeLog: false });
+    setInputsCollapsed(on);
+    try { localStorage.setItem(`jarvis.inputsCollapsed.${draftIdRef.current}`, on ? '1' : '0'); } catch { /* private mode */ }
+  };
+  // Per-key fold default: change log starts folded; everything else open.
+  const secFolded = (key) => (collapsedSections[key] ?? (key === 'changeLog'));
 
   const fullExplanation = useMemo(() => [
     description,
@@ -8971,14 +9007,14 @@ export function CreateStationPage({ embedded = false }) {
   // otherwise. Step response boxes are gone — a message while a step is
   // active applies to that step by default (combinedCorrections frames it).
   const chatBlock = (
-    <div
-      data-testid="corrections-block"
-      style={{
-        marginBottom: 12, maxWidth: 900,
-        background: '#fff', border: `1px solid ${C.primaryBorder}`,
-        borderLeft: `4px solid ${C.primary}`, borderRadius: 8,
-        padding: '10px 14px 12px',
-      }}
+    <SectionBar
+      testId="corrections-block"
+      title="Chat"
+      color="#1574C4"
+      note="ask, correct, change — he applies it and shows what actually changed"
+      foldedNote={`${chatThread.length} turn${chatThread.length === 1 ? '' : 's'}${allOpenNeeds.length ? ` · ${allOpenNeeds.length} open question${allOpenNeeds.length === 1 ? '' : 's'}` : ''} — click to expand`}
+      collapsed={secFolded('chat')}
+      onToggle={() => toggleSectionCollapse('chat')}
     >
       {/* BREATHING ROOM (Dan, 2026-08-31): the tab row gets its own band —
           padded, ruled off — so the thread scrolls under a clean boundary. */}
@@ -9161,7 +9197,7 @@ export function CreateStationPage({ embedded = false }) {
           {budgetMessage}. Building from the current summary still works.
         </div>
       )}
-    </div>
+    </SectionBar>
   );
 
   return (
@@ -9621,30 +9657,20 @@ export function CreateStationPage({ embedded = false }) {
                     collapses once step 1 is approved; + Add a layer stays
                     reachable from the collapsed line. */}
                 {cascadeLive ? (
-                  <div
-                    data-testid="inputs-band-header"
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 10, margin: '2px 0 10px',
-                      borderBottom: `2px solid ${C.border}`, paddingBottom: 5,
+                  /* UNIFORM BAR (Dan, 2026-08-31): same anatomy as every
+                     other section — dark band, chevron, folded note. */
+                  <SectionBar
+                    testId="inputs-band-header"
+                    title="Inputs"
+                    color="#061d39"
+                    foldedNote={`${images.length ? `${images.length} file${images.length === 1 ? '' : 's'} · ` : ''}explanation${explLayers.length ? ` · ${explLayers.length} layer${explLayers.length === 1 ? '' : 's'}` : ''} — click to expand`}
+                    collapsed={inputsCollapsed}
+                    onToggle={() => {
+                      const next = !inputsCollapsed;
+                      setInputsCollapsed(next);
+                      try { localStorage.setItem(`jarvis.inputsCollapsed.${draftIdRef.current}`, next ? '1' : '0'); } catch { /* private mode */ }
                     }}
-                  >
-                    <button
-                      type="button"
-                      data-testid="inputs-collapse-toggle"
-                      onClick={() => {
-                        const next = !inputsCollapsed;
-                        setInputsCollapsed(next);
-                        try { localStorage.setItem(`jarvis.inputsCollapsed.${draftIdRef.current}`, next ? '1' : '0'); } catch { /* private mode */ }
-                      }}
-                      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, fontWeight: 800, color: C.text, letterSpacing: '0.04em' }}
-                    >{inputsCollapsed ? '▸' : '▾'} INPUTS</button>
-                    {inputsCollapsed && (
-                      <span style={{ fontSize: 11.5, color: C.muted }}>
-                        {images.length ? `${images.length} file${images.length === 1 ? '' : 's'} · ` : ''}explanation{explLayers.length ? ` · ${explLayers.length} layer${explLayers.length === 1 ? '' : 's'}` : ''}
-                      </span>
-                    )}
-                    <span style={{ flex: 1 }} />
-                    {inputsCollapsed && (
+                    status={inputsCollapsed ? (
                       <button
                         type="button"
                         data-testid="inputs-add-layer-collapsed"
@@ -9653,10 +9679,11 @@ export function CreateStationPage({ embedded = false }) {
                           try { localStorage.setItem(`jarvis.inputsCollapsed.${draftIdRef.current}`, '0'); } catch { /* private mode */ }
                           setExplLayerDraft(''); setExplAddingLayer(true);
                         }}
-                        style={{ ...chipBase, cursor: 'pointer', fontWeight: 800, color: '#0f4c81', background: '#eef3f8', border: '1px solid #b8c4d0' }}
+                        style={{ ...chipBase, cursor: 'pointer', fontWeight: 800, fontSize: 10, color: '#fff', background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.4)' }}
                       >+ Add a layer</button>
-                    )}
-                  </div>
+                    ) : null}
+                    marginBottom={inputsCollapsed ? 10 : 6}
+                  />
                 ) : (
                   <BandHeader first label="Inputs" />
                 )}
@@ -9872,40 +9899,23 @@ export function CreateStationPage({ embedded = false }) {
                     approved mechanical content. Absent = build as today.
                     ALWAYS VISIBLE (Dan re-asked, 2026-08-31): it carries its
                     own fold — never hidden inside the inputs fold. */}
-                {(
-                  <div data-testid="controls-notes-section" style={{ maxWidth: 900, marginBottom: 10, border: `1px solid ${C.border}`, borderRadius: 8, background: '#fff', overflow: 'hidden' }}>
-                    <div
-                      onClick={() => toggleSectionCollapse('controlsNotes')}
-                      title={collapsedSections.controlsNotes ? 'expand' : 'collapse'}
-                      style={{ display: 'flex', alignItems: 'baseline', gap: 10, cursor: 'pointer', background: '#475569', padding: '5px 14px' }}
-                    >
-                      <span style={{ fontSize: 11, fontWeight: 800, color: '#fff', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                        {collapsedSections.controlsNotes ? '▸' : '▾'} Controls notes
-                      </span>
-                      <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.75)' }}>
-                        optional — a controls engineer's intent for this station's code
-                      </span>
+                <SectionBar
+                  testId="controls-notes-section"
+                  title="Controls information"
+                  note="optional"
+                  foldedNote={controlsNotes.length ? `${controlsNotes.length} note${controlsNotes.length === 1 ? '' : 's'} — click to expand` : 'optional'}
+                  collapsed={secFolded('controlsNotes')}
+                  onToggle={() => toggleSectionCollapse('controlsNotes')}
+                >
+                  {/* No explainer paragraph (Dan: "they know what's needed").
+                      Fills via chat with the CE toggle; empty = just the bar. */}
+                  {controlsNotes.length === 0 ? null : controlsNotes.map((n, i) => (
+                    <div key={i} data-testid={`controls-note-${i}`} style={{ fontSize: 12, color: C.text, lineHeight: 1.6, padding: '2px 0' }}>
+                      {n.text}
+                      <span style={{ fontSize: 10.5, color: C.light }}> — {n.by ?? 'CE'}, {String(n.at ?? '').slice(0, 10)}</span>
                     </div>
-                    {!collapsedSections.controlsNotes && (
-                      <div style={{ padding: '8px 14px 10px' }}>
-                        {controlsNotes.length === 0 ? (
-                          <div data-testid="controls-notes-empty" style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.6 }}>
-                            Empty is fine — the code builds from SDC standards and shipped precedent as always.
-                            A controls engineer can sharpen this station's code here: flip the chat toggle to <b>CE</b> and
-                            talk — how a signal should be handled (what sets and clears it, latching vs event), logic
-                            preferences. Each statement files here, attributed and dated.
-                            Rules meant for <b>every</b> station go to Dan for approval as standards instead.
-                          </div>
-                        ) : controlsNotes.map((n, i) => (
-                          <div key={i} data-testid={`controls-note-${i}`} style={{ fontSize: 12, color: C.text, lineHeight: 1.6, padding: '2px 0' }}>
-                            {n.text}
-                            <span style={{ fontSize: 10.5, color: C.light }}> — {n.by ?? 'CE'}, {String(n.at ?? '').slice(0, 10)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
+                  ))}
+                </SectionBar>
 
                 {/* (Level of code generation moved to the GENERATE step —
                     Dan, 2026-08-26. The chooser renders with the Generate
@@ -10906,28 +10916,25 @@ export function CreateStationPage({ embedded = false }) {
                 {/* CHANGE LOG — Dan's version control view: one line per
                     applied change (when · what · class chip · cost), newest
                     first, merged with the classifier agent's API when live. */}
-                <ChangeLogPanel sm={linkedSm} />
-
-                {/* APPROVE THE WHOLE (Dan's flow): every section reviewed →
-                    one clear action; same pipeline semantics as Rebuild. */}
-                {reviewSections.length > 0 && allReviewed && sheetBlockers().length === 0 && (
-                  <div
-                    data-testid="review-approve-all"
-                    style={{
-                      marginTop: 14, display: 'flex', alignItems: 'center', gap: 12,
-                      background: '#e9f5ec', border: '1px solid #bfe0c8',
-                      borderRadius: 8, padding: '10px 14px',
-                    }}
+                {/* CHANGE LOG — uniform section bar, collapsed by default
+                    (Dan, 2026-08-31): the data unchanged, no floating log
+                    line above the build card. */}
+                {linkedSm && (localChangeLogOf(linkedSm)?.length ?? 0) > 0 ? (
+                  <SectionBar
+                    testId="changelog-section"
+                    title="Change log"
+                    color="#475569"
+                    foldedNote={`${localChangeLogOf(linkedSm).length} entr${localChangeLogOf(linkedSm).length === 1 ? 'y' : 'ies'} — click to expand`}
+                    collapsed={secFolded('changeLog')}
+                    onToggle={() => toggleSectionCollapse('changeLog')}
                   >
-                    <span style={{ flex: 1, fontSize: 12.5, fontWeight: 700, color: '#2f6b3c' }}>
-                      {cascadeLive
-                        ? `✓ All ${cascade.steps.length} steps approved — the cascade is done.`
-                        : `✓ All ${reviewSections.length} sections reviewed — the sheet is yours.`}
-                    </span>
-                    {/* (Banner button DELETED — Dan, 2026-08-31: ONE call to
-                        action; the Build card below is THE place.) */}
-                  </div>
-                )}
+                    <ChangeLogPanel sm={linkedSm} bare />
+                  </SectionBar>
+                ) : null}
+
+                {/* (The "✓ all steps approved" banner is DELETED — Dan,
+                    2026-08-31: the rail already says it; one stack, no
+                    floating announcements.) */}
 
                 {error && (
                   <div style={{
@@ -10943,17 +10950,19 @@ export function CreateStationPage({ embedded = false }) {
                     Renders only when the cascade is fully agreed, right above
                     the spend button. */}
                 {cascadeLive && cascade.allApproved && (
-                  <div
-                    data-testid="generate-scope-card"
-                    style={{
-                      marginTop: 14, maxWidth: 900,
-                      border: `1px solid ${C.primaryBorder}`, borderLeft: `4px solid ${C.primary}`,
-                      background: '#fff', borderRadius: 8, padding: '10px 14px 12px',
-                    }}
+                  <SectionBar
+                    testId="generate-scope-card"
+                    title="Build station code"
+                    color="#1574C4"
+                    foldedNote="click to expand"
+                    status={pregenFindings.hang.length === 0 && (smProposal?.stateMachines?.length ?? 0) >= 2 ? (
+                      <span style={{ fontSize: 10, fontWeight: 700, color: '#2f6b3c', background: '#e9f5ec', border: '1px solid #7fb08c', borderRadius: 3, padding: '1px 8px' }}>ready</span>
+                    ) : pregenFindings.hang.length > 0 ? (
+                      <span style={{ fontSize: 10, fontWeight: 700, color: '#8a3b3b', background: '#fdf2f2', border: '1px solid #d4a0a0', borderRadius: 3, padding: '1px 8px' }}>{pregenFindings.hang.length} signal finding{pregenFindings.hang.length === 1 ? '' : 's'}</span>
+                    ) : null}
+                    collapsed={secFolded('build')}
+                    onToggle={() => toggleSectionCollapse('build')}
                   >
-                    <div style={{ fontSize: 10.5, fontWeight: 800, color: C.primary, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 5 }}>
-                      Build station code
-                    </div>
                     {/* SIGNAL CHECK LIVES IN THE WALK (Dan, 2026-08-30) — a
                         can-never-satisfy finding blocks its approval step, so
                         this card shows at most one green line. The red block
@@ -11040,7 +11049,7 @@ export function CreateStationPage({ embedded = false }) {
                         style={{ width: '100%', boxSizing: 'border-box', fontSize: 12, resize: 'none', lineHeight: 1.5, paddingTop: 6, paddingBottom: 6, paddingLeft: 10 }}
                       />
                     </div>
-                  </div>
+                  </SectionBar>
                 )}
 
                 {/* Action row */}

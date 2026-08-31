@@ -10,12 +10,21 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.37';
+export const UI_BUILD = 'v2.6.38';
 
 export const BUILT_AT = '2026-08-30';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.38',
+    date: '2026-08-31',
+    items: [
+      'ONE CONSISTENT STACK — every region of the sheet is now the same section bar you liked on Devices/Sequence: dark SDC band, chevron, "N … — click to expand" when folded. Inputs, Controls information, Chat, Devices, Sequence, Inputs & Outputs, Change log and Build station code all fold identically, and expand all / collapse all at the top governs every one of them',
+      '"Controls notes" is now CONTROLS INFORMATION — just the bar, no explainer paragraph; it fills from the chat with the CE toggle',
+      'The "✓ all steps approved" banner is gone (the rail already says it); the Change log is a collapsed bar ("N entries"), not a floating line; Build station code sits at the bottom of the stack with a "ready" chip when the signal handshakes check clean',
+    ],
+  },
   {
     version: 'v2.6.37',
     date: '2026-08-31',

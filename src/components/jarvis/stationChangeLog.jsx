@@ -147,7 +147,9 @@ function fmtWhen(at) {
  * one line per change: when · what · class chip · cost. Grows — the no-scroll
  * law applies (this is not a chat thread).
  */
-export function ChangeLogPanel({ sm }) {
+// bare (Dan, 2026-08-31): entries only — the uniform SectionBar outside owns
+// the header/fold; no inner toggle, no floating log line.
+export function ChangeLogPanel({ sm, bare = false }) {
   const [open, setOpen] = useState(true);
   const [serverEntries, setServerEntries] = useState(null);
   const filename = useDiagramStore((s) => s.currentFilename);
@@ -177,7 +179,8 @@ export function ChangeLogPanel({ sm }) {
   if (!merged.length) return null;
 
   return (
-    <div data-testid="station-changelog" style={{ marginTop: 10, marginBottom: 8 }}>
+    <div data-testid="station-changelog" style={bare ? undefined : { marginTop: 10, marginBottom: 8 }}>
+      {!bare && (
       <button
         type="button"
         data-testid="station-changelog-toggle"
@@ -190,7 +193,8 @@ export function ChangeLogPanel({ sm }) {
       >
         {open ? '▾' : '▸'} Change log ({merged.length})
       </button>
-      {open && (
+      )}
+      {(bare || open) && (
         <div style={{ marginTop: 4 }}>
           {merged.map((e, i) => {
             const tone = CHIP_TONES[e.class] ?? CHIP_TONES.section;
