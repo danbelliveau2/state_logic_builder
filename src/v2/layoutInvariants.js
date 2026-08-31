@@ -107,6 +107,16 @@ export const INVARIANTS = [
           if (overlap) bad.push(`fixed elements overlap: ${floats[i].dataset?.testid ?? floats[i].className} × ${floats[j].dataset?.testid ?? floats[j].className}`);
         }
       }
+      // EXPLICIT PAIR (Dan, 2026-08-31: pill stacked on the badge): the chat
+      // pill and the version badge must never collide — the pill owns
+      // bottom-right, the badge owns bottom-left.
+      const pill = q('[data-testid="chat-pill"]').filter(vis)[0];
+      const badge = q('body *').filter(vis).find((el) => /^v\d+\.\d+\.\d+ ·/.test(el.textContent?.trim() ?? '') && getComputedStyle(el.parentElement ?? el).position === 'fixed');
+      if (pill && badge) {
+        const a = pill.getBoundingClientRect(); const b = badge.getBoundingClientRect();
+        const hit = a.left < b.right + 8 && b.left < a.right + 8 && a.top < b.bottom + 8 && b.top < a.bottom + 8;
+        if (hit) bad.push('chat pill collides with the version badge');
+      }
       return bad.length ? { fail: [...new Set(bad)].join('; ') } : {};
     },
   },

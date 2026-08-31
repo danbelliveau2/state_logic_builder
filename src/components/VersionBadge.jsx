@@ -59,13 +59,15 @@ export function VersionBadge() {
       ref={rootRef}
       style={{
         position: 'fixed',
-        right: 12,
+        // Bottom-LEFT (Dan, 2026-08-31): the chat pill OWNS bottom-right —
+        // the badge moved corners so they can never collide.
+        left: 12,
         bottom: 12,
         zIndex: 2000000,
         pointerEvents: 'none',           // wrapper never blocks the app
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'flex-end',
+        alignItems: 'flex-start',
         gap: 8,
         fontFamily: 'inherit',
       }}
