@@ -69,7 +69,7 @@ const MAX_FILE_BYTES = 25 * 1024 * 1024; // skip anything bigger (network CAD du
 // so Dan can see (and a lead can edit) which network folders are watched.
 const DEFAULT_CONFIG = {
   networkRoot: '\\\\stevendouglas.local\\dfs\\Company\\Engineering\\Electrical Dept',
-  networkDropFolder: 'JARVIS Inbox',
+  networkDropFolder: 'SDC Engineer Inbox',
   // WATCH EVERYTHING (Dan, 2026-08-28: "learn everything in the electrical
   // department folder") — the whole dept share, recursively, minus the
   // judgment-call noise below. The backlog counter tells the story.
@@ -78,7 +78,8 @@ const DEFAULT_CONFIG = {
   exclude: ['ARCHIVE', 'EPLAN', 'Backup', 'Backups', 'Old', 'node_modules', '_archive'],
   // Legacy targeted list — used only when watchAll is false.
   watch: [
-    'JARVIS Inbox',
+    'SDC Engineer Inbox',
+    'SDC_Examples for AI Inbox',
     'SDC Knowledgebase',
     'Standards - Software',
     'Standards - Elect Design',
@@ -93,36 +94,43 @@ const DEFAULT_CONFIG = {
 const CATEGORIES = [
   'Robot Integration', 'Vision', 'Servo Motion', 'Conveyors & Indexers',
   'Laser Marking', 'Full Machine Examples', 'Standards Docs',
+  // Landed with the 2026-08-31 consolidation (N:\Job Folder\AI Folder retired):
+  'CE Training Material', 'Templates',
 ];
 
 const NETWORK_README = [
-  'JARVIS INBOX (team drop folder)',
-  '===============================',
+  'SDC ENGINEER INBOX — the ONE folder',
+  '===================================',
   '',
-  'Drop standards, shipped code, references, or lessons-learned notes here —',
-  'Jarvis reads new files daily. Your files stay put (he reads in place,',
-  'never moves or edits them).',
+  'This is the ONE folder — examples, standards, anything. The SDC Engineer reads',
+  'new files daily. Your files stay put (he reads in place, never moves',
+  'or edits them). Subfolders help him file things but are not required.',
   '',
   'THE SUBMISSION FORM (the good way to drop)',
   '  1. Make a subfolder for your drop (or use a category folder below).',
   '  2. Copy SUBMISSION FORM.docx from this folder into it, fill it in,',
   '     save it with SUBMISSION in the name (SUBMISSION - JSmith - 1119.docx).',
   '  3. Put your files beside it.',
-  '  The "what should Jarvis study" line steers his reading and is cited in',
+  '  The "what should the SDC Engineer study" line steers his reading and is cited in',
   '  what he learns. Marking "engineer-verified working code: YES" ranks the',
   '  attached L5X as a top exemplar he writes new code from — only when true.',
   '',
   'CATEGORY FOLDERS — dropping into the right family helps him file it:',
   '  ' + CATEGORIES.join('  |  '),
   '',
-  'QUESTIONS FROM JARVIS',
+  'QUESTIONS FROM THE SDC ENGINEER',
   '  If he has questions about your drop, a "Questions from Jarvis - ...docx"',
   '  appears next to your files. Type your answers directly under each',
   '  question and save — he reads them on his next pass, files what he',
   '  learned under your name, and renames the doc "(answered)".',
   '',
+  'RETIRED FOLDERS (2026-08-31) — everything now lands HERE:',
+  '  "SDC_Examples for AI Inbox" (this share, breadcrumb left) and',
+  '  N:\\Job Folder\\AI Folder ("CE Training Material" + "Templates" moved',
+  '  in, hash-verified). Breadcrumb READMEs point back to this folder.',
+  '',
   'What he learned is visible in the State Logic Builder app',
-  '(Jarvis page > Knowledge tab), with a ledger line for every file.',
+  '(SDC Engineer page > Knowledge tab), with a ledger line for every file.',
 ].join('\r\n') + '\r\n';
 
 // ── tiny fs helpers ──────────────────────────────────────────────────────────
@@ -316,7 +324,7 @@ function isFormTemplate(name) { return name.toLowerCase() === FORM_TEMPLATE_NAME
 function isQuestionsDoc(name) { return name.toLowerCase().startsWith(QUESTIONS_DOC_PREFIX.toLowerCase()); }
 function looksLikeSubmissionForm(name, text) {
   return (!isFormTemplate(name) && /submission/i.test(name) && /\.docx?$/i.test(name))
-    || /JARVIS SUBMISSION FORM/i.test(String(text ?? '').slice(0, 600));
+    || /(JARVIS|SDC ENGINEER) SUBMISSION FORM/i.test(String(text ?? '').slice(0, 600));
 }
 
 // The form's own hint sentences — stripped so parsed values are the CE's words.

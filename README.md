@@ -10,7 +10,7 @@ Built by **Dan Belliveau** to eliminate manual PLC state logic authoring. Draw y
 
 | Shell | URL | Source | Status |
 |---|---|---|---|
-| **v2** (stations-first, Jarvis-driven) | `/` (default; `/v2.html` alias) | `src/v2/` | **Live — all new work happens here** |
+| **v2** (stations-first, SDC Engineer-driven) | `/` (default; `/v2.html` alias) | `src/v2/` | **Live — all new work happens here** |
 | **v1 classic** | `/classic.html` | `src/App.jsx` + classic components | **FROZEN — do not modify.** Dan's ruling (Aug 2026): v1 stays reachable exactly as it is while everything migrates into v2 |
 
 Both entries ship in the production build (`vite build`) and are served identically by the dev server, the built `dist/`, and Electron. V1 capabilities that don't yet have a v2 home are tracked in [`docs/V2_CAPABILITY_GAPS.md`](docs/V2_CAPABILITY_GAPS.md).
@@ -23,14 +23,14 @@ Both entries ship in the production build (`vite build`) and are served identica
 
 | Folder | What it is |
 |---|---|
-| `src/` | The app's source code (React UI, store, L5X exporter, Jarvis agent) |
+| `src/` | The app's source code (React UI, store, L5X exporter, the SDC Engineer agent) |
 | `docs/` | Project documentation — architecture, decisions, roadmap, analyses |
 | `projects/` | Your saved state-machine projects (the app reads/writes these) |
-| `jarvis-knowledge/` | Jarvis's brain — concepts, questions, build scores |
-| `generated/` | Every L5X file Jarvis has produced, one folder per project |
+| `jarvis-knowledge/` | The SDC Engineer's brain — concepts, questions, build scores (dir name is legacy) |
+| `generated/` | Every L5X file the SDC Engineer has produced, one folder per project |
 | `plc-reference/` | SDC templates, standards documents, and training material (includes `SDC_PNP_Test/` reference L5X files) |
 | `standards/` | The team-shared standards library the app serves |
-| `benchmarks/` | Jarvis benchmark reports (the Track Record page reads these) |
+| `benchmarks/` | SDC Engineer benchmark reports (the Track Record page reads these) |
 | `scripts/` | Utility scripts — benchmarks, smoke tests, seeding |
 | `electron/` | Desktop-app shell (Electron main process) |
 | `logs/` | Server logs (pm2 writes here — leave alone) |

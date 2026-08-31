@@ -16,8 +16,8 @@ const os = require('os');
 const { execFileSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const LOCAL_INBOX = path.join(ROOT, 'JARVIS Inbox');
-const NET_INBOX = '\\\\stevendouglas.local\\dfs\\Company\\Engineering\\Electrical Dept\\JARVIS Inbox';
+const LOCAL_INBOX = path.join(ROOT, 'SDC Engineer Inbox');
+const NET_INBOX = '\\\\stevendouglas.local\\dfs\\Company\\Engineering\\Electrical Dept\\SDC Engineer Inbox';
 
 const FIELD = (label, hint, lines = 1) =>
   `<tr><td class="lbl">${label}</td><td class="val">${'<div class="line">&nbsp;</div>'.repeat(lines)}<div class="hint">${hint}</div></td></tr>`;
@@ -34,16 +34,16 @@ const HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
   .yn { font-size: 11pt; }
   .foot { font-size: 9pt; color: #4a5a6a; margin-top: 12pt; }
 </style></head><body>
-<h1>JARVIS SUBMISSION FORM</h1>
+<h1>SDC ENGINEER SUBMISSION FORM</h1>
 <div class="sub">Feeding the department's AI controls engineer — copy this form, fill it in,
-and drop it in the JARVIS Inbox <b>next to your files</b> (a subfolder for your drop keeps things tidy).
+and drop it in the SDC Engineer Inbox <b>next to your files</b> (a subfolder for your drop keeps things tidy).
 Save it with SUBMISSION in the name, e.g. <b>SUBMISSION - JSmith - 1119 robot.docx</b>.</div>
 <table>
-${FIELD('Your name', 'so Jarvis can cite you — and write back if he has questions')}
+${FIELD('Your name', 'so the SDC Engineer can cite you — and write back if he has questions')}
 ${FIELD('Date', '')}
 ${FIELD('Machine / job it came from', 'e.g. 1119 Stamper, 1116 Molex')}
 ${FIELD('What’s attached', 'the files you dropped beside this form', 2)}
-<tr><td class="lbl">What should Jarvis study?</td><td class="val">
+<tr><td class="lbl">What should the SDC Engineer study?</td><td class="val">
   <div class="line">&nbsp;</div><div class="line">&nbsp;</div><div class="line">&nbsp;</div>
   <div class="hint">the important part — point him at it: &ldquo;focus on the robot integration&rdquo;,
   &ldquo;the DC linear indexing conveyor&rdquo;, &ldquo;the laser marker handshake&rdquo;.
@@ -52,11 +52,11 @@ ${FIELD('What’s attached', 'the files you dropped beside this form', 2)}
 <tr><td class="lbl">Engineer-verified working code?</td><td class="val">
   <span class="yn">YES&nbsp;&nbsp;/&nbsp;&nbsp;NO&nbsp;&nbsp;&nbsp;(circle or delete one)</span>
   <div class="hint">YES = this code ran on a real machine and an engineer confirms it correct.
-  Verified code ranks as a top exemplar Jarvis writes new code from &mdash; only say YES when it&rsquo;s true.</div>
+  Verified code ranks as a top exemplar the SDC Engineer writes new code from &mdash; only say YES when it&rsquo;s true.</div>
 </td></tr>
 ${FIELD('Notes', 'anything else — quirks, what went wrong on the floor, what you’d do differently', 3)}
 </table>
-<div class="foot">What happens next: Jarvis reads your drop on his daily pass (your files stay put on the network).
+<div class="foot">What happens next: the SDC Engineer reads your drop on his daily pass (your files stay put on the network).
 What he learned — and the citation to you — lands in his knowledge ledger. If he has questions, a
 <b>&ldquo;Questions from Jarvis&rdquo;</b> document appears next to your files: type answers under each
 question and he reads them on his next pass.</div>

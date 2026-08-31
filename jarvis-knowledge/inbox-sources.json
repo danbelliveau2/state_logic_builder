@@ -1,6 +1,6 @@
 {
   "networkRoot": "\\\\stevendouglas.local\\dfs\\Company\\Engineering\\Electrical Dept",
-  "networkDropFolder": "JARVIS Inbox",
+  "networkDropFolder": "SDC Engineer Inbox",
   "watchAll": true,
   "exclude": [
     "ARCHIVE",
@@ -12,7 +12,8 @@
     "_archive"
   ],
   "watch": [
-    "JARVIS Inbox",
+    "SDC Engineer Inbox",
+    "SDC_Examples for AI Inbox",
     "SDC Knowledgebase",
     "Standards - Software",
     "Standards - Elect Design",

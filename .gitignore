@@ -43,6 +43,9 @@ test_output*.L5X
 JARVIS Deliveries/
 JARVIS Inbox/*
 !JARVIS Inbox/README.txt
+SDC Engineer Deliveries/
+SDC Engineer Inbox/*
+!SDC Engineer Inbox/README.txt
 
 # Librarian runtime state (per-machine bookkeeping, not knowledge)
 jarvis-knowledge/librarian-state.json
