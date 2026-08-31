@@ -60,6 +60,23 @@ export function StationBanner() {
   const heldBuilds = useHeldBuilds(sm?.name, compiledBump);
   const openNeeds = sm ? needsCount(sm, heldBuilds) : 0;
 
+  // CASCADE-BUILT STATIONS HAVE NO DIAGRAM PAGE (Dan, 2026-08-30): the
+  // diagram lives on the sequence card — the sheet IS the station. If one
+  // lands here with the sheet closed, open the sheet instead of showing the
+  // orphaned diagram view. Classic stations are untouched.
+  const cascadeBuilt = !!sm?.machineSpec?.cascadeState;
+  const sheetOpenNow = showNewSmModal && !!sheetLinkedSmId;
+  useEffect(() => {
+    if (!sm || !cascadeBuilt || sheetOpenNow) return;
+    const station0 = stationOfSm(useDiagramStore.getState().project, sm.id);
+    const sheetSm0 = primarySmOf(station0) ?? sm;
+    const draft = ensureStationSheetDraft(useDiagramStore.getState(), sheetSm0);
+    requestResumeDraft(draft.draftId);
+    setSheetLinkedSmId(sheetSm0.id);
+    store.openNewSmModal();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cascadeBuilt, sheetOpenNow, sm?.id]);
+
   if (!sm) return null;
 
   // PROJECT → STATION → STATE MACHINES (Dan, 2026-08-25): the banner names the
@@ -74,19 +91,7 @@ export function StationBanner() {
   const sheetOpen = showNewSmModal && !!sheetLinkedSmId;
   const activePage = sheetOpen ? 'sheet' : 'diagram';
 
-  // CASCADE-BUILT STATIONS HAVE NO DIAGRAM PAGE (Dan, 2026-08-30): the
-  // diagram lives on the sequence card — the sheet IS the station. If one
-  // lands here with the sheet closed, open the sheet instead of showing the
-  // orphaned diagram view. Classic stations are untouched.
-  const cascadeBuilt = !!sm?.machineSpec?.cascadeState;
-  useEffect(() => {
-    if (!cascadeBuilt || sheetOpen) return;
-    const draft = ensureStationSheetDraft(useDiagramStore.getState(), sheetSm);
-    requestResumeDraft(draft.draftId);
-    setSheetLinkedSmId(sheetSm.id);
-    store.openNewSmModal();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cascadeBuilt, sheetOpen, sheetSm?.id]);
+
 
   function goTo(pageId) {
     if (pageId === activePage) return;

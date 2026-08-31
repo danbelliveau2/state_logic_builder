@@ -27,7 +27,7 @@ import { useEffect, useLayoutEffect, useRef, useCallback, Component } from 'reac
 import { ReactFlowProvider } from '@xyflow/react';
 import { Canvas } from '../components/Canvas.jsx';
 import { CreateStationPage } from '../components/jarvis/CreateStationPage.jsx';
-import { consumeResumeRequest } from '../components/jarvis/createStationDrafts.js';
+import { consumeResumeRequest, ensureStationSheetDraft, requestResumeDraft } from '../components/jarvis/createStationDrafts.js';
 import { AddDeviceModal } from '../components/modals/AddDeviceModal.jsx';
 import { ActionModal } from '../components/modals/ActionModal.jsx';
 import { ProjectManagerModal } from '../components/modals/ProjectManagerModal.jsx';
@@ -151,9 +151,20 @@ export function AppV2() {
   // (the old mount rode inside the removed Build ▾ menu).
   const generateOpen = useV2Shell(s => s.generateOpen);
   useEffect(() => {
+    // TWO-STORE GAP GUARD (Dan's reload trap, 2026-08-31): every open-sheet
+    // path sets the shell's sheetLinkedSmId (one store) then openNewSmModal
+    // (another store) — this cleanup used to fire IN the gap and wipe the
+    // linkage, so the sheet mounted full-viewport with no banner and no way
+    // back. Clear only if still inconsistent a tick later.
     if (!showNewSmModal && useV2Shell.getState().sheetLinkedSmId) {
-      useV2Shell.getState().setSheetLinkedSmId(null);
+      const t = setTimeout(() => {
+        if (!useDiagramStore.getState().showNewSmModal && useV2Shell.getState().sheetLinkedSmId) {
+          useV2Shell.getState().setSheetLinkedSmId(null);
+        }
+      }, 60);
+      return () => clearTimeout(t);
     }
+    return undefined;
   }, [showNewSmModal]);
 
   // Clean-slate start screen (all project tabs closed).
@@ -207,10 +218,44 @@ export function AppV2() {
     }
   }, [currentFilename, activeSmId]);
 
+  // (declared BEFORE the landing effect below — dep arrays evaluate at
+  // render; a later declaration is the TDZ crash class.)
+  const smCount = useDiagramStore(s => s.project?.stateMachines?.length ?? 0);
+
+  // CASCADE PROJECTS LAND ON THE SHEET (Dan, 2026-08-31: reload dropped him
+  // on the classic canvas again). App open / reload / tab switch: a project
+  // with cascade-built stations lands on the STATION SHEET (single station)
+  // or the machine homepage (multiple). The classic canvas opens ONLY by an
+  // explicit navigation this session — never as a restored default. Classic
+  // v1-era projects (no cascadeState anywhere) are untouched.
+  const landedRef = useRef(null);
+  useEffect(() => {
+    if (!currentFilename || home) return;
+    if (landedRef.current === currentFilename) return;
+    const proj = useDiagramStore.getState().project;
+    if (!proj?.stateMachines) return; // not restored yet — effect re-runs
+    landedRef.current = currentFilename;
+    const cascadeSms = proj.stateMachines.filter(sm => sm?.machineSpec?.cascadeState);
+    try { window.__slbCascadeProject = cascadeSms.length > 0; } catch { /* gate hint */ }
+    if (!cascadeSms.length) return;
+    const shell = useV2Shell.getState();
+    if (cascadeSms.length === 1 && proj.stateMachines.length === 1) {
+      const sm = cascadeSms[0];
+      try {
+        const draft = ensureStationSheetDraft(useDiagramStore.getState(), sm);
+        requestResumeDraft(draft.draftId);
+        shell.setSheetLinkedSmId(sm.id);
+        useDiagramStore.getState().openNewSmModal();
+        shell.closeProjectHome();
+      } catch { shell.openProjectHome(); }
+    } else {
+      shell.openProjectHome();
+    }
+  }, [currentFilename, home, smCount]);
+
   // ZERO-STATION / NO-SELECTION LANDING (Dan, 2026-08-26): the classic canvas
   // empty state is dead in v2 — a project with no station selected (reload
   // included) lands on PROJECT HOME, where the draft-continue cards live.
-  const smCount = useDiagramStore(s => s.project?.stateMachines?.length ?? 0);
   useEffect(() => {
     if (!currentFilename || home || showNewSmModal) return;
     if (activeSmId && smCount > 0) return;

@@ -10,12 +10,20 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.45';
+export const UI_BUILD = 'v2.6.46';
 
 export const BUILT_AT = '2026-08-30';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.46',
+    date: '2026-08-31',
+    items: [
+      'NO REBUILDING AN UNCHANGED STATION — the build stamps a fingerprint of the effective sheet; unchanged = "✓ Built — up to date" with the L5X + cover-note links and NO rebuild button; changed = Rebuild with the changes listed plainly ("VerticalSlide extend delay 1000→800; sequence step 5 reworded")',
+      'RELOAD LANDS RIGHT, EVERY PATH — for a walked project, app open / reload / tab switch / deep links all land on the Station Sheet (or the machine homepage for multi-station projects); the classic canvas can never be a restored default. Two real bugs died here: a hooks-order crash in the station banner and a two-store race that mounted the sheet without its header',
+    ],
+  },
   {
     version: 'v2.6.45',
     date: '2026-08-31',

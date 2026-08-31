@@ -137,6 +137,33 @@ export const INVARIANTS = [
     },
   },
   {
+    id: 'reload-lands-on-sheet',
+    what: 'A cascade-built project never shows the classic canvas as a landing — reload/open/tab-switch land on the Station Sheet or the machine homepage (Dan, 2026-08-31, exhaustive)',
+    run() {
+      if (!window.__slbCascadeProject) return { skip: 'not a cascade project (or landing effect not run)' };
+      // SheetFlow renders React Flow INSIDE the sheet — only a canvas
+      // OUTSIDE the sheet is the classic diagram page.
+      const canvas = q('.react-flow').some((el) => vis(el) && !el.closest('[data-testid="create-station-page"]'));
+      const sheet = q('[data-testid="create-station-page"]').some(vis);
+      const homeV = q('[data-testid="project-home"]').some(vis);
+      if (canvas && !sheet && !homeV) return { fail: 'classic canvas showing on a cascade project' };
+      if (!sheet && !homeV) return { fail: 'neither the sheet nor the homepage is on screen' };
+      return {};
+    },
+  },
+  {
+    id: 'rebuild-requires-change',
+    what: 'A built, unchanged station shows "✓ Built — up to date" with artifact links and NO rebuild button — rebuilding an unchanged sheet is wasted money (Dan, 2026-08-31)',
+    run() {
+      const upToDate = q('[data-testid="build-up-to-date"]').filter(vis)[0];
+      if (!upToDate) return { skip: 'not in the up-to-date state' };
+      const bad = [];
+      if (q('[data-testid="build-station-btn"]').some(vis)) bad.push('rebuild button rendering while up to date');
+      if (!upToDate.querySelector('a')) bad.push('up-to-date line missing the artifact links');
+      return bad.length ? { fail: bad.join('; ') } : {};
+    },
+  },
+  {
     id: 'corner-stack',
     what: 'THE bottom-right corner stack, exactly (Dan, 2026-08-31 — wrong three ways, never again): version badge pinned in the corner, chat pill DIRECTLY ABOVE it (8–24px gap, right-aligned), the open chat card above the pill; pairwise non-overlap; nothing else fixed in that column',
     run() {

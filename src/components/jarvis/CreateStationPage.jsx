@@ -1676,6 +1676,84 @@ async function agentTurnRequest(payload, onState, onReading) {
 
 /** RECEIPT FROM DIFFS ONLY (the law): one plain line composed from the typed
  *  edits the server actually applied — the model's narration never rides. */
+// ── STALENESS TRUTH (Dan, 2026-08-31: "once code is built and nothing has
+// changed, there is no rebuild option — it's wasted money"). The effective
+// sheet is snapshotted at build time; equal fingerprint = "✓ Built — up to
+// date" with NO rebuild button; differing = Rebuild with the changes listed
+// plainly (few-words). ────────────────────────────────────────────────────
+function effectiveSheetSnapshotOf(smProposal, summary, controlsNotes) {
+  return {
+    machines: (smProposal?.stateMachines ?? []).map(m => ({
+      name: m.name,
+      sequence: (m.sequence ?? []).map(String),
+      faultRecovery: (m.faultRecovery ?? []).map(String),
+    })),
+    devices: (summary?.devices ?? []).map(d => ({
+      name: String(d.displayName ?? d.name ?? ''), type: d.type ?? null,
+      sensors: d.sensorArrangement ?? null, delays: d.delays ?? null,
+      positions: d.positions ?? null, homeState: d.homeState ?? null,
+      stroke: d.strokeMm ?? null,
+    })),
+    controls: (controlsNotes ?? []).map(n => String(n.text ?? '')),
+  };
+}
+function sheetFingerprintOf(snap) {
+  const s = JSON.stringify(snap);
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return (h >>> 0).toString(36) + '_' + s.length.toString(36);
+}
+/** Plain few-words change lines vs the built snapshot. */
+function sheetChangesSince(prev, cur) {
+  if (!prev) return [];
+  const out = [];
+  const lineDiff = (a = [], b = [], noun) => {
+    const A = a.map(String); const B = b.map(String);
+    const removed = A.filter(x => !B.includes(x));
+    const added = B.filter(x => !A.includes(x));
+    if (!removed.length && !added.length) return null;
+    const paired = Math.min(removed.length, added.length);
+    if (added.length + removed.length <= 4) {
+      const bits = [];
+      for (let i = 0; i < paired; i++) bits.push(`${noun} ${B.indexOf(added[i]) + 1} reworded`);
+      for (let i = paired; i < added.length; i++) bits.push(`${noun} ${B.indexOf(added[i]) + 1} added`);
+      for (let i = paired; i < removed.length; i++) bits.push(`"${removed[i].slice(0, 40)}" removed`);
+      return bits.join(', ');
+    }
+    return `${paired ? `${paired} changed` : ''}${added.length > paired ? `${paired ? ', ' : ''}${added.length - paired} added` : ''}${removed.length > paired ? `, ${removed.length - paired} removed` : ''}`;
+  };
+  const pd = new Map((prev.devices ?? []).map(d => [d.name, d]));
+  for (const d of (cur.devices ?? [])) {
+    const o = pd.get(d.name);
+    if (!o) { out.push(`${d.name} added`); continue; }
+    if ((o.delays?.extendMs ?? null) !== (d.delays?.extendMs ?? null)) out.push(`${d.name} extend delay ${o.delays?.extendMs ?? '—'}→${d.delays?.extendMs ?? '—'}`);
+    if ((o.delays?.retractMs ?? null) !== (d.delays?.retractMs ?? null)) out.push(`${d.name} retract delay ${o.delays?.retractMs ?? '—'}→${d.delays?.retractMs ?? '—'}`);
+    if (o.sensors !== d.sensors) out.push(`${d.name} sensors ${o.sensors ?? '—'}→${d.sensors ?? '—'}`);
+    if (o.homeState !== d.homeState) out.push(`${d.name} home ${o.homeState ?? '—'}→${d.homeState ?? '—'}`);
+    if ((o.stroke ?? null) !== (d.stroke ?? null)) out.push(`${d.name} stroke ${o.stroke ?? '—'}→${d.stroke ?? '—'}`);
+    if (JSON.stringify(o.positions) !== JSON.stringify(d.positions)) out.push(`${d.name} positions changed`);
+    if (o.type !== d.type) out.push(`${d.name} type ${o.type ?? '—'}→${d.type ?? '—'}`);
+    pd.delete(d.name);
+  }
+  for (const [name] of pd) out.push(`${name} removed`);
+  const pm = new Map((prev.machines ?? []).map(m => [m.name, m]));
+  for (const m of (cur.machines ?? [])) {
+    const o = pm.get(m.name);
+    if (!o) { out.push(`${m.name} added`); continue; }
+    const sd = lineDiff(o.sequence, m.sequence, 'step');
+    if (sd) out.push(`${m.name} sequence: ${sd}`);
+    const rd = lineDiff(o.faultRecovery, m.faultRecovery, 'step');
+    if (rd) out.push(`${m.name} recovery: ${rd}`);
+    pm.delete(m.name);
+  }
+  for (const [name] of pm) out.push(`${name} removed`);
+  const ctrlAdded = (cur.controls ?? []).filter(x => !(prev.controls ?? []).includes(x)).length;
+  const ctrlRemoved = (prev.controls ?? []).filter(x => !(cur.controls ?? []).includes(x)).length;
+  if (ctrlAdded) out.push(`${ctrlAdded} controls note${ctrlAdded === 1 ? '' : 's'} added`);
+  if (ctrlRemoved) out.push(`${ctrlRemoved} controls note${ctrlRemoved === 1 ? '' : 's'} removed`);
+  return out;
+}
+
 function receiptFromAgentDiffs(diffs = []) {
   if (!diffs.length) return '';
   const parts = [];
@@ -4125,6 +4203,13 @@ function buildFlowModel(structured, flatLines, composeStep, tagOf, devices = nul
       // Rejoin markers ARE the dotted rejoin edge, never a node (gate catch,
       // 2026-08-31: they rendered as icon-less "device" rows).
       if (/^rejoin/i.test(type) || /^rejoin/i.test(line)) continue;
+      // HOLD markers are states, not device actions (gate catch, 2026-08-31:
+      // "Hold — Ready For Pick" rendered as an icon-less device row).
+      if (/^hold$/i.test(type)) {
+        out.items.push({ line, cond, tag, verb: 'Hold', device: '', detail: '', title: line, devType: null });
+        cond = null; tag = null;
+        continue;
+      }
       const [dev0, ...dd] = String(rest).split(' — ');
       out.items.push({
         line, cond, tag,
@@ -4546,6 +4631,16 @@ export function CreateStationPage({ embedded = false }) {
   // filed conversationally (CE toggle + chat → file_controls_note), rendered
   // in the inputs area, rides into codegen between Dan's words and precedent.
   const [controlsNotes, setControlsNotes] = useState(draft?.controlsNotes ?? []);
+  // STALENESS TRUTH (Dan, 2026-08-31): the effective sheet is snapshotted
+  // when a build lands; equal fingerprint = up to date, NO rebuild button.
+  const [builtSnapshot, setBuiltSnapshot] = useState(draft?.builtSnapshot ?? null);
+  const recordBuiltSnapshot = (buildIdMaybe) => {
+    const snap = effectiveSheetSnapshotOf(smProposal, summary, controlsNotes);
+    const rec = { fingerprint: sheetFingerprintOf(snap), snap, at: Date.now(), ...(buildIdMaybe ? { buildId: buildIdMaybe } : {}) };
+    setBuiltSnapshot(rec);
+    persistDraftNow({ builtSnapshot: rec });
+  };
+
   // In-place edit tracking: baseline = the summary as Jarvis last returned
   // it; ANY inline edit sets dirty and raises the sticky Resubmit bar.
   const [dirty, setDirty] = useState(false);
@@ -4817,7 +4912,7 @@ export function CreateStationPage({ embedded = false }) {
     images: withImages ? images : [],
     phase: phaseOverride ?? ((phase === 'summary' || phase === 'summarizing') ? 'summary' : 'input'),
     summary, jarvisCoverage, questions, nonStandardFlags, summarizeCost,
-    purpose, genLevel, expectedSms, referenceText, controlsNotes, agreedNeeds: [...agreedNeeds], sheetAhead,
+    purpose, genLevel, expectedSms, referenceText, controlsNotes, builtSnapshot, agreedNeeds: [...agreedNeeds], sheetAhead,
     // Corrections chat — persisted capped (last 40 turns) so the sheet's
     // conversation survives reopen without bloating localStorage.
     chatThread: chatThread.slice(-40),
@@ -4905,7 +5000,7 @@ export function CreateStationPage({ embedded = false }) {
     }, 1000);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, station, description, images, phase, summary, jarvisCoverage, questions, nonStandardFlags, summarizeCost, purpose, genLevel, expectedSms, referenceText, controlsNotes, agreedNeeds, sheetAhead, chatThread, localCascade, smProposal, deviceAssignments, draftKey, linkedSmId]);
+  }, [name, station, description, images, phase, summary, jarvisCoverage, questions, nonStandardFlags, summarizeCost, purpose, genLevel, expectedSms, referenceText, controlsNotes, builtSnapshot, agreedNeeds, sheetAhead, chatThread, localCascade, smProposal, deviceAssignments, draftKey, linkedSmId]);
 
   // ── Pictures persist FOREVER — hardened after the Aug 24 SECOND loss ─────
   // The server copy is authoritative and its merge is ADDITIVE (union by
@@ -5144,6 +5239,7 @@ export function CreateStationPage({ embedded = false }) {
     setChatThread(Array.isArray(d.chatThread) ? d.chatThread : []);
     setStationAccepted(d.stationAccepted ?? null);
     setControlsNotes(Array.isArray(d.controlsNotes) ? d.controlsNotes : []);
+    setBuiltSnapshot(d.builtSnapshot ?? null);
     setExplLayers(Array.isArray(d.explanationLayers) ? d.explanationLayers : []);
     setExplAddingLayer(false); setExplLayerDraft('');
     reconciledDraftRef.current = null; // re-run the load reconcile for this draft
@@ -7137,6 +7233,7 @@ export function CreateStationPage({ embedded = false }) {
         ...(r.ok ? {} : { error: true }),
         at: Date.now(),
       }]);
+      if (r.ok && !d.held && d.ok !== false) recordBuiltSnapshot(buildId);
       setHoldBump(n => n + 1); setBuildsBump(n => n + 1);
     } finally { clearInterval(tick); setResuming(false); }
   }
@@ -8808,6 +8905,15 @@ export function CreateStationPage({ embedded = false }) {
   const [codeBuild, setCodeBuild] = useState(null); // {pct, stage, detail, error, done, stalled}
   const codeBuildEsRef = useRef(null);
   const hasCodeBuild = smBuilds.some(b => b?.savedPath || b?.filePath || b?.ok === true);
+  // BACKFILL (one-time): builds made before staleness-truth shipped have no
+  // snapshot — stamp the CURRENT sheet as their baseline (honest limitation:
+  // edits made between that build and this stamp won't show as changes; all
+  // future edits diff correctly).
+  useEffect(() => {
+    const sheetLoaded = (smProposal?.stateMachines?.length ?? 0) > 0 || (summary?.devices?.length ?? 0) > 0;
+    if (hasCodeBuild && !builtSnapshot && sheetLoaded) recordBuiltSnapshot();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasCodeBuild, smProposal, summary]);
   const setHasCodeBuild = () => setBuildsBump(n => n + 1); // refresh, artifact-derived
   async function handleBuildCode() {
     // NEVER A SILENT CLICK (Dan, 2026-08-31: four dead clicks): while HELD,
@@ -8867,6 +8973,8 @@ export function CreateStationPage({ embedded = false }) {
       const held = !!d.held;
       setCodeBuild({ pct: 100, stage: 'done', done: d, error: null });
       setHasCodeBuild(v => v || !held);
+      // STALENESS TRUTH: a landed build stamps the sheet fingerprint.
+      if (!held && d.ok !== false) recordBuiltSnapshot();
       appendChangeLog(smIdNow, {
         what: held ? `Code build HELD — ${d.held?.questions?.length ?? 0} question(s) for you`
           : `Station code built${d.ok ? '' : ' — validation reported errors'}${d.internalReview?.verdict ? ` · review: ${d.internalReview.verdict}` : ''}`,
@@ -11342,20 +11450,53 @@ export function CreateStationPage({ embedded = false }) {
                           })}
                         </div>
                       )}
-                      <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>
-                        or build this station's code now:
-                      </div>
-                      <div style={{ marginBottom: 8 }}>{renderBuildAction('left')}</div>
-                      <DictatedTextarea
-                        value={purpose}
-                        onChange={v => setPurpose(v.replace(/\n/g, ' '))}
-                        rows={1}
-                        data-testid="generate-scope-specifics"
-                        micTestId="generate-scope-specifics-mic"
-                        placeholder="anything specific about this build (optional — rides into the build)"
-                        className="form-input"
-                        style={{ width: '100%', boxSizing: 'border-box', fontSize: 12, resize: 'none', lineHeight: 1.5, paddingTop: 6, paddingBottom: 6, paddingLeft: 10 }}
-                      />
+                      {(() => {
+                        // STALENESS TRUTH (Dan, 2026-08-31): built + nothing
+                        // changed = NO rebuild option (wasted money); changed
+                        // = Rebuild with the changes listed plainly.
+                        const curSnap = effectiveSheetSnapshotOf(smProposal, summary, controlsNotes);
+                        const upToDate = hasCodeBuild && builtSnapshot && sheetFingerprintOf(curSnap) === builtSnapshot.fingerprint
+                          && !holdNeeds.length && !heldResumable && !(codeBuild && !codeBuild.done && !codeBuild.error);
+                        const changes = hasCodeBuild && builtSnapshot ? sheetChangesSince(builtSnapshot.snap, curSnap) : [];
+                        if (upToDate) {
+                          const artifact = smBuilds.find(b => b?.savedPath || b?.filePath);
+                          return (
+                            <div data-testid="build-up-to-date" style={{ fontSize: 12.5, color: '#2f6b3c', fontWeight: 700 }}>
+                              ✓ Built — up to date
+                              {artifact && (
+                                <span style={{ fontWeight: 400, marginLeft: 8 }}>
+                                  <a href={`/api/jarvis/builds/${encodeURIComponent(artifact.id)}/file`} style={{ color: 'var(--color-primary)', fontWeight: 700 }}>download L5X</a>
+                                  {' · '}
+                                  <a href={`/api/jarvis/builds/${encodeURIComponent(artifact.id)}/file?which=cover`} target="_blank" rel="noreferrer" style={{ color: 'var(--color-primary)', fontWeight: 700 }}>cover note</a>
+                                </span>
+                              )}
+                            </div>
+                          );
+                        }
+                        return (
+                          <>
+                            {hasCodeBuild && changes.length > 0 && (
+                              <div data-testid="build-changes" style={{ fontSize: 11.5, color: '#6b5513', background: '#fdf6e3', border: '1px solid #e6d9a8', borderRadius: 6, padding: '5px 10px', marginBottom: 8, lineHeight: 1.55 }}>
+                                <b>changed since the build:</b> {changes.slice(0, 8).join('; ')}{changes.length > 8 ? ` (+${changes.length - 8} more)` : ''}
+                              </div>
+                            )}
+                            <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>
+                              or build this station's code now:
+                            </div>
+                            <div style={{ marginBottom: 8 }}>{renderBuildAction('left')}</div>
+                            <DictatedTextarea
+                              value={purpose}
+                              onChange={v => setPurpose(v.replace(/\n/g, ' '))}
+                              rows={1}
+                              data-testid="generate-scope-specifics"
+                              micTestId="generate-scope-specifics-mic"
+                              placeholder="anything specific about this build (optional — rides into the build)"
+                              className="form-input"
+                              style={{ width: '100%', boxSizing: 'border-box', fontSize: 12, resize: 'none', lineHeight: 1.5, paddingTop: 6, paddingBottom: 6, paddingLeft: 10 }}
+                            />
+                          </>
+                        );
+                      })()}
                     </div>
                   </SectionBar>
                 )}
