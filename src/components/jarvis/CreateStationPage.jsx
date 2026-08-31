@@ -1463,7 +1463,12 @@ function groupSheetDeviceRows(rows) {
     const role = sheetRoleOf(row.d);
     (groups.find(g => g.match(role)) ?? groups[groups.length - 1]).items.push(row);
   }
-  return groups.filter(g => g.items.length > 0);
+  // SIGNALS ARE NOT DEVICES (Dan, 2026-08-30): devices = devices; signals are
+  // the controls layer, auto-generated from the sequence's events — they get
+  // NO cards on the sheet. The data keeps them (codegen + the handshake check
+  // read the sequence's Signal steps); a signal that can't derive from an
+  // event is a chat question, not a card.
+  return groups.filter(g => g.items.length > 0 && g.key !== 'signals');
 }
 function groupSheetDevices(devices) {
   return groupSheetDeviceRows((devices ?? []).map((d, i) => ({ d, i })));
@@ -1828,40 +1833,9 @@ function NeedsStrip({ scores, messages, hasOtherSms, sourceLabel }) {
   );
 }
 
-/** Read-only SIGNALS rows for handshakes that have no sheet device row —
- *  the old handshake strip merged into the SIGNALS group (ONE concept, never
- *  a separate strip; Dan, 2026-08-25). Renders in the same visual language as
- *  a type group; unlabeled when a real Signals group already sits beside it. */
-function SyntheticSignalGroup({ rows, labeled = true }) {
-  const color = DEVICE_ICON_COLORS.Signal;
-  if (!rows?.length) return null;
-  return (
-    <div style={{ minWidth: 0 }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        margin: '4px 0 6px', paddingBottom: 2, borderBottom: `2px solid ${color}`,
-      }}>
-        <span style={{ fontSize: 10, fontWeight: 800, color, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-          Signals
-        </span>
-        <span style={{ fontSize: 10, color: C.light }}>({rows.length})</span>
-      </div>
-      {rows.map((r, i) => {
-        // BREVITY on rows too (Dan, 2026-08-25): one short meaning sentence,
-        // full prose in the tooltip.
-        const m = cardOneLiner(r.purpose);
-        return (
-        <div key={i} data-testid={`sheet-signal-hs-${i}`} title={m.full !== m.line ? m.full : undefined} style={{ fontSize: 11.5, color: C.text, lineHeight: 1.6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          <span style={{ fontWeight: 700 }}>{r.signal}</span>
-          <span style={{ fontSize: 10.5, color: C.muted }}>
-            {' '}— from {r.from || '?'}{r.to ? ` → ${r.to}` : ''}{m.line ? `: ${m.line}` : ''}
-          </span>
-        </div>
-        );
-      })}
-    </div>
-  );
-}
+// (SyntheticSignalGroup DELETED — Dan, 2026-08-30: signals are not devices;
+//  they get no cards on the sheet. Signal steps stay in the sequence DATA —
+//  codegen and the handshake check derive every signal from its event.)
 
 /** Quiet zone header — a subtle band label with a rule (Dan, Aug 24: the
  *  sheet reads as INPUTS then STATION (the review band) — plain words, no
@@ -6895,6 +6869,92 @@ export function CreateStationPage({ embedded = false }) {
     } catch { return { hang: [], advisory: [] }; }
   }, [smProposal, agreedNeeds]);
 
+  /** THE BUILD ACTION (blockers list + hang gate + the button) — ONE render
+   *  used from two homes: inside the Build card's build lane (cascade drafts,
+   *  align 'left') and the page-bottom action row (linked sheets, align
+   *  'right'). Dan, 2026-08-30: the button lives IN the card, stacked under
+   *  Accept — never orphaned at the page bottom next to Discard. */
+  const renderBuildAction = (align = 'right') => {
+    const list = sheetBlockers();
+    const ready = list.length === 0;
+    const right = align === 'right';
+    return (
+      <>
+        {!ready && (
+          <div data-testid="build-blockers" style={{ textAlign: right ? 'right' : 'left' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+              Build is waiting on
+            </div>
+            {list.map(b => (
+              <button
+                key={b.key}
+                type="button"
+                data-testid={`build-blocker-${b.key}`}
+                onClick={() => goToBlocker(b)}
+                title="Take me there"
+                style={{
+                  display: 'block', marginLeft: right ? 'auto' : 0, background: 'none', border: 'none',
+                  padding: '1px 0', cursor: 'pointer', fontSize: 11.5, fontWeight: 600,
+                  color: C.danger, textDecoration: 'underline', whiteSpace: 'nowrap',
+                }}
+              >
+                {b.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {/* THE HANG GATE (SUPREME LAW): can-hang findings make the primary
+            "Fix these first"; build-anyway is the explicit secondary. */}
+        {ready && pregenFindings.hang.length > 0 ? (
+          <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: right ? 'flex-end' : 'flex-start', gap: 3 }}>
+            <button
+              className="btn btn--primary"
+              data-testid="build-station-btn"
+              onClick={() => document.querySelector('[data-testid="pregen-handshake-findings"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+              disabled={applying}
+              title="The signal check found waits that can never be satisfied — fix or Agree them first"
+              style={{ fontSize: 14, padding: '9px 22px', background: '#8a3b3b', borderColor: '#8a3b3b' }}
+            >
+              Fix these first — {pregenFindings.hang.length} signal finding{pregenFindings.hang.length === 1 ? '' : 's'}
+            </button>
+            <button
+              type="button"
+              data-testid="build-anyway-btn"
+              onClick={handleBuildClick}
+              disabled={applying}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 11, color: C.muted, textDecoration: 'underline' }}
+            >
+              build anyway — the code carries these as-is
+            </button>
+          </span>
+        ) : (
+          <button
+            className="btn btn--primary"
+            data-testid="build-station-btn"
+            onClick={handleBuildClick}
+            disabled={applying}
+            aria-disabled={!ready}
+            title={ready
+              ? (allCovered ? undefined : 'Open needs go with their proposed answers, noted for review')
+              : `Not ready yet: ${list.map(b => b.label).join(' · ')}`}
+            style={{
+              fontSize: 14, padding: '9px 22px',
+              transition: 'background 0.35s ease, box-shadow 0.35s ease, opacity 0.35s ease, filter 0.35s ease',
+              opacity: ready ? 1 : 0.5,
+              filter: ready ? 'none' : 'grayscale(0.7)',
+              cursor: ready ? 'pointer' : 'not-allowed',
+              boxShadow: ready && !applying ? `0 0 0 3px ${C.primaryBg}` : 'none',
+            }}
+          >
+            {/* The mental model (Dan, Aug 24): the sheet is the source of
+                truth; Rebuild pushes it downstream. */}
+            {linkedSmId ? 'Rebuild Station Code — apply the sheet' : 'Build Station Code'}
+          </button>
+        )}
+      </>
+    );
+  };
+
   /** Approve the active step — it LOCKS into the outputs (✓-stamped,
    *  changelogged) and the cascade advances. SM breakup rides the existing
    *  approveSmSplit path (one approval artifact, never two). */
@@ -9762,13 +9822,8 @@ export function CreateStationPage({ embedded = false }) {
                                   .filter(g => stepRevealed('devices', g.sm?.key ?? 'station'));
                                 // (shownNames / "also owns" removed — Dan,
                                 // 2026-08-27: one identifier per header.)
-                                // Handshakes with NO sheet row render as
-                                // read-only SIGNALS entries (the strip merged
-                                // into the group — one concept; Dan).
-                                const extraSignalRows = unclaimedHandshakesOf(
-                                  smDecomp,
-                                  linkedSm?.compiledSequence?.ir,
-                                  (summary.devices ?? []).map(x => x.displayName ?? x.name));
+                                // (Handshake SIGNALS rows removed — Dan,
+                                // 2026-08-30: signals are not devices.)
                                 return visibleSmGroups.flatMap((sg, sgi) => {
                                 const smHeader = multiSm ? (
                                   <div
@@ -9916,14 +9971,9 @@ export function CreateStationPage({ embedded = false }) {
                                   </div>
                                 </div>
                                 ));
-                                const linkedExtras = extraSignalRows.filter(r =>
-                                  !multiSm || (sg.sm && normKey(r.from) === sg.sm.key));
-                                if (linkedExtras.length) {
-                                  const hasSignalsGroup = groupSheetDeviceRows(sg.devices).some(g => g.key === 'signals');
-                                  cards.push(
-                                    <SyntheticSignalGroup key={`sm${sgi}-hsx`} rows={linkedExtras} labeled={!hasSignalsGroup} />
-                                  );
-                                }
+                                // (Synthetic SIGNALS rows removed — Dan,
+                                // 2026-08-30: signals are not devices; no
+                                // cards. The data keeps them.)
                                 return smHeader ? [smHeader, ...cards] : cards;
                                 });
                               })()}
@@ -10519,46 +10569,47 @@ export function CreateStationPage({ embedded = false }) {
                         </span>
                       </div>
                     ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                        <button
-                          type="button"
-                          data-testid="accept-station-btn"
-                          onClick={() => {
-                            // TWO LANES (Dan, 2026-08-30): Accept banks the
-                            // station and returns to the machine homepage —
-                            // the next station gets added there; code for
-                            // the whole machine builds at the end.
-                            const rec = { by: 'ME', at: Date.now() };
-                            setStationAccepted(rec);
-                            persistDraftNow({ stationAccepted: rec });
-                            showTransientToast(`${name.trim() || 'Station'} accepted — banked for the machine build. Add the next station here.`);
-                            if (!linkedSmId) clearActiveFreshDraft(); // no auto-resume; the home card reopens it
-                            store.closeNewSmModal();
-                            useV2Shell.getState().setSheetLinkedSmId(null);
-                            useV2Shell.getState().openProjectHome();
-                          }}
-                          style={{
-                            ...chipBase, cursor: 'pointer', fontSize: 12, fontWeight: 800, padding: '5px 14px',
-                            color: '#2f6b3c', background: '#e9f5ec', border: '1px solid #7fb08c',
-                          }}
-                        >✓ Accept Station — build with the machine later</button>
-                        <span style={{ fontSize: 11, color: C.muted }}>
-                          or build this station's code now:
-                        </span>
-                      </div>
+                      <button
+                        type="button"
+                        data-testid="accept-station-btn"
+                        onClick={() => {
+                          // TWO STACKED LANES (Dan, 2026-08-30): Accept banks
+                          // the station and returns to the machine homepage —
+                          // the next station gets added there; code for the
+                          // whole machine builds at the end.
+                          const rec = { by: 'ME', at: Date.now() };
+                          setStationAccepted(rec);
+                          persistDraftNow({ stationAccepted: rec });
+                          showTransientToast(`${name.trim() || 'Station'} accepted — banked for the machine build. Add the next station here.`);
+                          if (!linkedSmId) clearActiveFreshDraft(); // no auto-resume; the home card reopens it
+                          store.closeNewSmModal();
+                          useV2Shell.getState().setSheetLinkedSmId(null);
+                          useV2Shell.getState().openProjectHome();
+                        }}
+                        style={{
+                          ...chipBase, cursor: 'pointer', fontSize: 12.5, fontWeight: 800, padding: '8px 16px',
+                          display: 'block', marginBottom: 10,
+                          color: '#2f6b3c', background: '#e9f5ec', border: '1px solid #7fb08c',
+                        }}
+                      >✓ Accept Station — build with the machine later</button>
                     )}
-                    <DictatedTextarea
-                      value={purpose}
-                      onChange={v => setPurpose(v.replace(/\n/g, ' '))}
-                      rows={1}
-                      data-testid="generate-scope-specifics"
-                      micTestId="generate-scope-specifics-mic"
-                      placeholder="anything specific about this build (optional)"
-                      className="form-input"
-                      style={{ width: '100%', boxSizing: 'border-box', fontSize: 12, resize: 'none', lineHeight: 1.5, paddingTop: 6, paddingBottom: 6, paddingLeft: 10 }}
-                    />
-                    <div style={{ fontSize: 10.5, color: C.light, marginTop: 4 }}>
-                      Then hit {linkedSmId ? '“Rebuild station code”' : '“Build Station Code”'} below — the note rides into the build.
+                    {/* THE BUILD LANE — button + its note, nested together
+                        (the note belongs to the build, not to Accept). */}
+                    <div data-testid="build-lane" style={{ borderTop: `1px dashed ${C.border}`, paddingTop: 10 }}>
+                      <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>
+                        or build this station's code now:
+                      </div>
+                      <div style={{ marginBottom: 8 }}>{renderBuildAction('left')}</div>
+                      <DictatedTextarea
+                        value={purpose}
+                        onChange={v => setPurpose(v.replace(/\n/g, ' '))}
+                        rows={1}
+                        data-testid="generate-scope-specifics"
+                        micTestId="generate-scope-specifics-mic"
+                        placeholder="anything specific about this build (optional — rides into the build)"
+                        className="form-input"
+                        style={{ width: '100%', boxSizing: 'border-box', fontSize: 12, resize: 'none', lineHeight: 1.5, paddingTop: 6, paddingBottom: 6, paddingLeft: 10 }}
+                      />
                     </div>
                   </div>
                 )}
@@ -10596,14 +10647,12 @@ export function CreateStationPage({ embedded = false }) {
                       per SDC standards and noted for review.
                     </span>
                   )}
-                  {/* BUILD — grayed out until the sheet is ready, ALWAYS saying
-                      why (Dan): the blocker list sits right here, each reason
-                      clickable (takes you to the fix). Goes live — visibly —
-                      the moment the last reason clears. */}
+                  {/* BUILD lives IN the card for cascade drafts (Dan,
+                      2026-08-30: stacked under Accept, never orphaned down
+                      here next to Discard). This row keeps it only for
+                      non-cascade sheets (linked stations), plus the gated
+                      note while the walk is unfinished. */}
                   {(() => {
-                    // GENERATE COMES LAST (Dan, 2026-08-26): while the cascade
-                    // has un-agreed steps, the big Build/Rebuild stays out of
-                    // sight — the fresh draft's Build lives on its step card.
                     if (cascadeLive && !cascade.allApproved) {
                       return (
                         <span data-testid="build-gated-note" style={{ fontSize: 11, color: C.muted }}>
@@ -10611,84 +10660,8 @@ export function CreateStationPage({ embedded = false }) {
                         </span>
                       );
                     }
-                    const list = sheetBlockers();
-                    const ready = list.length === 0;
-                    return (
-                      <>
-                        {!ready && (
-                          <div data-testid="build-blockers" style={{ textAlign: 'right' }}>
-                            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                              Build is waiting on
-                            </div>
-                            {list.map(b => (
-                              <button
-                                key={b.key}
-                                type="button"
-                                data-testid={`build-blocker-${b.key}`}
-                                onClick={() => goToBlocker(b)}
-                                title="Take me there"
-                                style={{
-                                  display: 'block', marginLeft: 'auto', background: 'none', border: 'none',
-                                  padding: '1px 0', cursor: 'pointer', fontSize: 11.5, fontWeight: 600,
-                                  color: C.danger, textDecoration: 'underline', whiteSpace: 'nowrap',
-                                }}
-                              >
-                                {b.label}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        {/* THE HANG GATE (SUPREME LAW): can-hang findings make
-                            the primary "Fix these first"; build-anyway is the
-                            explicit secondary. */}
-                        {ready && pregenFindings.hang.length > 0 ? (
-                          <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-                            <button
-                              className="btn btn--primary"
-                              data-testid="build-station-btn"
-                              onClick={() => document.querySelector('[data-testid="pregen-handshake-findings"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
-                              disabled={applying}
-                              title="The signal check found waits that can hang forever — fix or Agree them first"
-                              style={{ fontSize: 14, padding: '9px 22px', background: '#8a3b3b', borderColor: '#8a3b3b' }}
-                            >
-                              Fix these first — {pregenFindings.hang.length} signal finding{pregenFindings.hang.length === 1 ? '' : 's'}
-                            </button>
-                            <button
-                              type="button"
-                              data-testid="build-anyway-btn"
-                              onClick={handleBuildClick}
-                              disabled={applying}
-                              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 11, color: C.muted, textDecoration: 'underline' }}
-                            >
-                              build anyway — the code carries these as-is
-                            </button>
-                          </span>
-                        ) : (
-                        <button
-                          className="btn btn--primary"
-                          data-testid="build-station-btn"
-                          onClick={handleBuildClick}
-                          disabled={applying}
-                          aria-disabled={!ready}
-                          title={ready
-                            ? (allCovered ? undefined : 'Open needs go with their proposed answers, noted for review')
-                            : `Not ready yet: ${list.map(b => b.label).join(' · ')}`}
-                          style={{
-                            fontSize: 14, padding: '9px 22px',
-                            transition: 'background 0.35s ease, box-shadow 0.35s ease, opacity 0.35s ease, filter 0.35s ease',
-                            opacity: ready ? 1 : 0.5,
-                            filter: ready ? 'none' : 'grayscale(0.7)',
-                            cursor: ready ? 'pointer' : 'not-allowed',
-                            boxShadow: ready && !applying ? `0 0 0 3px ${C.primaryBg}` : 'none',
-                          }}
-                        >
-                          {/* The mental model (Dan, Aug 24): the sheet is the
-                              source of truth; Rebuild pushes it downstream. */}
-                          {linkedSmId ? 'Rebuild Station Code — apply the sheet' : 'Build Station Code'}
-                        </button>
-                        )}
-                      </>
-                    );
+                    if (cascadeLive && cascade.allApproved) return null; // the card owns both lanes
+                    return renderBuildAction('right');
                   })()}
                 </div>
 
