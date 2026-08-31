@@ -36,8 +36,10 @@ WHAT HAPPENS TO A FILE
   - Anything unclear or conflicting with existing knowledge becomes a
     question — in a questions doc and in the app's question queue.
 
-There is also a TEAM inbox on the network for the controls engineers:
-\\stevendouglas.local\dfs\Company\Engineering\Electrical Dept\SDC Engineer Inbox
-(files there are read in place and never moved). The SDC Engineer also
-watches the whole Electrical Dept share daily — exclusions are listed in
-jarvis-knowledge\inbox-sources.json.
+There is also the SDC Engineer's home folder on the network:
+\\stevendouglas.local\dfs\Company\Engineering\Electrical Dept\SDC Engineer
+  Drop Files Here\          — the team inbox (read in place, never moved)
+  Knowledge\ce-knowledge.md — engineer-taught memory (append-only)
+  Knowledge\questions-for-ce.md — open questions; answer in place
+The SDC Engineer also watches the whole Electrical Dept share daily —
+exclusions are listed in jarvis-knowledge\inbox-sources.json.

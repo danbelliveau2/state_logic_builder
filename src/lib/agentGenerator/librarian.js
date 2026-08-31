@@ -69,16 +69,19 @@ const MAX_FILE_BYTES = 25 * 1024 * 1024; // skip anything bigger (network CAD du
 // so Dan can see (and a lead can edit) which network folders are watched.
 const DEFAULT_CONFIG = {
   networkRoot: '\\\\stevendouglas.local\\dfs\\Company\\Engineering\\Electrical Dept',
-  networkDropFolder: 'SDC Engineer Inbox',
+  // The SDC Engineer's home folder on the share (README, CLAUDE.md for
+  // Jason's Claude Code sessions, Knowledge\ memory files, _learned\).
+  networkEngineerRoot: 'SDC Engineer',
+  networkDropFolder: 'SDC Engineer\\Drop Files Here',
   // WATCH EVERYTHING (Dan, 2026-08-28: "learn everything in the electrical
   // department folder") — the whole dept share, recursively, minus the
   // judgment-call noise below. The backlog counter tells the story.
   watchAll: true,
   // Visible, editable exclusions — folder NAMES skipped at any depth.
-  exclude: ['ARCHIVE', 'EPLAN', 'Backup', 'Backups', 'Old', 'node_modules', '_archive'],
+  exclude: ['ARCHIVE', 'EPLAN', 'Backup', 'Backups', 'Old', 'node_modules', '_archive', '_learned'],
   // Legacy targeted list — used only when watchAll is false.
   watch: [
-    'SDC Engineer Inbox',
+    'SDC Engineer',
     'SDC_Examples for AI Inbox',
     'SDC Knowledgebase',
     'Standards - Software',
@@ -99,8 +102,8 @@ const CATEGORIES = [
 ];
 
 const NETWORK_README = [
-  'SDC ENGINEER INBOX — the ONE folder',
-  '===================================',
+  'DROP FILES HERE — the SDC Engineer\'s ONE inbox',
+  '==============================================',
   '',
   'This is the ONE folder — examples, standards, anything. The SDC Engineer reads',
   'new files daily. Your files stay put (he reads in place, never moves',
@@ -124,10 +127,12 @@ const NETWORK_README = [
   '  question and save — he reads them on his next pass, files what he',
   '  learned under your name, and renames the doc "(answered)".',
   '',
-  'RETIRED FOLDERS (2026-08-31) — everything now lands HERE:',
-  '  "SDC_Examples for AI Inbox" (this share, breadcrumb left) and',
-  '  N:\\Job Folder\\AI Folder ("CE Training Material" + "Templates" moved',
-  '  in, hash-verified). Breadcrumb READMEs point back to this folder.',
+  'THE FOLDER ABOVE (SDC Engineer\\) — README.txt there is the map:',
+  '  Knowledge\\ce-knowledge.md (engineer-taught memory, append-only),',
+  '  Knowledge\\questions-for-ce.md (his open questions — answer in place),',
+  '  _learned\\LEDGER.md, and CLAUDE.md for Claude Code sessions.',
+  'Retired folders ("SDC_Examples for AI Inbox", "SDC Engineer Inbox",',
+  '  N:\\Job Folder\\AI Folder) carry breadcrumbs pointing here.',
   '',
   'What he learned is visible in the State Logic Builder app',
   '(SDC Engineer page > Knowledge tab), with a ledger line for every file.',
@@ -769,6 +774,9 @@ function walkNetworkFolder(dir, out, depth = 0, exclude = []) {
     if (!e.isFile()) continue;
     // Our own two-way artifacts are channels, not knowledge to ingest.
     if (isFormTemplate(e.name) || isQuestionsDoc(e.name) || /^readme\.txt$/i.test(e.name)) continue;
+    // The CE bridge's own channel files (SDC Engineer\Knowledge) and the
+    // folder's CLAUDE.md are handled by ceBridge.js — never generic-ingested.
+    if (/^(ce-knowledge\.md|questions-for-ce\.md|claude\.md|_provenance\.txt)$/i.test(e.name)) continue;
     const ext = path.extname(e.name).toLowerCase();
     if (!DOC_EXTS.has(ext) && !CODE_EXTS.has(ext) && !['.docx', '.doc', '.xlsx'].includes(ext)) continue;
     try {
@@ -842,7 +850,10 @@ async function processNetworkSources(cfg, state, summaryLines) {
   // Prioritize: submission forms first (they steer their siblings), then the
   // drop folder, then L5X + standards docs, then the rest.
   const isForm = c => looksLikeSubmissionForm(c.name);
-  const inDrop = c => c.folder.toLowerCase() === cfg.networkDropFolder.toLowerCase();
+  // folder is the FIRST path segment under the root; a nested drop folder
+  // ('SDC Engineer\Drop Files Here') matches on its first segment.
+  const dropTop = cfg.networkDropFolder.split(/[\\/]/)[0].toLowerCase();
+  const inDrop = c => c.folder.toLowerCase() === dropTop;
   const score = c =>
     (isForm(c) ? -2 : 0) + (inDrop(c) ? -1 : 0)
     + (CODE_EXTS.has(c.ext) ? 0 : DOC_EXTS.has(c.ext) ? 1 : 2)
@@ -1019,6 +1030,11 @@ async function runLibrarian({ trigger = 'manual' } = {}) {
     }
     try { await processNetworkSources(cfg, state, summaryLines); }
     catch (e) { errors.push(`network scan: ${e.message}`); }
+
+    // The CE bridge (SDC Engineer\Knowledge): file Jason's appended
+    // ce-knowledge entries as doctrine, post open questions, read answers.
+    try { require('./ceBridge.js').syncCeBridge(cfg, state, summaryLines); }
+    catch (e) { errors.push(`ce-bridge: ${e.message}`); }
 
     state.lastRun = nowIso();
     state.lastTrigger = trigger;

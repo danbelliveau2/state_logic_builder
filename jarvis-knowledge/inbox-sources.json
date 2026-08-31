@@ -1,6 +1,7 @@
 {
   "networkRoot": "\\\\stevendouglas.local\\dfs\\Company\\Engineering\\Electrical Dept",
-  "networkDropFolder": "SDC Engineer Inbox",
+  "networkEngineerRoot": "SDC Engineer",
+  "networkDropFolder": "SDC Engineer\\Drop Files Here",
   "watchAll": true,
   "exclude": [
     "ARCHIVE",
@@ -9,10 +10,11 @@
     "Backups",
     "Old",
     "node_modules",
-    "_archive"
+    "_archive",
+    "_learned"
   ],
   "watch": [
-    "SDC Engineer Inbox",
+    "SDC Engineer",
     "SDC_Examples for AI Inbox",
     "SDC Knowledgebase",
     "Standards - Software",
