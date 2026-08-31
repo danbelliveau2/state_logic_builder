@@ -4059,6 +4059,9 @@ function buildFlowModel(structured, flatLines, composeStep, tagOf, devices = nul
         continue;
       }
       if (/^signal$/i.test(type)) continue; // in the data, not the drawing
+      // Rejoin markers ARE the dotted rejoin edge, never a node (gate catch,
+      // 2026-08-31: they rendered as icon-less "device" rows).
+      if (/^rejoin/i.test(type) || /^rejoin/i.test(line)) continue;
       const [dev0, ...dd] = String(rest).split(' — ');
       out.items.push({
         line, cond, tag,
@@ -10490,7 +10493,9 @@ export function CreateStationPage({ embedded = false }) {
                               <>
                                 <div style={{
                                   display: 'grid',
-                                  gridTemplateColumns: 'repeat(auto-fit, minmax(330px, 620px))',
+                                  // 1fr (not a 620px cap): each machine card holds its
+                                  // sequence AND recovery side by side (Dan, 2026-08-31).
+                                  gridTemplateColumns: 'repeat(auto-fit, minmax(330px, 1fr))',
                                   gap: '6px 20px', alignItems: 'start',
                                 }}>
                                   {perSm.map((e, ei) => {
@@ -10517,6 +10522,11 @@ export function CreateStationPage({ embedded = false }) {
                                     const tagOfLine = (line) => ixByText.get(normalizeSeqLine(line)) ?? null;
                                     return (
                                     <div key={e.key} style={{ minWidth: 0 }} data-testid={`sequence-sm-${e.key}`}>
+                                    {/* RECOVERY BESIDE THE SEQUENCE (Dan, 2026-08-31 — layout
+                                        invariant #1): same block, right side; auto-fit collapses
+                                        to stacked only when the viewport can't hold both. */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '6px 24px', alignItems: 'start' }}>
+                                    <div style={{ minWidth: 0 }}>
                                       <SubHead color="#1574C4">{e.name} sequence</SubHead>
                                       {/* LIVE DIFF (Dan, 2026-08-28): a correction shows right
                                           here — removed struck, added/changed highlighted —
@@ -10599,8 +10609,10 @@ export function CreateStationPage({ embedded = false }) {
                                           putting that in the sequence — why have another row
                                           below?"): the interactions review IS this card's tag
                                           column; the step bar carries the one prompt line. */}
+                                    </div>
                                       {stepRevealed('recovery', e.key) && (
-                                        (e.faultRecovery?.length ?? 0) > 0 || recDiff?.byKey?.[e.key] ? (
+                                        <div style={{ minWidth: 0 }} data-testid={`recovery-sm-${e.key}`}>
+                                        {(e.faultRecovery?.length ?? 0) > 0 || recDiff?.byKey?.[e.key] ? (
                                           <>
                                             <SubHead color="#b45309">Fault recovery</SubHead>
                                             {/* RECOVERY IS A BRANCHING FLOW (Dan, 2026-08-30):
@@ -10655,8 +10667,10 @@ export function CreateStationPage({ embedded = false }) {
                                               Approve to accept none.
                                             </div>
                                           </div>
-                                        )
+                                        )}
+                                        </div>
                                       )}
+                                    </div>
                                     </div>
                                     );
                                   })}
