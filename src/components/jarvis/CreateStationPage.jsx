@@ -4768,6 +4768,17 @@ export function CreateStationPage({ embedded = false }) {
   const [chatCollapsed, setChatCollapsed] = useState(false);
   // QUESTIONS LIVE IN THE CHAT (Dan, 2026-08-31): 'chat' | 'questions'.
   const [chatTab, setChatTab] = useState('chat');
+  // THE SLIDE-OUT CHAT (Dan, 2026-08-31 — LinkedIn style): collapsed = a
+  // rectangular pill docked bottom-right; open = a right-side panel, the
+  // sheet reflows into the freed width. Open/closed persists per browser.
+  const [chatPanelOpen, setChatPanelOpen] = useState(() => {
+    try { return localStorage.getItem('jarvis.chatPanelOpen') === '1'; } catch { return false; }
+  });
+  const setChatPanel = (on) => {
+    setChatPanelOpen(on);
+    try { localStorage.setItem('jarvis.chatPanelOpen', on ? '1' : '0'); } catch { /* private mode */ }
+  };
+  const openQuestionsPanel = () => { setChatTab('questions'); setChatPanel(true); };
 
   // ── Live checklist — LOCAL heuristics, debounced ~1.5s (input phase) ─────
   const [coverage, setCoverage] = useState(() => assessCoverage(draft?.description ?? ''));
@@ -8794,8 +8805,7 @@ export function CreateStationPage({ embedded = false }) {
     // the click re-surfaces the held state — it never starts a new build and
     // never no-ops.
     if (holdNeeds.length || heldResumable) {
-      setChatTab('questions');
-      document.querySelector('[data-testid="corrections-block"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      openQuestionsPanel();
       if (heldResumable) setApplyHint('Everything is answered — hit "Continue the build" in the chat, or it resumes on its own.');
       else setApplyHint(`The build is held on ${holdNeeds.length} question${holdNeeds.length === 1 ? '' : 's'} — they're in the chat's Questions tab.`);
       return;
@@ -9180,16 +9190,10 @@ export function CreateStationPage({ embedded = false }) {
   // Rendered right below the inputs in cascade mode; in the legacy spot
   // otherwise. Step response boxes are gone — a message while a step is
   // active applies to that step by default (combinedCorrections frames it).
+  // THE CHAT CONTENT — lives ONLY in the slide-out panel now (one door;
+  // Dan, 2026-08-31: the in-page CHAT section bar is gone).
   const chatBlock = (
-    <SectionBar
-      testId="corrections-block"
-      title="Chat"
-      color="#475569"
-      note="ask, correct, change — he applies it and shows what actually changed"
-      foldedNote={`${chatThread.length} turn${chatThread.length === 1 ? '' : 's'}${(allOpenNeeds.length + holdNeeds.length) ? ` · ${allOpenNeeds.length + holdNeeds.length} open question${(allOpenNeeds.length + holdNeeds.length) === 1 ? '' : 's'}` : ''} — click to expand`}
-      collapsed={secFolded('chat')}
-      onToggle={() => toggleSectionCollapse('chat')}
-    >
+    <div data-testid="corrections-block" style={{ padding: '10px 14px 12px' }}>
       {/* BREATHING ROOM (Dan, 2026-08-31): the tab row gets its own band —
           padded, ruled off — so the thread scrolls under a clean boundary. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 8, marginBottom: 8, borderBottom: `1px solid ${C.border}` }}>
@@ -9395,7 +9399,62 @@ export function CreateStationPage({ embedded = false }) {
           {budgetMessage}. Building from the current summary still works.
         </div>
       )}
-    </SectionBar>
+    </div>
+  );
+
+  // THE SLIDE-OUT PANEL + DOCKED PILL (Dan, 2026-08-31): rectangular pill
+  // bottom-right with the needs-attention count; open = right panel under
+  // the header, everything the section had, the sheet reflows.
+  const openQuestionCount = allOpenNeeds.length + holdNeeds.length;
+  const chatPanelUi = (
+    chatPanelOpen ? (
+      <div
+        data-testid="chat-panel"
+        style={{
+          position: 'fixed', top: 50, right: 0, bottom: 0, width: 420, zIndex: 60,
+          background: '#fff', borderLeft: `1px solid ${C.border}`,
+          boxShadow: '-4px 0 16px rgba(0,0,0,0.10)',
+          display: 'flex', flexDirection: 'column',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: '#475569', flexShrink: 0 }}>
+          <span style={{ fontSize: 11.5, fontWeight: 800, color: '#fff', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Chat — SDC Engineer</span>
+          <span style={{ flex: 1 }} />
+          <button
+            type="button"
+            data-testid="chat-panel-close"
+            onClick={() => setChatPanel(false)}
+            title="Close — the chat docks bottom-right"
+            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.85)', fontSize: 15, cursor: 'pointer', padding: 0, lineHeight: 1 }}
+          >✕</button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
+          {chatBlock}
+        </div>
+      </div>
+    ) : (
+      <button
+        type="button"
+        data-testid="chat-pill"
+        onClick={() => setChatPanel(true)}
+        title="Open the chat — ask, correct, change; questions live here too"
+        style={{
+          position: 'fixed', right: 16, bottom: 14, zIndex: 60,
+          display: 'inline-flex', alignItems: 'center', gap: 8,
+          background: '#061d39', color: '#fff', border: '1px solid #0d2b52',
+          borderRadius: 6, /* rectangular — the standing square-pill rule */
+          padding: '8px 16px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer',
+          boxShadow: '0 3px 12px rgba(0,0,0,0.25)',
+        }}
+      >
+        Chat — SDC Engineer
+        {openQuestionCount > 0 && (
+          <span data-testid="chat-pill-count" style={{ background: '#dc2626', color: '#fff', borderRadius: 4, padding: '0 7px', fontSize: 11, fontWeight: 800 }}>
+            {openQuestionCount}
+          </span>
+        )}
+      </button>
+    )
   );
 
   return (
@@ -9468,7 +9527,7 @@ export function CreateStationPage({ embedded = false }) {
             internal multi-column grids, not from a fixed strip. Generous
             bottom padding on the sheet so the final sections (IO) can scroll
             up to center-screen (Dan, Aug 24). */}
-        <div style={{ width: '100%', boxSizing: 'border-box', padding: inSummary ? '14px 28px 45vh' : '14px 28px 40px' }}>
+        <div style={{ width: '100%', boxSizing: 'border-box', padding: inSummary ? '14px 28px 45vh' : '14px 28px 40px', paddingRight: chatPanelOpen ? 448 : 28, transition: 'padding-right 0.25s ease' }}>
 
           {/* Never on a Station Specs visit (linkedSmId) — that's spec view,
               not the new-station flow. */}
@@ -9621,10 +9680,7 @@ export function CreateStationPage({ embedded = false }) {
               <button
                 type="button"
                 data-testid="open-questions-chip"
-                onClick={() => {
-                  setChatTab('questions');
-                  document.querySelector('[data-testid="corrections-block"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }}
+                onClick={openQuestionsPanel}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 10,
                   background: '#fdf2f2', border: '1px solid #d4a0a0', borderRadius: 4,
@@ -10112,7 +10168,8 @@ export function CreateStationPage({ embedded = false }) {
                 {/* THE ONE CHAT — right below the inputs (Dan, 2026-08-26):
                     the conversation channel; a message applies to the active
                     step by default. Collapsible. */}
-                {cascadeLive && chatBlock}
+                {/* (in-page chat REMOVED — the slide-out panel is the chat) */}
+                {chatPanelUi}
 
                 {/* STATE MACHINES — folded INTO the cascade's step-1 card
                     (Dan, 2026-08-26); the standalone section renders only in
@@ -10330,10 +10387,7 @@ export function CreateStationPage({ embedded = false }) {
                       dimmed={sectionQueued(section.key)}
                       collapsed={!!collapsedSections[section.key]}
                       onToggleCollapse={() => toggleSectionCollapse(section.key)}
-                      onOpenQuestions={() => {
-                        setChatTab('questions');
-                        document.querySelector('[data-testid="corrections-block"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                      }}
+                      onOpenQuestions={openQuestionsPanel}
                       onChange={items => {
                         // withSheetPrefill keeps the device line, the device
                         // card, and the IO list agreeing (ME's words win).
@@ -10989,7 +11043,9 @@ export function CreateStationPage({ embedded = false }) {
                         with the inputs (strict order, Dan 2026-08-26). */}
                     {section.key === 'interactions' && !cascadeLive && (
                       <>
-                        {chatBlock}
+                        {/* (in-page chat REMOVED — the panel is the chat; it
+                            renders once from the cascade spot or here) */}
+                        {!cascadeLive && chatPanelUi}
                         <BandHeader label="Station" note="review and correct" />
                         {reviewSections.length > 0 && (
                           <div
@@ -11214,7 +11270,7 @@ export function CreateStationPage({ embedded = false }) {
                         }}>
                           <span style={{ flex: 1 }}>
                             ⏸ held — {holdNeeds.length > 0
-                              ? <>waiting on {holdNeeds.length} question{holdNeeds.length === 1 ? '' : 's'} (<button type="button" onClick={() => { setChatTab('questions'); document.querySelector('[data-testid="corrections-block"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12, color: '#6b5513', fontWeight: 700, textDecoration: 'underline' }}>in the chat</button>) — answering resumes automatically</>
+                              ? <>waiting on {holdNeeds.length} question{holdNeeds.length === 1 ? '' : 's'} (<button type="button" onClick={() => openQuestionsPanel} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12, color: '#6b5513', fontWeight: 700, textDecoration: 'underline' }}>in the chat</button>) — answering resumes automatically</>
                               : 'everything answered — resuming'}
                           </span>
                           {heldResumable && (
@@ -11250,7 +11306,7 @@ export function CreateStationPage({ embedded = false }) {
                                 ) : held ? (
                                   <span style={{ color: '#6b5513', fontWeight: 700 }}>
                                     HELD — {openQ > 0
-                                      ? <button type="button" onClick={() => { setChatTab('questions'); document.querySelector('[data-testid="corrections-block"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#6b5513', fontWeight: 700, fontSize: 11.5, textDecoration: 'underline' }}>answer {openQ} question{openQ === 1 ? '' : 's'} in the chat</button>
+                                      ? <button type="button" onClick={() => openQuestionsPanel} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#6b5513', fontWeight: 700, fontSize: 11.5, textDecoration: 'underline' }}>answer {openQ} question{openQ === 1 ? '' : 's'} in the chat</button>
                                       : (b.help?.status === 'resumed' ? 'resumed — writing now' : 'answers in — continue below')}
                                   </span>
                                 ) : b.ok === false ? (

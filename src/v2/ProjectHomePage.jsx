@@ -317,6 +317,33 @@ export function ProjectHomePage() {
 
   if (!project) return null;
 
+  // THE CHAT IS REACHABLE EVERYWHERE (Dan, 2026-08-31): the docked pill on
+  // the homepage opens the newest draft's sheet with the chat panel open.
+  // Hidden while a full-viewport surface (the sheet) overlays — that surface
+  // carries its own pill.
+  const surfaceUp = useDiagramStore(s => s.showNewSmModal);
+  const chatTarget = drafts[0] ?? null;
+  const chatPill = chatTarget && !surfaceUp && (
+    <button
+      type="button"
+      data-testid="chat-pill"
+      onClick={() => {
+        try { localStorage.setItem('jarvis.chatPanelOpen', '1'); } catch { /* private mode */ }
+        continueDraft(chatTarget);
+      }}
+      title={`Open the chat on ${draftLabel(chatTarget)}`}
+      style={{
+        position: 'fixed', right: 16, bottom: 14, zIndex: 60,
+        display: 'inline-flex', alignItems: 'center', gap: 8,
+        background: '#061d39', color: '#fff', border: '1px solid #0d2b52',
+        borderRadius: 6, padding: '8px 16px', fontSize: 12.5, fontWeight: 800,
+        cursor: 'pointer', boxShadow: '0 3px 12px rgba(0,0,0,0.25)',
+      }}
+    >
+      Chat — SDC Engineer
+    </button>
+  );
+
   const summaryBits = [
     `${totals.stations} station${totals.stations !== 1 ? 's' : ''}`,
     totals.servos > 0 && `${totals.servos} servo${totals.servos !== 1 ? 's' : ''}`,
@@ -328,6 +355,7 @@ export function ProjectHomePage() {
 
   return (
     <div className="v2-phome" data-testid="project-home">
+      {chatPill}
       <div className="v2-phome__inner">
         <ProjectHeader project={project} />
         <div className="v2-phome__summary" data-testid="home-summary">

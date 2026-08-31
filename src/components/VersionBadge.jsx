@@ -189,7 +189,8 @@ export function VersionBadge() {
           background: 'var(--color-surface, #ffffff)',
           color: 'var(--color-text-muted, #5a6a7e)',
           border: '1px solid var(--color-border, #e2e8f0)',
-          borderRadius: 999,
+          // Square-pill rule (Dan, 2026-08-31: called the round one out).
+          borderRadius: 4,
           padding: '4px 11px',
           fontSize: 11.5,
           fontWeight: 600,

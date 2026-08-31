@@ -86,11 +86,15 @@ export const INVARIANTS = [
     id: 'no-overlapping-floats',
     what: 'Fixed/floating bars never overlap each other or cover the send box',
     run() {
+      const vw = window.innerWidth; const vh = window.innerHeight;
       const floats = q('body *').filter((el) => {
         if (!vis(el)) return false;
         const cs = getComputedStyle(el);
         if (cs.position !== 'fixed') return false;
         const r = el.getBoundingClientRect();
+        // Viewport-sized fixed containers are SURFACES (the sheet overlay,
+        // the chat panel) — floats dock on top of them by design.
+        if (r.width >= vw * 0.8 && r.height >= vh * 0.8) return false;
         return r.width > 60 && r.height > 24;
       // Top-level fixed elements only (ignore nested children of a fixed bar).
       }).filter((el, _, all) => !all.some((o) => o !== el && o.contains(el)));
@@ -118,6 +122,28 @@ export const INVARIANTS = [
       };
       for (const [k, n] of Object.entries(counts)) if (n > 1) bad.push(`${k} ×${n}`);
       return bad.length ? { fail: bad.join('; ') } : {};
+    },
+  },
+  {
+    id: 'chat-panel-reachable',
+    what: 'The chat is reachable everywhere — the docked pill (or the open panel) is present on the sheet and the homepage (Dan, 2026-08-31)',
+    run() {
+      const sheet = q('[data-testid="create-station-page"]').some(vis);
+      const home = q('[data-testid="project-home"]').some(vis);
+      if (!sheet && !home) return { skip: 'neither sheet nor homepage on screen' };
+      const pill = q('[data-testid="chat-pill"]').some(vis);
+      const panel = q('[data-testid="chat-panel"]').some(vis);
+      return (pill || panel) ? {} : { fail: `${sheet ? 'sheet' : 'homepage'} has neither the chat pill nor the open panel` };
+    },
+  },
+  {
+    id: 'no-in-page-chat-section',
+    what: 'ONE door: the chat lives only in the slide-out panel — never as an in-page section (Dan, 2026-08-31)',
+    run() {
+      const blocks = q('[data-testid="corrections-block"]').filter(vis);
+      if (!blocks.length) return {};
+      const stray = blocks.filter((b) => !b.closest('[data-testid="chat-panel"]'));
+      return stray.length ? { fail: `${stray.length} chat block(s) rendering in the page flow` } : {};
     },
   },
   {
@@ -177,7 +203,7 @@ export const INVARIANTS = [
     id: 'uniform-section-bars',
     what: 'Every sheet region is one consistent section bar — same header anatomy (dark band, chevron, uppercase title), no odd-one-out (Dan, 2026-08-31)',
     run() {
-      const barSel = ['[data-testid="inputs-band-header"]', '[data-testid="controls-notes-section"]', '[data-testid="corrections-block"]',
+      const barSel = ['[data-testid="inputs-band-header"]', '[data-testid="controls-notes-section"]', 
         '[data-testid^="summary-section-"]', '[data-testid="changelog-section"]', '[data-testid="generate-scope-card"]'];
       const bars = barSel.flatMap((s) => q(s)).filter(vis);
       if (bars.length < 3) return { skip: 'not enough section bars on screen' };
@@ -201,7 +227,7 @@ export const INVARIANTS = [
     id: 'bars-full-width',
     what: 'Every section bar spans the same full content width — no narrow odd-one-out (Dan, 2026-08-31)',
     run() {
-      const sel = ['[data-testid="inputs-band-header"]', '[data-testid="controls-notes-section"]', '[data-testid="corrections-block"]',
+      const sel = ['[data-testid="inputs-band-header"]', '[data-testid="controls-notes-section"]', 
         '[data-testid^="summary-section-"]', '[data-testid="changelog-section"]', '[data-testid="generate-scope-card"]'];
       const bars = sel.flatMap((s) => q(s)).filter(vis);
       if (bars.length < 3) return { skip: 'not enough bars on screen' };
@@ -223,7 +249,7 @@ export const INVARIANTS = [
       const ctrl = bg('[data-testid="controls-notes-section"]');
       if (ctrl && ctrl !== 'rgb(90, 154, 72)') bad.push(`CONTROLS INFORMATION band ${ctrl} ≠ SDC green`);
       // No OTHER bar may use the two role colors.
-      const others = ['[data-testid="corrections-block"]', '[data-testid^="summary-section-"]', '[data-testid="changelog-section"]', '[data-testid="generate-scope-card"]']
+      const others = [ '[data-testid^="summary-section-"]', '[data-testid="changelog-section"]', '[data-testid="generate-scope-card"]']
         .flatMap((s) => q(s)).filter(vis);
       for (const b of others) {
         const c = getComputedStyle(b.firstElementChild).backgroundColor;

@@ -10,12 +10,21 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.42';
+export const UI_BUILD = 'v2.6.43';
 
 export const BUILT_AT = '2026-08-30';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.43',
+    date: '2026-08-31',
+    items: [
+      'THE CHAT IS A SLIDE-OUT PANEL — LinkedIn style: a rectangular "Chat — SDC Engineer" pill docks bottom-right (red count when questions are open); clicking it slides a right-side panel out with everything the chat had (Chat | Questions tabs, ME|CE, dictation, receipts) and the sheet reflows into the freed width. Closes back to the pill; your open/closed choice sticks. The in-page CHAT section is gone — the panel IS the chat, and question chips jump it open on the Questions tab',
+      'The pill is reachable from the homepage too (opens your newest draft with the chat up)',
+      'The version badge is rectangular now (the square-pill rule, everywhere)',
+    ],
+  },
   {
     version: 'v2.6.42',
     date: '2026-08-31',
