@@ -99,3 +99,6 @@ SDC standardizes on SMC for all pneumatic hardware. Key selection judgments an e
 - **Tubing convention**: color-code by function — blue = supply, black = exhaust, red = signal — flexible polyurethane/nylon, avoid excess bends/length.
 
 _Source: Pneumatic Standardization Selection Guide, Rev2.docx (network: EE Process and Standards Documents), ingested 2026-08-31 by the inbox librarian._
+
+## Learned from corrections
+- (2026-08-31, from the fix loop (tuition)'s correction of build PNP_ServoX- PneumaticZ / MidBasePickAndPlace [tuition]) A hybrid station (one servo axis plus pneumatic motion on the other axis) is a real and recurring SDC shape, and neither the two-servo PNP template nor the all-pneumatic load template fits it. The correct base is the servo template with the surplus axis deleted whole — routine, its JSR, its alarm rungs, every program tag, the HMI and iq_ tags, and the controller axis — and the pneumatic axis rebuilt from the pneumatic idiom (sensor-confirmed retract, delay-timer extend with all three trigger legs, centre-blocked valve semantics). The surviving servo axis's permissive then states the pneumatic interference directly (slide retracted), and the quickstop reason is that compare's exact complement.

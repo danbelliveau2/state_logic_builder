@@ -31,6 +31,18 @@
  */
 
 const OPS = {
+  // NO UNUSED DEVICES (Jason, 2026-08-31): the writer DELETES template
+  // baggage — a routine for a device the sheet doesn't have goes away with
+  // its JSR; its tags (iq_/HMI_/axis included) go with it. Core boilerplate
+  // refuses inside the engine.
+  removeRoutine: {
+    required: { routine: 'string' },
+    optional: {},
+  },
+  removeTag: {
+    required: { name: 'string' },
+    optional: { scope: 'string' },
+  },
   renameTag: {
     required: { from: 'string', to: 'string' },
     optional: {},
@@ -220,6 +232,16 @@ Respond with ONE JSON object:
 
 Operations (put renameTag ops FIRST — they rewrite rung text globally, so
 later operations must be written using the NEW names):
+
+0a. {"op":"removeRoutine","routine":"R05_ZAxisServo"}
+   DELETE a whole routine AND every rung that JSRs it, anywhere. Use it for
+   template baggage — a routine serving a device the sheet does not have
+   (NO UNUSED DEVICES, Jason 2026-08-31). Never for routines the station uses.
+0b. {"op":"removeTag","name":"HMI_ZAxis"}
+   DELETE a tag declaration entirely (program or controller scope; works on
+   iq_/HMI_/axis tags — the narrow sanctioned exception for unused devices).
+   Core boilerplate (HMI_Toggle, SS_OK, Alarm, Step…) refuses. Remove the
+   tag's REFERENCES first (updateRung/removeRoutine) or the file won't import.
 
 1. {"op":"renameTag","from":"XAxisExtend","to":"XAxisPlace"}
    Word-boundary rename of a program tag everywhere in the target program:

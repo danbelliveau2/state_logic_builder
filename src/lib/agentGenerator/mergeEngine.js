@@ -809,7 +809,37 @@ function renumberAllRoutines(xml, prog) {
 
 // ── Entry point ──────────────────────────────────────────────────────────────
 
+
+//    removeRoutine / removeTag (Jason's no-unused-devices law, 2026-08-31:
+//    the writer must be able to DELETE template baggage  the v1.4.x holds
+//    burned five rounds because these ops did not exist). Narrow by design:
+//    meant for devices absent from the sheet; core boilerplate refuses.
+const REMOVE_REFUSE = /^(HMI_Toggle|HMI_Momentary|SS_OK|Step|StateLogicControl|StateLogicStatus|Alarm|ProgramFault|CPU_TimeDate.*)$/i;
+
+function opRemoveRoutine(xml, prog, op, errors) {
+  const name = String(op.routine ?? '').trim();
+  if (!name) { errors.push('removeRoutine needs routine'); return xml; }
+  const re = new RegExp('<Routine\\s+[^>]*Name="' + name + '"[\\s\\S]*?</Routine>\\s*');
+  if (!re.test(xml)) { errors.push('removeRoutine: routine "' + name + '" not found'); return xml; }
+  xml = xml.replace(re, '');
+  // Drop every rung that JSRs it (any routine).
+  const rungRe = new RegExp('<Rung' + String.fromCharCode(92) + 'b[' + String.fromCharCode(92) + 's' + String.fromCharCode(92) + 'S]*?</Rung>' + String.fromCharCode(92) + 's*', 'g');
+  xml = xml.replace(rungRe, (blk) => (blk.includes('JSR(' + name) ? '' : blk));
+  return xml;
+}
+
+function opRemoveTag(xml, prog, op, errors) {
+  const name = String(op.name ?? '').trim();
+  if (!name) { errors.push('removeTag needs name'); return xml; }
+  if (REMOVE_REFUSE.test(name)) { errors.push('removeTag: "' + name + '" is core boilerplate  refused'); return xml; }
+  const tagRe = new RegExp('<Tag\\s+[^>]*Name="' + name + '"(?:[\\s\\S]*?</Tag>|[^>]*/>)\\s*', 'g');
+  if (!tagRe.test(xml)) { errors.push('removeTag: tag "' + name + '" not found'); return xml; }
+  xml = xml.replace(tagRe, '');
+  return xml;
+}
 const OP_HANDLERS = {
+  removeRoutine: opRemoveRoutine,
+  removeTag: opRemoveTag,
   renameTag: opRenameTag,
   updateRung: opUpdateRung,
   spliceRungs: opSpliceRungs,
