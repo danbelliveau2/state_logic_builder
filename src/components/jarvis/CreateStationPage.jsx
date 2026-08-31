@@ -48,6 +48,7 @@ import { SpecQuestionsSection, BlockingShell, ExtraBlockerRow } from './SpecQues
 import { GenerationScopeNote } from './GenerationScopeNote.jsx';
 import { useV2Shell } from '../../v2/useV2Shell.js';
 import { SheetFlow } from '../../v2/SheetFlow.jsx';
+import { useHeldBuilds } from '../../v2/stationNeeds.js';
 import { DeviceIcon, DEVICE_ICON_COLORS } from '../DeviceIcons.jsx';
 import { DEVICE_TYPES, classifyDeviceRole } from '../../lib/deviceTypes.js';
 import { getDeviceTags } from '../../lib/tagNaming.js';
@@ -2913,7 +2914,18 @@ function PneumaticDraftCard({ device, idx, onPatch, headerProps }) {
 
   function toggleSensor(key, on) {
     const next = { ...checks, [key]: on };
-    onPatch({ sensorArrangement: checksToArrangement(type, next.a, next.b) });
+    const patch = { sensorArrangement: checksToArrangement(type, next.a, next.b) };
+    // EFFECTIVE VALUES (Dan, 2026-08-31): a sensor IS the truth for its
+    // direction — checking it DROPS the stored delay (blank, not grayed).
+    if (on) {
+      const delayKey = key === 'a' ? 'extendMs' : 'retractMs';
+      const d2 = { ...(device.delays ?? {}) };
+      if (d2[delayKey] != null) {
+        delete d2[delayKey]; delete d2[`${delayKey}IsDefault`];
+        patch.delays = Object.keys(d2).length ? d2 : undefined;
+      }
+    }
+    onPatch(patch);
   }
   function patchDelay(key, v) {
     const next = { ...(device.delays ?? {}) };
@@ -2927,20 +2939,27 @@ function PneumaticDraftCard({ device, idx, onPatch, headerProps }) {
     ? [['a', verbA, 'a'], ['b', verbB, 'b']]
     : [['b', verbB, 'b'], ['a', verbA, 'a']];
 
+  // EFFECTIVE VALUES (Dan, 2026-08-31): with a sensor, the delay field is
+  // BLANK — the value is dropped, not grayed; the sensor is the truth. The
+  // field exists only when no sensor governs that direction.
   const DelayField = ({ verb, delayKey, hasSensor, testId }) => (
-    <div style={hasSensor ? { opacity: 0.4 } : undefined}>
+    hasSensor ? (
+      <div data-testid={`${testId}-sensor-governed`} style={{ fontSize: 10.5, color: C.light, alignSelf: 'center' }}>
+        {verb} — sensor governs
+      </div>
+    ) : (
+    <div>
       <div style={{ fontSize: 10.5, fontWeight: 600, color: C.muted, marginBottom: 3 }}>
-        {verb} delay{!hasSensor && delays[`${delayKey}IsDefault`] && <DefaultTag />}
+        {verb} delay{delays[`${delayKey}IsDefault`] && <DefaultTag />}
       </div>
       <NumField
         value={delays[delayKey]}
         unit="ms"
         testId={testId}
-        disabled={hasSensor}
-        title={hasSensor ? `Not needed — the ${verb.toLowerCase()} sensor handles verification` : undefined}
         onCommit={v => patchDelay(delayKey, v)}
       />
     </div>
+    )
   );
 
   return (
@@ -6996,6 +7015,61 @@ export function CreateStationPage({ embedded = false }) {
     });
   }
 
+  // ONE QUESTION SYSTEM (Dan, 2026-08-31): hold-for-help questions join the
+  // chat's Questions tab — same numbered list, Agree/answer inline, and the
+  // "Continue the build" action lives with them. No parallel surfaces.
+  const heldBuilds = useHeldBuilds(linkedSm?.name);
+  const [holdStatus, setHoldStatus] = useState({}); // question id -> status
+  const [holdBump, setHoldBump] = useState(0);
+  useEffect(() => {
+    if (!heldBuilds.length) { setHoldStatus({}); return; }
+    fetch('/api/jarvis/questions').then(r => (r.ok ? r.json() : null)).then(d => {
+      const list = Array.isArray(d) ? d : (d?.questions ?? []);
+      const m = {};
+      for (const q of list) if (q?.id) m[q.id] = q.status;
+      setHoldStatus(m);
+    }).catch(() => {});
+  }, [heldBuilds, holdBump]);
+  const holdNeeds = useMemo(() => heldBuilds
+    .filter(b => b.help?.status !== 'resolved')
+    .flatMap(b => (b.help?.questions ?? [])
+      .filter(q => holdStatus[q.id] !== 'answered')
+      .map(q => ({ question: q.question, proposedSolution: q.proposedSolution ?? null, covKey: 'build', holdId: q.id, buildId: b.id }))),
+  [heldBuilds, holdStatus]);
+  const heldResumable = heldBuilds.find(b => b.help?.status === 'waiting'
+    && (b.help?.questions ?? []).every(q => holdStatus[q.id] === 'answered'));
+  const [resuming, setResuming] = useState(false);
+  async function answerHoldQuestion(holdId, answer, by) {
+    try {
+      const r = await fetch(`/api/jarvis/questions/${encodeURIComponent(holdId)}/answer`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answer, answeredBy: by ?? 'ME' }),
+      });
+      if (r.ok) setHoldBump(n => n + 1);
+      return r.ok;
+    } catch { return false; }
+  }
+  async function continueHeldBuild(buildId) {
+    if (resuming) return;
+    setResuming(true);
+    setChatThread(t => [...t, { role: 'jarvis', text: 'Resuming the held build with your answers folded in — this runs a few minutes; the result lands here.', at: Date.now() }]);
+    try {
+      const r = await fetch(`/api/jarvis/builds/${encodeURIComponent(buildId)}/continue`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+      });
+      const d = await r.json().catch(() => ({}));
+      setChatThread(t => [...t, {
+        role: 'jarvis',
+        text: r.ok
+          ? (d.held ? 'The resumed build held again — its questions are in this tab.' : `Build finished${d.ok === false ? ' — validation reported errors (see the build record)' : ' — the L5X and its cover note are saved with the build record'}.`)
+          : `Resume didn't go through — ${d.error ?? r.status}.`,
+        ...(r.ok ? {} : { error: true }),
+        at: Date.now(),
+      }]);
+      setHoldBump(n => n + 1);
+    } finally { setResuming(false); }
+  }
+
   // PRE-BUILD SIGNAL CHECK (P0, 2026-08-30 — SUPREME LAW: never knowingly
   // emit hanging code without a blocking question). The can-hang-forever
   // class (unmatched cross-machine waits, deadlocks) BLOCKS the build by
@@ -7927,6 +8001,35 @@ export function CreateStationPage({ embedded = false }) {
           }
         }
       } catch (e) { console.warn('[handoff-repair] skipped:', e.message); }
+    }
+    // INACTIVE-DELAY BLANKING (Dan, 2026-08-31 — the VerticalSlide 5000 ms
+    // hold): a stored delay whose direction has a SENSOR is dead data the
+    // engine can misread as intent. Drop it — blank, not grayed.
+    {
+      let blanked = [];
+      const devs3 = (summary?.devices ?? []).map(d => {
+        if (!isPneumaticSheet(d) || !d?.delays) return d;
+        const arr = String(d.sensorArrangement ?? '');
+        const noS = /no sensors|timer only/i.test(arr);
+        const hasExt = !noS && /both|extend|engage/i.test(arr);
+        const hasRet = !noS && /both|retract|disengage/i.test(arr);
+        const d2 = { ...d.delays };
+        let hit = false;
+        if (hasExt && d2.extendMs != null) { delete d2.extendMs; delete d2.extendMsIsDefault; hit = true; }
+        if (hasRet && d2.retractMs != null) { delete d2.retractMs; delete d2.retractMsIsDefault; hit = true; }
+        if (!hit) return d;
+        blanked.push(d.displayName ?? d.name);
+        return { ...d, delays: Object.keys(d2).length ? d2 : undefined };
+      });
+      if (blanked.length) {
+        setSummary(s => withSheetPrefill({ ...s, devices: devs3 }));
+        setDirty(true);
+        setChatThread(th => [...th, {
+          role: 'jarvis',
+          text: `Blanked ${blanked.length === 1 ? 'a stored delay' : 'stored delays'} on ${blanked.join(', ')} — the sensor governs that motion, so the number was dead data (it caused a build question it never should have).`,
+          at: Date.now(),
+        }]);
+      }
     }
     // DEVICE-LINK MIGRATION (Dan, 2026-08-30: "Z"/"X" shorthand — "the
     // sequence can't be different names, it's got to be based on the
@@ -9014,7 +9117,7 @@ export function CreateStationPage({ embedded = false }) {
       title="Chat"
       color="#475569"
       note="ask, correct, change — he applies it and shows what actually changed"
-      foldedNote={`${chatThread.length} turn${chatThread.length === 1 ? '' : 's'}${allOpenNeeds.length ? ` · ${allOpenNeeds.length} open question${allOpenNeeds.length === 1 ? '' : 's'}` : ''} — click to expand`}
+      foldedNote={`${chatThread.length} turn${chatThread.length === 1 ? '' : 's'}${(allOpenNeeds.length + holdNeeds.length) ? ` · ${allOpenNeeds.length + holdNeeds.length} open question${(allOpenNeeds.length + holdNeeds.length) === 1 ? '' : 's'}` : ''} — click to expand`}
       collapsed={secFolded('chat')}
       onToggle={() => toggleSectionCollapse('chat')}
     >
@@ -9026,7 +9129,7 @@ export function CreateStationPage({ embedded = false }) {
         <span style={{ display: 'inline-flex', gap: 4, flex: 1, alignItems: 'center', minWidth: 0 }}>
           {[
             { id: 'chat', label: 'Chat' },
-            { id: 'questions', label: `Questions (${allOpenNeeds.length})` },
+            { id: 'questions', label: `Questions (${allOpenNeeds.length + holdNeeds.length})` },
           ].map(tb => (
             <button
               key={tb.id}
@@ -9035,7 +9138,7 @@ export function CreateStationPage({ embedded = false }) {
               onClick={() => setChatTab(tb.id)}
               style={{
                 ...chipBase, cursor: 'pointer', fontWeight: 800, fontSize: 11.5, padding: '4px 14px', lineHeight: 1.4, flexShrink: 0,
-                color: chatTab === tb.id ? '#fff' : (tb.id === 'questions' && allOpenNeeds.length ? '#8a3b3b' : C.muted),
+                color: chatTab === tb.id ? '#fff' : (tb.id === 'questions' && (allOpenNeeds.length + holdNeeds.length) ? '#8a3b3b' : C.muted),
                 background: chatTab === tb.id ? 'var(--color-primary)' : 'var(--color-sidebar)',
                 border: `1px solid ${chatTab === tb.id ? 'var(--color-primary)' : C.border}`,
               }}
@@ -9080,23 +9183,39 @@ export function CreateStationPage({ embedded = false }) {
           Answered ones collapse into a done list. */}
       {chatTab === 'questions' && (
         <div data-testid="chat-questions-tab" style={{ marginBottom: 8 }}>
-          {allOpenNeeds.length === 0 ? (
-            <div style={{ fontSize: 12, color: C.muted }}>Nothing open — every question is answered or agreed.</div>
-          ) : allOpenNeeds.map((n, i) => (
+          {(() => {
+            const rows = [...allOpenNeeds, ...holdNeeds];
+            if (!rows.length) return <div style={{ fontSize: 12, color: C.muted }}>Nothing open — every question is answered or agreed.</div>;
+            return rows.map((n, i) => (
             <div key={i} data-testid={`chat-question-${i}`} style={{ padding: '5px 0', borderBottom: `1px dashed ${C.border}`, fontSize: 12, lineHeight: 1.55 }}>
-              <div><b>Q{i + 1}.</b> {n.question}</div>
+              <div><b>Q{i + 1}.</b> {n.holdId ? <span style={{ fontSize: 9.5, fontWeight: 800, color: '#6b21a8', background: '#f3e8ff', border: '1px solid #e9d5ff', borderRadius: 3, padding: '0 6px', marginRight: 6 }}>BUILD</span> : null}{n.question}</div>
               {n.proposedSolution && <div style={{ color: C.muted }}>My proposal: {n.proposedSolution}</div>}
               <div style={{ marginTop: 2, display: 'flex', gap: 10, alignItems: 'center' }}>
                 <button
                   type="button"
                   data-testid={`chat-question-agree-${i}`}
-                  onClick={() => agreeNeed({ covKey: n.covKey }, n)}
+                  onClick={() => (n.holdId
+                    ? answerHoldQuestion(n.holdId, `Agreed — go with the proposal: ${n.proposedSolution ?? ''}`.trim(), 'ME — agreed with the proposal')
+                    : agreeNeed({ covKey: n.covKey }, n))}
                   style={{ ...chipBase, cursor: 'pointer', fontSize: 10.5, fontWeight: 700, padding: '2px 10px', color: '#2f6b3c', background: '#e9f5ec', border: '1px solid #7fb08c' }}
                 >✓ Agree — go with the proposal</button>
                 <span style={{ fontSize: 10.5, color: C.light }}>or answer in the box: “{i + 1} — your answer”</span>
               </div>
             </div>
-          ))}
+            ));
+          })()}
+          {/* CONTINUE THE BUILD — lives WITH the questions (one surface): the
+              resume action arms when the hold's questions hit zero open. */}
+          {heldResumable && (
+            <button
+              type="button"
+              data-testid="continue-build-btn"
+              onClick={() => continueHeldBuild(heldResumable.id)}
+              disabled={resuming}
+              className="btn btn--primary"
+              style={{ marginTop: 8, fontSize: 12.5, padding: '6px 16px' }}
+            >{resuming ? 'Resuming…' : 'Continue the build — answers folded in'}</button>
+          )}
           {[...agreedNeeds].length > 0 && (
             <details style={{ marginTop: 6 }}>
               <summary style={{ fontSize: 11, color: C.muted, cursor: 'pointer' }}>
@@ -9437,20 +9556,28 @@ export function CreateStationPage({ embedded = false }) {
                 onAgree: () => agreeNeed({ covKey: n.covKey }, n),
               })),
             ];
-            if (linkedSmId) {
-              return <SpecQuestionsSection smId={linkedSmId} extraItems={extras} />;
-            }
-            // Notes never count, never sit inside the red shell (three-shapes
-            // rule, Dan 2026-08-25) — same defense as SpecQuestionsSection.
+            // ONE SURFACE (Dan, 2026-08-31): the red blocking wall is DEAD —
+            // every open question (sheet needs, hold-for-help, blockers)
+            // lives in the chat's Questions tab; here only a compact chip.
             const asks = extras.filter(it => it.kind !== 'note');
-            const notes = extras.filter(it => it.kind === 'note');
+            const openCount = asks.length + holdNeeds.length;
+            if (!openCount) return null;
             return (
-              <>
-                <BlockingShell count={asks.length} readyText="Nothing blocking — ready to build">
-                  {asks.map(it => <ExtraBlockerRow key={it.key} it={it} />)}
-                </BlockingShell>
-                {notes.map(it => <ExtraBlockerRow key={it.key} it={it} />)}
-              </>
+              <button
+                type="button"
+                data-testid="open-questions-chip"
+                onClick={() => {
+                  setChatTab('questions');
+                  document.querySelector('[data-testid="corrections-block"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 10,
+                  background: '#fdf2f2', border: '1px solid #d4a0a0', borderRadius: 4,
+                  padding: '3px 12px', fontSize: 11, fontWeight: 700, color: '#8a3b3b', cursor: 'pointer',
+                }}
+              >
+                {openCount} open question{openCount === 1 ? '' : 's'} — in the chat →
+              </button>
             );
           })()}
 

@@ -10,12 +10,22 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.39';
+export const UI_BUILD = 'v2.6.40';
 
 export const BUILT_AT = '2026-08-30';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.40',
+    date: '2026-08-31',
+    items: [
+      'JARVIS DECIDES — the pre-write study now DECIDES every controls-grade item it can back with shipped work (motion-complete gating, sensorless timers, stubs, timeouts, debounce, cycle-complete) and logs them in the build record with citations; only genuine ME-facts reach you. Your first build: 8 decided, 1 real question',
+      'ONE QUESTION SURFACE — the red blocking wall is gone; every open question (sheet, blockers, held builds) lives in the chat Questions tab, numbered, Agree or answer by number; "Continue the build" sits right there and arms when the list hits zero. The sheet shows only a small count chip',
+      'EFFECTIVE VALUES — the sheet means what it shows: a delay whose direction has a sensor is dropped (blank, not grayed — the sensor is the truth), checking a sensor clears its delay, and the engine sees "inactive — sensor governs" instead of a stale number. The VerticalSlide 5000 ms question can never happen again (regression fixture)',
+      'FEW WORDS — questions in as few words as possible, one plain-sentence proposal + citation; filed as standing law',
+    ],
+  },
   {
     version: 'v2.6.39',
     date: '2026-08-31',

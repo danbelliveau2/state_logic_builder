@@ -590,7 +590,20 @@ async function generateL5X(projectJson, smId, options = {}) {
     });
     if (readiness.error) {
       onProgress(14, 'readiness', 'Readiness check unavailable (build proceeds): ' + readiness.error);
-    } else if (!readiness.ready) {
+    } else if (readiness.decisions?.length) {
+      // JARVIS IS THE CE (Dan, 2026-08-31): precedent-backed calls are
+      // DECISIONS — logged with citations, folded into the write as law,
+      // never questions. Visible as "N decisions made from shipped work".
+      onProgress(14, 'readiness', `${readiness.decisions.length} decision${readiness.decisions.length === 1 ? '' : 's'} made from shipped work — see the build record`);
+      const block = [
+        '',
+        '# PRE-WRITE DECISIONS (yours — made at readiness from shipped work; build exactly this way)',
+        ...readiness.decisions.map(x => `- ${x.decision}${x.citation ? ` [${x.citation}]` : ''}`),
+      ].join('\n');
+      const last = messages[0].content[messages[0].content.length - 1];
+      last.text += block;
+    }
+    if (!readiness.error && !readiness.ready) {
       // HELD BEFORE WRITING — the cheapest possible hold: $0 of write tokens.
       onProgress(92.5, 'held',
         `Held before writing: ${readiness.questions.length} pre-write question(s) — asked now, never discovered mid-write`);
@@ -599,6 +612,9 @@ async function generateL5X(projectJson, smId, options = {}) {
         rounds: 0,
         persistentFindings: [],
         questions: readiness.questions,
+        // JARVIS IS THE CE: the readiness DECISIONS ride the record for the
+        // reviewer and the resumed run.
+        decisions: readiness.decisions ?? [],
         resume: {
           version: 1,
           stage: 'readiness',
@@ -640,7 +656,7 @@ async function generateL5X(projectJson, smId, options = {}) {
           attempts: [],
           repairRounds: 0,
           study: study ? { exemplar: study.exemplar, sizes: study.sizes } : null,
-          readiness: { ran: true, ready: false, model: readiness.model, costUSD: readiness.costUSD },
+          readiness: { ran: true, ready: false, model: readiness.model, costUSD: readiness.costUSD, decisions: readiness.decisions ?? [] },
           costEstimate: {
             totalUSD: Number((readiness.costUSD || 0).toFixed(4)),
             model: readiness.model,

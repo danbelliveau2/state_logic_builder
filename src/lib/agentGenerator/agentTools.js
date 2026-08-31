@@ -570,12 +570,26 @@ function executeTool(state, name, input) {
   switch (name) {
     case 'read_sheet': {
       const d = state.draft;
+      // EFFECTIVE VALUES (Dan, 2026-08-31): the sheet's SEMANTICS, never raw
+      // stored numbers — a delay grayed out because a sensor governs the exit
+      // reads as inactive here. Never ask about a value the sheet marks unused.
+      const effTiming = (x) => {
+        const arr = String(x?.sensorArrangement ?? '');
+        if (!arr && x?.extTimerMs == null && x?.retTimerMs == null) return null;
+        const noSensors = /no sensors|timer only/i.test(arr);
+        const hasExt = !noSensors && /both|extend/i.test(arr);
+        const hasRet = !noSensors && /both|retract/i.test(arr);
+        const seg = (label, has, ms) => `${label}: ${has ? 'sensor governs the exit (any stored delay is inactive)' : (ms != null ? `${ms} ms timer` : 'timer (value unset)')}`;
+        return [seg('extend/engage', hasExt, x?.extTimerMs ?? x?.engageTimerMs), seg('retract/disengage', hasRet, x?.retTimerMs ?? x?.disengageTimerMs)].join('; ');
+      };
       const devices = (d.summary?.devices ?? []).map((x, i) => ({
         n: i + 1, name: x?.displayName ?? x?.name, type: x?.type ?? null,
         // DEVICE LINKS (Dan, 2026-08-30): reference devices by devId in
         // sequence/recovery steps — names derive from the link.
         devId: x?.devId ?? null,
         machine: deviceMachineOf(state, x?.displayName ?? x?.name),
+        ...(x?.sensorArrangement ? { sensors: x.sensorArrangement } : {}),
+        ...(effTiming(x) ? { timing: effTiming(x) } : {}),
       }));
       const machines = machinesOf(state).map((m) => ({
         name: m.name,

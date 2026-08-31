@@ -209,14 +209,23 @@ function buildIR(projectJson, smId) {
     return d.label || d.signalSource || d.signalName || n.type || n.id;
   };
 
-  const devices = (sm.devices || []).map(d => ({
-    id: d.id,
-    type: d.type,
-    name: d.name,
-    displayName: d.displayName || d.name,
-    extras: Object.fromEntries(Object.entries(d)
-      .filter(([k, v]) => !['id', 'type', 'name', 'displayName'].includes(k) && v != null)),
-  }));
+  const devices = (sm.devices || []).map(d => {
+    const extras = Object.fromEntries(Object.entries(d)
+      .filter(([k, v]) => !['id', 'type', 'name', 'displayName'].includes(k) && v != null));
+    // EFFECTIVE VALUES (Dan, 2026-08-31 — the VerticalSlide 5000 ms hold): a
+    // delay the sheet grays out because a SENSOR governs that exit must read
+    // as inactive here — never a raw number the writer can mistake for
+    // intent. The engine can never ask about a value the sheet marks unused.
+    const arr = String(d.sensorArrangement ?? '');
+    const noSensors = /no sensors|timer only/i.test(arr);
+    const hasRet = !noSensors && /both|retract/i.test(arr);
+    const hasExt = !noSensors && /both|extend/i.test(arr);
+    if (hasRet && extras.retTimerMs != null) extras.retTimerMs = 'inactive — the retract sensor governs the exit';
+    if (hasExt && extras.extTimerMs != null) extras.extTimerMs = 'inactive — the extend sensor governs the exit';
+    if (hasRet && extras.disengageTimerMs != null) extras.disengageTimerMs = 'inactive — the sensor governs the exit';
+    if (hasExt && extras.engageTimerMs != null) extras.engageTimerMs = 'inactive — the sensor governs the exit';
+    return { id: d.id, type: d.type, name: d.name, displayName: d.displayName || d.name, extras };
+  });
 
   const states = (sm.nodes || []).map(n => {
     const d = n.data || {};
