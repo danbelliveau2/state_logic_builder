@@ -78,11 +78,10 @@ const DEFAULT_CONFIG = {
   // judgment-call noise below. The backlog counter tells the story.
   watchAll: true,
   // Visible, editable exclusions — folder NAMES skipped at any depth.
-  exclude: ['ARCHIVE', 'EPLAN', 'Backup', 'Backups', 'Old', 'node_modules', '_archive', '_learned'],
+  exclude: ['ARCHIVE', 'EPLAN', 'Backup', 'Backups', 'Old', 'node_modules', '_archive', '_archive from N', '_learned'],
   // Legacy targeted list — used only when watchAll is false.
   watch: [
     'SDC Engineer',
-    'SDC_Examples for AI Inbox',
     'SDC Knowledgebase',
     'Standards - Software',
     'Standards - Elect Design',
@@ -131,8 +130,8 @@ const NETWORK_README = [
   '  Knowledge\\ce-knowledge.md (engineer-taught memory, append-only),',
   '  Knowledge\\questions-for-ce.md (his open questions — answer in place),',
   '  _learned\\LEDGER.md, and CLAUDE.md for Claude Code sessions.',
-  'Retired folders ("SDC_Examples for AI Inbox", "SDC Engineer Inbox",',
-  '  N:\\Job Folder\\AI Folder) carry breadcrumbs pointing here.',
+  'This is the department\'s ONE tool folder — the old drop folders and',
+  '  N:\\Job Folder\\AI Folder were consolidated here on 2026-08-31.',
   '',
   'What he learned is visible in the State Logic Builder app',
   '(SDC Engineer page > Knowledge tab), with a ledger line for every file.',

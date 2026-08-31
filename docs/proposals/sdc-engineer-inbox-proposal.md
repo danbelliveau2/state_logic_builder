@@ -16,8 +16,8 @@ so nobody has to guess where to drop things:
 - What stays put: the department's own folders (Standards, Knowledgebase, etc.) are only
   read in place, never moved. The old State Logic app copies on N stay parked for Dan's
   archive/delete call.
-- Everything else keeps working: files are read in place daily, and a breadcrumb README
-  stays in each old folder pointing here.
+- Everything else keeps working: files are read in place daily. The old drop folders
+  are retired (Dan's call: one tool folder on the share — this one).
 
 Most of this is already staged in "SDC Engineer Inbox" — if you're mid-reorganization or
 want a different layout, say the word and we'll follow your lead. Otherwise a thumbs-up

@@ -11,11 +11,11 @@
     "Old",
     "node_modules",
     "_archive",
+    "_archive from N",
     "_learned"
   ],
   "watch": [
     "SDC Engineer",
-    "SDC_Examples for AI Inbox",
     "SDC Knowledgebase",
     "Standards - Software",
     "Standards - Elect Design",
