@@ -1910,7 +1910,7 @@ function StationDetail({ sm, projectName, status, stationQuestions, onQuestionUp
         {sectionHead('Pipeline status')}
         <div style={{ fontSize: 12.5, color: C.text, lineHeight: 1.6 }}>
           {status.label}
-          {cs && <span style={{ color: C.light }}> — compiled {String(cs.compiledAt || '').slice(0, 16).replace('T', ' ')}{cs.approved ? `, approved` : ', not yet approved'}</span>}
+          {cs && <span style={{ color: C.light }}> — compiled {fmtET(cs.compiledAt)}{cs.approved ? `, approved` : ', not yet approved'}</span>}
         </div>
         {gaps.length > 0 && (
           <button
@@ -2457,7 +2457,7 @@ function TrackRecordDetails({ track }) {
                 <td style={{ ...td, whiteSpace: 'nowrap' }}>{fmtDuration(b.durationMs)}</td>
                 <td style={{ ...td, whiteSpace: 'nowrap' }}>{b.costUSD != null ? `$${b.costUSD.toFixed(2)}` : '—'}</td>
                 <td style={td}>{b.errors ?? '—'} / {b.warnings ?? '—'}</td>
-                <td style={{ ...td, whiteSpace: 'nowrap', color: C.muted }}>{String(b.ranAt || '').slice(0, 16).replace('T', ' ')}</td>
+                <td style={{ ...td, whiteSpace: 'nowrap', color: C.muted }}>{fmtET(b.ranAt)}</td>
               </tr>
             ))}
             {rows.length === 0 && <tr><td style={td} colSpan={8}>No benchmark reports found.</td></tr>}

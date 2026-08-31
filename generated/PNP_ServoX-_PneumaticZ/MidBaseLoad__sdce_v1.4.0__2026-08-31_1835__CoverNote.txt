@@ -48,12 +48,12 @@ Still open for review:
      template comment drift, unused CycleStationA.
 
 # Build ledger (honest clock)
-09:40 single-program build (validated, architecture flagged) → 11:40 Jason's
-law: two programs → 12:00 P1 held (schema had no remove ops) → 12:22 engine fix
-→ 13:31 fresh two-program run on the new engine (gripper question DECIDED from
-doctrine) → 14:09 programs done, merge-name bug found → merge engine fixed
+9:40 AM single-program build (validated, architecture flagged) → 11:40 AM Jason's
+law: two programs → 12:00 PM P1 held (schema had no remove ops) → 12:22 PM engine fix
+→ 1:31 PM fresh two-program run on the new engine (gripper question DECIDED from
+doctrine) → 2:09 PM programs done, merge-name bug found → merge engine fixed
 (Target-program extraction, real names, context carry-over, ASCII fold,
-per-program sidecars, per-program R02 validation) → 14:35 merged file PASS.
+per-program sidecars, per-program R02 validation) → 2:35 PM merged file PASS.
 Model spend today on this station: ~$35 across all rounds.
 
 # Red pen invited

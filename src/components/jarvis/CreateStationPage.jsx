@@ -50,6 +50,7 @@ import { useV2Shell } from '../../v2/useV2Shell.js';
 import { SheetFlow } from '../../v2/SheetFlow.jsx';
 import { useHeldBuilds } from '../../v2/stationNeeds.js';
 import { agentTurnRequest, readSse, TURN_DEAD_MESSAGE } from '../../lib/agentTurnTransport.js';
+import { fmtETTime } from '../../v2/fmtTime.js';
 import { DeviceIcon, DEVICE_ICON_COLORS } from '../DeviceIcons.jsx';
 import { DEVICE_TYPES, classifyDeviceRole } from '../../lib/deviceTypes.js';
 import { getDeviceTags } from '../../lib/tagNaming.js';
@@ -11450,7 +11451,7 @@ export function CreateStationPage({ embedded = false }) {
                       {smBuilds.length > 0 && (
                         <div data-testid="build-history" style={{ marginBottom: 8, fontSize: 11.5, lineHeight: 1.7 }}>
                           {smBuilds.slice(0, 6).map((b, i) => {
-                            const t = String(b.at ?? '').slice(11, 16) || '—';
+                            const t = fmtETTime(b.at); // 12-hour ET, never military (Dan, 2026-08-31)
                             const held = b.help && b.help.status !== 'resolved' && !b.savedPath && b.ok !== true;
                             const openQ = held ? (b.help.questions ?? []).filter(q => holdStatus[q.id]?.status !== 'answered').length : 0;
                             return (

@@ -13,6 +13,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useDiagramStore } from '../store/useDiagramStore.js';
+import { fmtET } from './fmtTime.js';
 
 function fmtSize(bytes) {
   if (bytes == null) return '';
@@ -21,10 +22,10 @@ function fmtSize(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+// 12-hour ET, app-wide (Dan, 2026-08-31) — the ONE formatter in fmtTime.js.
 function fmtDate(ms) {
   if (!ms) return '';
-  const d = new Date(ms);
-  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return fmtET(ms);
 }
 
 /** Read a File/Blob to raw base64 (no data: prefix). */

@@ -435,6 +435,26 @@ export const INVARIANTS = [
     },
   },
   {
+    id: 'no-24h-display',
+    what: 'Times display 12-hour AM/PM, never military (Dan, 2026-08-31) — an hour 13-23 with minutes must not render as a clock time',
+    run() {
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      const hits = [];
+      let n;
+      while ((n = walker.nextNode())) {
+        // Hours 13-23 are unambiguous 24-hour clock displays. Skip version-ish
+        // strings (v2.6.48), ratios inside words, and elapsed counters (Ns).
+        const m = n.nodeValue.match(/(?<![\w.:])(1[3-9]|2[0-3]):[0-5]\d(?![\d:])/);
+        if (!m) continue;
+        const el = n.parentElement;
+        if (!el || !vis(el) || el.closest('script,style,noscript')) continue;
+        hits.push(n.nodeValue.trim().slice(0, 60));
+        if (hits.length >= 3) break;
+      }
+      return hits.length ? { fail: `24-hour clock rendered: ${hits.join(' | ')}` } : {};
+    },
+  },
+  {
     id: 'no-connection-vocabulary',
     what: 'Connection vocabulary is BANNED (Dan, 2026-08-31: "there can NEVER be a connection loss") — "connection lost"/"reconnecting" must never render',
     run() {

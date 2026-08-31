@@ -19,6 +19,7 @@
 
 import { useEffect, useState } from 'react';
 import { useDiagramStore } from '../../store/useDiagramStore.js';
+import { fmtETWhen } from '../../v2/fmtTime.js';
 
 const str = (v) => String(v ?? '').trim();
 
@@ -132,14 +133,11 @@ export async function fetchServerChangeLog(filename, smId) {
   }
 }
 
+// 12-hour ET, app-wide (Dan, 2026-08-31: "we don't take time in military
+// time" — his machine locale rendered 24h here). ONE formatter: fmtTime.js.
 function fmtWhen(at) {
-  const t = Date.parse(at);
-  if (!t) return '';
-  const d = new Date(t);
-  const today = new Date();
-  const sameDay = d.toDateString() === today.toDateString();
-  const hm = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  return sameDay ? hm : `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${hm}`;
+  if (!Date.parse(at)) return '';
+  return fmtETWhen(at);
 }
 
 /**
