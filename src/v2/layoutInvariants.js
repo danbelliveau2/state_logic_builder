@@ -435,6 +435,23 @@ export const INVARIANTS = [
     },
   },
   {
+    id: 'no-connection-vocabulary',
+    what: 'Connection vocabulary is BANNED (Dan, 2026-08-31: "there can NEVER be a connection loss") — "connection lost"/"reconnecting" must never render',
+    run() {
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      const hits = [];
+      let n;
+      while ((n = walker.nextNode())) {
+        if (!/connection lost|reconnecting|connection dropped/i.test(n.nodeValue)) continue;
+        const el = n.parentElement;
+        if (!el || !vis(el) || el.closest('script,style,noscript')) continue;
+        hits.push(n.nodeValue.trim().slice(0, 70));
+        if (hits.length >= 3) break;
+      }
+      return hits.length ? { fail: `connection vocabulary rendered: ${hits.join(' | ')}` } : {};
+    },
+  },
+  {
     id: 'chat-widget-opens-at-bottom',
     what: 'The chat widget is pinned to the BOTTOM (latest turn) whenever it is open (Dan, 2026-08-31)',
     run() {

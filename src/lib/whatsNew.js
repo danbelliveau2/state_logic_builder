@@ -10,12 +10,25 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.47';
+export const UI_BUILD = 'v2.6.48';
 
 export const BUILT_AT = '2026-08-31';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.48',
+    date: '2026-08-31',
+    items: [
+      'THE CONVERSATION CAN NEVER "LOSE CONNECTION" — the chat now runs on a server-is-truth baseline: your turn\'s result is fetched every 3 seconds no matter what happens to the live stream, so a dropped stream, a server restart, or a laptop sleep is invisible; the reply just lands. The words "connection lost / reconnecting" are deleted from the product and a layout-gate invariant fails the build if they ever render again',
+      'The only failure you can ever see: the server itself reports a turn dead → one line under your message + Retry. No counting-up timers, no waiting on a spinner that never ends',
+      'Finished turn results now survive server restarts (saved to disk) — the reply from a turn that finished while your tab was away lands seconds after you come back',
+      'The chat thread just scrolls — the "expand all N turns" control is gone; scroll up for history, and if a reply lands while you\'re scrolled up, a "↓ new reply" chip jumps you to it',
+      'Chat widget always opens at the latest turn; the closed pill shows one state at a time: orange badge + pulse = questions to answer, red badge + glow = unread reply, spinner = working',
+      'A held build announces itself instantly — banner under the top bar + Questions badge the moment the question is filed',
+      'Deleted devices stay deleted — an ME-removed device (the Escapement Finger 2 case) is tombstoned and can never re-enter from old text or a re-summarize; re-adding it by hand un-tombstones it',
+    ],
+  },
   {
     version: 'v2.6.47',
     date: '2026-08-31',

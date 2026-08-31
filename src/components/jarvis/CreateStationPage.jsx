@@ -49,6 +49,7 @@ import { GenerationScopeNote } from './GenerationScopeNote.jsx';
 import { useV2Shell } from '../../v2/useV2Shell.js';
 import { SheetFlow } from '../../v2/SheetFlow.jsx';
 import { useHeldBuilds } from '../../v2/stationNeeds.js';
+import { agentTurnRequest, readSse, TURN_DEAD_MESSAGE } from '../../lib/agentTurnTransport.js';
 import { DeviceIcon, DEVICE_ICON_COLORS } from '../DeviceIcons.jsx';
 import { DEVICE_TYPES, classifyDeviceRole } from '../../lib/deviceTypes.js';
 import { getDeviceTags } from '../../lib/tagNaming.js';
@@ -1552,34 +1553,9 @@ function buildEditCorrections(baseline, current) {
     + parts.join('\n\n');
 }
 
-// ── SSE-over-fetch (POST /api/jarvis/summarize/stream) ──────────────────────
+// ── SSE-over-fetch: readSse + the agent-turn transport live in
+// src/lib/agentTurnTransport.js (server-is-truth poll baseline; Dan 2026-08-31).
 
-/** Minimal SSE reader over a fetch Response body. Calls onEvent(event, data)
- *  per event; resolves when the stream closes. */
-async function readSse(res, onEvent) {
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buf = '';
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    let idx;
-    while ((idx = buf.indexOf('\n\n')) !== -1) {
-      const chunk = buf.slice(0, idx);
-      buf = buf.slice(idx + 2);
-      let event = 'message';
-      let dataStr = '';
-      for (const line of chunk.split('\n')) {
-        if (line.startsWith('event:')) event = line.slice(6).trim();
-        else if (line.startsWith('data:')) dataStr += line.slice(5).trim();
-      }
-      if (dataStr) {
-        try { onEvent(event, JSON.parse(dataStr)); } catch { /* skip bad frame */ }
-      }
-    }
-  }
-}
 
 /** Summarize with REAL progress: streams the SSE endpoint, falling back to
  *  the plain POST (no live progress) if the stream endpoint isn't available.
@@ -1630,84 +1606,6 @@ async function summarizeRequest(payload, onProgress) {
   return data;
 }
 
-/** THE AGENT LOOP transport (Dan approved 2026-08-28): POSTs the turn, streams
- *  `state` activity labels live, resolves with the `done` payload
- *  { reply, diffs, draft, asks, notes, capped, meta }. */
-async function agentTurnRequest(payload, onState, onReading) {
-  // STUCK-FOREVER IS IMPOSSIBLE (Dan, 2026-08-30): the server heartbeats
-  // every 5s even mid-model-call. 15s of silence = connection lost → say so
-  // and RE-ATTACH (the turn keeps running server-side; the finished result
-  // is fetchable at /agent-turn/last). Only a failed re-attach is a dead
-  // turn. Every turn ends in receipt | reading | failure-with-Retry.
-  const turnStart = Date.now();
-  const ctrl = new AbortController();
-  let lastEvent = Date.now();
-  const watchdog = setInterval(() => {
-    if (Date.now() - lastEvent > 15000) { clearInterval(watchdog); ctrl.abort(); }
-  }, 3000);
-  try {
-    const res = await fetch('/api/jarvis/agent-turn/stream', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: ctrl.signal,
-    });
-    const isSse = res.ok && (res.headers.get('content-type') || '').includes('text/event-stream') && !!res.body;
-    if (!isSse) {
-      const data = await res.json().catch(() => ({}));
-      // A 200-but-not-a-stream answer = this tab is older than the server.
-      // Never tell him to hard-reload in words — offer the bar (Dan).
-      if (res.ok) window.__slbOfferReload?.('The app updated underneath this tab.');
-      throw new Error(data.error || (res.ok ? 'this tab is out of date — use the Reload bar below' : `Agent turn failed (${res.status})`));
-    }
-    let result = null; let err = null;
-    await readSse(res, (event, data) => {
-      lastEvent = Date.now();
-      if (event === 'state') onState?.(data.label);
-      else if (event === 'reading') onReading?.(data.text); // his catch-the-misread-early moment
-      else if (event === 'done') result = data;
-      else if (event === 'error') err = new Error(data.error || 'Agent turn failed');
-      // 'ping' just refreshes lastEvent
-    });
-    if (err) throw err;
-    if (!result || !result.ok) throw new Error(result?.error || 'Agent turn ended without a result');
-    return result;
-  } catch (e) {
-    if (e?.name !== 'AbortError') throw e;
-    // Connection lost mid-turn — the turn is still running on the server.
-    onState?.('connection lost — the turn is still running on the server; reconnecting…');
-    if (payload.draftId) {
-      // FETCH-AND-RENDER ON RECONNECT (Dan, 2026-08-31: his turn sat
-      // "reconnecting…" for minutes after a server restart killed it): the
-      // result is now DISK-persisted server-side, and /last reports
-      // `running`. A completed-while-disconnected turn lands within seconds;
-      // a dead turn (not running, no result) fails fast with Retry — never
-      // an open-ended wait.
-      const deadline = Date.now() + 150000;
-      let notRunningMisses = 0;
-      while (Date.now() < deadline) {
-        await new Promise(ok => setTimeout(ok, 3000));
-        try {
-          const r2 = await fetch(`/api/jarvis/agent-turn/last?draftId=${encodeURIComponent(payload.draftId)}`);
-          const d2 = await r2.json().catch(() => null);
-          if (d2?.ok && d2.at >= turnStart && d2.result?.ok) return d2.result;
-          if (d2 && d2.running === false) {
-            // Two consecutive confirmations (grace for the register race):
-            // the server says no turn is running and no fresh result exists
-            // — the turn is dead, say so NOW instead of burning the deadline.
-            if (++notRunningMisses >= 2) break;
-          } else {
-            notRunningMisses = 0;
-            onState?.('reconnected — the turn is still running on the server; waiting for it to finish…');
-          }
-        } catch { /* keep polling until the deadline */ }
-      }
-    }
-    throw new Error('that turn died — the server restarted or the turn was lost; your message was not applied. Hit Retry to run it again.');
-  } finally {
-    clearInterval(watchdog);
-  }
-}
 
 /** RECEIPT FROM DIFFS ONLY (the law): one plain line composed from the typed
  *  edits the server actually applied — the model's narration never rides. */
@@ -4725,14 +4623,26 @@ export function CreateStationPage({ embedded = false }) {
   // CHAT THREADS ARE THE SCROLL EXCEPTION (Dan, 2026-08-25: "that's one where
   // you can scroll"): the thread caps at ~5-6 turns tall with internal scroll,
   // expandable to full height. Everything else on the sheet still grows.
-  const [threadExpanded, setThreadExpanded] = useState(false);
+  // THE THREAD JUST SCROLLS (Dan, 2026-08-31) — no expand control; history
+  // is the scrollback. Pinned to the newest unless he scrolled up; a reply
+  // landing while scrolled up shows the "↓ new reply" chip instead of
+  // yanking his position.
   const threadRef = useRef(null);
+  const threadPinnedRef = useRef(true);
+  const [threadHasUnseen, setThreadHasUnseen] = useState(false);
+  const onThreadScroll = () => {
+    const el = threadRef.current;
+    if (!el) return;
+    const pinned = el.scrollTop + el.clientHeight >= el.scrollHeight - 40;
+    threadPinnedRef.current = pinned;
+    if (pinned) setThreadHasUnseen(false);
+  };
   useEffect(() => {
-    // Capped view keeps the newest turns in sight — scroll pinned to bottom.
-    if (!threadExpanded && threadRef.current) {
-      threadRef.current.scrollTop = threadRef.current.scrollHeight;
-    }
-  }, [chatThread, threadExpanded]);
+    const el = threadRef.current;
+    if (!el) return;
+    if (threadPinnedRef.current) el.scrollTop = el.scrollHeight;
+    else setThreadHasUnseen(true);
+  }, [chatThread]);
   const [summarizeCost, setSummarizeCost] = useState(draft?.summarizeCost ?? 0);
   // Per-station-draft summarize cost ceiling ($). Server reports the real
   // configured value in meta.maxCostUSD; 25 is the loop-era default (Dan,
@@ -4910,6 +4820,11 @@ export function CreateStationPage({ embedded = false }) {
   const chatPanelBodyRef = useRef(null);
   useEffect(() => {
     if (!chatPanelOpen) return;
+    // OPEN = latest turn (gate invariant). Opening resets the pin; while
+    // open, thread changes pin only when he hasn't scrolled up (the
+    // "↓ new reply" chip covers the scrolled-up case).
+    threadPinnedRef.current = true;
+    setThreadHasUnseen(false);
     const pin = () => {
       const b = chatPanelBodyRef.current;
       if (b) b.scrollTop = b.scrollHeight;
@@ -4918,7 +4833,12 @@ export function CreateStationPage({ embedded = false }) {
     pin();
     const t = setTimeout(pin, 80); // again after layout settles
     return () => clearTimeout(t);
-  }, [chatPanelOpen, chatThread]);
+  }, [chatPanelOpen]);
+  useEffect(() => {
+    if (!chatPanelOpen || !threadPinnedRef.current) return;
+    const b = chatPanelBodyRef.current;
+    if (b) b.scrollTop = b.scrollHeight;
+  }, [chatThread, chatPanelOpen]);
   // TOMBSTONE RULE state (Dan, 2026-08-31): names of ME-deleted devices —
   // persisted on the draft, synced into the module-level filter that every
   // withSheetPrefill pass applies.
@@ -9046,7 +8966,7 @@ export function CreateStationPage({ embedded = false }) {
       if (quiet > 20000) setCodeBuild(c => (c && !c.done && !c.error ? { ...c, stalled: true } : c));
       if (quiet > 90000) {
         clearInterval(watchdog); es.close();
-        setCodeBuild(c => (c && !c.done ? { ...c, error: 'The build stream went quiet for 90 s — the server may have restarted. Retry to reconnect.' } : c));
+        setCodeBuild(c => (c && !c.done ? { ...c, error: 'The build stopped reporting progress — Retry runs it again.' } : c));
       }
     }, 5000);
     const bump = () => { lastEvent = Date.now(); };
@@ -9520,13 +9440,14 @@ export function CreateStationPage({ embedded = false }) {
         </div>
       )}
       {chatTab === 'chat' && chatThread.length > 0 && !chatCollapsed && (
-        <div data-testid="corrections-thread" style={{ marginBottom: 8 }}>
-          {/* THE SCROLL EXCEPTION (Dan, 2026-08-25): capped ~5-6 turns tall,
-              internal scroll pinned to the newest; expandable below. */}
+        <div data-testid="corrections-thread" style={{ marginBottom: 8, position: 'relative' }}>
+          {/* THE SCROLL EXCEPTION (Dan, 2026-08-25 / 2026-08-31): the thread
+              just scrolls — history is the scrollback. No expand control. */}
           <div
             ref={threadRef}
             data-testid="corrections-thread-scroll"
-            style={threadExpanded ? { maxHeight: '44vh', overflowY: 'auto', paddingRight: 4 } : { maxHeight: '34vh', overflowY: 'auto', paddingRight: 4 }}
+            onScroll={onThreadScroll}
+            style={{ maxHeight: '38vh', overflowY: 'auto', paddingRight: 4, position: 'relative' }}
           >
             {/* Consecutive identical engine lines render ONCE (Dan,
                 2026-08-31: the remount dupe showed the same repair line
@@ -9542,16 +9463,23 @@ export function CreateStationPage({ embedded = false }) {
               />
             ))}
           </div>
-          {chatThread.length > 2 && (
+          {/* NEW-ANSWER FLASH (Dan, 2026-08-31): open but scrolled up when a
+              reply lands → one chip that jumps to the latest turn. */}
+          {threadHasUnseen && (
             <button
               type="button"
-              data-testid="corrections-thread-expand"
-              onClick={() => setThreadExpanded(v => !v)}
-              style={{
-                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                fontSize: 10.5, color: C.light, marginTop: 2,
+              data-testid="thread-jump-latest"
+              onClick={() => {
+                if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight;
+                setThreadHasUnseen(false);
               }}
-            >{threadExpanded ? '▴ collapse the thread' : `▾ expand all ${chatThread.length} turns`}</button>
+              style={{
+                position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: 6,
+                zIndex: 2, background: '#061d39', color: '#fff', border: '1px solid #0d2b52',
+                borderRadius: 999, padding: '4px 12px', fontSize: 11, fontWeight: 800,
+                cursor: 'pointer', boxShadow: '0 3px 10px rgba(0,0,0,0.3)',
+              }}
+            >↓ new reply</button>
           )}
         </div>
       )}
