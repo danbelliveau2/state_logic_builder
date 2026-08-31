@@ -8980,10 +8980,12 @@ export function CreateStationPage({ embedded = false }) {
         padding: '10px 14px 12px',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+      {/* BREATHING ROOM (Dan, 2026-08-31): the tab row gets its own band —
+          padded, ruled off — so the thread scrolls under a clean boundary. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 8, marginBottom: 8, borderBottom: `1px solid ${C.border}` }}>
         {/* QUESTIONS LIVE IN THE CHAT (Dan, 2026-08-31): two tabs — the
             thread, and the open questions (answer inline or by number). */}
-        <span style={{ display: 'inline-flex', gap: 2, flex: 1, alignItems: 'baseline' }}>
+        <span style={{ display: 'inline-flex', gap: 4, flex: 1, alignItems: 'center', minWidth: 0 }}>
           {[
             { id: 'chat', label: 'Chat' },
             { id: 'questions', label: `Questions (${allOpenNeeds.length})` },
@@ -8994,14 +8996,14 @@ export function CreateStationPage({ embedded = false }) {
               data-testid={`chat-tab-${tb.id}`}
               onClick={() => setChatTab(tb.id)}
               style={{
-                ...chipBase, cursor: 'pointer', fontWeight: 800, fontSize: 11.5, padding: '3px 12px',
+                ...chipBase, cursor: 'pointer', fontWeight: 800, fontSize: 11.5, padding: '4px 14px', lineHeight: 1.4, flexShrink: 0,
                 color: chatTab === tb.id ? '#fff' : (tb.id === 'questions' && allOpenNeeds.length ? '#8a3b3b' : C.muted),
                 background: chatTab === tb.id ? 'var(--color-primary)' : 'var(--color-sidebar)',
                 border: `1px solid ${chatTab === tb.id ? 'var(--color-primary)' : C.border}`,
               }}
             >{tb.label}</button>
           ))}
-          <span style={{ fontWeight: 400, fontSize: 11, color: C.muted, marginLeft: 8 }}>
+          <span style={{ fontWeight: 400, fontSize: 11, color: C.muted, marginLeft: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
             ask, correct, change — he applies it and shows what actually changed
           </span>
         </span>
@@ -9867,8 +9869,10 @@ export function CreateStationPage({ embedded = false }) {
                     here (attributed, dated, edited via chat like everything
                     else). Codegen authority: between Dan's words and generic
                     precedent — never above SDC standards or the ME's
-                    approved mechanical content. Absent = build as today. */}
-                {!(cascadeLive && inputsCollapsed) && (
+                    approved mechanical content. Absent = build as today.
+                    ALWAYS VISIBLE (Dan re-asked, 2026-08-31): it carries its
+                    own fold — never hidden inside the inputs fold. */}
+                {(
                   <div data-testid="controls-notes-section" style={{ maxWidth: 900, marginBottom: 10, border: `1px solid ${C.border}`, borderRadius: 8, background: '#fff', overflow: 'hidden' }}>
                     <div
                       onClick={() => toggleSectionCollapse('controlsNotes')}
@@ -10920,15 +10924,8 @@ export function CreateStationPage({ embedded = false }) {
                         ? `✓ All ${cascade.steps.length} steps approved — the cascade is done.`
                         : `✓ All ${reviewSections.length} sections reviewed — the sheet is yours.`}
                     </span>
-                    <button
-                      className="btn btn--primary"
-                      data-testid="review-build-code-btn"
-                      onClick={handleBuildClick}
-                      disabled={applying}
-                      style={{ fontSize: 13.5, padding: '8px 20px', boxShadow: `0 0 0 3px ${C.primaryBg}` }}
-                    >
-                      Looks good — build the code
-                    </button>
+                    {/* (Banner button DELETED — Dan, 2026-08-31: ONE call to
+                        action; the Build card below is THE place.) */}
                   </div>
                 )}
 
@@ -11097,10 +11094,13 @@ export function CreateStationPage({ embedded = false }) {
                   })()}
                 </div>
 
-                {/* Sticky edits bar — any inline edit raises it; Resubmit
-                    re-runs summarize with the edits as corrections, the
-                    dismiss keeps the edits without re-extraction. */}
-                {dirty && !applying && (
+                {/* Sticky edits bar — LEGACY summarize-era drafts ONLY (Dan,
+                    2026-08-31: on a walked draft "the walk is the spec" —
+                    there is no summary to update; edits flow through the
+                    engine like everything else. A vague "you've made edits"
+                    is banned; the dirty flag on walked drafts is bookkeeping
+                    for the persist effect, never a call to action). */}
+                {dirty && !applying && !cascadeLive && !(smProposal?.stateMachines?.length) && (
                   <div
                     data-testid="resubmit-bar"
                     style={{

@@ -121,6 +121,45 @@ export const INVARIANTS = [
     },
   },
   {
+    id: 'single-call-to-action',
+    what: 'ONE call to action: the Build card is THE place — no banner build button, no resubmit footer on walked drafts (Dan, 2026-08-31)',
+    run() {
+      const bad = [];
+      if (q('[data-testid="review-build-code-btn"]').some(vis)) bad.push('banner build button rendering');
+      const card = q('[data-testid="generate-scope-card"]').some(vis);
+      const walked = q('[data-testid^="sequence-sm-"]').some(vis);
+      if ((card || walked) && q('[data-testid="resubmit-bar"]').some(vis)) bad.push('resubmit footer on a walked draft');
+      return bad.length ? { fail: bad.join('; ') } : {};
+    },
+  },
+  {
+    id: 'controls-notes-reachable',
+    what: 'The Controls notes section (the optional CE lane) is on the sheet — its own fold, never hidden by the inputs fold (Dan, 2026-08-31)',
+    run() {
+      const walked = q('[data-testid^="sequence-sm-"]').some(vis) || q('[data-testid="generate-scope-card"]').some(vis);
+      if (!walked) return { skip: 'not a walked sheet' };
+      return q('[data-testid="controls-notes-section"]').some(vis) ? {} : { fail: 'Controls notes section not visible' };
+    },
+  },
+  {
+    id: 'chat-tab-row-breathing',
+    what: 'The chat tab row has its own padded band ruled off from the thread (Dan, 2026-08-31: cramped/clipped pills)',
+    run() {
+      const tab = q('[data-testid="chat-tab-chat"]')[0];
+      if (!tab || !vis(tab)) return { skip: 'chat tabs not on screen' };
+      const band = tab.closest('div[style*="border-bottom"], div');
+      const row = tab.parentElement?.parentElement;
+      const cs = row ? getComputedStyle(row) : null;
+      const padded = cs && (parseFloat(cs.paddingBottom) >= 6 || parseFloat(cs.marginBottom) >= 6);
+      const clipped = tab.scrollHeight > tab.clientHeight + 1;
+      const bad = [];
+      if (!padded) bad.push('tab row lacks bottom spacing');
+      if (clipped) bad.push('tab pill vertically clipped');
+      void band;
+      return bad.length ? { fail: bad.join('; ') } : {};
+    },
+  },
+  {
     id: 'section-headers-carry-state',
     what: 'Every visible sheet section has its colored header band (title present, collapse chevron when enabled)',
     run() {
