@@ -42,7 +42,7 @@ import { useV2Shell } from './useV2Shell.js';
 import { stationsOf, smLabelOf, stationKeyOf } from '../lib/stationModel.js';
 import {
   draftsKeyFor, loadDrafts, deleteDraft, onDraftsChanged,
-  requestResumeDraft, draftLabel, timeAgo,
+  requestResumeDraft, draftLabel, timeAgo, ensureStationSheetDraft,
 } from '../components/jarvis/createStationDrafts.js';
 import { draftCascadeStepNote } from '../components/jarvis/cascadeModel.js';
 
@@ -376,6 +376,18 @@ export function FeatureTreeV2() {
       // Drives the center pane; the mirror effect ensure-opens the node.
       store.setActiveSm(sm.id);
       ensureOpen('stations', `station:${sm.id}`);
+      // ONE VIEW FOR CASCADE STATIONS (Dan, 2026-08-31: the tree landed him
+      // on the classic canvas — "a super cached old version"): a station
+      // built through the walk opens its STATION SHEET; the classic canvas
+      // stays the default only for v1-era stations.
+      if (sm.machineSpec?.cascadeState) {
+        try {
+          const draft = ensureStationSheetDraft(useDiagramStore.getState(), sm);
+          requestResumeDraft(draft.draftId);
+          useV2Shell.getState().setSheetLinkedSmId(sm.id);
+          store.openNewSmModal();
+        } catch { /* the StationBanner effect is the backstop */ }
+      }
     } else {
       toggle(`station:${sm.id}`);
     }

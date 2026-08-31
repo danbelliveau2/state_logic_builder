@@ -121,6 +121,43 @@ export const INVARIANTS = [
     },
   },
   {
+    id: 'no-summarize-era-copy',
+    what: 'No summarize-era surface copy reachable from the v2 shell ("clean summary", "resubmit to update the summary", "start blank instead") on walked/new-station views (Dan, 2026-08-31)',
+    run() {
+      const body = document.body.innerText ?? '';
+      const bad = ['comes back as a clean summary', 'resubmit to update the summary', 'start blank instead']
+        .filter((s) => body.includes(s));
+      return bad.length ? { fail: `stale copy on screen: ${bad.join(' | ')}` } : {};
+    },
+  },
+  {
+    id: 'build-state-matches-records',
+    what: 'The Build card\'s state agrees with the build records — never "held" on a done build, never a missing DONE row, button truth by artifacts (Dan, 2026-08-31)',
+    async run() {
+      const lane = q('[data-testid="build-lane"]')[0];
+      if (!lane || !vis(lane)) return { skip: 'build lane not on screen' };
+      let builds = [];
+      try {
+        const d = await fetch('/api/jarvis/generations').then((r) => (r.ok ? r.json() : null));
+        builds = d?.builds ?? [];
+      } catch { return { skip: 'generations API unreachable' }; }
+      // Which station is this card for? Read the sheet title.
+      const title = q('[data-testid="create-station-page"] span').map((s) => s.textContent).find((t) => /^Station Sheet — /.test(t ?? ''))?.replace('Station Sheet — ', '').trim();
+      const mine = builds.filter((b) => b?.sm && title && b.sm.replace(/\s+/g, '') === title.replace(/\s+/g, ''));
+      if (!mine.length) return { skip: 'no build records for this station' };
+      const bad = [];
+      const hasArtifact = mine.some((b) => b.savedPath || b.filePath || b.ok === true);
+      const waitingHold = mine.some((b) => b.help?.status === 'waiting');
+      const banner = q('[data-testid="build-held-banner"]').some(vis);
+      if (banner && !waitingHold) bad.push('held banner shown but no waiting hold in the records');
+      if (hasArtifact && !q('[data-testid^="build-attempt-"]').some((r) => /DONE — L5X ready/.test(r.textContent ?? ''))) bad.push('artifact exists but no DONE row renders');
+      const btn = q('[data-testid="build-station-btn"]')[0]?.textContent ?? '';
+      if (hasArtifact && !/^Rebuild/.test(btn)) bad.push(`artifact exists but button reads "${btn}"`);
+      if (!hasArtifact && /^Rebuild/.test(btn)) bad.push('no artifact but button reads Rebuild');
+      return bad.length ? { fail: bad.join('; ') } : {};
+    },
+  },
+  {
     id: 'uniform-section-bars',
     what: 'Every sheet region is one consistent section bar — same header anatomy (dark band, chevron, uppercase title), no odd-one-out (Dan, 2026-08-31)',
     run() {
@@ -244,13 +281,15 @@ export const INVARIANTS = [
   },
 ];
 
-/** Run every invariant against the CURRENT DOM. */
-export function runLayoutChecks() {
-  const results = INVARIANTS.map((inv) => {
+/** Run every invariant against the CURRENT DOM (async — some checks read the
+ *  server's build records to compare against what the card claims). */
+export async function runLayoutChecks() {
+  const results = [];
+  for (const inv of INVARIANTS) {
     let r;
-    try { r = inv.run() ?? {}; } catch (e) { r = { fail: `check threw: ${e.message}` }; }
-    return { id: inv.id, pass: !r.fail, ...(r.skip ? { skip: r.skip } : {}), ...(r.fail ? { note: r.fail } : {}) };
-  });
+    try { r = (await inv.run()) ?? {}; } catch (e) { r = { fail: `check threw: ${e.message}` }; }
+    results.push({ id: inv.id, pass: !r.fail, ...(r.skip ? { skip: r.skip } : {}), ...(r.fail ? { note: r.fail } : {}) });
+  }
   const failures = results.filter((r) => !r.pass);
   return { pass: failures.length === 0, failures, results };
 }

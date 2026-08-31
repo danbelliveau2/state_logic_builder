@@ -10,12 +10,23 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.41';
+export const UI_BUILD = 'v2.6.42';
 
 export const BUILT_AT = '2026-08-30';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.42',
+    date: '2026-08-31',
+    items: [
+      'BUILD STATE IS LIVE — held → resumed → done pushes to the open card within a second (no reload): the held banner clears itself, the history row flips to DONE, and the card offers the artifacts — download L5X and cover note links right on the row. One build = one artifact; the chat names the exact file',
+      'The 9 answered build questions show as resolved history in the Questions tab (8 decided from shipped work with citations + 1 answered from the sheet) — "0 open" has its history behind it',
+      'Resuming a held build shows the same live progress panel as a fresh build — never silence-then-done',
+      'ONE DOOR, EVERYWHERE: clicking a walked station in the Machine Structure tree opens its Station Sheet (the classic canvas stays default only for v1-era stations); "start blank instead" is gone from the new-station page; the stale "comes back as a clean summary" copy now describes the real walk',
+      'Expand all / Collapse all sit in their own block below "How this goes"',
+    ],
+  },
   {
     version: 'v2.6.41',
     date: '2026-08-31',

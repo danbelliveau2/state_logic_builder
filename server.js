@@ -419,6 +419,41 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     const ping = setInterval(() => { try { res.write(`event: ping\ndata: {}\n\n`); } catch (_) {} }, 15000);
     req.on('close', () => { clearInterval(ping); draftSubs_.get(draftId)?.delete(res); });
   }
+  // ── LIVE BUILD STATE (Dan, 2026-08-31: the card read "held — 9 questions"
+  // while the build was DONE). Build-record changes push over SSE like draft
+  // changes do: fs.watch on the scores file (ONE hook — catches every
+  // writer: generate, hold, continue, review), debounced, broadcast to all
+  // subscribers. The client re-pulls /generations + /questions on the event.
+  const buildSubs_ = new Set();
+  function handleBuildEvents(req, res) {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'X-Accel-Buffering': 'no',
+    });
+    buildSubs_.add(res);
+    try { res.write('event: hello\ndata: {}\n\n'); } catch (_) { /* drop */ }
+    const ping = setInterval(() => { try { res.write('event: ping\ndata: {}\n\n'); } catch (_) {} }, 15000);
+    req.on('close', () => { clearInterval(ping); buildSubs_.delete(res); });
+  }
+  try {
+    let buildWatchT = null;
+    const buildScoresPath = path.join(__dirname, 'jarvis-knowledge', 'buildScores.json');
+    const questionsPath = path.join(__dirname, 'jarvis-knowledge', 'questions.json');
+    const fire = () => {
+      clearTimeout(buildWatchT);
+      buildWatchT = setTimeout(() => {
+        for (const sub of buildSubs_) {
+          try { sub.write('event: builds\ndata: {}\n\n'); } catch (_) { /* drop */ }
+        }
+      }, 400);
+    };
+    if (fs.existsSync(buildScoresPath)) fs.watch(buildScoresPath, fire);
+    if (fs.existsSync(questionsPath)) fs.watch(questionsPath, fire);
+  } catch (e) { console.warn('[build-events] watch unavailable:', e.message); }
+
   /** FNV-1a over the base64 payload — same function as the client's
    *  (createStationDrafts.imgHash). Content identity for union-by-hash. */
   function sheetImgHash(b64) {
@@ -2783,7 +2818,9 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         const scores = require('./src/lib/agentGenerator/buildScores.js');
         const build = scores.getBuild(BUILD_SCORES_FILE_, id);
         if (!build) return sendJson(res, 404, { error: 'Build not found' });
-        filePath = (query && query.which === 'corrected') ? build.correction?.filePath : build.filePath;
+        filePath = (query && query.which === 'corrected') ? build.correction?.filePath
+          : (query && query.which === 'cover') ? String(build.filePath ?? '').replace(/\.L5X$/i, '__CoverNote.txt')
+          : build.filePath;
         if (!filePath) return sendJson(res, 404, { error: query?.which === 'corrected' ? 'No corrected file uploaded for this build' : 'This build has no saved file on disk' });
       }
       if (!fs.existsSync(filePath)) return sendJson(res, 404, { error: 'File no longer on disk: ' + path.basename(filePath) });
@@ -3758,6 +3795,11 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     }
 
     // Live draft subscription (server = source of truth, Dan 2026-08-30).
+    if (pathname === '/api/jarvis/build-events') {
+      if (method === 'GET') return handleBuildEvents(req, res);
+      return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
     if (pathname === '/api/jarvis/draft-events') {
       if (method === 'GET') return handleDraftEvents(req, res, query);
       return sendJson(res, 405, { error: 'Method not allowed' });
@@ -3885,6 +3927,8 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         if (method === 'POST') return handleJarvisBuildContinue(req, res, decodeURIComponent(mCont[1]));
         return sendJson(res, 405, { error: 'Method not allowed' });
       }
+      // (Artifact downloads ride the EXISTING /builds/:id/file route above —
+      //  which=cover added there for the card's cover-note link.)
       // Mark a build engineer-verified-correct and enshrine its file in the
       // verified library (Dan 2026-08-26: "save the good code — a library to
       // lean on"). UI: a "verified correct" affordance on delivered rows.

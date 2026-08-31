@@ -3880,10 +3880,10 @@ function CascadeGuide({ steps, hasExplanation, allApproved, onJump, onExpandAll 
     </div>
   );
   return (
+    <div style={{ position: 'sticky', top: 8, width: 200, flexShrink: 0 }}>
     <div
       data-testid="cascade-guide"
       style={{
-        position: 'sticky', top: 8, width: 200, flexShrink: 0,
         border: `1px solid ${C.border}`, borderRadius: 8, background: '#fff',
         padding: '8px 12px 10px',
       }}
@@ -3891,20 +3891,6 @@ function CascadeGuide({ steps, hasExplanation, allApproved, onJump, onExpandAll 
       <div style={{ fontSize: 9.5, fontWeight: 800, color: C.muted, letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 4 }}>
         How this goes
       </div>
-      {/* SHEET FOLD CONTROLS (Dan, 2026-08-31): square pills in the rail —
-          the tiny mid-page links are dead. */}
-      {(onExpandAll || onCollapseAll) && (
-        <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
-          <button type="button" data-testid="sheet-expand-all" onClick={onExpandAll}
-            style={{ flex: 1, fontSize: 10, fontWeight: 700, padding: '3px 0', cursor: 'pointer', borderRadius: 4, border: `1px solid ${C.border}`, background: 'var(--color-sidebar)', color: C.muted }}>
-            Expand all
-          </button>
-          <button type="button" data-testid="sheet-collapse-all" onClick={onCollapseAll}
-            style={{ flex: 1, fontSize: 10, fontWeight: 700, padding: '3px 0', cursor: 'pointer', borderRadius: 4, border: `1px solid ${C.border}`, background: 'var(--color-sidebar)', color: C.muted }}>
-            Collapse all
-          </button>
-        </div>
-      )}
       {row('explain', hasExplanation ? '✓' : '●', hasExplanation ? tone.approved : tone.active,
         'You explain the station', 'pictures + your words — devices, sequence, recovery, challenges',
         { bold: !hasExplanation })}
@@ -3918,6 +3904,21 @@ function CascadeGuide({ steps, hasExplanation, allApproved, onJump, onExpandAll 
       {row('generate', allApproved ? '●' : '○', allApproved ? tone.active : tone.pending,
         'Accept or build', allApproved ? 'accept the station, or build its code now' : 'unlocks when every step is agreed',
         { bold: allApproved })}
+    </div>
+    {/* SHEET FOLD CONTROLS (Dan, 2026-08-31): their own block BELOW the
+        "How this goes" box — inside it read as collapsing the rail itself. */}
+    {(onExpandAll || onCollapseAll) && (
+      <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+        <button type="button" data-testid="sheet-expand-all" onClick={onExpandAll}
+          style={{ flex: 1, fontSize: 10, fontWeight: 700, padding: '4px 0', cursor: 'pointer', borderRadius: 4, border: `1px solid ${C.border}`, background: '#fff', color: C.muted }}>
+          Expand all
+        </button>
+        <button type="button" data-testid="sheet-collapse-all" onClick={onCollapseAll}
+          style={{ flex: 1, fontSize: 10, fontWeight: 700, padding: '4px 0', cursor: 'pointer', borderRadius: 4, border: `1px solid ${C.border}`, background: '#fff', color: C.muted }}>
+          Collapse all
+        </button>
+      </div>
+    )}
     </div>
   );
 }
@@ -7029,29 +7030,66 @@ export function CreateStationPage({ embedded = false }) {
     });
   }
 
+  // BUILD HISTORY (Dan, 2026-08-31: four clicks, nothing on the page —
+  // never again): every build record for this station renders in the card;
+  // "Rebuild" flips ONLY on a real L5X artifact, never a held/failed record.
+  const [smBuilds, setSmBuilds] = useState([]);
+  const [buildsBump, setBuildsBump] = useState(0);
+  useEffect(() => {
+    if (!linkedSmId || !linkedSm?.name) { setSmBuilds([]); return; }
+    fetch('/api/jarvis/generations').then(r => (r.ok ? r.json() : null)).then(d => {
+      if (!d) return;
+      setSmBuilds((d.builds ?? [])
+        .filter(b => b?.sm === linkedSm.name)
+        .sort((a, b) => String(b.at ?? '').localeCompare(String(a.at ?? ''))));
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedSmId, buildsBump]);
+
   // ONE QUESTION SYSTEM (Dan, 2026-08-31): hold-for-help questions join the
   // chat's Questions tab — same numbered list, Agree/answer inline, and the
   // "Continue the build" action lives with them. No parallel surfaces.
   const heldBuilds = useHeldBuilds(linkedSm?.name);
-  const [holdStatus, setHoldStatus] = useState({}); // question id -> status
+  const [holdStatus, setHoldStatus] = useState({}); // question id -> {status, answer, answeredBy}
   const [holdBump, setHoldBump] = useState(0);
   useEffect(() => {
-    if (!heldBuilds.length) { setHoldStatus({}); return; }
+    if (!linkedSmId) { setHoldStatus({}); return; }
     fetch('/api/jarvis/questions').then(r => (r.ok ? r.json() : null)).then(d => {
       const list = Array.isArray(d) ? d : (d?.questions ?? []);
       const m = {};
-      for (const q of list) if (q?.id) m[q.id] = q.status;
+      for (const q of list) if (q?.id) m[q.id] = { status: q.status, answer: q.answer ?? null, answeredBy: q.answeredBy ?? null };
       setHoldStatus(m);
     }).catch(() => {});
-  }, [heldBuilds, holdBump]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedSmId, heldBuilds, holdBump]);
+  // LIVE BUILD STATE (Dan, 2026-08-31: the card said held while the build was
+  // DONE) — the build-events SSE pushes every record change; the card
+  // re-pulls within ~1s. The 20s poll stays as the fallback.
+  useEffect(() => {
+    if (!linkedSmId) return undefined;
+    let es = null;
+    try {
+      es = new EventSource('/api/jarvis/build-events');
+      es.addEventListener('builds', () => { setBuildsBump(n => n + 1); setHoldBump(n => n + 1); });
+    } catch { /* fallback poll covers it */ }
+    return () => { try { es?.close(); } catch { /* closed */ } };
+  }, [linkedSmId]);
   const holdNeeds = useMemo(() => heldBuilds
     .filter(b => b.help?.status !== 'resolved')
     .flatMap(b => (b.help?.questions ?? [])
-      .filter(q => holdStatus[q.id] !== 'answered')
+      .filter(q => holdStatus[q.id]?.status !== 'answered')
       .map(q => ({ question: q.question, proposedSolution: q.proposedSolution ?? null, covKey: 'build', holdId: q.id, buildId: b.id }))),
   [heldBuilds, holdStatus]);
+  // Resolved hold questions — the Questions tab's DONE list (visible history
+  // behind "0 open": 8 decided-from-shipped-work + 1 answered).
+  const resolvedHoldQs = useMemo(() => smBuilds
+    .flatMap(b => (b.help?.questions ?? []))
+    .map(q => ({ q, s: holdStatus[q.id] }))
+    .filter(x => x.s?.status === 'answered')
+    .map(x => ({ question: x.q.question, answer: x.s.answer, by: x.s.answeredBy })),
+  [smBuilds, holdStatus]);
   const heldResumable = heldBuilds.find(b => b.help?.status === 'waiting'
-    && (b.help?.questions ?? []).every(q => holdStatus[q.id] === 'answered'));
+    && (b.help?.questions ?? []).every(q => holdStatus[q.id]?.status === 'answered'));
   const [resuming, setResuming] = useState(false);
   async function answerHoldQuestion(holdId, answer, by) {
     try {
@@ -7066,22 +7104,30 @@ export function CreateStationPage({ embedded = false }) {
   async function continueHeldBuild(buildId) {
     if (resuming) return;
     setResuming(true);
-    setChatThread(t => [...t, { role: 'jarvis', text: 'Resuming the held build with your answers folded in — this runs a few minutes; the result lands here.', at: Date.now() }]);
+    // The SAME progress panel as a fresh build (Dan, 2026-08-31: never
+    // silence-then-done) — coarse stages while the resume writes.
+    setCodeBuild({ pct: 8, stage: 'resume', detail: 'resumed with your answers — the writer is studying and writing (minutes)…', error: null, done: null });
+    const tick = setInterval(() => setCodeBuild(c => (c && !c.done && !c.error ? { ...c, pct: Math.min((c.pct ?? 8) + 1.5, 92) } : c)), 15000);
     try {
       const r = await fetch(`/api/jarvis/builds/${encodeURIComponent(buildId)}/continue`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
       });
       const d = await r.json().catch(() => ({}));
+      const file = String(d.savedPath ?? '').split(/[\\/]/).pop();
+      setCodeBuild(r.ok ? { pct: 100, stage: 'done', done: d, error: null } : { pct: 0, stage: 'error', error: String(d.error ?? r.status), done: null });
       setChatThread(t => [...t, {
         role: 'jarvis',
         text: r.ok
-          ? (d.held ? 'The resumed build held again — its questions are in this tab.' : `Build finished${d.ok === false ? ' — validation reported errors (see the build record)' : ' — the L5X and its cover note are saved with the build record'}.`)
+          ? (d.held ? 'The resumed build held again — its questions are in this tab.'
+            : d.ok === false ? 'Build finished — validation reported errors (see the build record). Nothing ships in this state.'
+              // ONE BUILD = ONE ARTIFACT: the file named here IS the build.
+              : `Build done — one artifact: ${file || 'the L5X'} (cover note beside it). Download links are on the Build card.`)
           : `Resume didn't go through — ${d.error ?? r.status}.`,
         ...(r.ok ? {} : { error: true }),
         at: Date.now(),
       }]);
-      setHoldBump(n => n + 1);
-    } finally { setResuming(false); }
+      setHoldBump(n => n + 1); setBuildsBump(n => n + 1);
+    } finally { clearInterval(tick); setResuming(false); }
   }
 
   // PRE-BUILD SIGNAL CHECK (P0, 2026-08-30 — SUPREME LAW: never knowingly
@@ -8741,22 +8787,7 @@ export function CreateStationPage({ embedded = false }) {
   // retry — the same SSE progress machinery the pipeline already emits. ────
   const [codeBuild, setCodeBuild] = useState(null); // {pct, stage, detail, error, done, stalled}
   const codeBuildEsRef = useRef(null);
-  // BUILD HISTORY (Dan, 2026-08-31: four clicks, nothing on the page —
-  // never again): every build record for this station renders in the card;
-  // "Rebuild" flips ONLY on a real L5X artifact, never a held/failed record.
-  const [smBuilds, setSmBuilds] = useState([]);
-  const [buildsBump, setBuildsBump] = useState(0);
-  useEffect(() => {
-    if (!linkedSmId || !linkedSm?.name) { setSmBuilds([]); return; }
-    fetch('/api/jarvis/generations').then(r => (r.ok ? r.json() : null)).then(d => {
-      if (!d) return;
-      setSmBuilds((d.builds ?? [])
-        .filter(b => b?.sm === linkedSm.name)
-        .sort((a, b) => String(b.at ?? '').localeCompare(String(a.at ?? ''))));
-    }).catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [linkedSmId, buildsBump, holdBump, codeBuild?.done]);
-  const hasCodeBuild = smBuilds.some(b => b?.savedPath || b?.ok === true);
+  const hasCodeBuild = smBuilds.some(b => b?.savedPath || b?.filePath || b?.ok === true);
   const setHasCodeBuild = () => setBuildsBump(n => n + 1); // refresh, artifact-derived
   async function handleBuildCode() {
     // NEVER A SILENT CLICK (Dan, 2026-08-31: four dead clicks): while HELD,
@@ -8827,7 +8858,9 @@ export function CreateStationPage({ embedded = false }) {
         text: held
           ? `The code build is HELD — I need ${d.held?.questions?.length ?? 'a few'} answer(s) before it can finish:\n${(d.held?.questions ?? []).map((q, i) => `Q${i + 1}. ${q.question}${q.proposedSolution ? `\n   My proposal: ${q.proposedSolution}` : ''}`).join('\n')}`
           : d.ok
-            ? `Station code is built${d.internalReview?.verdict === 'ship' ? ' — internal review says ship' : d.internalReview ? ` — internal review: ${d.internalReview.verdict}, findings listed in the cover note` : ''}. The L5X and its reviewer cover note are saved with the build record.`
+            // ONE BUILD = ONE ARTIFACT (Dan, 2026-08-31): the file named
+            // here IS the build — no app-vs-elsewhere distinction.
+            ? `Station code is built — one artifact: ${String(d.savedPath ?? '').split(/[\\/]/).pop() || 'the L5X'} (cover note beside it; download links on the Build card)${d.internalReview?.verdict === 'ship' ? '. Internal review says ship' : d.internalReview ? `. Internal review: ${d.internalReview.verdict} — findings in the cover note` : ''}.`
             : 'The code build finished but validation reported errors — the build record has the report. Nothing ships in this state.',
         at: Date.now(),
       }]);
@@ -9252,11 +9285,19 @@ export function CreateStationPage({ embedded = false }) {
               style={{ marginTop: 8, fontSize: 12.5, padding: '6px 16px' }}
             >{resuming ? 'Resuming…' : 'Continue the build — answers folded in'}</button>
           )}
-          {[...agreedNeeds].length > 0 && (
-            <details style={{ marginTop: 6 }}>
+          {([...agreedNeeds].length > 0 || resolvedHoldQs.length > 0) && (
+            <details style={{ marginTop: 6 }} data-testid="questions-done-list">
               <summary style={{ fontSize: 11, color: C.muted, cursor: 'pointer' }}>
-                answered / agreed ({[...agreedNeeds].length})
+                answered / agreed ({[...agreedNeeds].length + resolvedHoldQs.length})
               </summary>
+              {/* Resolved BUILD questions — visible history behind "0 open":
+                  decided-from-shipped-work entries carry their citations. */}
+              {resolvedHoldQs.map((x, i) => (
+                <div key={`h${i}`} data-testid={`done-hold-q-${i}`} style={{ fontSize: 11, color: C.muted, lineHeight: 1.5, padding: '2px 0', borderBottom: `1px dashed ${C.border}` }}>
+                  <div style={{ color: C.light }}>✓ <span style={{ fontSize: 9, fontWeight: 800, color: '#6b21a8', background: '#f3e8ff', border: '1px solid #e9d5ff', borderRadius: 3, padding: '0 5px' }}>BUILD</span> {x.question}</div>
+                  <div style={{ marginLeft: 14 }}>{String(x.answer ?? '').slice(0, 220)}{String(x.answer ?? '').length > 220 ? '…' : ''} <span style={{ color: C.light }}>— {x.by}</span></div>
+                </div>
+              ))}
               {[...agreedNeeds].map((k, i) => (
                 <div key={i} style={{ fontSize: 11, color: C.light, lineHeight: 1.5, padding: '1px 0' }}>
                   ✓ {String(k).replace(/^[a-z]+:/i, '')}
@@ -9749,17 +9790,10 @@ export function CreateStationPage({ embedded = false }) {
                   </div>
                 ) : (
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 16 }}>
-                  <button
-                    type="button"
-                    onClick={() => setMode('blank')}
-                    disabled={busy}
-                    style={{
-                      background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                      fontSize: 11, color: C.light, textDecoration: 'underline', marginRight: 'auto',
-                    }}
-                  >
-                    start blank instead
-                  </button>
+                  {/* ("start blank instead" DELETED — Dan, 2026-08-31: one
+                      door; every new station walks the cascade. Classic
+                      blank SMs remain reachable from the classic shell.) */}
+                  <span style={{ marginRight: 'auto' }} />
                   {(description.trim() || images.length > 0) && (
                     <button
                       type="button"
@@ -9803,8 +9837,9 @@ export function CreateStationPage({ embedded = false }) {
                 </div>
                 )}
                 <div style={{ fontSize: 11, color: C.light, marginTop: 8, textAlign: 'right', lineHeight: 1.5 }}>
-                  Your explanation comes back as a clean summary with anything
-                  missing marked — then you Build from the reviewed summary.
+                  Jarvis proposes the machine split from your words, then walks
+                  you through it step by step — devices, sequence, recovery —
+                  each approved before the next. Code builds at the end.
                 </div>
               </div>
             </div>
@@ -11219,12 +11254,21 @@ export function CreateStationPage({ embedded = false }) {
                           {smBuilds.slice(0, 6).map((b, i) => {
                             const t = String(b.at ?? '').slice(11, 16) || '—';
                             const held = b.help && b.help.status !== 'resolved' && !b.savedPath && b.ok !== true;
-                            const openQ = held ? (b.help.questions ?? []).filter(q => holdStatus[q.id] !== 'answered').length : 0;
+                            const openQ = held ? (b.help.questions ?? []).filter(q => holdStatus[q.id]?.status !== 'answered').length : 0;
                             return (
                               <div key={b.id ?? i} data-testid={`build-attempt-${i}`} style={{ display: 'flex', gap: 8, alignItems: 'baseline', minWidth: 0 }}>
                                 <span style={{ fontFamily: 'Consolas, monospace', fontSize: 10.5, color: C.light, flexShrink: 0 }}>{t}</span>
-                                {b.ok === true || b.savedPath ? (
-                                  <span style={{ color: '#2f6b3c', fontWeight: 700 }}>DONE — L5X ready{b.savedPath ? ` (${String(b.savedPath).split(/[\\/]/).pop()})` : ''}</span>
+                                {b.ok === true || b.savedPath || b.filePath ? (
+                                  <span style={{ color: '#2f6b3c', fontWeight: 700, minWidth: 0 }}>
+                                    DONE — L5X ready{(b.savedPath || b.filePath) ? ` (${String(b.savedPath || b.filePath).split(/[\\/]/).pop()})` : ''}
+                                    {(b.savedPath || b.filePath) && (
+                                      <>
+                                        {' · '}<a data-testid={`build-l5x-${i}`} href={`/api/jarvis/builds/${encodeURIComponent(b.id)}/file`} style={{ color: 'var(--color-primary)', fontWeight: 700 }}>download L5X</a>
+                                        {' · '}<a data-testid={`build-cover-${i}`} href={`/api/jarvis/builds/${encodeURIComponent(b.id)}/file?which=cover`} target="_blank" rel="noreferrer" style={{ color: 'var(--color-primary)', fontWeight: 700 }}>cover note</a>
+                                      </>
+                                    )}
+                                    {b.internalReview?.verdict && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: b.internalReview.verdict === 'ship' ? '#2f6b3c' : '#6b5513' }}>review: {b.internalReview.verdict}</span>}
+                                  </span>
                                 ) : held ? (
                                   <span style={{ color: '#6b5513', fontWeight: 700 }}>
                                     HELD — {openQ > 0
