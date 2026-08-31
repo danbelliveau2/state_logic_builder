@@ -1814,5 +1814,41 @@
     "domain": "controls",
     "askedAt": "2026-08-31T18:15:41.761Z",
     "status": "open"
+  },
+  {
+    "id": "q_mthl0rak_io3v33",
+    "question": "Found 2 new L5X file(s) on the network watch folders: Standards - Software\\Allen Bradley\\Projects\\SDC Standard Template\\V4.3 In Progress\\P02_Conveyor.L5X; Standards - Software\\Allen Bradley\\Projects\\SDC Standard Template\\V4.3 In Progress\\P01_Robot.L5X. Which of these are engineer-verified SDC code I should rank as exemplars?",
+    "proposedSolution": "Tell me which are verified (or copy them into JARVIS Inbox\\verified\\ locally, or mark YES on a submission form beside them) and I will file them into plc-reference/verified/ and re-harvest precedents. The rest stay inventoried as reference.",
+    "addressee": "CE",
+    "kind": "question",
+    "context": "Inbox librarian — network L5X inventory",
+    "source": "training",
+    "domain": "controls",
+    "askedAt": "2026-08-31T18:38:50.156Z",
+    "status": "open"
+  },
+  {
+    "id": "q_mthm8i9a_eqydqw",
+    "question": "BUG auto-report: a chat message produced no visible consequence within 6s (send-path watchdog)",
+    "proposedSolution": null,
+    "addressee": "CE",
+    "kind": "question",
+    "context": "we are not using escapement finger 2 can you remove. you should know too if we arent using sometihng in the sequence it shouldnt be a device in that SM",
+    "source": "manual",
+    "domain": "controls",
+    "askedAt": "2026-08-31T19:12:51.310Z",
+    "status": "open"
+  },
+  {
+    "id": "q_mthmocgm_zpuany",
+    "question": "Found 2 new L5X file(s) on the network watch folders: Standards - Software\\Allen Bradley\\Projects\\SDC Standard Template\\V4.3 In Progress\\sd01_ProcessConveyor.L5X; Standards - Software\\Allen Bradley\\Projects\\SDC Standard Template\\V4.3 In Progress\\rob01_FlexFeeder.L5X. Which of these are engineer-verified SDC code I should rank as exemplars?",
+    "proposedSolution": "Tell me which are verified (or copy them into JARVIS Inbox\\verified\\ locally, or mark YES on a submission form beside them) and I will file them into plc-reference/verified/ and re-harvest precedents. The rest stay inventoried as reference.",
+    "addressee": "CE",
+    "kind": "question",
+    "context": "Inbox librarian — network L5X inventory",
+    "source": "training",
+    "domain": "controls",
+    "askedAt": "2026-08-31T19:25:10.294Z",
+    "status": "open"
   }
 ]
