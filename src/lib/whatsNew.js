@@ -10,12 +10,20 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.43';
+export const UI_BUILD = 'v2.6.44';
 
 export const BUILT_AT = '2026-08-30';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.44',
+    date: '2026-08-31',
+    items: [
+      'THE CHAT IS A FLOATING CARD — Zoho-widget shape, not a full-height sidebar: it opens above the bottom-right pill (420px, rounded, drop shadow, dark SDC header), sized to its content (short thread = short card, capped ~70vh), thread scrolling inside with the newest pinned, input + mic + Send docked at the card bottom — no dead space, no sheet reflow',
+      'Duplicate engine lines in the chat collapse to one (the repeated "carried your recoveries" line is cleaned from stored threads too)',
+    ],
+  },
   {
     version: 'v2.6.43',
     date: '2026-08-31',

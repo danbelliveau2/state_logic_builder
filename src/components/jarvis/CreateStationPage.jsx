@@ -8073,6 +8073,15 @@ export function CreateStationPage({ embedded = false }) {
         }
       } catch (e) { console.warn('[handoff-repair] skipped:', e.message); }
     }
+    // STORED CHAT DUPES (Dan, 2026-08-31): consecutive identical engine
+    // lines (the remount double-fire) collapse to one, permanently.
+    {
+      const th = chatThread;
+      const cleaned = th.filter((t, i) => !(t?.role === 'jarvis' && i > 0
+        && th[i - 1]?.role === 'jarvis'
+        && String(t.text ?? '') === String(th[i - 1].text ?? '')));
+      if (cleaned.length !== th.length) setChatThread(cleaned);
+    }
     // INACTIVE-DELAY BLANKING (Dan, 2026-08-31 — the VerticalSlide 5000 ms
     // hold): a stored delay whose direction has a SENSOR is dead data the
     // engine can misread as intent. Drop it — blank, not grayed.
@@ -9318,12 +9327,17 @@ export function CreateStationPage({ embedded = false }) {
           <div
             ref={threadRef}
             data-testid="corrections-thread-scroll"
-            style={threadExpanded ? {} : { maxHeight: 300, overflowY: 'auto', paddingRight: 4 }}
+            style={threadExpanded ? { maxHeight: '44vh', overflowY: 'auto', paddingRight: 4 } : { maxHeight: '34vh', overflowY: 'auto', paddingRight: 4 }}
           >
-            {chatThread.map((t, i) => (
+            {/* Consecutive identical engine lines render ONCE (Dan,
+                2026-08-31: the remount dupe showed the same repair line
+                twice). ME lines never dedupe — repeats can be intent. */}
+            {chatThread.filter((t, i) => !(t?.role === 'jarvis' && i > 0
+              && chatThread[i - 1]?.role === 'jarvis'
+              && String(t.text ?? '') === String(chatThread[i - 1].text ?? ''))).map((t, i, arr) => (
               <ChatTurn
                 key={`t-${i}`} turn={t} idx={i}
-                onRetry={t?.retryText && !applying && i === chatThread.length - 1
+                onRetry={t?.retryText && !applying && i === arr.length - 1
                   ? () => runAgentChatTurn(t.retryText, { isRetry: true })
                   : null}
               />
@@ -9408,16 +9422,21 @@ export function CreateStationPage({ embedded = false }) {
   const openQuestionCount = allOpenNeeds.length + holdNeeds.length;
   const chatPanelUi = (
     chatPanelOpen ? (
+      /* THE FLOATING CARD (Dan, 2026-08-31 — Zoho-widget shape, not a
+         full-height sidebar): anchored above the pill's corner, content-
+         sized (short thread = short card), max ~70vh, input docked at the
+         card's bottom edge — no dead space, no sheet reflow. */
       <div
         data-testid="chat-panel"
         style={{
-          position: 'fixed', top: 50, right: 0, bottom: 0, width: 420, zIndex: 60,
-          background: '#fff', borderLeft: `1px solid ${C.border}`,
-          boxShadow: '-4px 0 16px rgba(0,0,0,0.10)',
-          display: 'flex', flexDirection: 'column',
+          position: 'fixed', right: 16, bottom: 14, width: 420, zIndex: 60,
+          maxHeight: '70vh',
+          background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: '#475569', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', background: '#061d39', flexShrink: 0 }}>
           <span style={{ fontSize: 11.5, fontWeight: 800, color: '#fff', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Chat — SDC Engineer</span>
           <span style={{ flex: 1 }} />
           <button
@@ -9428,7 +9447,7 @@ export function CreateStationPage({ embedded = false }) {
             style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.85)', fontSize: 15, cursor: 'pointer', padding: 0, lineHeight: 1 }}
           >✕</button>
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
+        <div style={{ minHeight: 0, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
           {chatBlock}
         </div>
       </div>
@@ -9527,7 +9546,7 @@ export function CreateStationPage({ embedded = false }) {
             internal multi-column grids, not from a fixed strip. Generous
             bottom padding on the sheet so the final sections (IO) can scroll
             up to center-screen (Dan, Aug 24). */}
-        <div style={{ width: '100%', boxSizing: 'border-box', padding: inSummary ? '14px 28px 45vh' : '14px 28px 40px', paddingRight: chatPanelOpen ? 448 : 28, transition: 'padding-right 0.25s ease' }}>
+        <div style={{ width: '100%', boxSizing: 'border-box', padding: inSummary ? '14px 28px 45vh' : '14px 28px 40px' }}>
 
           {/* Never on a Station Specs visit (linkedSmId) — that's spec view,
               not the new-station flow. */}

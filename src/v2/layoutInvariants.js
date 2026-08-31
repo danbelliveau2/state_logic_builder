@@ -147,6 +147,29 @@ export const INVARIANTS = [
     },
   },
   {
+    id: 'chat-widget-geometry',
+    what: 'The open chat is a floating CARD above the pill corner (≤440px wide, ≤~70vh, rounded, content-sized) with the input docked at its bottom edge — never a full-height sidebar, never dead space below the input (Dan, 2026-08-31)',
+    run() {
+      const panel = q('[data-testid="chat-panel"]').filter(vis)[0];
+      if (!panel) return { skip: 'chat panel not open' };
+      const r = panel.getBoundingClientRect();
+      const bad = [];
+      if (r.width > 440) bad.push(`card ${Math.round(r.width)}px wide`);
+      if (r.height > window.innerHeight * 0.72) bad.push(`card ${Math.round(r.height)}px tall (> ~70vh)`);
+      if (r.top < 40 && r.height > window.innerHeight * 0.9) bad.push('full-height sidebar shape');
+      if (parseFloat(getComputedStyle(panel).borderRadius) < 6) bad.push('not rounded');
+      const input = panel.querySelector('[data-testid="changes-textarea"]');
+      if (input) {
+        const ir = input.getBoundingClientRect();
+        // The dock check: nothing but the (optional) budget note may sit
+        // between the input row and the card's bottom edge.
+        const gap = r.bottom - ir.bottom;
+        if (gap > 96) bad.push(`dead space below the input (${Math.round(gap)}px)`);
+      }
+      return bad.length ? { fail: bad.join('; ') } : {};
+    },
+  },
+  {
     id: 'no-in-page-chat-section',
     what: 'ONE door: the chat lives only in the slide-out panel — never as an in-page section (Dan, 2026-08-31)',
     run() {
