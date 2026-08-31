@@ -107,16 +107,6 @@ export const INVARIANTS = [
           if (overlap) bad.push(`fixed elements overlap: ${floats[i].dataset?.testid ?? floats[i].className} × ${floats[j].dataset?.testid ?? floats[j].className}`);
         }
       }
-      // EXPLICIT PAIR (Dan, 2026-08-31: pill stacked on the badge): the chat
-      // pill and the version badge must never collide — the pill owns
-      // bottom-right, the badge owns bottom-left.
-      const pill = q('[data-testid="chat-pill"]').filter(vis)[0];
-      const badge = q('body *').filter(vis).find((el) => /^v\d+\.\d+\.\d+ ·/.test(el.textContent?.trim() ?? '') && getComputedStyle(el.parentElement ?? el).position === 'fixed');
-      if (pill && badge) {
-        const a = pill.getBoundingClientRect(); const b = badge.getBoundingClientRect();
-        const hit = a.left < b.right + 8 && b.left < a.right + 8 && a.top < b.bottom + 8 && b.top < a.bottom + 8;
-        if (hit) bad.push('chat pill collides with the version badge');
-      }
       return bad.length ? { fail: [...new Set(bad)].join('; ') } : {};
     },
   },
@@ -147,6 +137,49 @@ export const INVARIANTS = [
     },
   },
   {
+    id: 'corner-stack',
+    what: 'THE bottom-right corner stack, exactly (Dan, 2026-08-31 — wrong three ways, never again): version badge pinned in the corner, chat pill DIRECTLY ABOVE it (8–24px gap, right-aligned), the open chat card above the pill; pairwise non-overlap; nothing else fixed in that column',
+    run() {
+      const pill = q('[data-testid="chat-pill"]').filter(vis)[0];
+      const badgeBtn = q('body button').filter(vis).find((el) => /^v\d+\.\d+\.\d+ ·/.test(el.textContent?.trim() ?? ''));
+      if (!pill && !badgeBtn) return { skip: 'corner elements not on screen' };
+      const bad = [];
+      const vw = window.innerWidth; const vh = window.innerHeight;
+      const b = badgeBtn?.getBoundingClientRect() ?? null;
+      const p = pill?.getBoundingClientRect() ?? null;
+      if (b) {
+        if (vw - b.right > 24 || vh - b.bottom > 24) bad.push(`badge not corner-pinned (right ${Math.round(vw - b.right)}, bottom ${Math.round(vh - b.bottom)})`);
+      }
+      if (b && p) {
+        const gap = b.top - p.bottom;
+        if (gap < 4 || gap > 28) bad.push(`pill-to-badge gap ${Math.round(gap)}px (want ~8–24)`);
+        if (Math.abs(b.right - p.right) > 12) bad.push('pill and badge not right-aligned');
+        if (p.bottom > b.top + 2) bad.push('pill overlaps the badge');
+      }
+      const card = q('[data-testid="chat-panel"]').filter(vis)[0];
+      if (card && p) {
+        const c = card.getBoundingClientRect();
+        if (c.bottom > p.top + 2) bad.push('open card overlaps the pill');
+        if (Math.abs(c.right - p.right) > 12) bad.push('card not right-aligned with the pill');
+      }
+      // Nothing ELSE fixed lives in the stack's column.
+      const colLeft = Math.min(p?.left ?? Infinity, b?.left ?? Infinity);
+      const strangers = q('body *').filter((el) => {
+        if (!vis(el)) return false;
+        if (el === pill || el === badgeBtn || el === card) return false;
+        if (pill?.contains(el) || badgeBtn?.contains(el) || card?.contains(el)) return false;
+        if (el.contains(pill) || el.contains(badgeBtn) || el.contains(card)) return false;
+        const cs = getComputedStyle(el);
+        if (cs.position !== 'fixed') return false;
+        const r = el.getBoundingClientRect();
+        if (r.width >= vw * 0.8 && r.height >= vh * 0.8) return false; // surfaces
+        return r.right > colLeft - 4 && r.bottom > vh - 200 && r.width > 40;
+      }).filter((el, _, all) => !all.some((o) => o !== el && o.contains(el)));
+      if (strangers.length) bad.push(`${strangers.length} other fixed element(s) in the corner column`);
+      return bad.length ? { fail: bad.join('; ') } : {};
+    },
+  },
+  {
     id: 'chat-widget-geometry',
     what: 'The open chat is a floating CARD above the pill corner (≤440px wide, ≤~70vh, rounded, content-sized) with the input docked at its bottom edge — never a full-height sidebar, never dead space below the input (Dan, 2026-08-31)',
     run() {
@@ -154,7 +187,7 @@ export const INVARIANTS = [
       if (!panel) return { skip: 'chat panel not open' };
       const r = panel.getBoundingClientRect();
       const bad = [];
-      if (r.width > 440) bad.push(`card ${Math.round(r.width)}px wide`);
+      if (r.width > 540 || r.width < 460) bad.push(`card ${Math.round(r.width)}px wide (want ~520)`);
       if (r.height > window.innerHeight * 0.72) bad.push(`card ${Math.round(r.height)}px tall (> ~70vh)`);
       if (r.top < 40 && r.height > window.innerHeight * 0.9) bad.push('full-height sidebar shape');
       if (parseFloat(getComputedStyle(panel).borderRadius) < 6) bad.push('not rounded');

@@ -333,7 +333,7 @@ export function ProjectHomePage() {
       }}
       title={`Open the chat on ${draftLabel(chatTarget)}`}
       style={{
-        position: 'fixed', right: 16, bottom: 14, zIndex: 60,
+        position: 'fixed', right: 12, bottom: 48, zIndex: 60,
         display: 'inline-flex', alignItems: 'center', gap: 8,
         background: '#061d39', color: '#fff', border: '1px solid #0d2b52',
         borderRadius: 6, padding: '8px 16px', fontSize: 12.5, fontWeight: 800,

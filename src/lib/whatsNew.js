@@ -10,12 +10,20 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.44';
+export const UI_BUILD = 'v2.6.45';
 
 export const BUILT_AT = '2026-08-30';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.45',
+    date: '2026-08-31',
+    items: [
+      'THE CORNER, SETTLED — one right-aligned stack at bottom-right: version badge pinned in the corner, chat pill directly above it, the open chat card above the pill. Nothing overlaps anything, and the gate now asserts that exact stack (badge corner-pinned, gaps, alignment, nothing else in the column)',
+      'Chat card tuned: wider (520px, still clearly a widget) with slightly smaller thread text; the pill stays visible under the open card and clicking it toggles',
+    ],
+  },
   {
     version: 'v2.6.44',
     date: '2026-08-31',

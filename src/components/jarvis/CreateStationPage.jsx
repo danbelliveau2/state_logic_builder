@@ -813,7 +813,7 @@ function ChatTurn({ turn, idx, onRetry = null }) {
       style={{ display: 'flex', justifyContent: me ? 'flex-end' : 'flex-start', padding: '2px 0' }}
     >
       <div style={{
-        maxWidth: '78%', fontSize: 12, lineHeight: 1.5, borderRadius: 8, padding: '6px 10px',
+        maxWidth: '78%', fontSize: 11, lineHeight: 1.5, borderRadius: 8, padding: '6px 10px',
         ...(me
           ? { background: C.primaryBg, border: `1px solid ${C.primaryBorder}`, color: C.text }
           : turn?.error
@@ -824,7 +824,7 @@ function ChatTurn({ turn, idx, onRetry = null }) {
               ? { background: '#f6f8fb', border: '1px dashed #b8c4d0', color: C.muted, fontStyle: 'italic' }
               : { background: '#f4faf4', border: '1px solid #b7d9b0', color: C.text }),
       }}>
-        <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', color: me ? C.primary : '#2f6b2f', marginBottom: 2 }}>
+        <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', color: me ? C.primary : '#2f6b2f', marginBottom: 2 }}>
           {me ? 'You' : 'SDC Engineer'}
         </div>
         <div style={{ whiteSpace: 'pre-wrap' }}>{turn?.text}</div>
@@ -9421,7 +9421,8 @@ export function CreateStationPage({ embedded = false }) {
   // the header, everything the section had, the sheet reflows.
   const openQuestionCount = allOpenNeeds.length + holdNeeds.length;
   const chatPanelUi = (
-    chatPanelOpen ? (
+    <>
+    {chatPanelOpen && (
       /* THE FLOATING CARD (Dan, 2026-08-31 — Zoho-widget shape, not a
          full-height sidebar): anchored above the pill's corner, content-
          sized (short thread = short card), max ~70vh, input docked at the
@@ -9429,7 +9430,7 @@ export function CreateStationPage({ embedded = false }) {
       <div
         data-testid="chat-panel"
         style={{
-          position: 'fixed', right: 16, bottom: 14, width: 420, zIndex: 60,
+          position: 'fixed', right: 12, bottom: 92, width: 520, zIndex: 60,
           maxHeight: '70vh',
           background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10,
           boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
@@ -9451,14 +9452,14 @@ export function CreateStationPage({ embedded = false }) {
           {chatBlock}
         </div>
       </div>
-    ) : (
+    )}
       <button
         type="button"
         data-testid="chat-pill"
-        onClick={() => setChatPanel(true)}
+        onClick={() => setChatPanel(!chatPanelOpen)}
         title="Open the chat — ask, correct, change; questions live here too"
         style={{
-          position: 'fixed', right: 16, bottom: 14, zIndex: 60,
+          position: 'fixed', right: 12, bottom: 48, zIndex: 60,
           display: 'inline-flex', alignItems: 'center', gap: 8,
           background: '#061d39', color: '#fff', border: '1px solid #0d2b52',
           borderRadius: 6, /* rectangular — the standing square-pill rule */
@@ -9473,7 +9474,7 @@ export function CreateStationPage({ embedded = false }) {
           </span>
         )}
       </button>
-    )
+    </>
   );
 
   return (

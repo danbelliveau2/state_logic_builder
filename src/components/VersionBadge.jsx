@@ -59,15 +59,16 @@ export function VersionBadge() {
       ref={rootRef}
       style={{
         position: 'fixed',
-        // Bottom-LEFT (Dan, 2026-08-31): the chat pill OWNS bottom-right —
-        // the badge moved corners so they can never collide.
-        left: 12,
+        // THE CORNER STACK (Dan, 2026-08-31, third and final ruling): the
+        // badge is pinned at the very bottom-right corner; the chat pill
+        // sits DIRECTLY ABOVE it; the open chat card above the pill.
+        right: 12,
         bottom: 12,
         zIndex: 2000000,
         pointerEvents: 'none',           // wrapper never blocks the app
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'flex-start',
+        alignItems: 'flex-end',
         gap: 8,
         fontFamily: 'inherit',
       }}
