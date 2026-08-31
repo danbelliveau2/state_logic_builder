@@ -22,7 +22,6 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '..', '.env'), quiet: true });
 
 const { costOfUsage, AiNotConfiguredError } = require('./client');
-const { loadMeKnowledge } = require('./meKnowledge');
 const { precedentsBlock } = require('./precedents'); // eslint-disable-line no-unused-vars
 const { buildEngineContext } = require('./engineContext');
 
@@ -405,8 +404,9 @@ async function authorSpec({
     : '';
 
   // PRECEDENT PACK (Dan, 2026-08-26): every step grounds in shipped names.
-  const meKnowledge = loadMeKnowledge()
-    + buildEngineContext(['precedents', 'concepts:station-archetypes', 'concepts:multi-state-machine']);
+  // One-brain law: ALL engine calls assemble context through buildEngineContext
+  // (CE doctrine rides the meKnowledge source — never a direct load).
+  const meKnowledge = buildEngineContext(['meKnowledge', 'precedents', 'concepts:station-archetypes', 'concepts:multi-state-machine']);
   const system =
     'You are JARVIS, the SDC Automation station-spec extractor. A manufacturing engineer explains ' +
     'an automation station in plain language, the way they would to a new engineer. You extract a ' +
@@ -861,8 +861,9 @@ async function summarizeDescription({
     || '  (no other stations in this project yet)';
 
   // PRECEDENT PACK (Dan, 2026-08-26): every step grounds in shipped names.
-  const meKnowledge = loadMeKnowledge()
-    + buildEngineContext(['precedents', 'concepts:station-archetypes', 'concepts:multi-state-machine']);
+  // One-brain law: ALL engine calls assemble context through buildEngineContext
+  // (CE doctrine rides the meKnowledge source — never a direct load).
+  const meKnowledge = buildEngineContext(['meKnowledge', 'precedents', 'concepts:station-archetypes', 'concepts:multi-state-machine']);
   const system =
     'You are JARVIS, an intelligent SDC controls engineer listening to a MECHANICAL engineer ' +
     'who has just finished explaining an automation station out loud (dictated and/or typed — ' +
