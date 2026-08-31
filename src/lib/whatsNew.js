@@ -10,12 +10,21 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.40';
+export const UI_BUILD = 'v2.6.41';
 
 export const BUILT_AT = '2026-08-30';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.41',
+    date: '2026-08-31',
+    items: [
+      'NO CLICK EVER ENDS WITH NOTHING — the Build section shows a build history (every attempt: time, HELD/FAILED/DONE, and the next action as a link), a held banner right in the card ("⏸ held — waiting on N questions (in the chat) — answering resumes automatically" with Continue), and clicking Build while held re-surfaces the held state instead of doing nothing',
+      '"Rebuild" only when a real L5X exists — a held or failed record keeps the button "Build Station Code"',
+      'Expand all / Collapse all moved to the right rail under "How this goes" as two square pills; the tiny mid-page links are gone',
+    ],
+  },
   {
     version: 'v2.6.40',
     date: '2026-08-31',

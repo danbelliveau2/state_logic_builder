@@ -3854,7 +3854,7 @@ const STEP_INFO_NEEDED = {
 
 /** THE STEP-BY-STEP GUIDE (side, sticky): how this is going to go and, per
  *  step, what information Jarvis needs to continue. Replaces the rail. */
-function CascadeGuide({ steps, hasExplanation, allApproved, onJump }) {
+function CascadeGuide({ steps, hasExplanation, allApproved, onJump, onExpandAll = null, onCollapseAll = null }) {
   if (!steps?.length) return null;
   const tone = {
     approved: '#2f6b3c', active: 'var(--color-primary)', reconfirm: '#92400e', pending: C.light,
@@ -3891,6 +3891,20 @@ function CascadeGuide({ steps, hasExplanation, allApproved, onJump }) {
       <div style={{ fontSize: 9.5, fontWeight: 800, color: C.muted, letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 4 }}>
         How this goes
       </div>
+      {/* SHEET FOLD CONTROLS (Dan, 2026-08-31): square pills in the rail —
+          the tiny mid-page links are dead. */}
+      {(onExpandAll || onCollapseAll) && (
+        <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+          <button type="button" data-testid="sheet-expand-all" onClick={onExpandAll}
+            style={{ flex: 1, fontSize: 10, fontWeight: 700, padding: '3px 0', cursor: 'pointer', borderRadius: 4, border: `1px solid ${C.border}`, background: 'var(--color-sidebar)', color: C.muted }}>
+            Expand all
+          </button>
+          <button type="button" data-testid="sheet-collapse-all" onClick={onCollapseAll}
+            style={{ flex: 1, fontSize: 10, fontWeight: 700, padding: '3px 0', cursor: 'pointer', borderRadius: 4, border: `1px solid ${C.border}`, background: 'var(--color-sidebar)', color: C.muted }}>
+            Collapse all
+          </button>
+        </div>
+      )}
       {row('explain', hasExplanation ? '✓' : '●', hasExplanation ? tone.approved : tone.active,
         'You explain the station', 'pictures + your words — devices, sequence, recovery, challenges',
         { bold: !hasExplanation })}
@@ -8727,16 +8741,38 @@ export function CreateStationPage({ embedded = false }) {
   // retry — the same SSE progress machinery the pipeline already emits. ────
   const [codeBuild, setCodeBuild] = useState(null); // {pct, stage, detail, error, done, stalled}
   const codeBuildEsRef = useRef(null);
-  const [hasCodeBuild, setHasCodeBuild] = useState(false);
+  // BUILD HISTORY (Dan, 2026-08-31: four clicks, nothing on the page —
+  // never again): every build record for this station renders in the card;
+  // "Rebuild" flips ONLY on a real L5X artifact, never a held/failed record.
+  const [smBuilds, setSmBuilds] = useState([]);
+  const [buildsBump, setBuildsBump] = useState(0);
   useEffect(() => {
-    if (!linkedSmId || !linkedSm?.name) return;
+    if (!linkedSmId || !linkedSm?.name) { setSmBuilds([]); return; }
     fetch('/api/jarvis/generations').then(r => (r.ok ? r.json() : null)).then(d => {
-      if (d) setHasCodeBuild((d.builds ?? []).some(b => b?.sm === linkedSm.name));
+      if (!d) return;
+      setSmBuilds((d.builds ?? [])
+        .filter(b => b?.sm === linkedSm.name)
+        .sort((a, b) => String(b.at ?? '').localeCompare(String(a.at ?? ''))));
     }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [linkedSmId]);
+  }, [linkedSmId, buildsBump, holdBump, codeBuild?.done]);
+  const hasCodeBuild = smBuilds.some(b => b?.savedPath || b?.ok === true);
+  const setHasCodeBuild = () => setBuildsBump(n => n + 1); // refresh, artifact-derived
   async function handleBuildCode() {
-    if (codeBuild && !codeBuild.error && !codeBuild.done) return; // one at a time
+    // NEVER A SILENT CLICK (Dan, 2026-08-31: four dead clicks): while HELD,
+    // the click re-surfaces the held state — it never starts a new build and
+    // never no-ops.
+    if (holdNeeds.length || heldResumable) {
+      setChatTab('questions');
+      document.querySelector('[data-testid="corrections-block"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (heldResumable) setApplyHint('Everything is answered — hit "Continue the build" in the chat, or it resumes on its own.');
+      else setApplyHint(`The build is held on ${holdNeeds.length} question${holdNeeds.length === 1 ? '' : 's'} — they're in the chat's Questions tab.`);
+      return;
+    }
+    if (codeBuild && !codeBuild.error && !codeBuild.done) {
+      setApplyHint('A build is already running — its progress is right here on the card.');
+      return;
+    }
     const smIdNow = linkedSmId;
     if (!smIdNow) return;
     // Never silent: a blocked click takes you to the first thing to fix.
@@ -10096,11 +10132,6 @@ export function CreateStationPage({ embedded = false }) {
                 {cascadeLive && (
                   <>
                     <BandHeader label="Station" note="the guided review — approve each step, it locks in below" />
-                    {/* COLLAPSIBLE EVERYTHING (Dan, 2026-08-30): one-click fold for the whole sheet. */}
-                    <div style={{ display: 'flex', gap: 12, margin: '-4px 0 8px' }}>
-                      <button type="button" data-testid="sheet-expand-all" onClick={() => setAllSectionsCollapsed(false)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10.5, color: C.muted, textDecoration: 'underline' }}>expand all</button>
-                      <button type="button" data-testid="sheet-collapse-all" onClick={() => setAllSectionsCollapsed(true)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10.5, color: C.muted, textDecoration: 'underline' }}>collapse all</button>
-                    </div>
                     {(() => {
                       const step = cascade.activeStep;
                       if (!step) return null; // all approved — the green card below closes it
@@ -10947,11 +10978,6 @@ export function CreateStationPage({ embedded = false }) {
                       <>
                         {chatBlock}
                         <BandHeader label="Station" note="review and correct" />
-                        {/* COLLAPSIBLE EVERYTHING (Dan, 2026-08-30): one-click fold for the whole sheet. */}
-                        <div style={{ display: 'flex', gap: 12, margin: '-4px 0 8px' }}>
-                          <button type="button" data-testid="sheet-expand-all" onClick={() => setAllSectionsCollapsed(false)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10.5, color: C.muted, textDecoration: 'underline' }}>expand all</button>
-                          <button type="button" data-testid="sheet-collapse-all" onClick={() => setAllSectionsCollapsed(true)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10.5, color: C.muted, textDecoration: 'underline' }}>collapse all</button>
-                        </div>
                         {reviewSections.length > 0 && (
                           <div
                             data-testid="review-progress-line"
@@ -11166,6 +11192,58 @@ export function CreateStationPage({ embedded = false }) {
                     {/* THE BUILD LANE — button + its note, nested together
                         (the note belongs to the build, not to Accept). */}
                     <div data-testid="build-lane" style={{ borderTop: `1px dashed ${C.border}`, paddingTop: 10 }}>
+                      {/* HELD STATE, IN THE CARD (Dan, 2026-08-31). */}
+                      {(holdNeeds.length > 0 || heldResumable) && (
+                        <div data-testid="build-held-banner" style={{
+                          display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8,
+                          background: '#fdf6e3', border: '1px solid #e6d9a8', borderRadius: 6,
+                          padding: '6px 10px', fontSize: 12, color: '#6b5513',
+                        }}>
+                          <span style={{ flex: 1 }}>
+                            ⏸ held — {holdNeeds.length > 0
+                              ? <>waiting on {holdNeeds.length} question{holdNeeds.length === 1 ? '' : 's'} (<button type="button" onClick={() => { setChatTab('questions'); document.querySelector('[data-testid="corrections-block"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12, color: '#6b5513', fontWeight: 700, textDecoration: 'underline' }}>in the chat</button>) — answering resumes automatically</>
+                              : 'everything answered — resuming'}
+                          </span>
+                          {heldResumable && (
+                            <button type="button" data-testid="build-held-continue" onClick={() => continueHeldBuild(heldResumable.id)} disabled={resuming}
+                              className="btn btn--primary" style={{ fontSize: 11.5, padding: '4px 12px' }}>
+                              {resuming ? 'Resuming…' : 'Continue'}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {/* BUILD HISTORY — every click leaves a row: time,
+                          outcome, and the next action. */}
+                      {smBuilds.length > 0 && (
+                        <div data-testid="build-history" style={{ marginBottom: 8, fontSize: 11.5, lineHeight: 1.7 }}>
+                          {smBuilds.slice(0, 6).map((b, i) => {
+                            const t = String(b.at ?? '').slice(11, 16) || '—';
+                            const held = b.help && b.help.status !== 'resolved' && !b.savedPath && b.ok !== true;
+                            const openQ = held ? (b.help.questions ?? []).filter(q => holdStatus[q.id] !== 'answered').length : 0;
+                            return (
+                              <div key={b.id ?? i} data-testid={`build-attempt-${i}`} style={{ display: 'flex', gap: 8, alignItems: 'baseline', minWidth: 0 }}>
+                                <span style={{ fontFamily: 'Consolas, monospace', fontSize: 10.5, color: C.light, flexShrink: 0 }}>{t}</span>
+                                {b.ok === true || b.savedPath ? (
+                                  <span style={{ color: '#2f6b3c', fontWeight: 700 }}>DONE — L5X ready{b.savedPath ? ` (${String(b.savedPath).split(/[\\/]/).pop()})` : ''}</span>
+                                ) : held ? (
+                                  <span style={{ color: '#6b5513', fontWeight: 700 }}>
+                                    HELD — {openQ > 0
+                                      ? <button type="button" onClick={() => { setChatTab('questions'); document.querySelector('[data-testid="corrections-block"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#6b5513', fontWeight: 700, fontSize: 11.5, textDecoration: 'underline' }}>answer {openQ} question{openQ === 1 ? '' : 's'} in the chat</button>
+                                      : (b.help?.status === 'resumed' ? 'resumed — writing now' : 'answers in — continue below')}
+                                  </span>
+                                ) : b.ok === false ? (
+                                  <span style={{ color: '#8a3b3b', fontWeight: 700 }}>
+                                    FAILED — validation errors ·{' '}
+                                    <button type="button" onClick={handleBuildCode} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#8a3b3b', fontWeight: 700, fontSize: 11.5, textDecoration: 'underline' }}>retry</button>
+                                  </span>
+                                ) : (
+                                  <span style={{ color: C.muted }}>in progress…</span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                       <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>
                         or build this station's code now:
                       </div>
@@ -11330,6 +11408,8 @@ export function CreateStationPage({ embedded = false }) {
                     hasExplanation={!!description.trim()}
                     allApproved={cascade.allApproved}
                     onJump={jumpToCascadeStep}
+                    onExpandAll={() => setAllSectionsCollapsed(false)}
+                    onCollapseAll={() => setAllSectionsCollapsed(true)}
                   />
                 </div>
               )}
