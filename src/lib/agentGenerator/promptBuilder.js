@@ -423,8 +423,34 @@ function buildGenerationPrompt(projectJson, smId, options = {}) {
   const choice = selectTemplate(sm);
   const templatePath = path.join(STANDARD_DIR, choice.template);
   const templateXml = fs.readFileSync(templatePath, 'utf8');
-  const extracts = buildTemplateExtracts(templateXml);
-  const ctx = extractContextInfo(templateXml);
+
+  // DETERMINISTIC DEVICE PRE-PASS (Dan's Rockwell debrief, 2026-08-31):
+  // device blocks are parameterized patterns — stamp them from the sheet
+  // BEFORE the model writes (axis purge, gripper/sensor renames). The model
+  // authors only flowchart logic + init/recovery. The writer reads and edits
+  // the PRE-PASSED template file; the note tells it what is already done.
+  // Gate: JARVIS_DEVICE_PREPASS=on|off (default on).
+  let effTemplateXml = templateXml;
+  let effTemplatePath = templatePath;
+  let prepassNote = '';
+  let prepassApplied = [];
+  if (String(process.env.JARVIS_DEVICE_PREPASS || 'on').toLowerCase() !== 'off') {
+    try {
+      const { devicePrepass } = require('./devicePrepass.js');
+      const pp = devicePrepass(templateXml, ir);
+      if (pp.applied.length) {
+        effTemplateXml = pp.xml;
+        prepassNote = pp.note;
+        prepassApplied = pp.applied;
+        const ppDir = path.join(__dirname, '..', '..', '..', 'generated', '_prepass');
+        fs.mkdirSync(ppDir, { recursive: true });
+        effTemplatePath = path.join(ppDir, `${String(ir.smName ?? 'station').replace(/[^\w-]+/g, '_')}__${choice.template}`);
+        fs.writeFileSync(effTemplatePath, pp.xml, 'utf8');
+      }
+    } catch (e) { prepassNote = ''; prepassApplied = [`prepass unavailable: ${e.message}`]; }
+  }
+  const extracts = buildTemplateExtracts(effTemplateXml);
+  const ctx = extractContextInfo(effTemplateXml);
   const notes = TEMPLATE_NOTES[choice.template] || COMMON_NOTES;
 
   const stationNumber = options.stationNumber ?? ir.stationNumber ?? 1;
@@ -539,7 +565,7 @@ function buildGenerationPrompt(projectJson, smId, options = {}) {
   return {
     system,
     stableText,
-    jobText,
+    jobText: jobText + (prepassNote ? '\n' + prepassNote : ''),
     ir,
     compiledIr,
     meta: {
@@ -549,7 +575,9 @@ function buildGenerationPrompt(projectJson, smId, options = {}) {
       smName: ir.smName,
       stationNumber,
       template: choice.template,
-      templatePath,
+      templatePath: effTemplatePath,
+      templateSourcePath: templatePath,
+      devicePrepass: prepassApplied,
       templateReason: choice.reason,
       ruleCount,
       promptChars: stableText.length + jobText.length,

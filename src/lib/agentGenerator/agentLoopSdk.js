@@ -143,18 +143,26 @@ const DECOMPOSE_GATE_BLOCK = [
   'for your ideas or open questions remain: THE PROPOSAL IS your answer, the concrete thing',
   'he reviews. File genuine blockers with ask_engineer IN ADDITION, never instead. A decompose',
   'turn that ends without propose_split is a failed turn. The doctrine:',
+  '- STEP-SCOPED OUTPUT (Dan, 2026-09-01 — the 217-second step 1): THIS STEP EMITS ONLY THIS',
+  "  STEP'S CONTENT. The split proposal is machine NAMES + a one-liner each + the split",
+  '  reasoning in AT MOST TWO SENTENCES. NO devices, NO sequences, NO recoveries, NO',
+  '  narrative — the per-machine walk does that thinking in its own later steps. Seconds,',
+  '  not minutes. (Correction rounds that already carry sequences keep them verbatim —',
+  '  never regenerate content from earlier-approved steps.)',
+  "- NO INVENTED VOCABULARY (Dan's law): the engineer's words or shipped-work names ONLY.",
+  '  If he never said "pick head", the proposal never says "pick head".',
   '- THE ASYNCHRONY TEST: a purely sequential station is ONE machine; a second machine must',
   '  be justified by real overlap in time (its "why" says so, to the engineer).',
   '- Machine names are natural SDC speech with spaces ("Mid Base Escapement"), SPECIFIC to',
-  '  what they handle — never a generic mechanism word alone, never PascalCase.',
-  '- Every sheet device is owned by exactly one machine; sequences use structured steps',
-  '  (device links, canonical shapes, decisions allowed); faultRecovery is a branching flow',
-  '  on the shipped home pattern. Sequence lines: NO parenthetical annotations, ever.',
+  '  what they handle — never a generic mechanism word alone, never PascalCase. A name the',
+  '  ENGINEER dictates is used VERBATIM (his capitalization) with nameByME: true — and',
+  '  nameByME machines pass through every later proposal untouched (the tool enforces it).',
   '- CORRECTION ROUNDS: the current proposal rides along COMPLETE — the feedback edits IT;',
-  '  everything untouched carries forward VERBATIM. Approved machine names are identity-',
-  '  locked (the tool enforces it). Dictated feedback resolves against the REAL names.',
-  '- After propose_split, your final message is the reasoning spoken to the engineer plus',
-  '  the guide line (what to look at, what to approve next).',
+  '  everything untouched carries forward VERBATIM. An ADD appends one machine; it never',
+  '  regenerates siblings. Approved machine names are identity-locked (tool-enforced).',
+  '  Dictated feedback resolves against the REAL names.',
+  '- After propose_split, your final message is ≤2 sentences: the reasoning spoken to the',
+  '  engineer plus the guide line (what to approve next).',
 ].join('\n');
 
 function systemPromptFor(audience, gate = null) {
@@ -421,24 +429,44 @@ async function runAgentTurn({ draft, message, cascadePosition = null, audience =
         ...(resumeId ? { resume: resumeId } : {}),
       },
     });
+    // FULL WORKING TRANSCRIPT (Dan's Rockwell debrief, 2026-08-31: "it's not
+    // a conversation… here I see everything that comes out"): every tool
+    // call with its target, every reasoning note, every diff as it applies —
+    // streamed live as `trace` events the widget renders Claude-Code-style.
+    let tracedDiffs = 0;
+    const emitTrace = (t) => emit({ trace: { at: Date.now(), ...t } });
+    const emitNewDiffs = () => {
+      while (tracedDiffs < state.diffs.length) {
+        const d = state.diffs[tracedDiffs++];
+        emitTrace({ kind: 'diff', op: String(d.op ?? 'edit'), detail: JSON.stringify(d).slice(0, 400) });
+      }
+    };
     for await (const m of q) {
       if (m.type === 'system' && m.subtype === 'init' && m.session_id) sessionId = m.session_id;
       else if (m.type === 'assistant') {
         const blocks = m.message?.content ?? [];
         const text = blocks.filter((b) => b.type === 'text').map((b) => b.text).join(' ').trim();
         const toolUses = blocks.filter((b) => b.type === 'tool_use');
+        emitNewDiffs(); // diffs applied by the PREVIOUS tool round, in order
         if (text) reply = text; // last prose wins (the final message)
         if (text && toolUses.length && !readingSpoken) {
           readingSpoken = true;
           emit({ reading: text });
         }
+        if (text) emitTrace({ kind: 'note', text: text.slice(0, 300) });
         for (const tu of toolUses) {
           turns += 1;
           const bare = String(tu.name).replace(/^mcp__station__/, '');
           emit(eventLabelFor(bare, tu.input));
+          emitTrace({
+            kind: 'tool', name: bare,
+            label: eventLabelFor(bare, tu.input),
+            input: (() => { try { return JSON.stringify(tu.input).slice(0, 400); } catch { return ''; } })(),
+          });
         }
         if (toolUses.length === 0 && text) emit('thinking…');
       } else if (m.type === 'result') {
+        emitNewDiffs();
         if (typeof m.total_cost_usd === 'number') costUSD += m.total_cost_usd;
         if (m.session_id) sessionId = m.session_id;
         if (m.subtype === 'error_max_turns') capped = 'turn cap';

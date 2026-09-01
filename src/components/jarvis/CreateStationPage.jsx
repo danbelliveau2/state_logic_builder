@@ -854,8 +854,48 @@ function ChatTurn({ turn, idx, onRetry = null }) {
             ))}
           </div>
         )}
+        {/* THE WORKING TRANSCRIPT, kept (Dan, 2026-08-31): the finished
+            turn carries what the engine actually did — collapsed. */}
+        {!me && (turn?.trace?.length ?? 0) > 0 && (
+          <details data-testid={`chat-trace-${idx}`} style={{ marginTop: 5 }}>
+            <summary style={{ cursor: 'pointer', fontSize: 10, fontWeight: 700, color: C.muted }}>
+              working transcript ({turn.trace.length} steps)
+            </summary>
+            <div style={{ marginTop: 3, maxHeight: 180, overflowY: 'auto' }}>
+              {turn.trace.map((t, i) => <TraceLine key={i} t={t} />)}
+            </div>
+          </details>
+        )}
       </div>
     </div>
+  );
+}
+
+/** One transcript event, Claude-Code-style: compact line, click to expand
+ *  the raw call/diff detail (Dan, 2026-08-31: parity of visibility). */
+function TraceLine({ t }) {
+  const icon = t.kind === 'diff' ? '±' : t.kind === 'note' ? '§' : '›';
+  const head = t.kind === 'diff'
+    ? `${t.op ?? 'edit'}`
+    : t.kind === 'note'
+      ? String(t.text ?? '').slice(0, 90)
+      : (t.label || t.name || 'tool');
+  const detail = t.detail || t.input || (t.kind === 'note' ? t.text : '');
+  const line = (
+    <span style={{ fontSize: 10.5, lineHeight: 1.5, color: t.kind === 'diff' ? '#1d4ed8' : C.muted, fontFamily: t.kind === 'diff' ? 'ui-monospace, monospace' : 'inherit' }}>
+      <span style={{ fontWeight: 800, marginRight: 4 }}>{icon}</span>{head}
+    </span>
+  );
+  if (!detail || detail === head) return <div style={{ padding: '1px 0' }}>{line}</div>;
+  return (
+    <details style={{ padding: '1px 0' }}>
+      <summary style={{ cursor: 'pointer', listStylePosition: 'inside' }}>{line}</summary>
+      <pre style={{
+        margin: '2px 0 2px 14px', padding: '4px 6px', fontSize: 10, lineHeight: 1.45,
+        background: '#f6f8fb', border: '1px solid #e2e8f0', borderRadius: 5,
+        whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 120, overflowY: 'auto',
+      }}>{detail}</pre>
+    </details>
   );
 }
 
@@ -4587,6 +4627,12 @@ export function CreateStationPage({ embedded = false }) {
   // THE AGENT LOOP's live activity line ("reading the sheet…") — Dan
   // approved the loop build 2026-08-28; docs/jarvis-agent-loop-design.md.
   const [agentState, setAgentState] = useState(null);
+  // FULL WORKING TRANSCRIPT (Dan's Rockwell debrief, 2026-08-31: "here I see
+  // everything that comes out") — every tool call, reasoning note, and diff
+  // of the RUNNING turn, streamed live; attached to the finished turn so the
+  // history keeps it (collapsed).
+  const agentTraceRef = useRef([]);
+  const [agentTraceLen, setAgentTraceLen] = useState(0);
   // KNOW YOUR AUDIENCE (Dan, 2026-08-30): ME | CE — whoever sits at the
   // machine. Per-browser, default ME. Rides every loop turn's voice contract.
   const [audience, setAudience] = useState(() => {
@@ -4598,11 +4644,11 @@ export function CreateStationPage({ embedded = false }) {
   const [agentElapsed, setAgentElapsed] = useState(0);
   const agentStartRef = useRef(null);
   useEffect(() => {
-    if (!agentState) { agentStartRef.current = null; setAgentElapsed(0); return undefined; }
+    if (!agentState && !applying) { agentStartRef.current = null; setAgentElapsed(0); return undefined; }
     if (!agentStartRef.current) agentStartRef.current = Date.now();
     const t = setInterval(() => setAgentElapsed(Math.floor((Date.now() - agentStartRef.current) / 1000)), 1000);
     return () => clearInterval(t);
-  }, [agentState ? 1 : 0]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [(agentState || applying) ? 1 : 0]); // eslint-disable-line react-hooks/exhaustive-deps
   // Standing rules SDC ENGINEER just learned from the engineer's answers —
   // only facts the model explicitly returned AND the server recorded.
   const [learnedNotes, setLearnedNotes] = useState([]);
@@ -4859,6 +4905,19 @@ export function CreateStationPage({ embedded = false }) {
     }
   }, [chatThread, chatPanelOpen]);
   useEffect(() => { if (chatPanelOpen) setUnreadCount(0); }, [chatPanelOpen]);
+  // CLICK-OUTSIDE CLOSES THE WIDGET (Dan, 2026-09-01): standard popover
+  // behavior. mousedown-based, so a drag/text-selection that STARTS inside
+  // the card and ends outside never closes it; the typed draft (`changes`)
+  // is state and survives close/reopen untouched.
+  useEffect(() => {
+    if (!chatPanelOpen) return undefined;
+    const onDown = (e) => {
+      if (e.target?.closest?.('[data-testid="chat-panel"],[data-testid="chat-pill"]')) return;
+      setChatPanel(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [chatPanelOpen]); // eslint-disable-line react-hooks/exhaustive-deps
   const setChatPanel = (on) => {
     setChatPanelOpen(on);
     try { localStorage.setItem('jarvis.chatPanelOpen', on ? '1' : '0'); } catch { /* private mode */ }
@@ -4905,7 +4964,7 @@ export function CreateStationPage({ embedded = false }) {
     purpose, genLevel, expectedSms, referenceText, controlsNotes, builtSnapshot, agreedNeeds: [...agreedNeeds], sheetAhead,
     // Corrections chat — persisted capped (last 40 turns) so the sheet's
     // conversation survives reopen without bloating localStorage.
-    chatThread: chatThread.slice(-40),
+    chatThread: chatThread.filter(t => !t.ack).slice(-40),
     ...(localCascade ? { cascadeLocal: localCascade } : {}),
     ...(smProposal ? { smProposal } : {}),
     ...(stationAccepted ? { stationAccepted } : {}),
@@ -5871,8 +5930,11 @@ export function CreateStationPage({ embedded = false }) {
         sequence: e.sequence,
         ...(e.handshakes?.length ? { handshakes: e.handshakes } : {}),
       }));
+    // ME-EXPLICIT stamp (Dan, 2026-09-01 clobber law): a pencil rename is an
+    // immutable fact from THIS moment — every engine pass must pass it
+    // through untouched (enforced structurally in propose_split).
     const split = base.map(x =>
-      normKey(x?.name ?? x?.programName) === entry.key ? { ...x, name: newName } : x);
+      normKey(x?.name ?? x?.programName) === entry.key ? { ...x, name: newName, nameByME: true } : x);
     store.updateStateMachine(linkedSmId, {
       machineSpec: {
         ...spec,
@@ -6316,8 +6378,17 @@ export function CreateStationPage({ embedded = false }) {
     // apply" was the changelog lie of 2026-08-25).
     const recompiling = !!data?.routing?.recompile;
     const diffableKeys = new Set(['sequence', 'failureHandling', 'interactions', 'devices']);
+    // Split re-proposals land on smProposal, NOT the summary — a claim about
+    // the state-machine split with a corroborating split diff/proposal is
+    // APPLIED, never "could not apply" (Dan's Magnet Dial step-1, 2026-09-01).
+    const splitApplied = (Array.isArray(data?.diffs) && data.diffs.some(x => /^split\./.test(String(x?.op ?? ''))))
+      || !!(data?.smProposal?.stateMachines?.length);
     for (const c of model) {
       if (diffSections.has(c.section)) continue;
+      if (splitApplied && /split|state machine|renamed?|propos/i.test(String(c.text))) {
+        items.push({ section: c.section, text: `${c.text} ✓ landed on the state-machine step` });
+        continue;
+      }
       if (recompiling && !diffableKeys.has(c.section)) {
         items.push({ section: c.section, text: `${c.text} → lands at the re-compile` });
       } else if (recompiling) {
@@ -6639,6 +6710,12 @@ export function CreateStationPage({ embedded = false }) {
     setChanges('');
     setApplying(true);
     setAgentState('thinking…');
+    agentTraceRef.current = [];
+    setAgentTraceLen(0);
+    // FIRST RESPONSE ≤2s (Dan, 2026-09-01: 165s of nothing is banned): an
+    // instant ack bubble lands NOW; the model's real reading replaces it.
+    setChatThread(t => [...t, { role: 'jarvis', reading: true, ack: true, at: Date.now(),
+      text: `On it — "${String(msg).trim().slice(0, 90)}${String(msg).trim().length > 90 ? '…' : ''}"` }]);
     try {
       const approvedMachineNames = linkedSmId
         ? (smApproval?.approved ? (proposalForTurn?.stateMachines ?? []).map(m => m.name) : [])
@@ -6681,7 +6758,18 @@ export function CreateStationPage({ embedded = false }) {
       // THE READING, LIVE (Dan, 2026-08-30): the model's one-sentence reading
       // of his request posts to the chat BEFORE the edits land — the
       // catch-the-misread-early moment.
-      readingText => setChatThread(t => [...t, { role: 'jarvis', text: readingText, reading: true, at: Date.now() }]));
+      readingText => setChatThread(t => {
+        const ri = t.map(x => !!x.ack).lastIndexOf(true);
+        if (ri >= 0) { const n = [...t]; n[ri] = { ...n[ri], text: readingText, ack: false }; return n; }
+        return [...t, { role: 'jarvis', text: readingText, reading: true, at: Date.now() }];
+      }),
+      // FULL WORKING TRANSCRIPT, live (Dan, 2026-08-31).
+      { onTrace: (t) => {
+        const a = agentTraceRef.current;
+        a.push(t);
+        if (a.length > 300) a.shift();
+        setAgentTraceLen(a.length);
+      } });
       // Land the applied draft — the server edited a working copy through
       // typed ops; the client stays the storage authority.
       if (d.draft) {
@@ -6761,6 +6849,15 @@ export function CreateStationPage({ embedded = false }) {
         role: 'jarvis',
         text: spoken || 'Done.',
         ...(receipt ? { items: [{ text: receipt }] } : {}),
+        // The working transcript rides the finished turn (collapsed in the
+        // thread) — capped so history stays light.
+        ...(agentTraceRef.current.length ? {
+          trace: agentTraceRef.current.slice(-80).map(t => ({
+            kind: t.kind, name: t.name, label: t.label, op: t.op,
+            text: t.text ? String(t.text).slice(0, 200) : undefined,
+            detail: String(t.detail ?? t.input ?? '').slice(0, 300) || undefined,
+          })),
+        } : {}),
         at: Date.now(),
       }]);
       for (const noteText of (d.notes ?? [])) {
@@ -6795,6 +6892,8 @@ export function CreateStationPage({ embedded = false }) {
     } finally {
       setApplying(false);
       setAgentState(null);
+      // The instant ack is scaffolding — the reply/receipt is the record.
+      setChatThread(t => t.filter(x => !x.ack));
     }
     return true;
   }
@@ -7133,7 +7232,9 @@ export function CreateStationPage({ embedded = false }) {
     if (!t) return;
     setSmProposal(p => (p ? {
       ...p,
-      stateMachines: p.stateMachines.map(m => (normKey(m.name) === entry.key ? { ...m, name: t } : m)),
+      // nameByME (Dan, 2026-09-01): pencil renames are immutable facts —
+      // propose_split pins them through every re-proposal/add.
+      stateMachines: p.stateMachines.map(m => (normKey(m.name) === entry.key ? { ...m, name: t, nameByME: true } : m)),
     } : p));
     writeCascade(c => ({ ...c, steps: { ...c.steps, smSplit: { approved: false } } }));
   }
@@ -8350,11 +8451,11 @@ export function CreateStationPage({ embedded = false }) {
         if (Object.keys(sd).length) setSeqDiff({ byKey: sd, at: Date.now() });
         const rd = computeProposalSeqDiff(oldMs, nextMs, 'faultRecovery');
         if (Object.keys(rd).length) setRecDiff({ byKey: rd, at: Date.now() });
-        setChatThread(th => [...th, {
-          role: 'jarvis',
-          text: 'Linked every sequence and recovery line to its real device — shorthand like "Z" and "X" now reads as the device itself (Vertical Slide, X Axis) and follows any rename automatically. The reworded lines are highlighted; ✓ got it clears them.',
-          at: Date.now(),
-        }]);
+        // CHAT = CONVERSATION ONLY (Dan, 2026-09-01: this receipt posted
+        // into his chat twice, unrelated to his messages). Background
+        // rule-compliance work reports via the CHANGE LOG + red marks —
+        // never the thread.
+        if (linkedSmId) appendChangeLog(linkedSmId, { what: 'Linked sequence/recovery lines to their real devices (shorthand like "Z"/"X" now names the device and follows renames)', class: 'reconcile' });
       }
       for (const u of unresolved.slice(0, 3)) {
         setJarvisCoverage(cov => {
@@ -8438,11 +8539,9 @@ export function CreateStationPage({ embedded = false }) {
         setDirty(true);
         const rd2 = computeProposalSeqDiff(oldMs2, nextMs2, 'faultRecovery');
         if (Object.keys(rd2).length) setRecDiff({ byKey: rd2, at: Date.now() });
-        setChatThread(th => [...th, {
-          role: 'jarvis',
-          text: 'Re-shaped the recoveries onto our shipped home pattern (the standard PNP init: retract the vertical motion, branch on the gripper — carrying finishes forward, empty returns) — same content, drawn as branches now, like the diagram. The changed panels are marked; ✓ got it clears them.',
-          at: Date.now(),
-        }]);
+        // CHAT = CONVERSATION ONLY (Dan, 2026-09-01): background reshapes
+        // report via the change log + marks, never the thread.
+        if (linkedSmId) appendChangeLog(linkedSmId, { what: 'Re-shaped recoveries onto the shipped home pattern (branch form) — content unchanged', class: 'reconcile' });
       }
     }
     const ownedKeys = new Set(smProposal.stateMachines.flatMap(m => m.ownedDeviceNames ?? []).map(devKey));
@@ -8489,11 +8588,8 @@ export function CreateStationPage({ embedded = false }) {
       for (const nm of Object.keys(next)) { if (isGone(nm)) delete next[nm]; }
       return next;
     });
-    setChatThread(th => [...th, {
-      role: 'jarvis',
-      text: `Cleaned up: ${gone.join(' and ')} — you asked me to drop ${gone.length === 1 ? 'it' : 'them'} and the proposal did, but the sheet row survived. It's out now and its open question is closed.`,
-      at: Date.now(),
-    }]);
+    // CHAT = CONVERSATION ONLY (Dan, 2026-09-01: this line once posted 7x).
+    if (linkedSmId) appendChangeLog(linkedSmId, { what: `Removed stale sheet row(s): ${gone.join(', ')} (already dropped from the proposal)`, class: 'reconcile' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, smProposal, draftKey]);
 
@@ -9484,6 +9580,22 @@ export function CreateStationPage({ embedded = false }) {
           )}
         </div>
       )}
+      {/* LIVE WORKING TRANSCRIPT (Dan, 2026-08-31: "here I see everything
+          that comes out") — every tool call, note, and diff as it happens,
+          pinned to the newest line. */}
+      {applying && agentTraceLen > 0 && (
+        <div
+          data-testid="live-trace"
+          ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }}
+          style={{
+            marginBottom: 6, maxHeight: 150, overflowY: 'auto',
+            border: `1px solid ${C.border}`, borderRadius: 6, padding: '4px 8px',
+            background: '#fbfcfe',
+          }}
+        >
+          {agentTraceRef.current.map((t, i) => <TraceLine key={i} t={t} />)}
+        </div>
+      )}
       <DictatedTextarea
         value={changes}
         onChange={setChanges}
@@ -9510,7 +9622,10 @@ export function CreateStationPage({ embedded = false }) {
                 {agentElapsed}s
               </span>
             ) : (
-              <ProgressRing pct={sumPct} size={44} subLabel="" />
+              // HONEST PROGRESS (Dan, 2026-09-01: rings sat frozen at 95%/0%):
+              // the ring always moves — elapsed vs a typical 90s call, capped
+              // at 95 until the result actually arrives.
+              <ProgressRing pct={Math.max(sumPct, Math.min(95, Math.round((agentElapsed / 90) * 100)))} size={44} subLabel="" />
             )}
           </div>
         )}

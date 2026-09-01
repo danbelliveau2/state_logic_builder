@@ -703,7 +703,8 @@ function executeTool(state, name, input) {
       // gate is a typed tool call — normalized machines, identity lock
       // enforced structurally, diffed like every other write.
       const machines = (Array.isArray(input?.stateMachines) ? input.stateMachines : [])
-        .map(normalizeMachine).filter((m) => m.name);
+        .map((raw) => ({ ...normalizeMachine(raw), ...(raw && raw.nameByME ? { nameByME: true } : {}) }))
+        .filter((m) => m.name);
       if (!machines.length) return { error: 'propose_split needs stateMachines: [{name, oneLiner, ownedDeviceNames, why, sequence, faultRecovery}]' };
       const approved = (state.cascadePosition?.approvedMachineNames ?? []).map(normKey).filter(Boolean);
       const prior = machinesOf(state);
@@ -717,6 +718,29 @@ function executeTool(state, name, input) {
           }
           hit.name = String(name); // exact prior spelling survives drift
         }
+      }
+      // ME-EXPLICIT OUTRANKS EVERYTHING (Dan, 2026-09-01 — the Magnet Dial
+      // clobber: he renamed machines by pencil, asked the chat to ADD one,
+      // and the add reverted his names). A machine whose name the engineer
+      // set (nameByME, stamped the moment he edits — not only after
+      // approval) is an IMMUTABLE FACT: it passes through every re-proposal
+      // untouched. An add ADDS; it never regenerates siblings' identities.
+      for (let pi = 0; pi < prior.length; pi++) {
+        const pm = prior[pi];
+        if (!pm?.nameByME || !pm.name) continue;
+        let hit = machines.find((m) => normKey(m.name) === normKey(pm.name));
+        if (!hit) {
+          // The model drifted the name — find the same machine by owned
+          // devices, then by position, and force the engineer's name back.
+          const devs = new Set((pm.ownedDeviceNames ?? pm.deviceNames ?? []).map(normKey).filter(Boolean));
+          hit = devs.size ? machines.find((m) => (m.ownedDeviceNames ?? []).some((n) => devs.has(normKey(n)))) : null;
+          if (!hit) hit = machines[pi];
+        }
+        if (!hit) {
+          return { error: `ME-EXPLICIT NAME: "${pm.name}" was named by the engineer — the proposal must keep that machine exactly (existing machines pass through untouched; an add only appends).` };
+        }
+        hit.name = String(pm.name);
+        hit.nameByME = true;
       }
       const before = prior.map((m) => m.name);
       state.draft.smProposal = { ...(state.draft.smProposal ?? {}), stateMachines: machines, reasoning: String(input?.reasoning ?? '').trim(), at: Date.now() };

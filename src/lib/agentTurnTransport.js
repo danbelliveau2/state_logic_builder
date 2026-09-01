@@ -126,6 +126,7 @@ export async function agentTurnRequest(payload, onState, onReading, opts = {}) {
         lastEvent = Date.now();
         if (event === 'state') onState?.(data.label);
         else if (event === 'reading') onReading?.(data.text); // his catch-the-misread-early moment
+        else if (event === 'trace') opts.onTrace?.(data); // full working transcript (Dan, 2026-08-31)
         else if (event === 'done') result = data;
         else if (event === 'error') { err = new Error(data.error || 'the turn failed'); err.serverReported = true; }
         // 'ping' just refreshes lastEvent

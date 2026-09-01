@@ -174,6 +174,17 @@ Mistakes made previously that must NOT be repeated:
 
 ---
 
+## 7b. STATION-BUILDER MODE (Claude Code as the authoring interface)
+
+Any Claude Code session in this repo can DRIVE the station sheet — same
+receipts, history, and live updates as the app. **Read
+[docs/station-builder-mode.md](docs/station-builder-mode.md) before touching
+a draft.** The mandate: always `GET /api/jarvis/sheet-draft` before editing;
+every edit through the typed API (never raw pokes at `projects/_sheet-drafts/`);
+every change receipted as a `chatThread` turn; engine turns
+(`POST /api/jarvis/agent-turn/stream`) for anything non-trivial; respect
+`deviceTombstones`.
+
 ## 8. DEVELOPMENT WORKFLOW
 
 ### Start Dev Server

@@ -832,9 +832,12 @@ function opRemoveTag(xml, prog, op, errors) {
   const name = String(op.name ?? '').trim();
   if (!name) { errors.push('removeTag needs name'); return xml; }
   if (REMOVE_REFUSE.test(name)) { errors.push('removeTag: "' + name + '" is core boilerplate  refused'); return xml; }
-  const tagRe = new RegExp('<Tag\\s+[^>]*Name="' + name + '"(?:[\\s\\S]*?</Tag>|[^>]*/>)\\s*', 'g');
-  if (!tagRe.test(xml)) { errors.push('removeTag: tag "' + name + '" not found'); return xml; }
-  xml = xml.replace(tagRe, '');
+  const probeRe = new RegExp('<Tag\\s+[^>]*Name="' + name + '"');
+  if (!probeRe.test(xml)) { errors.push('removeTag: tag "' + name + '" not found'); return xml; }
+  // Boundary-safe removal (2026-09-01): the old lazy alternation regex could
+  // swallow from a SELF-CLOSING <Tag .../> through to the NEXT </Tag>,
+  // deleting innocent neighbors. devicePrepass owns the safe scanner.
+  xml = require('./devicePrepass.js')._internals.removeTagBlocks(xml, name);
   // PURGE RULE (Jason's real-controller import, 2026-08-31): removing a tag
   // removes EVERY artifact of it — including any <ParameterConnection> whose
   // endpoint references it. A dangling connection cancels the whole Studio
