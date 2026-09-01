@@ -470,7 +470,20 @@ function buildGenerationPrompt(projectJson, smId, options = {}) {
        'your plan to the template; you never write XML. The template is the law — ' +
        'change only what the flowchart requires, keep every idiom and all boilerplate.'));
 
-  const concepts = loadConcepts();
+  // RELEVANCE-LOADED KNOWLEDGE (Dan, 2026-09-01): the build's prompt carries
+  // only the concept modules the STATION touches — device families on the
+  // sheet + terms in the job — plus the always-core grammar modules. Falls
+  // back to everything if the selector is unavailable.
+  let concepts;
+  try {
+    const { loadSelectedConcepts } = require('./conceptSelector.js');
+    const sel = loadSelectedConcepts({
+      deviceTypes: (ir.devices ?? []).map((d) => String(d.type ?? '')),
+      text: `${sm?.machineSpec?.sourceDescription ?? ''} ${sm?.displayName ?? sm?.name ?? ''} codegen rung routine`,
+      machineNames: (sm?.machineSpec?.smSplit ?? []).map((m) => String(m?.name ?? '')),
+    });
+    concepts = sel.text || loadConcepts();
+  } catch { concepts = loadConcepts(); }
 
   const stableText = [
     ...(concepts ? [

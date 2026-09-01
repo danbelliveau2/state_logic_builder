@@ -163,6 +163,12 @@ const DECOMPOSE_GATE_BLOCK = [
   '  Dictated feedback resolves against the REAL names.',
   '- After propose_split, your final message is ≤2 sentences: the reasoning spoken to the',
   '  engineer plus the guide line (what to approve next).',
+  '- STANDARD MACHINES (Dan): a machine matching a shipped SDC pattern (dial indexer,',
+  '  escapement, standard feeder — stamped standardPattern by the tool) is BUILT FROM',
+  '  SHIPPED WORK: its later steps ask ONLY the station-specific values (fixture count,',
+  '  sensors present, reject behavior) — never walk the ME through design he does not own.',
+  '  Dial internals (stack-present monitoring, consecutive-empty-fixture counting) live',
+  '  inside the dial machine per shipped work — never ask about them.',
 ].join('\n');
 
 function systemPromptFor(audience, gate = null) {

@@ -123,6 +123,17 @@ async function runReflexTurn({ draft, message, cascadePosition = null, audience 
   const { loadMeKnowledge } = require('./meKnowledge.js');
   let laws = '';
   try { laws = loadMeKnowledge(); } catch { /* optional */ }
+  // RELEVANCE-LOADED KNOWLEDGE (Dan, 2026-09-01): only the concept modules
+  // this turn touches ride — small, focused prompts.
+  let concepts = { modules: [], text: '' };
+  try {
+    const { loadSelectedConcepts } = require('./conceptSelector.js');
+    concepts = loadSelectedConcepts({
+      deviceTypes: (draft?.summary?.devices ?? []).map((d) => String(d.type ?? '')),
+      text: String(message),
+      machineNames: (draft?.smProposal?.stateMachines ?? []).map((m) => String(m.name ?? '')),
+    });
+  } catch { /* optional */ }
 
   const thread = (Array.isArray(draft?.chatThread) ? draft.chatThread : []).slice(-10)
     .map((t) => `${t.role === 'me' ? 'ENGINEER' : 'SDC ENGINEER'}: ${String(t.text ?? '').slice(0, 220)}`).join('\n');
@@ -132,8 +143,8 @@ async function runReflexTurn({ draft, message, cascadePosition = null, audience 
     max_tokens: MAX_TOKENS,
     system: [
       { type: 'text', text: CONTRACT },
-      // Stable, cacheable block: the standing laws.
-      { type: 'text', text: `# STANDING LAWS AND LESSONS\n${laws}`, cache_control: { type: 'ephemeral' } },
+      // Stable, cacheable block: the standing laws + the turn's modules.
+      { type: 'text', text: `# STANDING LAWS AND LESSONS\n${laws}${concepts.text ? `\n\n# CONCEPT MODULES (${concepts.modules.join(', ')})\n${concepts.text}` : ''}`, cache_control: { type: 'ephemeral' } },
     ],
     messages: [{
       role: 'user',

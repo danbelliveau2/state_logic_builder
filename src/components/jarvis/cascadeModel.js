@@ -344,18 +344,32 @@ export function deriveCascade(steps, { state = null, smApprovalApproved = false,
     const reconfirm = rec?.reconfirm === true && wasApproved;
     return { ...s, wasApproved, reconfirm, effApproved: wasApproved && !reconfirm };
   });
-  const activeIdx = annotated.findIndex((s) => !s.effApproved);
-  const out = annotated.map((s, i) => ({
+  // FREE-ORDER WALK + SKIP (Dan, 2026-09-01: kill the lockstep): a machine
+  // can be "skipped for now" — its steps go 'deferred' (visibly parked),
+  // excluded from the ready gate; the ready machines can build/accept.
+  // Deferral is per-machine: state.deferredMachines = [smKey, ...].
+  const deferredKeys = new Set((state?.deferredMachines ?? []).map(String));
+  const withDefer = annotated.map((s) => ({
+    ...s,
+    deferred: !s.effApproved && s.smKey != null && deferredKeys.has(String(s.smKey)),
+  }));
+  const activeIdx = withDefer.findIndex((s) => !s.effApproved && !s.deferred);
+  const out = withDefer.map((s, i) => ({
     ...s,
     status: s.effApproved ? 'approved'
-      : i === activeIdx ? 'active'
-        : s.reconfirm ? 'reconfirm'
-          : 'pending',
+      : s.deferred ? 'deferred'
+        : i === activeIdx ? 'active'
+          : s.reconfirm ? 'reconfirm'
+            : 'pending',
   }));
+  const deferredMachines = [...new Set(out.filter((s) => s.status === 'deferred').map((s) => s.smName).filter(Boolean))];
   return {
     steps: out,
     activeStep: activeIdx === -1 ? null : out[activeIdx],
     approvedCount: out.filter((s) => s.status === 'approved').length,
-    allApproved: out.length > 0 && activeIdx === -1,
+    // The gate: every non-deferred step agreed (and something real approved).
+    allApproved: out.length > 0 && activeIdx === -1
+      && out.some((s) => s.status === 'approved'),
+    deferredMachines,
   };
 }

@@ -3906,12 +3906,19 @@ const STEP_INFO_NEEDED = {
 
 /** THE STEP-BY-STEP GUIDE (side, sticky): how this is going to go and, per
  *  step, what information SDC Engineer needs to continue. Replaces the rail. */
-function CascadeGuide({ steps, hasExplanation, allApproved, onJump, onExpandAll = null, onCollapseAll = null }) {
+function CascadeGuide({ steps, hasExplanation, allApproved, onJump, onExpandAll = null, onCollapseAll = null, onSkipMachine = null, deferredMachines = [] }) {
   if (!steps?.length) return null;
   const tone = {
     approved: '#2f6b3c', active: 'var(--color-primary)', reconfirm: '#92400e', pending: C.light,
+    deferred: '#8a6d1a',
   };
-  const mark = { approved: '✓', active: '●', reconfirm: '⟳', pending: '○' };
+  const mark = { approved: '✓', active: '●', reconfirm: '⟳', pending: '○', deferred: '⏸' };
+  // FREE-ORDER WALK (Dan, 2026-09-01): every machine's steps are workable in
+  // any order; per-machine "skip" parks it (deferred) out of the ready gate.
+  const firstStepOfMachine = new Map();
+  for (const s of steps) {
+    if (s.smKey != null && !firstStepOfMachine.has(s.smKey)) firstStepOfMachine.set(s.smKey, s.key);
+  }
   const row = (key, icon, color, label, info, { bold = false, clickable = null, testId } = {}) => (
     <div
       key={key}
@@ -3946,15 +3953,32 @@ function CascadeGuide({ steps, hasExplanation, allApproved, onJump, onExpandAll 
       {row('explain', hasExplanation ? '✓' : '●', hasExplanation ? tone.approved : tone.active,
         'You explain the station', 'pictures + your words — devices, sequence, recovery, challenges',
         { bold: !hasExplanation })}
-      {steps.map(s => row(s.key, mark[s.status], tone[s.status],
-        s.label, STEP_INFO_NEEDED[s.kind] ?? '',
-        {
-          bold: s.status === 'active',
-          clickable: s.status === 'pending' ? null : () => onJump?.(s),
-          testId: `cascade-guide-${s.key}`,
-        }))}
+      {steps.map(s => (
+        <div key={s.key} style={{ position: 'relative' }}>
+          {row(s.key, mark[s.status], tone[s.status],
+            s.label, STEP_INFO_NEEDED[s.kind] ?? '',
+            {
+              // FREE ORDER: every step is clickable/workable, any order.
+              bold: s.status === 'active',
+              clickable: () => onJump?.(s),
+              testId: `cascade-guide-${s.key}`,
+            })}
+          {onSkipMachine && s.smKey != null && firstStepOfMachine.get(s.smKey) === s.key && s.kind !== 'smSplit' && (
+            <button
+              type="button"
+              data-testid={`cascade-skip-${s.smKey}`}
+              onClick={(e) => { e.stopPropagation(); onSkipMachine(s.smKey, s.smName); }}
+              title={deferredMachines.includes(s.smName) ? 'Resume this machine' : 'Park this machine — work the others; it stays visibly deferred'}
+              style={{ position: 'absolute', right: 0, top: 3, background: 'none', border: 'none', cursor: 'pointer', fontSize: 9.5, fontWeight: 700, color: '#8a6d1a', padding: 0 }}
+            >{deferredMachines.includes(s.smName) ? 'resume' : 'skip'}</button>
+          )}
+        </div>
+      ))}
       {row('generate', allApproved ? '●' : '○', allApproved ? tone.active : tone.pending,
-        'Accept or build', allApproved ? 'accept the station, or build its code now' : 'unlocks when every step is agreed',
+        'Accept or build',
+        allApproved
+          ? (deferredMachines.length ? `ready machines build now — ${deferredMachines.join(' + ')} deferred` : 'accept the station, or build its code now')
+          : (deferredMachines.length ? `agree the non-deferred steps (${deferredMachines.join(' + ')} parked)` : 'unlocks when every step is agreed'),
         { bold: allApproved })}
     </div>
     {/* SHEET FOLD CONTROLS (Dan, 2026-08-31): their own block BELOW the
@@ -10781,6 +10805,17 @@ export function CreateStationPage({ embedded = false }) {
                                     <span style={{ fontSize: 11, fontWeight: 800, color: C.primary, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                                       {sg.sm ? sg.sm.name : 'Unassigned'}
                                     </span>
+                                    {/* STANDARD SDC MACHINE (Dan, 2026-09-01:
+                                        "the dial index is standard") — built
+                                        from shipped work; its steps ask only
+                                        station-specific values. */}
+                                    {sg.sm?.standardPattern && (
+                                      <span
+                                        data-testid={`standard-machine-badge-${nk(sg.sm.name)}`}
+                                        title={`Built from shipped SDC ${sg.sm.standardPattern.label} work — you'll only be asked: ${(sg.sm.standardPattern.asks ?? []).join('; ')}`}
+                                        style={{ fontSize: 9, fontWeight: 800, color: '#2f6b3c', background: '#eef7ee', border: '1px solid #b7d9b0', borderRadius: 4, padding: '1px 6px', letterSpacing: '0.03em' }}
+                                      >STANDARD SDC MACHINE — built from shipped work</span>
+                                    )}
                                   </div>
                                 ) : null;
                                 const cards = groupSheetDeviceRows(sg.devices).map(g => (
@@ -11801,6 +11836,18 @@ export function CreateStationPage({ embedded = false }) {
                     onJump={jumpToCascadeStep}
                     onExpandAll={() => setAllSectionsCollapsed(false)}
                     onCollapseAll={() => setAllSectionsCollapsed(true)}
+                    deferredMachines={cascade.deferredMachines ?? []}
+                    onSkipMachine={(smKey, smName) => {
+                      // SKIP FOR NOW (Dan, 2026-09-01): toggle the machine's
+                      // deferral; mirrored into machineSpec so partial builds
+                      // exclude it (multiProgram reads deferredMachines).
+                      writeCascade(c => {
+                        const cur = (c.deferredMachines ?? []).map(String);
+                        const on = cur.includes(String(smKey));
+                        return { ...c, deferredMachines: on ? cur.filter(k => k !== String(smKey)) : [...cur, String(smKey)] };
+                      });
+                      if (linkedSmId) appendChangeLog(linkedSmId, { what: `${smName}: ${cascade.deferredMachines?.includes(smName) ? 'resumed' : 'skipped for now (deferred — excluded from the ready gate)'}`, class: 'walk' });
+                    }}
                   />
                 </div>
               )}

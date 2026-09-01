@@ -282,9 +282,31 @@ function mergePrograms(baseXml, otherXml, otherProgramName) {
 async function generateStationPrograms(projectJson, smId, options = {}) {
   const gen = require('./client.js');
   const sm = (projectJson.stateMachines ?? []).find((s) => s.id === smId);
-  const split = sm?.machineSpec?.smSplit;
+  let split = sm?.machineSpec?.smSplit;
+  // PARTIAL BUILDS (Dan, 2026-09-01 free-order walk): machines the engineer
+  // parked ("skip for now") are excluded — the ready machines build now; the
+  // cover note names what was deferred. Per-machine programs make this natural.
+  const deferredKeys = new Set((sm?.machineSpec?.cascadeState?.deferredMachines ?? []).map((k) => nk(k)));
+  let deferredNames = [];
+  if (Array.isArray(split) && deferredKeys.size) {
+    deferredNames = split.filter((m) => deferredKeys.has(nk(m?.name))).map((m) => m.name);
+    split = split.filter((m) => !deferredKeys.has(nk(m?.name)));
+  }
   if (!Array.isArray(split) || split.length < 2) {
-    return gen.generateL5X(projectJson, smId, options); // single machine — the normal path
+    const r = await (Array.isArray(split) && split.length === 1
+      ? (async () => {
+        // One ready machine — build it alone through the same virtual-SM path.
+        const pairsAll = handshakePairsOf(sm.machineSpec.smSplit);
+        const devs = devicesForMachine(split[0], sm.devices ?? []);
+        const vsm = compileMachineSm(split[0], devs, { stationNumber: sm.stationNumber ?? 1 });
+        vsm.machineSpec = { version: 1, smSplit: [split[0]], handshakeInterface: pairsAll, sourceDescription: sm.machineSpec?.sourceDescription ?? '' };
+        return gen.generateL5X({ ...projectJson, stateMachines: [vsm] }, vsm.id, options);
+      })()
+      : gen.generateL5X(projectJson, smId, options)); // single machine — the normal path
+    if (deferredNames.length && r?.writingNotes) {
+      r.writingNotes.push({ text: `Partial build: ${deferredNames.join(', ')} deferred by the engineer — not in this file.` });
+    }
+    return r;
   }
   const onProgress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
   const pairs = handshakePairsOf(split);
@@ -407,6 +429,7 @@ async function generateStationPrograms(projectJson, smId, options = {}) {
     } : null,
     writingNotes: [
       { text: `Multi-program emission: ${split.length} programs (${programs.map((p) => p.programName).join(', ')}), ${pairs.length} handshake signals wired (${pairs.map((p) => p.tag).join(', ')}).` },
+      ...(deferredNames.length ? [{ text: `Partial build: ${deferredNames.join(', ')} deferred by the engineer — not in this file.` }] : []),
     ],
     reviewNotes: [],
     ir: last?.ir ?? null,

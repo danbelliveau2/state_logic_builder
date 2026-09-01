@@ -2747,10 +2747,59 @@ function HowJarvisWorksTab({ onSeeKnowledge }) {
 
 // ── Page shell ───────────────────────────────────────────────────────────────
 
+
+/** THE SKILLS VIEW (Dan, 2026-09-01): one row per knowledge module — what it
+ *  is, what's inside, size, updated, what TRIGGERS it, who taught it.
+ *  Loading stays automatic-by-relevance; this page is the window into it.
+ *  Gaps are curated in chat ("we need a tray-handler skill") — the librarian
+ *  grows the modules per family. */
+function SkillsTab({ skills }) {
+  if (skills == null) return <div style={{ color: C.light, fontSize: 13 }}>Loading…</div>;
+  if (!skills.length) return <div style={{ color: C.light, fontSize: 13 }}>No knowledge modules found.</div>;
+  return (
+    <div data-testid="skills-tab">
+      <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.5, marginBottom: 10 }}>
+        Each build and chat turn loads ONLY the skills it touches (device families on the
+        sheet + terms in the message) — plus the core grammar, always. See a gap
+        ("we need a tray-handler skill")? Say it in the station chat — the librarian
+        grows these per family.
+      </div>
+      {skills.map(sk => (
+        <details key={sk.module} data-testid={`skill-${sk.module}`} style={{ border: `1px solid ${C.border}`, borderRadius: 8, background: '#fff', padding: '8px 12px', marginBottom: 8 }}>
+          <summary style={{ cursor: 'pointer', display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, fontWeight: 800, color: C.text }}>{sk.title}</span>
+            {sk.core && <span style={{ fontSize: 9.5, fontWeight: 800, color: '#1d4ed8', background: '#e8f0fa', border: '1px solid #a8c8e8', borderRadius: 4, padding: '1px 6px' }}>CORE — always loaded</span>}
+            <span style={{ flex: 1 }} />
+            <span style={{ fontSize: 10.5, color: C.light }}>{sk.sections} section{sk.sections === 1 ? '' : 's'} · {(sk.bytes / 1024).toFixed(1)} KB · updated {fmtET(sk.updatedAt)}</span>
+          </summary>
+          <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.55, color: C.text }}>
+            <div style={{ color: C.muted }}>{sk.scope}</div>
+            <div style={{ marginTop: 5, fontSize: 11 }}>
+              <b>Loads when:</b> {sk.triggers.join(' · ')}
+            </div>
+            {sk.attributions.length > 0 && (
+              <div style={{ marginTop: 3, fontSize: 11, color: C.muted }}>
+                <b>Taught by:</b> {sk.attributions.join(', ')}
+              </div>
+            )}
+            <div style={{ marginTop: 5, fontSize: 11, color: C.light }}>
+              Full content: What SDC Engineer knows → concept "{sk.module}" (editable there).
+            </div>
+          </div>
+        </details>
+      ))}
+    </div>
+  );
+}
+
+
 const TABS = [
   { id: 'generations', label: 'Generated code' },
   { id: 'questions', label: 'Questions for Controls' },
   { id: 'knowledge', label: 'What SDC Engineer knows' },
+  // SKILLS (Dan, 2026-09-01): "say what skills you have, what information
+  // goes into them, and we decide if you should have more or less."
+  { id: 'skills', label: 'Skills' },
   { id: 'how', label: 'How SDC Engineer works' },
   // APP FLOW (Dan, 2026-08-28): the layers of how the pipeline is actually
   // constructed — so he can see the thinking/checking/loading and improve it.
@@ -2763,6 +2812,7 @@ export function JarvisPage({ onClose, focusSmName = null }) {
   const [tab, setTab] = useState('generations');
   const [questions, setQuestions] = useState(null);
   const [knowledge, setKnowledge] = useState(null);
+  const [skills, setSkills] = useState(null); // Skills view (Dan, 2026-09-01)
   const [track, setTrack] = useState(null);
   const [gens, setGens] = useState(null);
   const [active, setActive] = useState([]); // live in-flight work (GET /api/jarvis/active)
@@ -2775,6 +2825,7 @@ export function JarvisPage({ onClose, focusSmName = null }) {
   // question's learned line shows up immediately.
   useEffect(() => {
     if (tab === 'knowledge') getJson('/api/jarvis/knowledge').then(setKnowledge).catch(e => setLoadError(e.message));
+    if (tab === 'skills') getJson('/api/jarvis/skills').then(d => setSkills(d.skills ?? [])).catch(e => setLoadError(e.message));
     if (tab === 'generations' && !track) getJson('/api/jarvis/trackrecord').then(setTrack).catch(e => setLoadError(e.message));
     // The grid refreshes every time the tab is entered so a just-scored or
     // just-corrected build shows immediately.
@@ -2916,6 +2967,7 @@ export function JarvisPage({ onClose, focusSmName = null }) {
               />
             </>
           )}
+          {tab === 'skills' && <SkillsTab skills={skills} />}
           {tab === 'how' && (
             <HowJarvisWorksTab onSeeKnowledge={() => setTab('knowledge')} />
           )}

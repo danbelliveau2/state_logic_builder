@@ -742,6 +742,17 @@ function executeTool(state, name, input) {
         hit.name = String(pm.name);
         hit.nameByME = true;
       }
+      // STANDARD MACHINES FROM PRECEDENT (Dan, 2026-09-01: "the dial index
+      // is standard" — an ME doesn't design it). Deterministic archetype
+      // detection stamps the pattern; the walk then asks ONLY the
+      // station-specific values and the card badges "standard SDC machine".
+      try {
+        const { detectStandardPattern } = require('./standardMachines.js');
+        for (const m of machines) {
+          const p = m.standardPattern ?? detectStandardPattern(m);
+          if (p) m.standardPattern = p;
+        }
+      } catch { /* optional */ }
       const before = prior.map((m) => m.name);
       state.draft.smProposal = { ...(state.draft.smProposal ?? {}), stateMachines: machines, reasoning: String(input?.reasoning ?? '').trim(), at: Date.now() };
       return pushDiff(state, {
