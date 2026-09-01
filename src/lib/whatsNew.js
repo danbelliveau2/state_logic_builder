@@ -21,7 +21,7 @@ export const SHIPPED = [
     date: '2026-09-01',
     items: [
       'CLICK ANY MACHINE, ANY TIME — the walk is free-order for real now: selecting an unstarted machine fills in ITS devices and sequence on demand (progress card while it builds, never a blank page); machines fill independently, no approvals or skips needed to look around. "Skip" remains only as "leave this machine out of the build"',
-      'THE HOMEPAGE SHOWS ONLY THIS PROJECT — drafts are stamped to their project; strays re-file to their own project's page, old orphaned test drafts park out of sight (never deleted). Gate invariant added',
+      'THE HOMEPAGE SHOWS ONLY THIS PROJECT — drafts are stamped to their project; strays re-file to their own project page, old orphaned test drafts park out of sight (never deleted). Gate invariant added',
       'Chat answers in about a second for simple asks (renames, value sets, "already done?" checks) — structural work still gets the full engine with the transcript streaming',
       'Skills tab on the SDC Engineer page: every knowledge module, what loads it, who taught it. Standard SDC machines (dial indexer, escapement, feeder) badge on the sheet and only ask station-specific values',
     ],
