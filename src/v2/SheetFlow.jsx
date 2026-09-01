@@ -43,13 +43,21 @@ import {
 } from '@xyflow/react';
 
 const NODE_W = 240;
-const EST_H = 78;      // single-action node estimate (restack refines by fit)
-const DEC_H = 52;      // decision pill estimate
-const CAP_H = 34;      // plain-word branch-end cap estimate
+// UNIFORM NODES (Dan round 2, 2026-09-01): every node in every flow renders
+// the SAME size — fixed height, one-row auto-fit text, no wrapping.
+const EST_H = 64;      // FIXED state-node height (uniform everywhere)
+const DEC_H = 52;      // decision pill height (uniform)
+const CAP_H = 34;      // plain-word branch-end cap height
 const GAP_Y = 46;      // vertical gap carrying the edge + label
 const LANE_X = 300;    // side-branch lane offset (recovery Y / nested shape)
 const COL_X = 330;     // lane column pitch (Dan approved drawing, 2026-09-01)
 const LANE_VGAP = 40;  // vertical air between stacked lanes in one column
+const RAIL_X = 60;     // v1 loop rail offset past the diagram bounds (LOOP_BASE)
+
+// ONE-ROW AUTO-FIT (Dan round 2: "shrink the title font", never wrap):
+// font size from text length against a pixel budget, floored sanely.
+const fitFont = (text, max, min, budgetPx) =>
+  Math.max(min, Math.min(max, Math.floor(budgetPx / (0.62 * Math.max(1, String(text ?? '').length)))));
 
 // v1 mechanical palette (mirror of StateNode's private map).
 const VERB_COLORS = {
@@ -59,11 +67,8 @@ const VERB_COLORS = {
 };
 const verbColor = (v) => VERB_COLORS[String(v ?? '').toLowerCase()] ?? '#9ca3af';
 
-// Per-node height estimate: wrapped titles/details add a row each (WRAP,
-// DON'T ELLIPSIZE — Dan, 2026-09-01). Layout steps by this, render measures.
-const stepH = (it) => EST_H
-  + (String(it?.title ?? '').length > 30 ? 16 : 0)
-  + ((String(it?.device ?? '').length + String(it?.detail ?? '').length) > 34 ? 14 : 0);
+// UNIFORM height (Dan round 2) — every state node steps by the same pitch.
+const stepH = () => EST_H;
 
 function SFHandles() {
   return (
@@ -84,31 +89,48 @@ function SFStateNode({ data }) {
   // TEAL IO NODES (Dan's reference drawing, 2026-09-01): Waits and Signals
   // on the lane grid are real nodes, tinted teal to read as coordination.
   const io = data.kind === 'io';
+  // UNIFORM NODES, ONE-ROW TEXT (Dan round 2): every node identical size;
+  // long titles SHRINK their font to fit one row — never wrap, never lose
+  // the meaning to an ellipsis at a readable zoom.
+  const titleFont = fitFont(data.title, 13, 8.5, 196);
+  const bodyText = `${data.device ?? ''}${data.detail ? `  ${data.detail}` : ''}`;
+  const bodyFont = fitFont(bodyText, 11.5, 8, 180);
   return (
-    <div className="state-node" style={{ width: NODE_W, cursor: 'default', ...(io ? { borderColor: '#0e7490', background: '#f0fbfc' } : {}) }}>
+    <div
+      className="state-node"
+      style={{
+        width: NODE_W, height: EST_H, boxSizing: 'border-box', cursor: 'default', overflow: 'hidden',
+        display: 'flex', flexDirection: 'column', justifyContent: 'center',
+        ...(io ? { borderColor: '#0e7490', background: '#f0fbfc' } : {}),
+      }}
+    >
       <SFHandles />
-      <div className="state-node__step-num" style={{ background: io ? '#0e7490' : data.lane === 'recovery' ? '#b45309' : 'var(--color-primary)' }}>
+      {/* BADGE INSIDE THE CORNER (Dan, 2026-09-01: the v1 -6/-6 straddle got
+          clipped by this node's overflow:hidden and showed as a half badge
+          hanging off the top-left). On the sheet flows the badge sits fully
+          inside, as a corner tab — sequence and initialization identical. */}
+      <div className="state-node__step-num" style={{ top: 0, left: 0, borderRadius: '6px 0 9px 0', background: io ? '#0e7490' : data.lane === 'recovery' ? '#b45309' : 'var(--color-primary)' }}>
         {data.n}
       </div>
-      <div className="state-node__header">
-        {/* WRAP, DON'T ELLIPSIZE (Dan, 2026-09-01: "Retract Vertical Shuttle
-            and Top …" lost its meaning) — titles wrap to two lines max. */}
-        <span className="state-node__title" style={{ whiteSpace: 'normal', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', lineHeight: 1.25 }} title={data.title}>
+      <div className="state-node__header" style={{ padding: '2px 10px 0 30px' }}>
+        <span className="state-node__title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', display: 'block', fontSize: titleFont, lineHeight: 1.3 }} title={data.title}>
           {data.title}
         </span>
       </div>
-      {(data.device || data.detail) && (
-        <div className="state-node__body">
-          <div className="action-row" style={{ '--device-color': verbColor(data.verb), whiteSpace: 'normal', overflow: 'hidden', display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap', gap: 4 }} title={`${data.verb} ${data.device}${data.detail ? ` — ${data.detail}` : ''}`}>
+      {(data.device || data.detail) ? (
+        <div className="state-node__body" style={{ padding: '1px 10px 2px 12px' }}>
+          <div className="action-row" style={{ '--device-color': verbColor(data.verb), whiteSpace: 'nowrap', overflow: 'hidden', display: 'flex', alignItems: 'center', gap: 4, fontSize: bodyFont }} title={`${data.verb} ${data.device}${data.detail ? ` — ${data.detail}` : ''}`}>
             {data.devType ? (
-              <span style={{ display: 'inline-flex', flexShrink: 0, color: DEVICE_ICON_COLORS[data.devType] ?? '#64748b', marginTop: 1 }} title={data.devType}>
-                <DeviceIcon type={data.devType} size={13} color={DEVICE_ICON_COLORS[data.devType] ?? '#64748b'} />
+              <span style={{ display: 'inline-flex', flexShrink: 0, color: DEVICE_ICON_COLORS[data.devType] ?? '#64748b' }} title={data.devType}>
+                <DeviceIcon type={data.devType} size={12} color={DEVICE_ICON_COLORS[data.devType] ?? '#64748b'} />
               </span>
             ) : null}
-            {data.device ? <span className="action-device">{data.device}</span> : null}
-            {data.detail ? <span style={{ overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', fontSize: 11 }}>{data.detail}</span> : null}
+            {data.device ? <span className="action-device" style={{ fontSize: bodyFont }}>{data.device}</span> : null}
+            {data.detail ? <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', fontSize: Math.max(8, bodyFont - 0.5) }}>{data.detail}</span> : null}
           </div>
         </div>
+      ) : (
+        <div style={{ height: 14 }} />
       )}
     </div>
   );
@@ -120,16 +142,17 @@ function SFDecisionNode({ data }) {
     <div
       className="decision-node"
       style={{
-        width: NODE_W, boxSizing: 'border-box', cursor: 'default',
+        width: NODE_W, height: DEC_H, boxSizing: 'border-box', cursor: 'default',
         border: '2.5px solid #7c3aed', borderRadius: 999, background: '#fff',
-        padding: '8px 18px', textAlign: 'center',
+        padding: '5px 18px', textAlign: 'center', overflow: 'hidden',
+        display: 'flex', flexDirection: 'column', justifyContent: 'center',
         boxShadow: 'var(--shadow, 0 1px 4px rgba(0,0,0,0.12))',
       }}
       title={data.detail ? `${data.title} — ${data.detail}` : data.title}
     >
       <SFHandles />
       <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', color: '#7c3aed' }}>Decide</div>
-      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text, #1a2733)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <div style={{ fontSize: fitFont(data.title, 12.5, 8.5, 170), fontWeight: 700, color: 'var(--color-text, #1a2733)', whiteSpace: 'nowrap', overflow: 'hidden' }}>
         {data.title}
       </div>
     </div>
@@ -153,17 +176,60 @@ function SFFaultNode() {
  *  shuttle out again", "back to new stack setup" — the loop point is the
  *  LABEL, never a letter and never a long routed return line. */
 function SFLoopCap({ data }) {
+  // Cap sits CENTERED under its lane's last element (Dan round 2) — the
+  // wrapper is node-width so the top handle lands on the lane's spine and
+  // the entry edge runs straight down.
   return (
-    <div style={{
-      maxWidth: NODE_W - 20, display: 'inline-flex', alignItems: 'center', gap: 6,
-      border: '1.5px dashed var(--color-border, #b8c4d0)', borderRadius: 999,
-      background: 'var(--color-bg, #f6f8fa)', color: 'var(--color-text-muted, #5a6a7e)',
-      fontWeight: 700, fontSize: 11.5, padding: '5px 12px', whiteSpace: 'nowrap',
-    }} title={data.label}>
+    <div style={{ width: NODE_W, height: CAP_H, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
       <SFHandles />
-      <span aria-hidden="true">↺</span>
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{data.label}</span>
+      <div style={{
+        maxWidth: NODE_W - 12, display: 'inline-flex', alignItems: 'center', gap: 6,
+        border: '1.5px dashed var(--color-border, #b8c4d0)', borderRadius: 999,
+        background: 'var(--color-bg, #f6f8fa)', color: 'var(--color-text-muted, #5a6a7e)',
+        fontWeight: 700, fontSize: fitFont(data.label, 11.5, 8.5, 176), padding: '5px 12px', whiteSpace: 'nowrap',
+      }} title={data.label}>
+        <span aria-hidden="true">↺</span>
+        <span style={{ overflow: 'hidden' }}>{data.label}</span>
+      </div>
     </div>
+  );
+}
+
+/** V1 LOOP U-ROUTE (Dan round 2: "look at how we handled retries in v1 —
+ *  that worked and was thought out"): the next-cycle return draws the v1
+ *  backward shape — drop out of the source's bottom, run the OUTER RAIL
+ *  past the diagram's left bound (LOOP_BASE), re-enter the target's top
+ *  BETWEEN two nodes — with the plain-words label on the outer segment.
+ *  Perpendicular stubs at both ends, bends in the middle (edge law). */
+function SFLoopEdge({ id, sourceX, sourceY, targetX, targetY, data, style, markerEnd }) {
+  const rail = data?.railX ?? (Math.min(sourceX, targetX) - NODE_W / 2 - RAIL_X);
+  const drop = 22;
+  const path = [
+    `M ${sourceX} ${sourceY}`,
+    `L ${sourceX} ${sourceY + drop}`,
+    `L ${rail} ${sourceY + drop}`,
+    `L ${rail} ${targetY - drop}`,
+    `L ${targetX} ${targetY - drop}`,
+    `L ${targetX} ${targetY}`,
+  ].join(' ');
+  return (
+    <>
+      <BaseEdge id={id} path={path} style={style} markerEnd={markerEnd} />
+      {data?.text ? (
+        <EdgeLabelRenderer>
+          <div
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${rail}px, ${(sourceY + targetY) / 2}px)`,
+              background: '#fff', border: '1px solid var(--color-border, #d5dbe3)', borderRadius: 5,
+              padding: '1px 7px', fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-muted, #5a6a7e)',
+              whiteSpace: 'nowrap', pointerEvents: 'none',
+            }}
+            title={data.text}
+          >↺ {data.text}</div>
+        </EdgeLabelRenderer>
+      ) : null}
+    </>
   );
 }
 
@@ -223,7 +289,7 @@ function SFEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, target
 }
 
 const nodeTypes = { sfState: SFStateNode, sfDecision: SFDecisionNode, sfFault: SFFaultNode, sfLoopCap: SFLoopCap };
-const edgeTypes = { sfEdge: SFEdge };
+const edgeTypes = { sfEdge: SFEdge, sfLoopEdge: SFLoopEdge };
 
 /** model: buildFlowModel output — items: [{line, verb, device, detail,
  *  cond?, tag?} | {decide: {title, detail, cond, tag}} | {loopEnd: {label,
@@ -277,7 +343,7 @@ function deriveGraph(model, mode, lane) {
     if (it.loopEnd) {
       const cid = nid();
       nodes.push({
-        id: cid, type: 'sfLoopCap', position: { x: mainX + 20, y }, draggable: false, connectable: false, selectable: false,
+        id: cid, type: 'sfLoopCap', position: { x: mainX, y }, draggable: false, connectable: false, selectable: false,
         data: { label: it.loopEnd.label },
       });
       if (prev) edge(prev, cid, { text: it.loopEnd.cond, tag: it.loopEnd.tag });
@@ -453,9 +519,13 @@ function deriveLaneGraph(model, lane) {
     const tt = String(mainLoop.label ?? '').match(/back to\s+(?:the\s+)?(.+)$/i)?.[1]?.trim().toLowerCase();
     const tgt = (tt && mainSteps.find((n) => n.title.toLowerCase().includes(tt) || tt.includes(n.title.toLowerCase()))) ?? mainSteps[0];
     if (tgt && tgt.id !== mainLoop.from) {
-      edge(mainLoop.from, tgt.id, {
-        sh: 'out-left', th: 'in-left', dotted: true,
-        text: [mainLoop.cond, mainLoop.label].filter(Boolean).join(' · '),
+      // The v1 U-route: bottom drop → outer left rail → top re-entry.
+      edges.push({
+        id: `loop-${mainLoop.from}-${tgt.id}`, source: mainLoop.from, target: tgt.id,
+        sourceHandle: 'out-bottom', targetHandle: 'in-top', type: 'sfLoopEdge',
+        style: { stroke: 'var(--color-border, #b8c4d0)', strokeWidth: 1.8 },
+        markerEnd: 'url(#sf-arrow)',
+        data: { text: [mainLoop.cond, mainLoop.label].filter(Boolean).join(' · '), railX: -RAIL_X },
       });
     }
   }
@@ -515,7 +585,7 @@ function deriveLaneGraph(model, lane) {
     if (loopEnd) {
       const cid = nid();
       nodes.push({
-        id: cid, type: 'sfLoopCap', position: { x: x + 20, y: ly }, draggable: false, connectable: false, selectable: false,
+        id: cid, type: 'sfLoopCap', position: { x, y: ly }, draggable: false, connectable: false, selectable: false,
         data: { label: loopEnd.label },
       });
       if (bprev) edge(bprev, cid, { text: loopEnd.cond, tag: loopEnd.tag });
@@ -527,18 +597,28 @@ function deriveLaneGraph(model, lane) {
   return { nodes, edges };
 }
 
-/** Natural (zoom-1) bounds of the derived graph, from the layout estimates. */
+/** Natural (zoom-1) bounds of the derived graph, from the layout estimates.
+ *  minX-aware (recovery Y branches run LEFT of the spine) and rail-aware
+ *  (the v1 loop U-route runs past the left bound) — NOTHING MAY CLIP
+ *  (Dan round 2: the init flow's right node was cut at the card edge). */
 function graphBounds(graph) {
   let maxX = 0; let maxY = 0; let minX = 0;
   for (const n of graph.nodes) {
-    const w = n.type === 'sfFault' ? 120 : n.type === 'sfLoopCap' ? 240 : NODE_W;
-    const h = n.type === 'sfDecision' ? DEC_H : n.type === 'sfLoopCap' ? CAP_H : (n.data?.estH ?? EST_H);
+    const w = n.type === 'sfFault' ? 120 : NODE_W;
+    const h = n.type === 'sfDecision' ? DEC_H : n.type === 'sfLoopCap' ? CAP_H : EST_H;
     maxX = Math.max(maxX, n.position.x + w);
     maxY = Math.max(maxY, n.position.y + h);
     minX = Math.min(minX, n.position.x);
   }
-  // Left corridor (the drawn loop return) + label air on the right.
-  return { w: Math.max(320, maxX - minX + 170), h: Math.max(140, maxY + 30) };
+  const hasRail = graph.edges.some((e) => e.type === 'sfLoopEdge');
+  // The rail sits RAIL_X past the left bound; the label extends further.
+  const padL = hasRail ? RAIL_X + 130 : 28;
+  const padR = 28;
+  return {
+    minX, padL, padR,
+    w: Math.max(320, (maxX - minX) + padL + padR),
+    h: Math.max(140, maxY + 34),
+  };
 }
 
 function SFInner({ model, mode, lane, storageKey }) {
@@ -599,11 +679,13 @@ function SFInner({ model, mode, lane, storageKey }) {
   // hidden/background panes — the "no zoom" bug).
   useEffect(() => {
     if (!sized) return undefined;
-    const apply = () => { try { rf.setViewport({ x: Math.round(130 * z), y: 10, zoom: z }, { duration: 0 }); } catch { /* unmounted */ } };
+    // World minX (plus rail/label padding) lands at the container's left
+    // edge — the FULL graph is inside the scrollable area, nothing clips.
+    const apply = () => { try { rf.setViewport({ x: Math.round((bounds.padL - bounds.minX) * z), y: 12, zoom: z }, { duration: 0 }); } catch { /* unmounted */ } };
     const t1 = setTimeout(apply, 120);
     const t2 = setTimeout(apply, 450);
     return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [z, bounds.w, bounds.h, sized, rf]);
+  }, [z, bounds.w, bounds.h, bounds.minX, bounds.padL, sized, rf]);
   // SYNCHRONOUS MEASUREMENT KICK (same fix as ControlsFlowView): RF defers
   // measurement through rAF, which never fires in hidden/background tabs —
   // nodes stay invisible and EDGES never draw. Measure via the store
@@ -628,18 +710,18 @@ function SFInner({ model, mode, lane, storageKey }) {
         if (updates.size > 0) st.updateNodeInternals(updates);
         return;
       }
-      try { rf.fitView({ padding: 0.03, minZoom: 0.05, maxZoom: 2 }); } catch { /* unmounted */ }
+      try { rf.setViewport({ x: Math.round((bounds.padL - bounds.minX) * z), y: 12, zoom: z }, { duration: 0 }); } catch { /* unmounted */ }
       clearInterval(t);
     }, 120);
     return () => clearInterval(t);
-  }, [sized, graph, rf, storeApi]);
+  }, [sized, graph, rf, storeApi, bounds, z]);
   // ACTUAL-SIZE CANVAS: the inner surface is the graph at zoom z; the outer
   // container scrolls horizontally (its own overflow — never the page) and
   // GROWS vertically to whatever the sequence needs (no internal v-scroll).
   const innerW = view.fit ? '100%' : Math.max(Math.round(bounds.w * z), 300);
   const innerH = Math.max(160, Math.round(bounds.h * z) + 16);
   const btn = {
-    border: '1px solid var(--color-border, #cbd5e1)', borderRadius: 5, background: '#fff',
+    borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--color-border, #cbd5e1)', borderRadius: 5, background: '#fff',
     color: 'var(--color-text-muted, #5a6a7e)', fontSize: 11, fontWeight: 700,
     padding: '1px 7px', cursor: 'pointer', lineHeight: 1.6,
   };

@@ -344,7 +344,22 @@ function applyEdit(state, input) {
         const prose = sequenceVocabViolations([{ name: m.name, sequenceSteps: [step] }]);
         if (prose.length) return { error: `RAW PROSE REJECTED — ${prose[0]}. Use a structured step whose action is in the operation vocabulary.` };
       }
-      const at = input.afterLine != null ? Math.min(Number(input.afterLine), steps.length) : steps.length;
+      // PLACEMENT IS EXPLICIT (Dan, 2026-09-01 — the Magnet Shuttle "retract
+      // the retainer before the magnet check" turn landed its line with no
+      // anchor and the sequence read wrong): on a non-empty sequence an insert
+      // MUST say where it goes — afterLine or beforeLine (1-based number or
+      // the anchor line's text). No anchor = no write; the model re-issues.
+      let at;
+      if (!steps.length) at = 0;
+      else if (input.afterLine != null) {
+        at = /^\d+$/.test(String(input.afterLine)) ? Math.min(Number(input.afterLine), steps.length) : resolveLine(steps, m, input.afterLine) + 1;
+        if (at <= 0 && !/^\d+$/.test(String(input.afterLine))) return { error: `sequence.insert: no line matching afterLine "${input.afterLine}" on ${m.name}.` };
+      } else if (input.beforeLine != null) {
+        at = /^\d+$/.test(String(input.beforeLine)) ? Math.max(0, Math.min(Number(input.beforeLine) - 1, steps.length)) : resolveLine(steps, m, input.beforeLine);
+        if (at < 0) return { error: `sequence.insert: no line matching beforeLine "${input.beforeLine}" on ${m.name}.` };
+      } else {
+        return { error: `sequence.insert on ${m.name} needs an anchor — afterLine or beforeLine (1-based number or the exact text of the neighbouring line). Say where the step goes.` };
+      }
       steps.splice(at, 0, step);
       writeSteps(m, steps);
       return pushDiff(state, { op, machine: m.name, before: null, after: stepText(step), line: at + 1 });

@@ -4,6 +4,43 @@
 > repo (Dan's, Jason's, an agent's) is a FIRST-CLASS driver of the station
 > sheet — same data, same receipts, same history as the app. The app is one
 > view; the server is the truth.
+>
+> **Dan's decision (2026-09-01): Claude Code IS the chat.** The in-app widget
+> flattened his Magnet Shuttle sequence to prose again despite the vocab
+> checker, so the authoring path moved here. The widget is demoted to a
+> viewer: receipts, the Questions tab, Agree, the ME/CE toggle, the read-only
+> thread, and a text box for quick asks with a hint pointing at Claude Code.
+
+## Opening a session from the app
+
+The chat header carries **Open in Claude Code** → `POST /api/jarvis/open-claude`
+`{ draftId, station, machine, step }`. The server spawns a Windows Terminal tab
+(`wt.exe`; fallback `cmd /k`) in `C:\SDC-StateLogic` running
+`claude "<initial prompt>"`, where the prompt says: you are the SDC Engineer
+driving draft `<id>` (station, machine, step); read this file and CLAUDE.md
+§7b; GET the draft; then wait for Dan's instruction. The CLI is resolved from
+`CLAUDE_CLI`, then `%USERPROFILE%\.local\bin\claude.exe`, then `where claude`.
+(The `claude://` protocol on the machine belongs to Claude Desktop, not Claude
+Code — it cannot open a repo-scoped CLI session, so the terminal is the path.)
+
+## The store gate — every sequence write validates
+
+`writeDraftStore_` in `server.js` runs `sequenceGateViolations(prev, next)`
+(`src/lib/agentGenerator/smDecomposer.js`) on **every** write — client
+autosave, reflex lane, deep lane, and your `POST /api/jarvis/sheet-draft`.
+A write that would ADD a sequence line outside the structured-step shape is
+refused: HTTP **422** `{ code: 'SEQUENCE_PROSE', violations }` for a direct
+post; an engine turn returns no draft and an honest reply. The shape rules are
+objective: the first word is an operation (Extend / Retract / Engage /
+Disengage / Servo Move / Index / Wait / Signal / Decide / Loop / Hold / Home /
+Repeat), the object never starts with punctuation, is never a run-on clause or
+paragraph, pneumatic actions carry no detail clause, and action verbs have an
+object. Pre-existing violations are repaired, never blocked-on (a legit
+insert elsewhere must not be refused because of an old line).
+
+`sequence.insert` requires an anchor (`afterLine` or `beforeLine`, a 1-based
+number or the neighbouring line's text) on a non-empty sequence — the
+2026-09-01 flatten started with an insert that had none and landed at line 1.
 
 ## The mandate (non-negotiable)
 

@@ -362,11 +362,27 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       try { sub.write(`event: draft\ndata: ${JSON.stringify(payload)}\n\n`); } catch (_) { /* drop */ }
     }
   }
+  // THE STORE GATE (Dan, 2026-09-01 — the Magnet Shuttle prose flatten got
+  // past a tool-level checker because the persist path never looked): EVERY
+  // draft write — client autosave, reflex lane, deep lane, a Claude Code
+  // session — runs the structured-step rules here. A write may never ADD a
+  // sequence line outside the verb+object shape; it is refused with the
+  // reason (code SEQUENCE_PROSE) and nothing lands.
   function writeDraftStore_(draftId, draft, { by = 'client', clientId = null } = {}) {
     const fp = sheetDraftPath(draftId);
     if (!fp) return null;
     fs.mkdirSync(SHEET_DRAFTS_DIR_, { recursive: true });
     const prev = readDraftStore_(draftId) ?? {};
+    {
+      const { sequenceGateViolations } = require('./src/lib/agentGenerator/smDecomposer.js');
+      const prose = sequenceGateViolations(prev.draft ?? null, draft);
+      if (prose.length) {
+        const err = new Error(`sequence would degrade to prose — ${prose[0]}`);
+        err.code = 'SEQUENCE_PROSE';
+        err.violations = prose;
+        throw err;
+      }
+    }
     const rev = (Number(prev.rev) || 0) + 1;
     const record = { draftId, rev, updatedAt: Date.now(), updatedBy: by, mirroredAt: Date.now(), draft };
     fs.writeFileSync(fp, JSON.stringify(record));
@@ -387,7 +403,16 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       if (body.baseRev != null && current && Number(body.baseRev) < (Number(current.rev) || 0)) {
         return sendJson(res, 409, { ok: false, conflict: true, rev: current.rev, updatedBy: current.updatedBy ?? null, draft: current.draft });
       }
-      const rev = writeDraftStore_(body.draftId, body.draft, { by: 'client', clientId: body.clientId ?? null });
+      let rev;
+      try {
+        rev = writeDraftStore_(body.draftId, body.draft, { by: 'client', clientId: body.clientId ?? null });
+      } catch (e) {
+        if (e.code === 'SEQUENCE_PROSE') {
+          console.warn(`[sheet-draft] REFUSED prose write on ${body.draftId} (${body.clientId ?? 'client'}): ${e.violations[0]}`);
+          return sendJson(res, 422, { ok: false, error: e.message, code: e.code, violations: e.violations, rev: current?.rev ?? 0 });
+        }
+        throw e;
+      }
       sendJson(res, 200, { ok: true, rev });
     } catch (e) { sendJson(res, 500, { error: e.message }); }
   }
@@ -3726,12 +3751,17 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
             if (rx.handled) {
               const result = { ...rx.result, meta: rx.meta };
               if (body.draftId) {
+                try {
+                  if (result.draft) writeDraftStore_(String(body.draftId), result.draft, { by: 'agent', clientId: body.clientId ?? null });
+                } catch (e) {
+                  console.warn('[agent-turn] reflex store write failed:', e.message);
+                  // THE STORE GATE REFUSED IT: the engineer hears the truth,
+                  // not a receipt for a write that never landed.
+                  if (e.code === 'SEQUENCE_PROSE') { result.draft = null; result.diffs = []; result.reply = `I couldn't make that change without degrading the sequence to prose, so nothing was written — ${e.violations[0]}`; }
+                }
                 agentTurnResults_.set(String(body.draftId), { at: Date.now(), result: { ok: true, ...result } });
                 if (agentTurnResults_.size > 20) agentTurnResults_.delete(agentTurnResults_.keys().next().value);
                 persistAgentTurns_();
-                try {
-                  if (result.draft) writeDraftStore_(String(body.draftId), result.draft, { by: 'agent', clientId: body.clientId ?? null });
-                } catch (e) { console.warn('[agent-turn] reflex store write failed:', e.message); }
               }
               console.log(`[agent-turn] REFLEX handled in ${rx.meta.ms}ms ($${rx.meta.costUSD}, conf ${rx.meta.confidence})`);
               send('done', { ok: true, ...result });
@@ -3787,16 +3817,19 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         }
         // Held for reconnect (the stream may have died mid-turn).
         if (body.draftId) {
-          agentTurnResults_.set(String(body.draftId), { at: Date.now(), result: { ok: true, ...result } });
-          if (agentTurnResults_.size > 20) agentTurnResults_.delete(agentTurnResults_.keys().next().value);
-          persistAgentTurns_(); // survives a restart — the reconnect always lands
           // SERVER IS THE SOURCE OF TRUTH (Dan, 2026-08-30): the turn's
           // applied draft lands in the store HERE — every subscribed page
           // sees it within ~1s whether or not the requesting tab survives.
           // The requester ignores its own echo via clientId.
           try {
             if (result?.draft) writeDraftStore_(String(body.draftId), result.draft, { by: 'agent', clientId: body.clientId ?? null });
-          } catch (e) { console.warn('[agent-turn] store write failed:', e.message); }
+          } catch (e) {
+            console.warn('[agent-turn] store write failed:', e.message);
+            if (e.code === 'SEQUENCE_PROSE' && result) { result.draft = null; result.diffs = []; result.reply = `I couldn't make that change without degrading the sequence to prose, so nothing was written — ${e.violations[0]}`; }
+          }
+          agentTurnResults_.set(String(body.draftId), { at: Date.now(), result: { ok: true, ...result } });
+          if (agentTurnResults_.size > 20) agentTurnResults_.delete(agentTurnResults_.keys().next().value);
+          persistAgentTurns_(); // survives a restart — the reconnect always lands
         }
         send('done', { ok: true, ...result });
       } catch (e) {
@@ -3861,6 +3894,67 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       if (method === 'POST' || method === 'PUT') return handleSheetDraftPut(req, res);
       if (method === 'GET') return handleSheetDraftGet(res, query);
       return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    // CLAUDE CODE IS THE CHAT (Dan, 2026-09-01: the in-app widget flattened
+    // his sequence to prose again — "Claude Code should BE the chat"). The
+    // widget's "Open in Claude Code" button lands here: spawn a terminal in
+    // this repo running `claude` with station-builder mode loaded for THIS
+    // draft. Local machine only — the CLI runs as the logged-in user.
+    if (pathname === '/api/jarvis/open-claude') {
+      if (method !== 'POST') return sendJson(res, 405, { error: 'Method not allowed' });
+      return (async () => {
+        try {
+          const body = JSON.parse(await readBody(req) || '{}');
+          const draftId = sheetDraftPath(body.draftId) ? String(body.draftId) : null;
+          if (!draftId) return sendJson(res, 400, { error: 'Invalid draftId' });
+          const clean = (s, n) => String(s ?? '').replace(/["\r\n`$]/g, '').slice(0, n);
+          const station = clean(body.station || readDraftStore_(draftId)?.draft?.name, 80) || '(unnamed station)';
+          const machine = clean(body.machine, 80);
+          const step = clean(body.step, 80);
+          // NO SEMICOLONS, NO DOUBLE QUOTES in the prompt: Windows Terminal
+          // splits its command line on `;` (each piece becomes a tab) — the
+          // first launch test spawned three tabs, two of them errors.
+          const prompt = [
+            `You are the SDC Engineer driving draft ${draftId} (${station}${machine ? `, machine ${machine}` : ''}${step ? `, step ${step}` : ''}).`,
+            'Read docs/station-builder-mode.md and CLAUDE.md section 7b, GET /api/jarvis/sheet-draft?draftId=' + draftId + ' on :3000, then say Ready - what do you want changed? and wait for Dan\'s instruction.',
+            'Every edit goes through the typed API with a chatThread receipt. Sequence lines are verb + object in the operation vocabulary. Respect deviceTombstones and every dated law in src/lib/agentGenerator/meKnowledge.md.',
+          ].join(' ').replace(/[;"]/g, ',');
+          const { spawn } = require('child_process');
+          const home = process.env.USERPROFILE || process.env.HOME || '';
+          const candidates = [process.env.CLAUDE_CLI, path.join(home, '.local', 'bin', 'claude.exe'), path.join(home, 'AppData', 'Roaming', 'npm', 'claude.cmd')].filter(Boolean);
+          let claudeExe = candidates.find((p) => { try { return fs.existsSync(p); } catch { return false; } }) ?? null;
+          if (!claudeExe) {
+            try {
+              const { execSync } = require('child_process');
+              claudeExe = execSync('where claude', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().split(/\r?\n/).map((s) => s.trim()).filter(Boolean)[0] ?? null;
+            } catch { /* not on PATH */ }
+          }
+          if (!claudeExe) return sendJson(res, 501, { error: 'claude CLI not found on this machine — install Claude Code (or set CLAUDE_CLI to its path)' });
+          const cwd = __dirname;
+          const title = `SDC Engineer — ${station}${machine ? ` / ${machine}` : ''}`;
+          // The server may itself have been started from a Claude Code shell
+          // (pm2 inherits CLAUDECODE); the CLI refuses to nest when it sees
+          // it. The launched session is a fresh top-level one — strip it.
+          const env = { ...process.env };
+          for (const k of Object.keys(env)) if (/^CLAUDECODE$|^CLAUDE_CODE_ENTRYPOINT$/i.test(k)) delete env[k];
+          let launcher;
+          let child;
+          try {
+            // Windows Terminal, a new tab titled for the draft.
+            child = spawn('wt.exe', ['-w', '0', 'new-tab', '--title', title, '-d', cwd, claudeExe, prompt], { detached: true, stdio: 'ignore', windowsHide: false, env });
+            launcher = 'wt';
+            await new Promise((resolve, reject) => { child.once('error', reject); child.once('spawn', resolve); });
+          } catch (e1) {
+            // Fallback: a plain console window that stays open.
+            child = spawn('cmd.exe', ['/c', 'start', `"${title}"`, '/D', cwd, 'cmd', '/k', `"${claudeExe}" "${prompt}"`], { detached: true, stdio: 'ignore', windowsHide: false, shell: false, windowsVerbatimArguments: true, env });
+            launcher = 'cmd';
+          }
+          child.unref();
+          console.log(`[open-claude] ${launcher} → ${claudeExe} for ${draftId}${machine ? ` / ${machine}` : ''}`);
+          return sendJson(res, 200, { ok: true, launcher, cli: claudeExe, draftId, machine: machine || null, step: step || null });
+        } catch (e) { return sendJson(res, 500, { error: e.message }); }
+      })();
     }
 
     // Live draft subscription (server = source of truth, Dan 2026-08-30).

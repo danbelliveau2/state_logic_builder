@@ -160,26 +160,94 @@ function vocabTokenOf(x) {
   if (/^servo\s+move\b/i.test(t)) return 'servo move';
   return (t.match(/^([A-Za-z]+)/)?.[1] ?? '').toLowerCase();
 }
-function sequenceVocabViolations(machines) {
+// THE SHAPE RULES (Dan, 2026-09-01 — the Magnet Shuttle prose flatten): the
+// first-word check alone let "Wait for — Pick Attempt" / "Decide — third
+// failed pick? — pick retry: stay presented" through because "wait" and
+// "decide" ARE vocabulary. A structured step is verb + object, nothing else:
+//   - the object never starts with punctuation (an em-dash object is a prose
+//     fragment the model glued after the verb);
+//   - the object is one thing, never a run-on clause ("…, then…", "unless",
+//     "otherwise", "in that case") and never a paragraph;
+//   - pneumatic actions carry NO detail clause (DETAIL RULES law, 2026-08-30);
+//   - an action verb needs an object (bare "Extend" is not a step).
+// These are objective and run on every sequence write path (tool ops, the
+// reflex guard, the deep-lane checker, the server store gate).
+const PNEUMATIC_VERBS = new Set(['extend', 'retract', 'engage', 'disengage']);
+const OBJECT_VERBS = new Set(['extend', 'retract', 'engage', 'disengage', 'servo move', 'move', 'index', 'wait', 'signal', 'decide', 'loop', 'verify']);
+const RUN_ON = /(,\s*then\b|\band then\b|\bunless\b|\botherwise\b|\bin that case\b|\bif (?:it|not|the|there)\b|;\s)/i;
+function stepShapeViolations(s, tok) {
+  const out = [];
+  let target; let detail;
+  if (s && typeof s === 'object' && !s.raw) {
+    target = String(s.target ?? '').trim();
+    detail = String(s.detail ?? '').trim();
+  } else {
+    // String / raw row: strip the verb (and "for" after wait) to get the object.
+    const t = String((s && typeof s === 'object') ? s.raw : s ?? '').trim();
+    target = t.replace(/^servo\s+move\b/i, '').replace(/^[A-Za-z]+\b/, '').replace(/^\s*for\b/i, '').trim();
+    const dd = target.split(/\s+—\s+/);
+    target = dd[0] ?? ''; detail = dd.slice(1).join(' — ');
+  }
+  if (/^[—–\-:;,.]/.test(target)) out.push('the object starts with punctuation (a prose fragment glued after the verb)');
+  if (RUN_ON.test(target) || RUN_ON.test(detail ?? '')) out.push('the object is a run-on clause, not one action');
+  if (target.length > 90) out.push('the object is a paragraph, not one action');
+  if (OBJECT_VERBS.has(tok) && !target && tok !== 'repeat' && tok !== 'home') out.push(`"${tok}" has no object`);
+  if (PNEUMATIC_VERBS.has(tok) && detail) out.push(`a pneumatic action carries a detail clause ("${detail.slice(0, 40)}") — the action IS the whole statement`);
+  return out;
+}
+/**
+ * Every sequence/recovery line as a structured-step violation record, or none.
+ * @returns {Array<{machine, section, line, text, reason, message}>}
+ */
+function sequenceVocabViolationRecords(machines) {
   const bad = [];
-  const checkRows = (rows, where) => {
+  const checkRows = (rows, machine, section, where) => {
     (rows ?? []).forEach((s, i) => {
       if (s && typeof s === 'object' && s.decision) {
-        for (const b of (s.branches ?? [])) checkRows(b.steps, `${where} "${s.decision}" ${b.label}-branch`);
+        for (const b of (s.branches ?? [])) checkRows(b.steps, machine, section, `${where} "${s.decision}" ${b.label}-branch`);
         return;
       }
       const tok = vocabTokenOf(s);
+      const text = String(typeof s === 'string' ? s : (s?.raw ?? stepText(s))).slice(0, 80);
+      const push = (reason, message) => bad.push({ machine, section, line: i + 1, text, reason, message });
       if (!tok || !SEQUENCE_ACTION_VOCAB.has(tok)) {
-        const text = typeof s === 'string' ? s : (s?.raw ?? stepText(s));
-        bad.push(`${where} line ${i + 1} is raw prose, not a structured step ("${String(text).slice(0, 80)}") — "${tok || '(empty)'}" is not in the operation vocabulary`);
+        push('not-vocab', `${where} line ${i + 1} is raw prose, not a structured step ("${text}") — "${tok || '(empty)'}" is not in the operation vocabulary`);
+        return;
+      }
+      // Shape rules apply to the SEQUENCE (the cycle the lane grid renders);
+      // recovery grids keep the vocabulary check only (their Yes/No marker
+      // rows carry ": …" objects by the recovery-grid convention).
+      if (section === 'sequence') {
+        for (const r of stepShapeViolations(s, tok)) {
+          push(r, `${where} line ${i + 1} is prose in a step's clothing ("${text}") — ${r}`);
+        }
       }
     });
   };
   for (const m of (machines ?? [])) {
-    checkRows(m?.sequenceSteps ?? m?.sequence, `${m?.name ?? '?'} sequence`);
-    checkRows(m?.faultRecoverySteps ?? m?.faultRecovery, `${m?.name ?? '?'} recovery`);
+    const name = m?.name ?? '?';
+    checkRows(m?.sequenceSteps ?? m?.sequence, name, 'sequence', `${name} sequence`);
+    checkRows(m?.faultRecoverySteps ?? m?.faultRecovery, name, 'recovery', `${name} recovery`);
   }
   return bad;
+}
+function sequenceVocabViolations(machines) {
+  return sequenceVocabViolationRecords(machines).map((r) => r.message);
+}
+/**
+ * THE STORE GATE (Dan, 2026-09-01: "every sequence write path validates"):
+ * a draft write may never ADD a prose violation. Returns the violations in
+ * `nextDraft` that `prevDraft` did not already carry (keyed by machine +
+ * section + line text + reason, so a legitimate insert elsewhere that shifts
+ * line numbers is not mistaken for a new violation). Pre-existing violations
+ * are repaired, never blocked-on — otherwise one old line would freeze the
+ * whole sheet's saves.
+ */
+function sequenceGateViolations(prevDraft, nextDraft) {
+  const recs = (d) => sequenceVocabViolationRecords(d?.smProposal?.stateMachines ?? []);
+  const key = (r) => `${r.machine}|${r.section}|${r.text}|${r.reason}`;
+  const prev = new Set(recs(prevDraft).map(key));
+  return recs(nextDraft).filter((r) => !prev.has(key(r))).map((r) => r.message);
 }
 
 function normalizeMachine(m) {
@@ -685,4 +753,4 @@ async function checkProposal({ kind, payload, description = '', signal = null })
   };
 }
 
-module.exports = { decompose, assignDevices, checkProposal, normalizeStep, stepText, flattenRecoveryItems, normalizeRecoveryItems, normalizeMachine, sequenceVocabViolations };
+module.exports = { decompose, assignDevices, checkProposal, normalizeStep, stepText, flattenRecoveryItems, normalizeRecoveryItems, normalizeMachine, sequenceVocabViolations, sequenceVocabViolationRecords, sequenceGateViolations };

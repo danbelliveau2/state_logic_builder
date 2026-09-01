@@ -10,12 +10,22 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.50';
+export const UI_BUILD = 'v2.6.51';
 
-export const BUILT_AT = '2026-08-31';
+export const BUILT_AT = '2026-09-01';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.51',
+    date: '2026-09-01',
+    items: [
+      'CLAUDE CODE IS THE CHAT — "Open in Claude Code" on the chat header opens a terminal in the repo with the SDC Engineer already pointed at this draft, machine, and step; you author there and the edits land on the sheet live with receipts. The widget keeps receipts, Questions, Agree, ME/CE, and the thread; its text box stays for quick asks with a quiet hint to the real path',
+      'THE SEQUENCE CAN NO LONGER FLATTEN TO PROSE — every draft save (widget, engine fast lane, engine deep lane, Claude Code) is checked at the server: a line that is not verb + one object in the operation vocabulary is refused and you see why at the chat input. The Magnet Shuttle flatten root cause: an insert with no anchor landed at line 1 and a first-word-only check let "Wait for — Pick Attempt" fragments through. Inserts now require an anchor; the shape rules are objective',
+      'Magnet Shuttle sequence restored to the approved structure — retainer retracts before the magnet check; strip retry, pick retry, and the no-fault stack-change lanes; Strip_Retry / Pick_Retry 3-max',
+      'Step badges on the sequence and initialization flows sit fully inside the node corner — no more half-badge hanging off the top-left',
+    ],
+  },
   {
     version: 'v2.6.50',
     date: '2026-09-01',

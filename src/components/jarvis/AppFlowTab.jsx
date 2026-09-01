@@ -80,10 +80,10 @@ const STAGES = [
   {
     n: '4', title: 'Sequence',
     rows: {
-      do: 'You read the machine’s sequence — one action per line, nothing else. Timing values and settings live on the device sheet, not in the lines.',
+      do: 'You read the machine’s sequence — one action per line, nothing else. Timing values and settings live on the device sheet, not in the lines. To change it, you author in Claude Code: the chat header’s Open in Claude Code button opens a terminal in the repo with the SDC Engineer already pointed at this draft, machine, and step. You talk there; the edits land on this sheet live, with receipts in this chat. The widget’s text box stays for quick asks.',
       loads: 'The full load, plus this draft’s chat history — a garbled dictated word resolves against the sheet’s real names from context, never from an alias table.',
       think: 'A correction re-thinks this machine’s whole sequence against your words. Approval with comments is approval plus edits — every comment must land.',
-      check: 'The checker verifies each of your edits actually shows up in the revision, the SDC way. A missing edit is named precisely and bounced once.',
+      check: 'The checker verifies each of your edits actually shows up in the revision, the SDC way. A missing edit is named precisely and bounced once. Every sequence line must be a structured step — verb plus one object, in the operation vocabulary — and that rule runs where the draft is saved, not only in the engine: a write that would turn a line into prose is refused by the server, whoever sent it.',
       back: 'The updated sequence with a live diff on the card: removed lines struck through, new or changed lines highlighted, until you click got it. One-line receipt in the chat. If something you asked for was honored somewhere other than a visible line — say, folded into a device parameter — SDC Engineer tells you where it went. Your request never silently vanishes.',
       moves: 'Approve reveals this machine’s interactions step. Or correct — same engine, same diff. Feedback about a machine you haven’t walked yet is stored silently; you find it applied when the walk arrives.',
     },
@@ -198,6 +198,26 @@ export function AppFlowTab() {
               <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.55 }}>{what}</div>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* WHERE YOU AUTHOR (Dan, 2026-09-01): Claude Code is the chat. */}
+      <div
+        data-testid="appflow-claude-code"
+        style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: '12px 16px', marginBottom: 14 }}
+      >
+        <div style={{ fontSize: 12.5, fontWeight: 800, color: C.text, marginBottom: 6 }}>
+          Where you author — Claude Code is the chat
+        </div>
+        <div style={{ fontSize: 12, color: C.text, lineHeight: 1.65 }}>
+          The sheet is the product; the server holds it. Any Claude Code session in the
+          repo drives it the same way the app does — reads the draft, makes typed edits,
+          leaves a receipt in this chat. Open in Claude Code, on the chat header, starts one
+          already pointed at your draft, machine, and step. The widget keeps the receipts,
+          the Questions tab, Agree, the ME / CE switch, and the read-only thread; its text
+          box stays for quick asks. Whoever writes — the widget, the engine, or Claude
+          Code — the same rule holds at the save: a sequence line is a verb and one object,
+          or it is refused.
         </div>
       </div>
 

@@ -807,6 +807,10 @@ function flashSummaryRows(rows) {
 /** One turn in the Corrections chat (Dan, Aug 24: corrections is a chat with
  *  SDC Engineer — the same layer that generates the code). ME turns right-aligned
  *  SDC-blue; SDC Engineer turns left with the computed what-changed bullets. */
+// PRODUCT VOICE (Dan, 2026-08-31: "SDC Engineer" everywhere a user can read):
+// historic thread turns written before the rename still say "Jarvis" in the
+// stored data — the render speaks the current voice; the data stays verbatim.
+const voice = (s) => String(s ?? '').replace(/\bJarvis\b/g, 'SDC Engineer');
 function ChatTurn({ turn, idx, onRetry = null }) {
   const me = turn?.role === 'me';
   return (
@@ -829,7 +833,7 @@ function ChatTurn({ turn, idx, onRetry = null }) {
         <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', color: me ? C.primary : '#2f6b2f', marginBottom: 2 }}>
           {me ? 'You' : 'SDC Engineer'}
         </div>
-        <div style={{ whiteSpace: 'pre-wrap' }}>{turn?.text}</div>
+        <div style={{ whiteSpace: 'pre-wrap' }}>{me ? turn?.text : voice(turn?.text)}</div>
         {!me && turn?.error && turn?.retryText && onRetry && (
           <button
             type="button"
@@ -849,7 +853,7 @@ function ChatTurn({ turn, idx, onRetry = null }) {
                 data-testid={`chat-receipt-item-${idx}-${i}`}
                 style={{ fontSize: 11.5, lineHeight: 1.5, padding: '1px 0', color: c.warn ? '#92400e' : C.text }}
               >
-                • {c.text}
+                • {voice(c.text)}
               </div>
             ))}
           </div>
@@ -861,7 +865,7 @@ function ChatTurn({ turn, idx, onRetry = null }) {
             <summary style={{ cursor: 'pointer', fontSize: 10, fontWeight: 700, color: C.muted }}>
               working transcript ({turn.trace.length} steps)
             </summary>
-            <div style={{ marginTop: 3, maxHeight: 180, overflowY: 'auto' }}>
+            <div ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }} style={{ marginTop: 3, maxHeight: 180, overflowY: 'auto' }}>
               {turn.trace.map((t, i) => <TraceLine key={i} t={t} />)}
             </div>
           </details>
@@ -4864,6 +4868,10 @@ export function CreateStationPage({ embedded = false }) {
   // SAVE-STATE TICKS (Dan, 2026-08-25): one pulse from the debounced autosave
   // drives every field's ⟳ / ✓ saved indicator.
   const [savedPulse, setSavedPulse] = useState(0);
+  // Server store refusal (422 SEQUENCE_PROSE) — shown at the chat input.
+  const [storeRefusal, setStoreRefusal] = useState(null);
+  // "Open in Claude Code" launch state (Dan, 2026-09-01: Claude Code IS the chat).
+  const [claudeLaunch, setClaudeLaunch] = useState(null);
 
   // ── REVIEW & EDIT mode (Dan's flow, 2026-08-25): after a Build, each sheet
   // section gets an Edit affordance → scoped edit → PROPOSED diff → approve →
@@ -5144,6 +5152,16 @@ export function CreateStationPage({ embedded = false }) {
         if (r.ok) {
           const d = await r.json().catch(() => null);
           if (d?.rev) lastServerRevRef.current = d.rev;
+          setStoreRefusal(null);
+          return;
+        }
+        // THE STORE GATE SAID NO (Dan, 2026-09-01): the server refuses a
+        // write that would add a prose sequence line. Nothing landed — say
+        // so where he types, never silently keep a local copy the server
+        // will never accept.
+        if (r.status === 422) {
+          const c = await r.json().catch(() => null);
+          setStoreRefusal(c?.violations?.[0] ?? c?.error ?? 'the server refused this write');
           return;
         }
         if (r.status !== 409) return;
@@ -6797,6 +6815,33 @@ export function CreateStationPage({ embedded = false }) {
     const el = document.querySelector('[data-testid="changes-textarea"]');
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     el?.focus();
+  }
+
+  /** CLAUDE CODE IS THE CHAT (Dan, 2026-09-01: the widget flattened his
+   *  sequence to prose again): open a terminal in the repo running `claude`
+   *  in station-builder mode for THIS draft, machine, and step. Edits it
+   *  makes come back through the same store + receipts and land here live. */
+  async function openInClaudeCode() {
+    setClaudeLaunch({ state: 'opening', text: 'opening Claude Code…' });
+    try {
+      const step = cascadeLive ? cascade.activeStep : null;
+      const r = await fetch('/api/jarvis/open-claude', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          draftId: draftIdRef.current,
+          station: name,
+          machine: step?.smKey && step.smKey !== 'station' ? (step.smName ?? null) : null,
+          step: step ? (KIND_NOUN[step.kind] ?? step.kind) : null,
+        }),
+      });
+      const d = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(d?.error || `HTTP ${r.status}`);
+      setClaudeLaunch({ state: 'opened', text: 'Claude Code is open in a terminal — author there; its edits land here live' });
+    } catch (e) {
+      setClaudeLaunch({ state: 'failed', text: `couldn't open Claude Code — ${e.message}` });
+    }
+    setTimeout(() => setClaudeLaunch(null), 9000);
   }
   const hasAnyChanges = !!changes.trim();
 
@@ -9765,6 +9810,11 @@ export function CreateStationPage({ embedded = false }) {
           {agentTraceRef.current.map((t, i) => <TraceLine key={i} t={t} />)}
         </div>
       )}
+      {storeRefusal && (
+        <div data-testid="store-refusal" style={{ marginBottom: 6, fontSize: 11.5, fontWeight: 600, color: C.danger, lineHeight: 1.4 }}>
+          Not saved — the server refused a sequence line that isn't a structured step: {storeRefusal}
+        </div>
+      )}
       <DictatedTextarea
         value={changes}
         onChange={setChanges}
@@ -9803,8 +9853,16 @@ export function CreateStationPage({ embedded = false }) {
             {applyHint}
           </span>
         )}
-        {/* No instructions on the chat box (Dan, 2026-08-28): the focus IS
-            the walked machine — self-evident from where he is. */}
+        {/* THE PRIMARY AUTHORING PATH IS CLAUDE CODE (Dan, 2026-09-01). The
+            input stays for quick asks and for others who still use it; one
+            quiet hint points at the real path. */}
+        {!applying && (
+          <span data-testid="claude-code-hint" style={{ fontSize: 11, color: claudeLaunch?.state === 'failed' ? C.danger : C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+            {claudeLaunch ? claudeLaunch.text : (
+              <>for changes, <button type="button" data-testid="open-claude-code-link" onClick={openInClaudeCode} style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', color: C.primary, cursor: 'pointer', fontWeight: 700 }}>Open in Claude Code</button></>
+            )}
+          </span>
+        )}
         <span style={{ flex: 1 }} />
         <button
           className="btn btn--primary"
@@ -9852,6 +9910,21 @@ export function CreateStationPage({ embedded = false }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', background: '#061d39', flexShrink: 0 }}>
           <span style={{ fontSize: 11.5, fontWeight: 800, color: '#fff', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Chat — SDC Engineer</span>
           <span style={{ flex: 1 }} />
+          {/* CLAUDE CODE IS THE CHAT (Dan, 2026-09-01): the authoring path.
+              Opens a terminal in the repo with `claude` pointed at this
+              draft / machine / step in station-builder mode. */}
+          <button
+            type="button"
+            data-testid="open-claude-code"
+            onClick={openInClaudeCode}
+            disabled={claudeLaunch?.state === 'opening'}
+            title="Author changes in Claude Code — a terminal opens in the repo, pointed at this draft and machine; its edits land here with receipts"
+            style={{
+              background: '#1574C4', color: '#fff', border: '1px solid #3b8fd9', borderRadius: 5,
+              padding: '3px 10px', fontSize: 11, fontWeight: 800, cursor: 'pointer', letterSpacing: '0.02em',
+              opacity: claudeLaunch?.state === 'opening' ? 0.7 : 1,
+            }}
+          >Open in Claude Code</button>
           <button
             type="button"
             data-testid="chat-panel-close"

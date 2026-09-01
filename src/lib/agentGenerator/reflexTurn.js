@@ -61,9 +61,17 @@ const CONTRACT = [
   '  machine.rename {machine,newName} · device.rename {device,newName} ·',
   '  device.reassign {device,machine} · value.set {device,field,value} ·',
   '  sequence.reword {machine,line,step:{action,target,detail?}} ·',
-  '  sequence.insert {machine,afterLine?,step} · sequence.remove {machine,line} ·',
+  '  sequence.insert {machine,afterLine|beforeLine,step} · sequence.remove {machine,line} ·',
   '  recovery.reword/insert/remove {machine,...}',
   'Line refs: 1-based number or the line\'s exact text. Named things are Title Case.',
+  'SEQUENCE STEPS ARE VERB + OBJECT, NOTHING ELSE: step = {action, target, detail?,',
+  'counterpart?} with action from the operation set (Extend/Retract/Engage/Disengage/',
+  'Servo Move/Index/Wait/Signal/Decide/Loop/Hold) and target = ONE named thing, never',
+  'a clause, never leading punctuation, never a paraphrase of the whole line. A',
+  'sequence.insert MUST carry afterLine or beforeLine (where it goes) — an insert',
+  'without an anchor is rejected. Moving a line = remove + insert-with-anchor.',
+  'Reordering more than one line, or any change to the branch/lane STRUCTURE',
+  '(decisions, loops, retry lanes) = decision "deep".',
   'Anything beyond these ops (device.add/remove, split changes, recovery.set,',
   'multi-machine restructures) = decision "deep".',
 ].join('\n');
@@ -108,6 +116,13 @@ function reflexGuard(prevDraft, nextDraft) {
   for (const m of nextMs) {
     if (/[_]|(?:[a-z][A-Z])/.test(String(m?.name ?? '')) ) bad.push(`machine name not natural speech: "${m.name}"`);
   }
+  // SEQUENCE SHAPE (Dan, 2026-09-01 — the prose flatten): a reflex result
+  // that adds ANY structured-step violation escalates; the vocabulary +
+  // shape rules are objective and run in ms.
+  try {
+    const { sequenceGateViolations } = require('./smDecomposer.js');
+    bad.push(...sequenceGateViolations(prevDraft, nextDraft));
+  } catch { /* checker optional */ }
   return bad;
 }
 

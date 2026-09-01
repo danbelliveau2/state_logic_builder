@@ -537,6 +537,17 @@ async function runAgentTurn({ draft, message, cascadePosition = null, audience =
           } catch { /* guard optional */ }
         }
       }
+      // THE PROSE GUARD (Dan, 2026-09-01 — the Magnet Shuttle flatten): a
+      // turn that leaves a sequence line outside the structured-step shape
+      // (vocabulary + verb-object rules) is bounced on EVERY lane, objective,
+      // before anything renders. Pre-existing violations are not this turn's.
+      try {
+        const { sequenceGateViolations } = require('./smDecomposer.js');
+        const prose = sequenceGateViolations(draft, state.draft);
+        if (prose.length) {
+          violations.push(...prose.map((v) => `${v}. Re-issue the line as a structured step {action, target} — verb + one object, no clauses, no leading punctuation.`));
+        }
+      } catch { /* guard optional */ }
       // THE CAN-HANG GUARD: objective, no judgment call — a turn that
       // introduced a new forever-wait (culled/orphaned an outgoing signal
       // step) gets it back before anything renders.
@@ -576,13 +587,28 @@ async function runAgentTurn({ draft, message, cascadePosition = null, audience =
     reply = 'I read that and found nothing that needed changing — if you expected an edit, tell me which line or device.';
   }
 
+  // THE CHECKER IS A PERSIST GATE (Dan, 2026-09-01): a turn that still
+  // leaves prose in a sequence after its bounce (or was capped mid-fix)
+  // returns NO draft — the degraded sheet never reaches the store. The
+  // engineer gets the honest line instead of a flattened sequence.
+  let outDraft = state.draft;
+  try {
+    const { sequenceGateViolations } = require('./smDecomposer.js');
+    const prose = sequenceGateViolations(draft, state.draft);
+    if (prose.length) {
+      outDraft = null;
+      reply = `I couldn't make that change without degrading the sequence to prose, so nothing was written — ${prose[0]}`;
+      state.diffs = [];
+    }
+  } catch { /* gate optional */ }
+
   return {
     reply,
     diffs: state.diffs,
     asks: state.asks,
     notes: state.notes,
     closedQuestions: state.closedQuestions,
-    draft: state.draft,
+    draft: outDraft,
     capped,
     meta: {
       model: MODEL, engine: 'claude-agent-sdk', toolCalls: turns,
