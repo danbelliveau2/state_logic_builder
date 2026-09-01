@@ -10,12 +10,19 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.49';
+export const UI_BUILD = 'v2.6.50';
 
 export const BUILT_AT = '2026-08-31';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.50',
+    date: '2026-09-01',
+    items: [
+      'SELECTING A MACHINE ALWAYS SHOWS ITS SHEET — the walk-order reveal no longer hides an unreached machine’s devices and sequence (the blank Magnet Shuttle page, third time reported, root-caused: the content existed, two reveal gates hid it). The All view keeps the tidy staged reveal; a selected machine reveals everything it has. Gate invariant: a selected machine chip with an empty body fails the build',
+    ],
+  },
   {
     version: 'v2.6.49',
     date: '2026-09-01',

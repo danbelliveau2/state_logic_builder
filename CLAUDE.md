@@ -206,6 +206,14 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:5173
 3. For popup changes: test click-to-open AND click-outside-to-close AND Done button
 4. For store changes: test undo/redo (`Ctrl+Z` / `Ctrl+Y`)
 
+### The Parse Gate (mandatory before any "done" report)
+```bash
+node scripts/parseCheckChanged.cjs   # every touched .js/.jsx/.cjs/.mjs must PARSE
+```
+A grep of the vite log is NOT a compile check — vite compiles data modules
+lazily (2026-09-01: an unescaped apostrophe in whatsNew.js shipped and
+red-overlayed the live app). esbuild-parses the changed set, JSX included.
+
 ### File Edit Safety Rules
 - **Always read the file first** before editing — Edit tool fails if `old_string` not found exactly
 - For large rewrites use `Write` tool (after reading)

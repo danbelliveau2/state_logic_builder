@@ -4444,6 +4444,7 @@ function SmOutputToggle({ entries, selected, onSelect }) {
         key={key}
         type="button"
         data-testid={testId}
+        data-selected={on ? 'true' : 'false'}
         onClick={() => onSelect(key)}
         title={title}
         style={{
@@ -7790,6 +7791,11 @@ export function CreateStationPage({ embedded = false }) {
    *  (approved / re-confirm). Kinds with no step aren't gated. */
   const stepRevealed = (kind, smKey = null) => {
     if (!cascadeLive) return true;
+    // FREE-ORDER (Dan, 2026-09-01, third blank-machine wall): an explicitly
+    // SELECTED machine reveals every step's content — pending never hides a
+    // selected machine's existing devices/sequence/recovery again. The 'all'
+    // overview keeps the staged reveal.
+    if (sheetSmKey !== 'all' && smKey === sheetSmKey) return true;
     const st = stepStateOf(kind, smKey);
     return st === null || st !== 'pending';
   };
@@ -7814,15 +7820,20 @@ export function CreateStationPage({ embedded = false }) {
     const scoped = (steps) => (sheetSmKey !== 'all' ? steps.filter(s => s.smKey === sheetSmKey || s.smKey === 'station') : steps);
     // A section with NO step of its own stays hidden until everything is
     // agreed (strict: nothing about a later stage appears early).
+    // FREE-ORDER (Dan, 2026-09-01 — his THIRD blank-machine wall): selecting
+    // a machine reveals ALL of that machine's sections, pending or not —
+    // content exists on the proposal; hiding it behind walk order was the
+    // "two truths" bug (data full, render blank). The 'all' overview keeps
+    // the staged reveal so the station page stays tidy.
     if (sectionKey === 'devices') {
       const hosted = scoped(cascade.steps.filter(s => s.kind === 'devices'));
-      return hosted.length ? hosted.some(s => s.status !== 'pending') : cascade.allApproved;
+      return hosted.length ? (sheetSmKey !== 'all' || hosted.some(s => s.status !== 'pending')) : cascade.allApproved;
     }
     if (sectionKey === 'sequence') {
       // THE STEP IS THE SECTION (Dan, 2026-08-27): the active sequence /
       // recovery step renders AS the section — reveal on active too.
       const hosted = scoped(cascade.steps.filter(s => s.kind === 'sequence' || s.kind === 'recovery'));
-      return hosted.length ? hosted.some(s => s.status !== 'pending') : cascade.allApproved;
+      return hosted.length ? (sheetSmKey !== 'all' || hosted.some(s => s.status !== 'pending')) : cascade.allApproved;
     }
     if (sectionKey === 'interactions') {
       // INTERACTIONS ARE SEQUENCE LINES (Dan, 2026-08-28): during the walk the

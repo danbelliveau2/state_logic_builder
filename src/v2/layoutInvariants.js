@@ -435,6 +435,20 @@ export const INVARIANTS = [
     },
   },
   {
+    id: 'selected-machine-never-blank',
+    what: 'A selected machine chip always shows content — devices and/or its sequence card; a blank body under "Showing" is the walk-reached bug (Dan, 2026-09-01, third occurrence)',
+    run() {
+      const sel = q('[data-testid^="sheet-sm-chip-"][data-selected="true"]').filter(vis)[0];
+      if (!sel || sel.dataset.testid === 'sheet-sm-chip-all') return { skip: 'no specific machine selected' };
+      const devGroups = q('[data-testid^="sheet-device-group-"]').filter(vis).length;
+      const seqCards = q('[data-testid^="sequence-sm-"]').filter(vis).length;
+      const filling = q('[data-testid="machine-autofill-progress"]').filter(vis).length;
+      return (devGroups + seqCards + filling) === 0
+        ? { fail: `machine "${sel.textContent.trim()}" selected but the sheet body is empty (no devices, no sequence, no progress card)` }
+        : {};
+    },
+  },
+  {
     id: 'homepage-shows-only-own-project',
     what: 'The project homepage shows ONLY this project\'s drafts — a card stamped for another project bucket must never render (Dan, 2026-09-01)',
     run() {
