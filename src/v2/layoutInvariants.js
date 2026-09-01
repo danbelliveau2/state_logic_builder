@@ -45,18 +45,54 @@ export const INVARIANTS = [
   },
   {
     id: 'flows-not-lists',
-    what: 'Sequences and recoveries render as SheetFlow diagrams, never numbered text lists (Dan, 2026-08-30/31)',
+    what: 'Sequences and recoveries render as SheetFlow diagrams, never numbered text lists; grid type tokens stay inside the action vocabulary — NEW/PER/RE/BACK/STACK tokens are raw prose leaking through (Dan, 2026-08-30/31; checker rule 2026-09-01)',
     run() {
       const cards = q('[data-testid^="sequence-sm-"]').filter(vis);
       if (!cards.length) return { skip: 'no sequence cards on screen' };
       const bad = [];
+      // THE OPERATION SET (Dan, 2026-08-28) + the lane grid tokens.
+      const VOCAB = new Set(['wait', 'signal', 'home', 'repeat', 'extend', 'retract', 'engage',
+        'disengage', 'servo move', 'move', 'index', 'decide', 'loop', 'hold', 'yes', 'no', 'verify', 'rejoin']);
       for (const c of cards) {
         if (!c.querySelector('.state-node')) bad.push(`${c.dataset.testid}: no flow nodes`);
         // A visible <ol> in a sequence/recovery card = the degraded list render
         // (diff rows during red marks use a grid, not <ol>).
         if (q('ol li', c).some(vis)) bad.push(`${c.dataset.testid}: numbered list items rendering`);
+        // Raw prose sequence lines show up as type tokens outside the
+        // vocabulary ("NEW stack setup" → NEW) in the diff grid.
+        for (const t of q('[data-testid^="seq-type-"]', c).filter(vis)) {
+          const w = String(t.textContent ?? '').trim().toLowerCase();
+          if (w && !VOCAB.has(w)) bad.push(`${c.dataset.testid}: grid type token "${t.textContent.trim()}" outside the action vocabulary (raw prose line)`);
+        }
       }
-      return bad.length ? { fail: bad.join('; ') } : {};
+      return bad.length ? { fail: [...new Set(bad)].join('; ') } : {};
+    },
+  },
+  {
+    id: 'lane-render-conventions',
+    what: 'Sequence flows with decisions draw the approved lane conventions: decide pills present, no two node boxes overlap (nothing crosses a node), branch ends are plain words — never single letters (Dan approved drawing, 2026-09-01)',
+    run() {
+      const flows = q('[data-testid^="sequence-sm-"] .react-flow').filter(vis);
+      if (!flows.length) return { skip: 'no sequence flows on screen' };
+      const bad = [];
+      for (const f of flows) {
+        const card = f.closest('[data-testid^="sequence-sm-"]')?.dataset.testid ?? '?';
+        const nodes = q('.react-flow__node', f).filter(vis);
+        for (let i = 0; i < nodes.length; i++) {
+          for (let j = i + 1; j < nodes.length; j++) {
+            const a = nodes[i].getBoundingClientRect();
+            const b = nodes[j].getBoundingClientRect();
+            if (a.left < b.right - 6 && b.left < a.right - 6 && a.top < b.bottom - 6 && b.top < a.bottom - 6) {
+              bad.push(`${card}: node boxes overlap`);
+            }
+          }
+        }
+        for (const n of nodes) {
+          const t = String(n.textContent ?? '').trim();
+          if (/^[A-Z]$/.test(t)) bad.push(`${card}: single-letter branch label "${t}" (plain words required)`);
+        }
+      }
+      return bad.length ? { fail: [...new Set(bad)].join('; ') } : {};
     },
   },
   {

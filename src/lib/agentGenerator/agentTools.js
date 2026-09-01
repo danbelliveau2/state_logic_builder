@@ -337,6 +337,13 @@ function applyEdit(state, input) {
       const steps = stepsOf(m);
       const step = normalizeStep(input.step);
       if (!step) return { error: 'sequence.insert needs a step {action, target, detail?, counterpart?}' };
+      {
+        // OBJECTIVE VOCAB RULE (2026-09-01): sequence lines are structured
+        // steps in the operation vocabulary — raw prose is rejected here.
+        const { sequenceVocabViolations } = require('./smDecomposer.js');
+        const prose = sequenceVocabViolations([{ name: m.name, sequenceSteps: [step] }]);
+        if (prose.length) return { error: `RAW PROSE REJECTED — ${prose[0]}. Use a structured step whose action is in the operation vocabulary.` };
+      }
       const at = input.afterLine != null ? Math.min(Number(input.afterLine), steps.length) : steps.length;
       steps.splice(at, 0, step);
       writeSteps(m, steps);
@@ -380,6 +387,13 @@ function applyEdit(state, input) {
       const before = stepText(steps[i]);
       const step = normalizeStep(input.step);
       if (!step) return { error: 'sequence.reword needs a step object' };
+      {
+        // OBJECTIVE VOCAB RULE (2026-09-01): same structural rejection as
+        // sequence.insert — a reword may not degrade a line to raw prose.
+        const { sequenceVocabViolations } = require('./smDecomposer.js');
+        const prose = sequenceVocabViolations([{ name: m.name, sequenceSteps: [step] }]);
+        if (prose.length) return { error: `RAW PROSE REJECTED — ${prose[0]}. Use a structured step whose action is in the operation vocabulary.` };
+      }
       steps[i] = step;
       writeSteps(m, steps);
       return pushDiff(state, { op, machine: m.name, before, after: stepText(step), line: i + 1 });
@@ -706,6 +720,16 @@ function executeTool(state, name, input) {
         .map((raw) => ({ ...normalizeMachine(raw), ...(raw && raw.nameByME ? { nameByME: true } : {}) }))
         .filter((m) => m.name);
       if (!machines.length) return { error: 'propose_split needs stateMachines: [{name, oneLiner, ownedDeviceNames, why, sequence, faultRecovery}]' };
+      // OBJECTIVE VOCAB RULE (2026-09-01): raw prose SEQUENCE lines are
+      // rejected structurally — structured steps/decisions only. (Recovery
+      // prose rides as checker violations, not a rejection.)
+      {
+        const { sequenceVocabViolations } = require('./smDecomposer.js');
+        const prose = sequenceVocabViolations(machines.map((m) => ({ name: m.name, sequenceSteps: m.sequenceSteps, sequence: m.sequence })));
+        if (prose.length) {
+          return { error: `RAW PROSE SEQUENCE LINES REJECTED — every sequence line must be a structured step whose action is in the operation vocabulary (Extend/Retract, Engage/Disengage, Servo Move, Index, Wait, Signal, Home, Repeat, Decide, Loop, Hold): ${prose.slice(0, 5).join(' · ')}${prose.length > 5 ? ` · (+${prose.length - 5} more)` : ''}` };
+        }
+      }
       const approved = (state.cascadePosition?.approvedMachineNames ?? []).map(normKey).filter(Boolean);
       const prior = machinesOf(state);
       if (approved.length && prior.length) {

@@ -4104,8 +4104,10 @@ function condPhraseOf(line) {
   const t = normalizeSeqLine(line);
   let m = t.match(/^wait\s+for\s+.+?['’]s\s+(.+?)\s*(?:signal)?\s*$/i);
   if (m) return `Wait — ${titleCaseName(m[1])}`;
+  // Leading dashes in stored wait targets ("— Pick Attempt") never double
+  // into the phrase (2026-09-01 fix: "Wait — — Pick Attempt").
   m = t.match(/^wait\s+(?:for\s+)?(.*?)(?:\s+—.*)?$/i);
-  return m ? `Wait — ${titleCaseName(m[1])}` : null;
+  return m ? `Wait — ${titleCaseName(m[1].replace(/^[—–\-\s]+/, ''))}` : null;
 }
 /**
  * V1 CONVENTIONS (Dan, 2026-08-30): actions on nodes, conditions on edges.
@@ -4124,8 +4126,8 @@ function restructureRecoveryLines(lines) {
   let i = 0;
   while (i < ls.length) {
     const l = ls[i];
-    if (/^◇/.test(l) || (/\?\s*$/.test(l) && /^(is|are|does|has|have|gripp|part|check)/i.test(l))) {
-      const decision = l.replace(/^◇\s*/, '').replace(/\?+\s*$/, '');
+    if (/^◇/.test(l) || /^decide\b/i.test(l) || (/\?\s*$/.test(l) && /^(is|are|does|has|have|gripp|part|check)/i.test(l))) {
+      const decision = l.replace(/^◇\s*/, '').replace(/^decide\s*[—–\-]*\s*/i, '').replace(/\?+\s*$/, '');
       i++;
       const branches = [];
       while (i < ls.length) {
@@ -4145,10 +4147,50 @@ function restructureRecoveryLines(lines) {
   return items.some(x => x && typeof x === 'object' && x.decision) ? items : null;
 }
 
+/** OBJECT-STEP Yes/No restructure: the engine's flat recovery grids carry
+ *  {action:'Decide'} then {action:'Yes'/'No'} marker rows — parse them back
+ *  into the structured {decision, branches} shape so the Y flow never
+ *  degrades to flat rows (same degrade guard as restructureRecoveryLines,
+ *  for step OBJECTS). Returns null when no Yes/No markers exist (a
+ *  Decide/Loop sequence grid stays flat for the lane renderer). */
+function restructureStepObjects(steps) {
+  const arr = Array.isArray(steps) ? steps : [];
+  if (!arr.some(s => /^(yes|no)$/i.test(String(s?.action ?? '')))) return null;
+  const items = [];
+  let i = 0;
+  while (i < arr.length) {
+    const s = arr[i];
+    if (/^decide$/i.test(String(s?.action ?? ''))) {
+      const decision = String(s.target ?? '').replace(/^[—–\-\s]+/, '').replace(/\?+\s*$/, '');
+      i++;
+      const branches = [];
+      while (i < arr.length && /^(yes|no)$/i.test(String(arr[i]?.action ?? ''))) {
+        const b = arr[i];
+        const label = b.action.charAt(0).toUpperCase() + b.action.slice(1).toLowerCase();
+        let br = branches.find(x => x.label === label);
+        if (!br) { br = { label, steps: [] }; branches.push(br); }
+        br.steps.push([String(b.target ?? '').replace(/^[:\s]+/, ''), b.detail].filter(Boolean).join(' — '));
+        i++;
+      }
+      items.push({ decision, branches });
+      continue;
+    }
+    items.push(s);
+    i++;
+  }
+  return items.some(x => x && typeof x === 'object' && x.decision) ? items : null;
+}
+
 function buildFlowModel(structured, flatLines, composeStep, tagOf, devices = null) {
-  const srcItems = (Array.isArray(structured) && structured.some(x => x && typeof x === 'object' && x.decision))
+  const hasDecisions = Array.isArray(structured) && structured.some(x => x && typeof x === 'object' && x.decision);
+  const hasActionObjs = Array.isArray(structured) && structured.some(x => x && typeof x === 'object' && typeof x.action === 'string' && x.action);
+  const srcItems = hasDecisions
     ? structured
-    : (restructureRecoveryLines(flatLines) ?? (flatLines ?? []).map(String));
+    : hasActionObjs
+      // Structured step objects: walk THEM (deviceId → icons); Yes/No marker
+      // grids restructure to the branching shape first.
+      ? (restructureStepObjects(structured) ?? structured)
+      : (restructureRecoveryLines(flatLines) ?? (flatLines ?? []).map(String));
   // DEVICE ICONS ON FLOW NODES (Dan, 2026-08-31): resolve each step's device
   // type so the node can carry the v1 icon + type color.
   const devList = Array.isArray(devices) ? devices : [];
@@ -4158,6 +4200,18 @@ function buildFlowModel(structured, flatLines, composeStep, tagOf, devices = nul
     if (!d && nameText) {
       const k = dk(nameText);
       d = devList.find(x => { const xk = dk(x?.displayName ?? x?.name); return xk && (xk === k || xk.includes(k) || k.includes(xk)); });
+    }
+    if (!d && nameText) {
+      // Prose rows ("Re-clamp Hold Down", "retract Vertical Shuttle and Top
+      // Retainer"): a device matches when its CORE words (type-suffix words
+      // dropped) all appear in the row text (2026-09-01 icon-gate fix).
+      const words = String(nameText).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+      d = devList.find(x => {
+        const core = String(x?.displayName ?? x?.name ?? '').toLowerCase()
+          .replace(/\b(cylinder|slide|axis|sensor|gripper|vacuum|generator|actuator)\b/g, ' ')
+          .split(/[^a-z0-9]+/).filter(w => w.length > 1);
+        return core.length && core.every(w => words.includes(w));
+      });
     }
     return d?.type ?? null;
   };
@@ -4201,6 +4255,28 @@ function buildFlowModel(structured, flatLines, composeStep, tagOf, devices = nul
       // Rejoin markers ARE the dotted rejoin edge, never a node (gate catch,
       // 2026-08-31: they rendered as icon-less "device" rows).
       if (/^rejoin/i.test(type) || /^rejoin/i.test(line)) continue;
+      // LANE GRID TOKENS (Dan approved drawing, 2026-09-01): Decide rows
+      // become decision pills; Loop rows become plain-word branch-end caps
+      // ("no — shuttle out again") — SheetFlow's lane renderer lays them out.
+      if (/^decide$/i.test(type)) {
+        const parts = String(rest).replace(/^[—–\-\s]+/, '').split(/\s+—\s+/);
+        out.items.push({
+          decide: {
+            title: titleCaseName(parts[0].replace(/\?+\s*$/, '')) + '?',
+            detail: parts.slice(1).join(' — '),
+            cond, tag,
+          },
+        });
+        cond = null; tag = null;
+        continue;
+      }
+      if (/^loop$/i.test(type)) {
+        const label = String(rest).replace(/^[—–\-\s]+/, '')
+          .replace(/^(no|yes)\s*[:—-]\s*/i, (m, w) => `${w.toLowerCase()} — `).trim();
+        out.items.push({ loopEnd: { label, cond, tag } });
+        cond = null; tag = null;
+        continue;
+      }
       // HOLD markers are states, not device actions (gate catch, 2026-08-31:
       // "Hold — Ready For Pick" rendered as an icon-less device row).
       if (/^hold$/i.test(type)) {
@@ -8436,6 +8512,14 @@ export function CreateStationPage({ embedded = false }) {
                 s.deviceId = dev.devId;
                 anyChange = true;
               }
+            }
+            // GRID TOKENS ARE PHRASES, NOT DEVICE ACTIONS (2026-09-01 fix:
+            // the device-link migration rewrote "Loop — back to Extend
+            // Horizontal Shuttle" to the bare device name). Decide/Loop/Hold
+            // targets pass through untouched even when a deviceId rides along.
+            if (/^(decide|loop|hold|yes|no)$/i.test(s.action ?? '')) {
+              outLines.push(compose(s)); outSteps.push(s);
+              return;
             }
             const isMotion = MOTION.test(s.action ?? '');
             // Interaction lines (counterpart-shaped) and non-device lines

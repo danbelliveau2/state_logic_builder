@@ -462,6 +462,25 @@ async function generateL5X(projectJson, smId, options = {}) {
     .map(s => `${s.stateNumber}=${String(s.label || '').replace(/\s+/g, ' ').trim() || '(unnamed)'}`)
     .join(' | ');
 
+  // ── JASON-PIPELINE IMMEDIACY (Dan, 2026-09-01) ─────────────────────────────
+  // The CE bridge + master-file ingest/regenerate run at BUILD START, before
+  // the study assembles its context: a lesson Jason writes on the X-drive
+  // knowledge file at 9:00 rides a 9:05 build (meKnowledge.md is re-read by
+  // the study/prompt assembly below, so freshly filed facts ride this build).
+  // The app→file direction regenerates the master file at the same point.
+  // Never blocks a build — share unreachable = one progress line, proceed.
+  try {
+    const { syncKnowledgeChannels } = require('./librarian.js');
+    const syncLines = [];
+    const syncT0 = Date.now();
+    const syncRes = syncKnowledgeChannels(syncLines);
+    const what = syncLines.length ? syncLines.join(' · ')
+      : (syncRes.skipped ? syncRes.skipped : 'share checked — nothing new');
+    onProgress(9, 'knowledge-sync', `Knowledge sync at build start (${Date.now() - syncT0}ms): ${what}${syncRes.errors?.length ? ` · ${syncRes.errors.join(' · ')}` : ''}`);
+  } catch (e) {
+    onProgress(9, 'knowledge-sync', 'Knowledge sync unavailable (build proceeds): ' + (e.message || e));
+  }
+
   // ── PRE-WRITE STUDY PHASE (Dan's first-pass doctrine, 2026-08-25) ──────────
   // Before the write: assemble the full working context deliberately — the
   // COMPLETE closest engineer-corrected exemplar, the studied reference

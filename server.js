@@ -3708,6 +3708,44 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
       const releaseAi = beginAiWork_('agent-turn', null, body.draft?.name || null, { register: false });
       if (body.draftId) activeAgentTurns_.add(String(body.draftId));
       try {
+        // ── THE REFLEX LANE (Dan, 2026-09-01: interactive turns in SECONDS) ──
+        // One fast-model call, sheet-in-prompt, no tools. It either resolves
+        // CONFIDENTLY (same typed ops → same diffs/receipts) or escalates to
+        // the full agent loop below; deterministic guards run in ms either
+        // way. Gates (decompose) always take the deep lane.
+        if (!body.gate && String(process.env.JARVIS_REFLEX_LANE || 'on').toLowerCase() !== 'off') {
+          try {
+            const rx = await require('./src/lib/agentGenerator/reflexTurn.js').runReflexTurn({
+              draft: body.draft ?? {},
+              message: String(body.message),
+              cascadePosition: body.cascadePosition ?? null,
+              audience: body.audience === 'CE' ? 'CE' : 'ME',
+              speaker: String(body.speaker ?? 'Dan').slice(0, 60),
+              signal: abort.signal,
+            });
+            if (rx.handled) {
+              const result = { ...rx.result, meta: rx.meta };
+              if (body.draftId) {
+                agentTurnResults_.set(String(body.draftId), { at: Date.now(), result: { ok: true, ...result } });
+                if (agentTurnResults_.size > 20) agentTurnResults_.delete(agentTurnResults_.keys().next().value);
+                persistAgentTurns_();
+                try {
+                  if (result.draft) writeDraftStore_(String(body.draftId), result.draft, { by: 'agent', clientId: body.clientId ?? null });
+                } catch (e) { console.warn('[agent-turn] reflex store write failed:', e.message); }
+              }
+              console.log(`[agent-turn] REFLEX handled in ${rx.meta.ms}ms ($${rx.meta.costUSD}, conf ${rx.meta.confidence})`);
+              send('done', { ok: true, ...result });
+              clearInterval(keepalive);
+              releaseAi();
+              if (body.draftId) activeAgentTurns_.delete(String(body.draftId));
+              return res.end();
+            }
+            console.log('[agent-turn] reflex escalated:', rx.reason);
+            send('state', { label: 'this one needs real thought — checking shipped work…' });
+          } catch (e) {
+            console.warn('[agent-turn] reflex lane failed (deep lane proceeds):', e.message);
+          }
+        }
         const runOnce = () => loop.runAgentTurn({
           draft: body.draft ?? {},
           message: String(body.message),
@@ -3727,6 +3765,9 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
           // request (a chat turn, streamed early); a string = activity state.
           onEvent: (ev) => {
             if (ev && typeof ev === 'object' && ev.reading) send('reading', { text: ev.reading });
+            // FULL WORKING TRANSCRIPT (Dan, 2026-08-31): tool calls, notes,
+            // diffs stream as `trace` events — the widget shows everything.
+            else if (ev && typeof ev === 'object' && ev.trace) send('trace', ev.trace);
             else send('state', { label: String(ev) });
           },
         });
@@ -4001,6 +4042,17 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
     if (pathname === '/api/jarvis/knowledge') {
       if (method === 'GET') return handleJarvisKnowledge(res);
       return sendJson(res, 405, { error: 'Method not allowed' });
+    }
+
+    // THE SKILLS VIEW (Dan, 2026-09-01): one row per knowledge module —
+    // scope, size, updated, triggers (what loads it), attributions. The
+    // window into relevance-loaded knowledge; Dan curates gaps from here.
+    if (pathname === '/api/jarvis/skills') {
+      if (method !== 'GET') return sendJson(res, 405, { error: 'Method not allowed' });
+      try {
+        const { skillsInventory } = require('./src/lib/agentGenerator/conceptSelector.js');
+        return sendJson(res, 200, { ok: true, skills: skillsInventory() });
+      } catch (e) { return sendJson(res, 500, { error: e.message }); }
     }
 
     if (pathname === '/api/jarvis/trackrecord') {

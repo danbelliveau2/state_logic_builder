@@ -31,6 +31,7 @@ Features planned or in-progress. Update this as things ship or get deprioritized
 
 | Feature | Notes |
 |---------|-------|
+| Re-run benchmark build against current knowledge | One-click action on the trackrecord/Jarvis page: rebuild a benchmark station with today's knowledge (meKnowledge + concepts + exemplars) and file a fresh `benchmarks/*.report.json`, so knowledge growth shows up as a measured score delta (Dan, 2026-09-01) |
 | Custom Condition signals | UI placeholder exists; needs raw tag reference builder |
 | Part Tracking L5X write logic | Field structure exported; write rungs are user-authored today |
 | Vision job outcome editing | Must delete + re-add device to change pass/fail outcome labels |

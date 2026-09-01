@@ -37,6 +37,11 @@ const MODEL = process.env.JARVIS_MODEL || 'claude-opus-5';
 // A write turn may legitimately read a dozen reference files before the plan.
 const MAX_TURNS = parseInt(process.env.JARVIS_CODEGEN_MAX_TURNS, 10) || 40;
 const MAX_BUDGET_USD = parseFloat(process.env.JARVIS_MAX_COST_USD) || 20;
+// SILENCE WATCHDOG (Dan, 2026-09-01): a build stuck for hours with zero
+// output must SELF-DECLARE DEAD — a writer session that produces no SDK
+// message (no tool use, no text, no result) for this long is aborted with a
+// plain-words error the build record shows, instead of hanging the lane.
+const SILENCE_LIMIT_MS = (parseInt(process.env.JARVIS_WRITER_SILENCE_MIN, 10) || 20) * 60 * 1000;
 
 // Isolated harness home (shared with the chat engine — one runtime).
 const RUNTIME_DIR = path.join(ROOT, 'jarvis-knowledge', 'agent-runtime');
@@ -83,6 +88,15 @@ function createCodegenSession({ systemText, signal = null, onActivity = null } =
     let text = '';
     let costUSD = 0;
     let model = MODEL;
+    // Silence watchdog: every SDK message feeds it; expiry aborts the session.
+    let lastMessageAt = Date.now();
+    let declaredDead = false;
+    const watchdog = setInterval(() => {
+      if (Date.now() - lastMessageAt > SILENCE_LIMIT_MS) {
+        declaredDead = true;
+        try { abort.abort(); } catch { /* already done */ }
+      }
+    }, 30000);
     try {
       const q = query({
         prompt: promptText,
@@ -107,6 +121,7 @@ function createCodegenSession({ systemText, signal = null, onActivity = null } =
         },
       });
       for await (const m of q) {
+        lastMessageAt = Date.now();
         if (m.type === 'system' && m.subtype === 'init' && m.session_id) sessionId = m.session_id;
         else if (m.type === 'assistant') {
           const blocks = m.message?.content ?? [];
@@ -126,7 +141,17 @@ function createCodegenSession({ systemText, signal = null, onActivity = null } =
           }
         }
       }
+      // An aborted stream may end without throwing — a dead session must
+      // still fail loudly, never return as an empty "success".
+      if (declaredDead) throw new Error('watchdog abort');
+    } catch (e) {
+      if (declaredDead) {
+        const mins = Math.round(SILENCE_LIMIT_MS / 60000);
+        throw new Error(`WRITER SILENT ${mins} MINUTES — the SDK writer session produced no output and was declared dead (silence watchdog). The build fails honestly instead of hanging; rerun the build.`);
+      }
+      throw e;
     } finally {
+      clearInterval(watchdog);
       signal?.removeEventListener?.('abort', onOuterAbort);
     }
     // The SDK loop continues past single-response token limits on its own, so

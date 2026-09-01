@@ -1080,8 +1080,29 @@ function getStatus() {
   };
 }
 
+/** BUILD-START KNOWLEDGE SYNC (Dan's Jason-pipeline immediacy, 2026-09-01):
+ *  a lesson Jason writes on the X-drive knowledge file at 9:00 rides a 9:05
+ *  build. Runs the CE bridge (ce-knowledge ingest + legacy answers) and the
+ *  master-file ingest/regenerate — the same calls the librarian run makes —
+ *  synchronously at generate start, BEFORE the pre-write study assembles its
+ *  context (meKnowledge.md is re-read there, so freshly filed facts ride the
+ *  same build). Fast when nothing changed; never throws; skipped while a
+ *  full librarian run is already in flight. */
+function syncKnowledgeChannels(summaryLines = []) {
+  if (_running) return { ok: true, skipped: 'librarian run in progress', processed: summaryLines, errors: [] };
+  const state = loadState();
+  const cfg = loadConfig();
+  const errors = [];
+  try { require('./ceBridge.js').syncCeBridge(cfg, state, summaryLines); }
+  catch (e) { errors.push('ce-bridge: ' + e.message); }
+  try { require('./masterKnowledge.js').syncMasterKnowledge(cfg, state, summaryLines); }
+  catch (e) { errors.push('master-knowledge: ' + e.message); }
+  try { state.lastKnowledgeSync = nowIso(); saveState(state); } catch (_) { /* state is advisory */ }
+  return { ok: errors.length === 0, processed: summaryLines, errors };
+}
+
 module.exports = {
-  runLibrarian, getStatus, LOCAL_INBOX, LEARNED_DIR, LEDGER_PATH,
+  runLibrarian, getStatus, syncKnowledgeChannels, LOCAL_INBOX, LEARNED_DIR, LEDGER_PATH,
   // exported for the regression script (scripts/regressLibrarianForms.cjs)
   _internals: { htmlToDocx, wordExtractText, parseSubmissionForm, writeQuestionsDoc, checkQuestionsDocs, loadState, saveState },
 };

@@ -143,6 +143,45 @@ function normalizeRecoveryItems(items) {
   }).filter((it) => it && (typeof it === 'string' || it.decision || it.action || it.target || it.raw));
 }
 
+// ── SEQUENCE VOCABULARY IS THE OPERATION SET (Dan, 2026-08-28; objective
+// checker rule 2026-09-01): engine output is STRUCTURED steps/decisions
+// only. A raw prose sequence line — one whose leading token is outside the
+// operation vocabulary ("NEW stack setup", "PER-magnet cycle", "RE-clamp",
+// "BACK to", "STACK change") — is an OBJECTIVE violation, flagged
+// deterministically, never left to the model checker's judgment.
+const SEQUENCE_ACTION_VOCAB = new Set([
+  'extend', 'retract', 'engage', 'disengage', 'servo move', 'move', 'index',
+  'wait', 'signal', 'home', 'repeat', 'decide', 'loop', 'hold', 'verify',
+  'yes', 'no', 'rejoin',
+]);
+function vocabTokenOf(x) {
+  if (x && typeof x === 'object' && !x.raw) return String(x.action ?? '').trim().toLowerCase();
+  const t = String((x && typeof x === 'object') ? x.raw : x ?? '').trim();
+  if (/^servo\s+move\b/i.test(t)) return 'servo move';
+  return (t.match(/^([A-Za-z]+)/)?.[1] ?? '').toLowerCase();
+}
+function sequenceVocabViolations(machines) {
+  const bad = [];
+  const checkRows = (rows, where) => {
+    (rows ?? []).forEach((s, i) => {
+      if (s && typeof s === 'object' && s.decision) {
+        for (const b of (s.branches ?? [])) checkRows(b.steps, `${where} "${s.decision}" ${b.label}-branch`);
+        return;
+      }
+      const tok = vocabTokenOf(s);
+      if (!tok || !SEQUENCE_ACTION_VOCAB.has(tok)) {
+        const text = typeof s === 'string' ? s : (s?.raw ?? stepText(s));
+        bad.push(`${where} line ${i + 1} is raw prose, not a structured step ("${String(text).slice(0, 80)}") — "${tok || '(empty)'}" is not in the operation vocabulary`);
+      }
+    });
+  };
+  for (const m of (machines ?? [])) {
+    checkRows(m?.sequenceSteps ?? m?.sequence, `${m?.name ?? '?'} sequence`);
+    checkRows(m?.faultRecoverySteps ?? m?.faultRecovery, `${m?.name ?? '?'} recovery`);
+  }
+  return bad;
+}
+
 function normalizeMachine(m) {
   const steps = (Array.isArray(m?.sequence) ? m.sequence : []).map(normalizeStep).filter(Boolean);
   const recoveryItems = normalizeRecoveryItems(m?.faultRecovery);
@@ -358,6 +397,18 @@ async function decompose({ description, images = [], expectedStateMachines = '',
     }
   } catch (e) {
     checked = { verdict: 'unchecked', violations: [`checker unavailable: ${e.message}`] };
+  }
+  // OBJECTIVE VOCAB RULE (2026-09-01): raw prose sequence lines are flagged
+  // deterministically — the model checker never gets to overlook them.
+  {
+    const objective = sequenceVocabViolations(finalMachines);
+    if (objective.length) {
+      checked = {
+        verdict: 'fix',
+        violations: [...(checked?.violations ?? []), ...objective],
+        ...(checked?.corrected ? { corrected: true } : {}),
+      };
+    }
   }
 
   // IDENTITY LOCK on correction rounds (Dan's "Mid-Base" drift, 2026-08-28):
@@ -634,4 +685,4 @@ async function checkProposal({ kind, payload, description = '', signal = null })
   };
 }
 
-module.exports = { decompose, assignDevices, checkProposal, normalizeStep, stepText, flattenRecoveryItems, normalizeRecoveryItems, normalizeMachine };
+module.exports = { decompose, assignDevices, checkProposal, normalizeStep, stepText, flattenRecoveryItems, normalizeRecoveryItems, normalizeMachine, sequenceVocabViolations };

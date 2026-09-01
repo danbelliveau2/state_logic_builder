@@ -13,6 +13,15 @@
  * side-branch (happy path straight, exception lane right, rejoining);
  * recoveries draw the Y.
  *
+ * LANE RENDER (Dan approved drawing, 2026-09-01): sequences whose model
+ * carries Decide/Loop grid tokens draw as LANES — the main cycle straight
+ * down on the left, decision pills in the main line, retry/exception
+ * branches as lanes beside the main line (branch boxes + their own decide
+ * pill), the second-level lane (stack change) farther right. Branch ends
+ * are PLAIN-WORD caps ("no — shuttle out again", "back to new stack
+ * setup") — never letters, never long routed return lines crossing
+ * content. The far-left corridor carries ONLY the main next-cycle loop.
+ *
  * View only: no drag, no connect, fitView, light zoom. Reusable — this is
  * the base for the machine-level diagram later.
  */
@@ -35,8 +44,12 @@ import {
 
 const NODE_W = 240;
 const EST_H = 78;      // single-action node estimate (restack refines by fit)
+const DEC_H = 52;      // decision pill estimate
+const CAP_H = 34;      // plain-word branch-end cap estimate
 const GAP_Y = 46;      // vertical gap carrying the edge + label
-const LANE_X = 300;    // side-branch lane offset
+const LANE_X = 300;    // side-branch lane offset (recovery Y / nested shape)
+const COL_X = 330;     // lane column pitch (Dan approved drawing, 2026-09-01)
+const LANE_VGAP = 40;  // vertical air between stacked lanes in one column
 
 // v1 mechanical palette (mirror of StateNode's private map).
 const VERB_COLORS = {
@@ -101,10 +114,11 @@ function SFDecisionNode({ data }) {
         padding: '8px 18px', textAlign: 'center',
         boxShadow: 'var(--shadow, 0 1px 4px rgba(0,0,0,0.12))',
       }}
+      title={data.detail ? `${data.title} — ${data.detail}` : data.title}
     >
       <SFHandles />
       <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', color: '#7c3aed' }}>Decide</div>
-      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text, #1a2733)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflowEllipsis: 'ellipsis' }} title={data.title}>
+      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text, #1a2733)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {data.title}
       </div>
     </div>
@@ -124,15 +138,41 @@ function SFFaultNode() {
   );
 }
 
+/** PLAIN-WORD branch-end cap (Dan approved drawing, 2026-09-01): "no —
+ *  shuttle out again", "back to new stack setup" — the loop point is the
+ *  LABEL, never a letter and never a long routed return line. */
+function SFLoopCap({ data }) {
+  return (
+    <div style={{
+      maxWidth: NODE_W - 20, display: 'inline-flex', alignItems: 'center', gap: 6,
+      border: '1.5px dashed var(--color-border, #b8c4d0)', borderRadius: 999,
+      background: 'var(--color-bg, #f6f8fa)', color: 'var(--color-text-muted, #5a6a7e)',
+      fontWeight: 700, fontSize: 11.5, padding: '5px 12px', whiteSpace: 'nowrap',
+    }} title={data.label}>
+      <SFHandles />
+      <span aria-hidden="true">↺</span>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{data.label}</span>
+    </div>
+  );
+}
+
 function SFEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, style, markerEnd }) {
   const [path, labelX, labelY] = getSmoothStepPath({
     sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition,
     borderRadius: 10, offset: 16,
   });
+  const branchWord = data?.branchLabel ?? (data?.branch ? data?.text : null);
+  const pillStyle = branchWord
+    ? (/^(yes|on|pass|true)$/i.test(branchWord)
+      ? { color: '#2f6b3c', borderColor: '#7fb08c', background: '#e9f5ec' }
+      : /^(no|off|fail|false)$/i.test(branchWord)
+        ? { color: '#8a3b3b', borderColor: '#d4a0a0', background: '#fdf2f2' } : {})
+    : {};
+  const bandText = data?.branchLabel ? data?.text : (data?.branch ? null : data?.text);
   return (
     <>
       <BaseEdge id={id} path={path} style={style} markerEnd={markerEnd} />
-      {(data?.text || data?.tag) && (
+      {(branchWord || bandText || data?.tag) && (
         <EdgeLabelRenderer>
           <div
             style={{
@@ -144,15 +184,18 @@ function SFEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, target
               // FULL CONDITION, ALWAYS READABLE (Dan, 2026-08-30: the cutoff
               // was the complaint) — the band grows to its content; no cap.
               whiteSpace: 'nowrap', pointerEvents: 'none',
-              fontWeight: data?.branch ? 800 : 500,
-              ...(data?.branch ? (/^(yes|on|pass|true)$/i.test(data.text)
-                ? { color: '#2f6b3c', borderColor: '#7fb08c', background: '#e9f5ec' }
-                : /^(no|off|fail|false)$/i.test(data.text)
-                  ? { color: '#8a3b3b', borderColor: '#d4a0a0', background: '#fdf2f2' } : {}) : {}),
+              fontWeight: branchWord && !bandText ? 800 : 500,
+              ...(branchWord && !bandText ? pillStyle : {}),
             }}
-            title={data.full ?? data.text}
+            title={data.full ?? bandText ?? branchWord}
           >
-            <span>{data.text}</span>
+            {branchWord && bandText ? (
+              <span style={{
+                fontSize: 9.5, fontWeight: 800, borderRadius: 4, padding: '0 5px', flexShrink: 0,
+                border: '1px solid', ...pillStyle,
+              }}>{branchWord}</span>
+            ) : null}
+            <span>{bandText ?? branchWord}</span>
             {data.tag && (
               <span style={{
                 fontSize: 9, fontWeight: 700, borderRadius: 4, padding: '0 5px', flexShrink: 0,
@@ -168,11 +211,12 @@ function SFEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, target
   );
 }
 
-const nodeTypes = { sfState: SFStateNode, sfDecision: SFDecisionNode, sfFault: SFFaultNode };
+const nodeTypes = { sfState: SFStateNode, sfDecision: SFDecisionNode, sfFault: SFFaultNode, sfLoopCap: SFLoopCap };
 const edgeTypes = { sfEdge: SFEdge };
 
 /** model: buildFlowModel output — items: [{line, verb, device, detail,
- *  cond?, tag?} | {branch: {decision, cond?, tag?, branches: [{label,
+ *  cond?, tag?} | {decide: {title, detail, cond, tag}} | {loopEnd: {label,
+ *  cond, tag}} | {branch: {decision, cond?, tag?, branches: [{label,
  *  items, rejoins, faults}]}}]. mode 'seq' | 'recovery'. */
 function deriveGraph(model, mode, lane) {
   const nodes = [];
@@ -180,13 +224,13 @@ function deriveGraph(model, mode, lane) {
   let idc = 0;
   let stepNo = 0;
   const nid = () => `sf${idc++}`;
-  const edge = (a, b, { text = null, tag = null, branch = false, sh = 'out-bottom', th = 'in-top', dotted = false } = {}) => {
+  const edge = (a, b, { text = null, tag = null, branch = false, branchLabel = null, sh = 'out-bottom', th = 'in-top', dotted = false } = {}) => {
     edges.push({
       id: `e${a}-${b}-${edges.length}`, source: a, target: b, sourceHandle: sh, targetHandle: th,
       type: 'sfEdge',
       style: { stroke: 'var(--color-border, #b8c4d0)', strokeWidth: 1.6, ...(dotted ? { strokeDasharray: '5 4' } : {}) },
       markerEnd: 'url(#sf-arrow)',
-      data: { text, tag, branch },
+      data: { text, tag, branch, branchLabel },
     });
   };
   const pushStep = (it, x, y) => {
@@ -205,6 +249,32 @@ function deriveGraph(model, mode, lane) {
   const mainX = mode === 'recovery' ? 0 : 0;
   const items = model.items ?? [];
   items.forEach((it) => {
+    // Grid tokens outside the lane render (recovery fallback): a decide
+    // draws as a pill in line; a loopEnd draws as a plain-word cap.
+    if (it.decide) {
+      const did = nid();
+      nodes.push({
+        id: did, type: 'sfDecision', position: { x: mainX, y }, draggable: false, connectable: false, selectable: false,
+        data: { title: it.decide.title, detail: it.decide.detail },
+      });
+      if (prev) edge(prev, did, { text: it.decide.cond ?? prevMeta?.cond, tag: it.decide.tag ?? prevMeta?.tag });
+      prevMeta = null;
+      prev = did;
+      y += DEC_H + GAP_Y;
+      return;
+    }
+    if (it.loopEnd) {
+      const cid = nid();
+      nodes.push({
+        id: cid, type: 'sfLoopCap', position: { x: mainX + 20, y }, draggable: false, connectable: false, selectable: false,
+        data: { label: it.loopEnd.label },
+      });
+      if (prev) edge(prev, cid, { text: it.loopEnd.cond, tag: it.loopEnd.tag });
+      prev = null;
+      prevMeta = null;
+      y += CAP_H + GAP_Y;
+      return;
+    }
     if (it.branch) {
       const b = it.branch;
       const did = nid();
@@ -226,7 +296,7 @@ function deriveGraph(model, mode, lane) {
         let bprev = did;
         let first = true;
         (br.items ?? []).forEach((bit) => {
-          if (bit.branch) return; // nested decisions: not drawn at this depth
+          if (bit.branch || bit.decide || bit.loopEnd) return; // nested decisions: not drawn at this depth
           const x = laneOf(bi);
           const sid = pushStep(bit, x, byy);
           edge(bprev, sid, first
@@ -283,9 +353,175 @@ function deriveGraph(model, mode, lane) {
   return { nodes, edges };
 }
 
+/**
+ * THE LANE RENDERER (Dan approved drawing, 2026-09-01). Draws models whose
+ * items carry Decide/Loop grid tokens:
+ *  - Segments split at each loopEnd. Segment 0 is the MAIN cycle; each
+ *    later segment is a LANE.
+ *  - Lanes attach to main-line decisions in order (the "no" path); once
+ *    main decisions are consumed, the next lane is the SECOND-LEVEL lane
+ *    (farther right), fed by every lane-internal decision still dangling
+ *    (their "yes" path — retry exhausted).
+ *  - Every lane ends in a PLAIN-WORD cap. The main loopEnd becomes the one
+ *    left-corridor dotted edge, targeted at the step its label names.
+ *  - No edge ever crosses a node: lane tops sit below their feeders, a
+ *    second lane stacked in a column enters from the LEFT via the empty
+ *    corridor, and second-level feeds travel above the (empty) column head.
+ */
+function deriveLaneGraph(model, lane) {
+  const nodes = [];
+  const edges = [];
+  let idc = 0;
+  let stepNo = 0;
+  const nid = () => `sf${idc++}`;
+  const edge = (a, b, { text = null, tag = null, branchLabel = null, sh = 'out-bottom', th = 'in-top', dotted = false } = {}) => {
+    edges.push({
+      id: `e${a}-${b}-${edges.length}`, source: a, target: b, sourceHandle: sh, targetHandle: th,
+      type: 'sfEdge',
+      style: { stroke: 'var(--color-border, #b8c4d0)', strokeWidth: 1.6, ...(dotted ? { strokeDasharray: '5 4' } : {}) },
+      markerEnd: 'url(#sf-arrow)',
+      data: { text, tag, branchLabel },
+    });
+  };
+  const pushStep = (it, x, y) => {
+    const id = nid();
+    stepNo += 1;
+    nodes.push({
+      id, type: 'sfState', position: { x, y }, draggable: false, connectable: false, selectable: false,
+      data: { n: stepNo, title: it.title, verb: it.verb, device: it.device, detail: it.detail, devType: it.devType ?? null, lane },
+    });
+    return id;
+  };
+  const pushDecide = (d, x, y) => {
+    const id = nid();
+    nodes.push({
+      id, type: 'sfDecision', position: { x, y }, draggable: false, connectable: false, selectable: false,
+      data: { title: d.title, detail: d.detail },
+    });
+    return id;
+  };
+
+  const items = model.items ?? [];
+  const segs = [];
+  let cur = [];
+  for (const it of items) { cur.push(it); if (it.loopEnd) { segs.push(cur); cur = []; } }
+  if (cur.length) segs.push(cur);
+  const main = segs[0] ?? [];
+  const laneSegs = segs.slice(1);
+
+  // ── the main cycle, straight down at x = 0
+  let prev = null;
+  let y = 0;
+  let pendingBranch = null; // 'yes' rides the edge out of a decision
+  let mainLoop = null;
+  const mainDecides = [];
+  const mainSteps = [];
+  for (const it of main) {
+    if (it.loopEnd) { mainLoop = { ...it.loopEnd, from: prev }; continue; }
+    if (it.branch) continue; // nested shapes don't mix with the token grid
+    if (it.decide) {
+      const id = pushDecide(it.decide, 0, y);
+      if (prev) edge(prev, id, { text: it.decide.cond, tag: it.decide.tag, branchLabel: pendingBranch });
+      mainDecides.push({ id, y, consumed: false });
+      prev = id;
+      pendingBranch = 'yes';
+      y += DEC_H + GAP_Y;
+      continue;
+    }
+    const id = pushStep(it, 0, y);
+    if (prev) edge(prev, id, { text: it.cond, tag: it.tag, branchLabel: pendingBranch });
+    pendingBranch = null;
+    mainSteps.push({ id, title: String(it.title ?? '') });
+    prev = id;
+    y += EST_H + GAP_Y;
+  }
+  // The main next-cycle loop — THE only left-corridor edge. Its target is
+  // the step the plain-words label names ("back to Extend Horizontal
+  // Shuttle" → that node), else the first step.
+  if (mainLoop?.from && mainSteps.length) {
+    const tt = String(mainLoop.label ?? '').match(/back to\s+(?:the\s+)?(.+)$/i)?.[1]?.trim().toLowerCase();
+    const tgt = (tt && mainSteps.find((n) => n.title.toLowerCase().includes(tt) || tt.includes(n.title.toLowerCase()))) ?? mainSteps[0];
+    if (tgt && tgt.id !== mainLoop.from) {
+      edge(mainLoop.from, tgt.id, {
+        sh: 'out-left', th: 'in-left', dotted: true,
+        text: [mainLoop.cond, mainLoop.label].filter(Boolean).join(' · '),
+      });
+    }
+  }
+
+  // ── lanes: retry lanes beside the main line, second level farther right
+  const colBottom = {};
+  const dangling = []; // lane-internal decides whose "yes" awaits a target
+  for (const seg of laneSegs) {
+    const body = seg.filter((x) => !x.loopEnd && !x.branch);
+    const loopEnd = seg.find((x) => x.loopEnd)?.loopEnd ?? null;
+    if (!body.length && !loopEnd) continue;
+    let feeders;
+    let level;
+    const mfree = mainDecides.find((d) => !d.consumed);
+    if (mfree) {
+      mfree.consumed = true;
+      feeders = [{ id: mfree.id, y: mfree.y, label: 'no' }];
+      level = 1;
+    } else if (dangling.length) {
+      feeders = dangling.splice(0).map((d) => ({ id: d.id, y: d.y, label: 'yes' }));
+      level = 2;
+    } else {
+      feeders = prev ? [{ id: prev, y: Math.max(0, y - EST_H - GAP_Y), label: null }] : [];
+      level = 1;
+    }
+    const x = level * COL_X;
+    const firstInCol = colBottom[level] === undefined;
+    const feedMaxY = feeders.length ? Math.max(...feeders.map((f) => f.y)) : 0;
+    let ly = firstInCol
+      ? feedMaxY + DEC_H + GAP_Y
+      : Math.max(feedMaxY + DEC_H + GAP_Y, colBottom[level] + LANE_VGAP + GAP_Y);
+    let bprev = null;
+    let first = true;
+    for (const it of body) {
+      const id = it.decide ? pushDecide(it.decide, x, ly) : pushStep(it, x, ly);
+      const meta = it.decide ?? it;
+      if (first) {
+        for (const f of feeders) {
+          edge(f.id, id, {
+            sh: 'out-right',
+            th: firstInCol ? 'in-top' : 'in-left',
+            branchLabel: f.label,
+            text: meta.cond ?? null,
+            tag: meta.tag ?? null,
+          });
+        }
+        first = false;
+      } else if (bprev) {
+        edge(bprev, id, { text: meta.cond ?? null, tag: meta.tag ?? null });
+      }
+      if (it.decide) dangling.push({ id, y: ly });
+      bprev = id;
+      ly += (it.decide ? DEC_H : EST_H) + GAP_Y;
+    }
+    // Plain-word branch-end cap — the loop point is the label, never a
+    // routed return line.
+    if (loopEnd) {
+      const cid = nid();
+      nodes.push({
+        id: cid, type: 'sfLoopCap', position: { x: x + 20, y: ly }, draggable: false, connectable: false, selectable: false,
+        data: { label: loopEnd.label },
+      });
+      if (bprev) edge(bprev, cid, { text: loopEnd.cond, tag: loopEnd.tag });
+      else for (const f of feeders) edge(f.id, cid, { sh: 'out-right', th: firstInCol ? 'in-top' : 'in-left', branchLabel: f.label });
+      ly += CAP_H + GAP_Y;
+    }
+    colBottom[level] = ly - GAP_Y;
+  }
+  return { nodes, edges };
+}
+
 function SFInner({ model, mode, lane }) {
   const rf = useReactFlow();
-  const graph = useMemo(() => deriveGraph(model, mode, lane), [model, mode, lane]);
+  const graph = useMemo(() => {
+    const hasTokens = (model.items ?? []).some((it) => it?.decide || it?.loopEnd);
+    return hasTokens ? deriveLaneGraph(model, lane) : deriveGraph(model, mode, lane);
+  }, [model, mode, lane]);
   const wrapRef = useRef(null);
   const [sized, setSized] = useState(false);
   useEffect(() => {
