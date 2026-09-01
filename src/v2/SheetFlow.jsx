@@ -59,6 +59,12 @@ const VERB_COLORS = {
 };
 const verbColor = (v) => VERB_COLORS[String(v ?? '').toLowerCase()] ?? '#9ca3af';
 
+// Per-node height estimate: wrapped titles/details add a row each (WRAP,
+// DON'T ELLIPSIZE — Dan, 2026-09-01). Layout steps by this, render measures.
+const stepH = (it) => EST_H
+  + (String(it?.title ?? '').length > 30 ? 16 : 0)
+  + ((String(it?.device ?? '').length + String(it?.detail ?? '').length) > 34 ? 14 : 0);
+
 function SFHandles() {
   return (
     <>
@@ -75,27 +81,32 @@ function SFHandles() {
 /** The v1 state-node shell, read-only: number badge, header title, one
  *  action row with the device pill in the device's verb color. */
 function SFStateNode({ data }) {
+  // TEAL IO NODES (Dan's reference drawing, 2026-09-01): Waits and Signals
+  // on the lane grid are real nodes, tinted teal to read as coordination.
+  const io = data.kind === 'io';
   return (
-    <div className="state-node" style={{ width: NODE_W, cursor: 'default' }}>
+    <div className="state-node" style={{ width: NODE_W, cursor: 'default', ...(io ? { borderColor: '#0e7490', background: '#f0fbfc' } : {}) }}>
       <SFHandles />
-      <div className="state-node__step-num" style={{ background: data.lane === 'recovery' ? '#b45309' : 'var(--color-primary)' }}>
+      <div className="state-node__step-num" style={{ background: io ? '#0e7490' : data.lane === 'recovery' ? '#b45309' : 'var(--color-primary)' }}>
         {data.n}
       </div>
       <div className="state-node__header">
-        <span className="state-node__title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }} title={data.title}>
+        {/* WRAP, DON'T ELLIPSIZE (Dan, 2026-09-01: "Retract Vertical Shuttle
+            and Top …" lost its meaning) — titles wrap to two lines max. */}
+        <span className="state-node__title" style={{ whiteSpace: 'normal', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', lineHeight: 1.25 }} title={data.title}>
           {data.title}
         </span>
       </div>
       {(data.device || data.detail) && (
         <div className="state-node__body">
-          <div className="action-row" style={{ '--device-color': verbColor(data.verb), whiteSpace: 'nowrap', overflow: 'hidden', display: 'flex', alignItems: 'center', gap: 4 }} title={`${data.verb} ${data.device}${data.detail ? ` — ${data.detail}` : ''}`}>
+          <div className="action-row" style={{ '--device-color': verbColor(data.verb), whiteSpace: 'normal', overflow: 'hidden', display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap', gap: 4 }} title={`${data.verb} ${data.device}${data.detail ? ` — ${data.detail}` : ''}`}>
             {data.devType ? (
-              <span style={{ display: 'inline-flex', flexShrink: 0, color: DEVICE_ICON_COLORS[data.devType] ?? '#64748b' }} title={data.devType}>
+              <span style={{ display: 'inline-flex', flexShrink: 0, color: DEVICE_ICON_COLORS[data.devType] ?? '#64748b', marginTop: 1 }} title={data.devType}>
                 <DeviceIcon type={data.devType} size={13} color={DEVICE_ICON_COLORS[data.devType] ?? '#64748b'} />
               </span>
             ) : null}
             {data.device ? <span className="action-device">{data.device}</span> : null}
-            {data.detail ? <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 11 }}>{data.detail}</span> : null}
+            {data.detail ? <span style={{ overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', fontSize: 11 }}>{data.detail}</span> : null}
           </div>
         </div>
       )}
@@ -180,7 +191,7 @@ function SFEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, target
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
               display: 'inline-flex', alignItems: 'center', gap: 5,
               background: '#fff', border: '1px solid var(--color-border, #d5dbe3)', borderRadius: 5,
-              padding: '1px 7px', fontSize: 10.5, color: 'var(--color-text-muted, #5a6a7e)',
+              padding: '1px 7px', fontSize: 11.5, color: 'var(--color-text-muted, #5a6a7e)',
               // FULL CONDITION, ALWAYS READABLE (Dan, 2026-08-30: the cutoff
               // was the complaint) — the band grows to its content; no cap.
               whiteSpace: 'nowrap', pointerEvents: 'none',
@@ -238,7 +249,7 @@ function deriveGraph(model, mode, lane) {
     stepNo += 1;
     nodes.push({
       id, type: 'sfState', position: { x, y }, draggable: false, connectable: false, selectable: false,
-      data: { n: stepNo, title: it.title, verb: it.verb, device: it.device, detail: it.detail, devType: it.devType ?? null, lane },
+      data: { n: stepNo, title: it.title, verb: it.verb, device: it.device, detail: it.detail, devType: it.devType ?? null, kind: it.kind ?? null, estH: stepH(it), lane },
     });
     return id;
   };
@@ -309,7 +320,7 @@ function deriveGraph(model, mode, lane) {
             : { text: bit.cond, tag: bit.tag });
           bprev = sid;
           first = false;
-          byy += EST_H + GAP_Y;
+          byy += stepH(bit) + GAP_Y;
         });
         if (!br.items?.length) {
           // Empty branch: label-only edge to a fault/continue marker.
@@ -341,7 +352,7 @@ function deriveGraph(model, mode, lane) {
     }
     prevMeta = null;
     prev = id;
-    y += EST_H + GAP_Y;
+    y += stepH(it) + GAP_Y;
   });
   // Repeat: dotted loop edge from the last main node back to the first.
   if (model.repeat && nodes.length > 1 && prev) {
@@ -388,7 +399,7 @@ function deriveLaneGraph(model, lane) {
     stepNo += 1;
     nodes.push({
       id, type: 'sfState', position: { x, y }, draggable: false, connectable: false, selectable: false,
-      data: { n: stepNo, title: it.title, verb: it.verb, device: it.device, detail: it.detail, devType: it.devType ?? null, lane },
+      data: { n: stepNo, title: it.title, verb: it.verb, device: it.device, detail: it.detail, devType: it.devType ?? null, kind: it.kind ?? null, estH: stepH(it), lane },
     });
     return id;
   };
@@ -433,7 +444,7 @@ function deriveLaneGraph(model, lane) {
     pendingBranch = null;
     mainSteps.push({ id, title: String(it.title ?? '') });
     prev = id;
-    y += EST_H + GAP_Y;
+    y += stepH(it) + GAP_Y;
   }
   // The main next-cycle loop — THE only left-corridor edge. Its target is
   // the step the plain-words label names ("back to Extend Horizontal
@@ -497,7 +508,7 @@ function deriveLaneGraph(model, lane) {
       }
       if (it.decide) dangling.push({ id, y: ly });
       bprev = id;
-      ly += (it.decide ? DEC_H : EST_H) + GAP_Y;
+      ly += (it.decide ? DEC_H : stepH(it)) + GAP_Y;
     }
     // Plain-word branch-end cap — the loop point is the label, never a
     // routed return line.
@@ -516,23 +527,83 @@ function deriveLaneGraph(model, lane) {
   return { nodes, edges };
 }
 
-function SFInner({ model, mode, lane }) {
+/** Natural (zoom-1) bounds of the derived graph, from the layout estimates. */
+function graphBounds(graph) {
+  let maxX = 0; let maxY = 0; let minX = 0;
+  for (const n of graph.nodes) {
+    const w = n.type === 'sfFault' ? 120 : n.type === 'sfLoopCap' ? 240 : NODE_W;
+    const h = n.type === 'sfDecision' ? DEC_H : n.type === 'sfLoopCap' ? CAP_H : (n.data?.estH ?? EST_H);
+    maxX = Math.max(maxX, n.position.x + w);
+    maxY = Math.max(maxY, n.position.y + h);
+    minX = Math.min(minX, n.position.x);
+  }
+  // Left corridor (the drawn loop return) + label air on the right.
+  return { w: Math.max(320, maxX - minX + 170), h: Math.max(140, maxY + 30) };
+}
+
+function SFInner({ model, mode, lane, storageKey }) {
   const rf = useReactFlow();
   const graph = useMemo(() => {
     const hasTokens = (model.items ?? []).some((it) => it?.decide || it?.loopEnd);
     return hasTokens ? deriveLaneGraph(model, lane) : deriveGraph(model, mode, lane);
   }, [model, mode, lane]);
+  const bounds = useMemo(() => graphBounds(graph), [graph]);
+  // READABLE FIRST (Dan, 2026-09-01: "where did our zoom go?"): default is
+  // ACTUAL SIZE — v1-size nodes, the card grows vertically as needed and
+  // scrolls horizontally in its own container when lanes exceed the width.
+  // Never fit-shrunk to minuscule. Choice persists per draft/card.
+  const LS_KEY = `slb.sheetflow.zoom.${storageKey ?? 'default'}`;
+  const [view, setView] = useState(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(LS_KEY) ?? 'null');
+      if (v && typeof v.z === 'number') return { fit: !!v.fit, z: Math.min(2, Math.max(0.3, v.z)) };
+    } catch { /* fresh default */ }
+    return { fit: false, z: 1 };
+  });
+  const setViewPersist = (v) => {
+    setView(v);
+    try { localStorage.setItem(LS_KEY, JSON.stringify(v)); } catch { /* advisory */ }
+  };
+  const outerRef = useRef(null);
   const wrapRef = useRef(null);
   const [sized, setSized] = useState(false);
+  const [outerW, setOuterW] = useState(0);
   useEffect(() => {
-    const el = wrapRef.current;
+    const el = outerRef.current;
     if (!el) return undefined;
-    const check = () => { const r = el.getBoundingClientRect(); if (r.width > 50 && r.height > 50) setSized(true); };
+    const check = () => {
+      const r = el.getBoundingClientRect();
+      if (r.width > 50) { setOuterW(r.width); setSized(true); }
+    };
     check();
     const ro = new ResizeObserver(check);
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+  const z = view.fit ? Math.min(1, Math.max(0.3, ((outerW || 600) - 12) / bounds.w)) : view.z;
+  // ctrl+scroll zoom (native non-passive listener — preventDefault needed).
+  useEffect(() => {
+    const el = outerRef.current;
+    if (!el) return undefined;
+    const onWheel = (e) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      setViewPersist({ fit: false, z: Math.min(2, Math.max(0.3, (view.fit ? z : view.z) * (e.deltaY < 0 ? 1.15 : 0.87))) });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  });
+  // DETERMINISTIC VIEWPORT: the zoom is OURS, not fitView's guess — set it
+  // explicitly whenever the effective zoom or graph changes (fitView reads
+  // container dims through RF's own observer, which misses resizes in
+  // hidden/background panes — the "no zoom" bug).
+  useEffect(() => {
+    if (!sized) return undefined;
+    const apply = () => { try { rf.setViewport({ x: Math.round(130 * z), y: 10, zoom: z }, { duration: 0 }); } catch { /* unmounted */ } };
+    const t1 = setTimeout(apply, 120);
+    const t2 = setTimeout(apply, 450);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [z, bounds.w, bounds.h, sized, rf]);
   // SYNCHRONOUS MEASUREMENT KICK (same fix as ControlsFlowView): RF defers
   // measurement through rAF, which never fires in hidden/background tabs —
   // nodes stay invisible and EDGES never draw. Measure via the store
@@ -557,49 +628,66 @@ function SFInner({ model, mode, lane }) {
         if (updates.size > 0) st.updateNodeInternals(updates);
         return;
       }
-      try { rf.fitView({ padding: 0.12, maxZoom: 1 }); } catch { /* unmounted */ }
+      try { rf.fitView({ padding: 0.03, minZoom: 0.05, maxZoom: 2 }); } catch { /* unmounted */ }
       clearInterval(t);
     }, 120);
     return () => clearInterval(t);
   }, [sized, graph, rf, storeApi]);
-  // Height sized to content estimate (bounded) — the card grows, no inner scroll.
-  const estHeight = Math.min(760, Math.max(180, (graph.nodes.length ? Math.max(...graph.nodes.map(n => n.position.y)) : 0) * 0.62 + 160));
+  // ACTUAL-SIZE CANVAS: the inner surface is the graph at zoom z; the outer
+  // container scrolls horizontally (its own overflow — never the page) and
+  // GROWS vertically to whatever the sequence needs (no internal v-scroll).
+  const innerW = view.fit ? '100%' : Math.max(Math.round(bounds.w * z), 300);
+  const innerH = Math.max(160, Math.round(bounds.h * z) + 16);
+  const btn = {
+    border: '1px solid var(--color-border, #cbd5e1)', borderRadius: 5, background: '#fff',
+    color: 'var(--color-text-muted, #5a6a7e)', fontSize: 11, fontWeight: 700,
+    padding: '1px 7px', cursor: 'pointer', lineHeight: 1.6,
+  };
   return (
-    <div ref={wrapRef} style={{ width: '100%', height: estHeight }}>
-      <svg width="0" height="0" style={{ position: 'absolute' }}>
-        <defs>
-          <marker id="sf-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-border, #b8c4d0)" />
-          </marker>
-        </defs>
-      </svg>
-      <ReactFlow
-        nodes={graph.nodes}
-        edges={graph.edges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        nodesDraggable={false}
-        nodesConnectable={false}
-        elementsSelectable={false}
-        panOnDrag
-        zoomOnScroll={false}
-        zoomOnPinch
-        preventScrolling={false}
-        proOptions={{ hideAttribution: true }}
-        fitView
-        fitViewOptions={{ padding: 0.12, maxZoom: 1 }}
-        minZoom={0.3}
-        maxZoom={1.4}
-      />
+    <div ref={outerRef} data-testid="sheetflow-scroller" data-zoom-mode={view.fit ? 'fit' : view.z === 1 ? 'default' : 'custom'} style={{ width: '100%', overflowX: 'auto', overflowY: 'hidden', position: 'relative' }}>
+      {/* Zoom controls (Dan, 2026-09-01: "where did our zoom go?") */}
+      <div data-testid="sheetflow-zoom" style={{ position: 'sticky', left: 0, float: 'right', zIndex: 5, display: 'inline-flex', gap: 4, padding: '2px 2px 0 0' }}>
+        <button type="button" style={btn} title="Zoom out" onClick={() => setViewPersist({ fit: false, z: Math.max(0.3, z * 0.8) })}>−</button>
+        <button type="button" style={btn} title="Zoom in" onClick={() => setViewPersist({ fit: false, z: Math.min(2, z * 1.25) })}>+</button>
+        <button type="button" style={{ ...btn, ...(view.fit ? { color: '#1574c4', borderColor: '#1574c4' } : {}) }} title="Fit the whole flow to the card width" onClick={() => setViewPersist({ fit: true, z: 1 })}>Fit</button>
+        <button type="button" style={{ ...btn, ...(!view.fit && view.z === 1 ? { color: '#1574c4', borderColor: '#1574c4' } : {}) }} title="Actual size (scrolls sideways when wide)" onClick={() => setViewPersist({ fit: false, z: 1 })}>1:1</button>
+      </div>
+      <div ref={wrapRef} style={{ width: innerW, height: innerH }}>
+        <svg width="0" height="0" style={{ position: 'absolute' }}>
+          <defs>
+            <marker id="sf-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-border, #b8c4d0)" />
+            </marker>
+          </defs>
+        </svg>
+        <ReactFlow
+          nodes={graph.nodes}
+          edges={graph.edges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          nodesDraggable={false}
+          nodesConnectable={false}
+          elementsSelectable={false}
+          panOnDrag={false}
+          zoomOnScroll={false}
+          zoomOnPinch
+          preventScrolling={false}
+          proOptions={{ hideAttribution: true }}
+          fitView
+          fitViewOptions={{ padding: 0.03, minZoom: 0.05, maxZoom: 2 }}
+          minZoom={0.05}
+          maxZoom={2}
+        />
+      </div>
     </div>
   );
 }
 
-export function SheetFlow({ model, mode = 'seq', lane = 'main' }) {
+export function SheetFlow({ model, mode = 'seq', lane = 'main', storageKey = null }) {
   if (!model?.items?.length) return null;
   return (
     <ReactFlowProvider>
-      <SFInner model={model} mode={mode} lane={lane} />
+      <SFInner model={model} mode={mode} lane={lane} storageKey={storageKey} />
     </ReactFlowProvider>
   );
 }

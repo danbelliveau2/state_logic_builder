@@ -69,6 +69,29 @@ export const INVARIANTS = [
     },
   },
   {
+    id: 'readable-node-size',
+    what: 'Flow nodes render READABLE at the default view — on-screen state-node width ≥ 150px; a wide lane graph scrolls inside its own card instead of fit-shrinking everything (Dan, 2026-09-01: "where did our zoom go?")',
+    run() {
+      const flows = q('[data-testid^="sequence-sm-"] .react-flow').filter(vis);
+      if (!flows.length) return { skip: 'no sequence flows on screen' };
+      const bad = [];
+      for (const f of flows) {
+        const card = f.closest('[data-testid^="sequence-sm-"]')?.dataset.testid ?? '?';
+        // Wide graphs must scroll in their own container, never shrink to fit.
+        const scroller = f.closest('[data-testid="sheetflow-scroller"]');
+        if (!scroller) { bad.push(`${card}: flow missing its own overflow scroller`); continue; }
+        // A user-chosen Fit/custom zoom is legitimate — the floor guards the
+        // DEFAULT view only.
+        if (scroller.dataset.zoomMode && scroller.dataset.zoomMode !== 'default') continue;
+        const widths = q('.react-flow__node-sfState', f).filter(vis).map((n) => n.getBoundingClientRect().width);
+        if (!widths.length) continue;
+        const min = Math.min(...widths);
+        if (min < 150) bad.push(`${card}: node rendering ${Math.round(min)}px wide (< 150px readable floor) at the default view`);
+      }
+      return bad.length ? { fail: [...new Set(bad)].join('; ') } : {};
+    },
+  },
+  {
     id: 'lane-render-conventions',
     what: 'Sequence flows with decisions draw the approved lane conventions: decide pills present, no two node boxes overlap (nothing crosses a node), branch ends are plain words — never single letters (Dan approved drawing, 2026-09-01)',
     run() {

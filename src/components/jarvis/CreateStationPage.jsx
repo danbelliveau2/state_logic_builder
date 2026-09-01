@@ -4086,7 +4086,9 @@ function splitSeqLine(txt, tagged) {
   // "Servo Move" is two words; a legacy bare "Move X Axis…" reads as servo.
   if ((m = t.match(/^servo\s+move\s*(.*)$/i))) return { type: 'Servo Move', rest: m[1] };
   if ((m = t.match(/^move\s+(.*)$/i)) && /axis/i.test(m[1])) return { type: 'Servo Move', rest: m[1] };
-  m = t.match(/^([A-Za-z]+)\s*(.*)$/);
+  // Hyphenated verbs stay whole ("Re-clamp Hold Down" — never "Re" +
+  // "-clamp Hold Down", the broken split Dan caught 2026-09-01).
+  m = t.match(/^([A-Za-z]+(?:-[A-Za-z]+)?)\s*(.*)$/);
   return m
     ? { type: m[1].charAt(0).toUpperCase() + m[1].slice(1), rest: m[2] }
     : { type: '', rest: t };
@@ -4191,6 +4193,11 @@ function buildFlowModel(structured, flatLines, composeStep, tagOf, devices = nul
       // grids restructure to the branching shape first.
       ? (restructureStepObjects(structured) ?? structured)
       : (restructureRecoveryLines(flatLines) ?? (flatLines ?? []).map(String));
+  // GRID MODE (Dan's approved reference drawing, 2026-09-01): on a Decide/
+  // Loop lane grid, Waits and Signals are REAL nodes in the line (teal),
+  // never squeezed inter-node text.
+  const gridMode = (Array.isArray(srcItems) ? srcItems : []).some(x =>
+    /^(decide|loop)$/i.test(String((x && typeof x === 'object') ? (x.action ?? '') : String(x ?? '').trim().split(/\s+/)[0] ?? '')));
   // DEVICE ICONS ON FLOW NODES (Dan, 2026-08-31): resolve each step's device
   // type so the node can carry the v1 icon + type color.
   const devList = Array.isArray(devices) ? devices : [];
@@ -4246,12 +4253,34 @@ function buildFlowModel(structured, flatLines, composeStep, tagOf, devices = nul
       if (/^home$/i.test(type)) continue; // device cards state home
       if (/^repeat$/i.test(type)) { out.repeat = true; continue; }
       if (/^wait$/i.test(type)) {
+        if (gridMode) {
+          // A wait is a REAL teal node on the lane grid (Dan's reference
+          // drawing, 2026-09-01) — never inter-node micro-text.
+          const p = condPhraseOf(line) ?? `Wait — ${titleCaseName(String(rest).replace(/^[—–\-\s]+/, ''))}`;
+          out.items.push({ kind: 'io', line, cond, tag: tagOf(line) ?? tag, verb: 'Wait', device: '', detail: '', title: p, devType: null });
+          cond = null; tag = null;
+          continue;
+        }
         const p = condPhraseOf(line);
         cond = cond && p ? `${cond} & ${p.replace(/^when /, '')}` : (p ?? cond);
         tag = tagOf(line) ?? tag;
         continue;
       }
-      if (/^signal$/i.test(type)) continue; // in the data, not the drawing
+      if (/^signal$/i.test(type)) {
+        if (gridMode) {
+          // Outgoing signals draw as REAL teal nodes on the lane grid.
+          const base = String(line).split(' — ')[0];
+          // Greedy first group: the counterpart is after the LAST " to "
+          // ("Signal Index To Next Stack to Dial Indexer").
+          const m2 = base.match(/^signal\s+(.+)\s+to\s+(.+)$/i) ?? base.match(/^signal\s+(.+)$/i);
+          const what = titleCaseName((m2?.[1] ?? rest).trim());
+          const to = (typeof raw === 'object' && raw?.counterpart) ? raw.counterpart : (m2?.[2] ?? '');
+          out.items.push({ kind: 'io', line, cond, tag: tagOf(line) ?? tag, verb: 'Signal', device: '', detail: to ? `to ${titleCaseName(to)}` : '', title: `Signal — ${what}`, devType: null });
+          cond = null; tag = null;
+          continue;
+        }
+        continue; // in the data, not the drawing
+      }
       // Rejoin markers ARE the dotted rejoin edge, never a node (gate catch,
       // 2026-08-31: they rendered as icon-less "device" rows).
       if (/^rejoin/i.test(type) || /^rejoin/i.test(line)) continue;
@@ -11226,6 +11255,7 @@ export function CreateStationPage({ embedded = false }) {
                                         <SheetFlow
                                           model={buildFlowModel(e.sequenceSteps, e.sequence, composeStepClient, tagOfLine, summary?.devices)}
                                           mode="seq"
+                                          storageKey={`seq-${e.key}`}
                                         />
                                       ) : (
                                       <div style={{
@@ -11309,6 +11339,7 @@ export function CreateStationPage({ embedded = false }) {
                                                   model={buildFlowModel(e.faultRecoverySteps, e.faultRecovery, composeStepClient, tagOfLine, summary?.devices)}
                                                   mode="recovery"
                                                   lane="recovery"
+                                                  storageKey={`rec-${e.key}`}
                                                 />
                                               </div>
                                             ) : (
