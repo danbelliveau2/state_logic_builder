@@ -14,6 +14,11 @@ Features planned or in-progress. Update this as things ship or get deprioritized
 
 | Feature | Notes |
 |---------|-------|
+| **Station-spec EXPORT (Rockwell path)** | Dan (2026-09-01, Rockwell-demo debrief): he may route the approved sheet into Rockwell's Studio-5000 generation engine instead of / alongside our codegen. Build a clean structured export of the FULL approved sheet — machines, devices (types, sensors, delays, positions), sequences, init/recovery, handshakes, controls notes — as a first-class artifact on the Build card ("Export station spec", JSON + printable doc). THE SHEET IS THE PRODUCT either way; our codegen is one consumer of it. |
+| Writer-silence watchdog | The SDK writer session can hang without progress (4h hang observed 2026-09-01) — needs a silence timeout + one retry, like the turn transport. |
+
+| Feature | Notes |
+|---------|-------|
 | Agent loop — Phase 1 (chat engine) | SHIPPED 2026-08-30 (Claude Agent SDK embedded engine; hand-rolled loop deleted) |
 | Continuous codegen (HIGH — next after the flow render) | Coordinator 2026-08-30, Dan invited proposals: start drafting a machine's code the moment its DEVICES step approves; each later approval (sequence/interactions/recovery) feeds in incrementally; internal review runs as it goes; code-work questions post to the chat/step as numbered questions during the walk. Generate = final validation + reveal (seconds, not 13 min). Reuse preWriteStudy/writer/internalReviewer/importSimValidator — the change is WHEN they run. Pause when the walk is idle-abandoned; per-station cost log. |
 | Handshake deadlock check | Coordinator 2026-08-30: structured WAIT/SIGNAL pairs → checker pass pairing every wait with its setter, verifying reachability/ordering incl. recovery paths; flags unreachable setters, circular waits, fault-window hangs in plain words. Runs at sequence/interaction approvals + before Generate; findings = numbered questions with proposals. |

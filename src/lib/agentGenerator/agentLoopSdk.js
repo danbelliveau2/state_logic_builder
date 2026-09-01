@@ -515,9 +515,21 @@ async function runAgentTurn({ draft, message, cascadePosition = null, audience =
           if (chk.verdict === 'fix') violations = chk.violations ?? [];
         } catch { /* checker unavailable — surface the turn as-is */ }
       } else {
-        const chk = await checkTurn({ message, state, signal: abort.signal }).catch(() => null);
-        if (chk) costUSD += chk.cost;
-        if (chk && chk.verdict === 'fix') violations = chk.violations ?? [];
+        // CHECKER TIERING (Dan, 2026-09-01): deterministic validations run
+        // in ms on EVERY diff; the model-grade checker only on STRUCTURAL
+        // diffs. A rename/value/comment-only turn never pays a model check.
+        const structuralDiff = !state.diffs.length
+          || state.diffs.some((d) => !/rename|value|comment|\.note$/i.test(String(d?.op ?? '')));
+        if (structuralDiff) {
+          const chk = await checkTurn({ message, state, signal: abort.signal }).catch(() => null);
+          if (chk) costUSD += chk.cost;
+          if (chk && chk.verdict === 'fix') violations = chk.violations ?? [];
+        } else {
+          try {
+            const guard = require('./reflexTurn.js')._internals.reflexGuard(draft, state.draft);
+            if (guard.length) violations = guard;
+          } catch { /* guard optional */ }
+        }
       }
       // THE CAN-HANG GUARD: objective, no judgment call — a turn that
       // introduced a new forever-wait (culled/orphaned an outgoing signal
