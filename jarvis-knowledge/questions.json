@@ -1850,5 +1850,29 @@
     "domain": "controls",
     "askedAt": "2026-08-31T19:25:10.294Z",
     "status": "open"
+  },
+  {
+    "id": "q_mtimg8oh_qezyxp",
+    "question": "BUG auto-report: a chat message produced no visible consequence within 6s (send-path watchdog)",
+    "proposedSolution": null,
+    "addressee": "CE",
+    "kind": "question",
+    "context": "no i called it - Magnet Pick and Place and Dial Indexer",
+    "source": "manual",
+    "domain": "controls",
+    "askedAt": "2026-09-01T12:06:38.321Z",
+    "status": "open"
+  },
+  {
+    "id": "q_mtipkqbd_gv3on4",
+    "question": "Magnet Shuttle: does the Top Retainer re-extend on every strip, or only on a fresh stack? Your dictation implies it stays put during normal cycling; the earlier draft cycled it.",
+    "proposedSolution": null,
+    "addressee": "CE",
+    "kind": "question",
+    "context": "Magnet Dial v3 — approved shuttle structure, 2026-09-01",
+    "source": "manual",
+    "domain": "controls",
+    "askedAt": "2026-09-01T13:34:06.649Z",
+    "status": "open"
   }
 ]

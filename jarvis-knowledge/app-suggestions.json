@@ -6,5 +6,13 @@
     "reading": "A reviewer wants CE controls-intent statements rendered as a separate decision-record / reviewFlags surface rather than in the sheet's Controls notes section. The CE lane and its controlsNotes section are existing app features (Dan, 2026-08-30) with attribution and timestamps, so I filed the notes correctly and did not touch station data — but if the notes should render somewhere else, that is a render change for Dan to rule on.",
     "at": "2026-08-31T12:41:09.893Z",
     "status": "new"
+  },
+  {
+    "id": "as_mtikon2a",
+    "speaker": "Dan",
+    "ask": "I want to be able to edit the state machines — how do I edit them, edit the names, just so I can change the name of it",
+    "reading": "He wants an obvious in-place rename control on the proposed state-machine cards, so he can retype a machine name without going through chat.",
+    "at": "2026-09-01T11:17:10.978Z",
+    "status": "new"
   }
 ]
