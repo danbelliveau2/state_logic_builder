@@ -435,6 +435,27 @@ export const INVARIANTS = [
     },
   },
   {
+    id: 'homepage-shows-only-own-project',
+    what: 'The project homepage shows ONLY this project\'s drafts — a card stamped for another project bucket must never render (Dan, 2026-09-01)',
+    run() {
+      const cards = q('[data-draft-project]').filter(vis);
+      if (!cards.length) return { skip: 'no draft cards on screen' };
+      let key = null;
+      try {
+        // The open project's bucket, straight from the store the page uses.
+        const st = window.useDiagramStoreState?.() ?? null;
+        key = st ? `jarvis.createStationDrafts.${st.currentFilename || st.project?.name || 'default'}` : null;
+      } catch { /* store not exposed — fall back to consistency check */ }
+      const stamps = [...new Set(cards.map((c) => c.dataset.draftProject))];
+      const foreign = key
+        ? stamps.filter((s) => s !== key && s !== '(unstamped)')
+        : (stamps.filter((s) => s !== '(unstamped)').length > 1 ? stamps : []);
+      return foreign.length
+        ? { fail: `draft card(s) from another project's bucket: ${foreign.join(' | ')}` }
+        : {};
+    },
+  },
+  {
     id: 'no-24h-display',
     what: 'Times display 12-hour AM/PM, never military (Dan, 2026-08-31) — an hour 13-23 with minutes must not render as a clock time',
     run() {

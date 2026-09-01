@@ -10,12 +10,22 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.48';
+export const UI_BUILD = 'v2.6.49';
 
 export const BUILT_AT = '2026-08-31';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.49',
+    date: '2026-09-01',
+    items: [
+      'CLICK ANY MACHINE, ANY TIME — the walk is free-order for real now: selecting an unstarted machine fills in ITS devices and sequence on demand (progress card while it builds, never a blank page); machines fill independently, no approvals or skips needed to look around. "Skip" remains only as "leave this machine out of the build"',
+      'THE HOMEPAGE SHOWS ONLY THIS PROJECT — drafts are stamped to their project; strays re-file to their own project's page, old orphaned test drafts park out of sight (never deleted). Gate invariant added',
+      'Chat answers in about a second for simple asks (renames, value sets, "already done?" checks) — structural work still gets the full engine with the transcript streaming',
+      'Skills tab on the SDC Engineer page: every knowledge module, what loads it, who taught it. Standard SDC machines (dial indexer, escapement, feeder) badge on the sheet and only ask station-specific values',
+    ],
+  },
   {
     version: 'v2.6.48',
     date: '2026-08-31',

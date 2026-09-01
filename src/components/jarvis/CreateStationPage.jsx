@@ -4776,6 +4776,27 @@ export function CreateStationPage({ embedded = false }) {
   // machines exist as records. Cascade approvals persist per station on
   // machineSpec.cascadeState; fresh drafts keep them locally.
   const [sheetSmKey, setSheetSmKey] = useState('all');
+  // ON-DEMAND MACHINE FILL (Dan, 2026-09-01: clicking an unstarted machine
+  // showed a BLANK page). Selecting a machine whose proposal has no content
+  // yet kicks ITS OWN devices+sequence proposal right then — machines fill
+  // independently, no approvals or skips required to look around. One kick
+  // per machine per session; a progress card renders while it runs.
+  const autoFilledRef = useRef(new Set());
+  const [autoFillingSm, setAutoFillingSm] = useState(null);
+  useEffect(() => {
+    if (sheetSmKey === 'all' || sheetSmKey === 'station') return;
+    const m = (smProposal?.stateMachines ?? []).find(x => normKey(x?.name) === sheetSmKey);
+    if (!m) return;
+    const empty = !(m.sequence?.length) && !(m.ownedDeviceNames?.length ?? m.deviceNames?.length);
+    if (!empty || applying || autoFilledRef.current.has(sheetSmKey)) return;
+    autoFilledRef.current.add(sheetSmKey);
+    setAutoFillingSm(m.name);
+    Promise.resolve(runAgentChatTurn(
+      `Fill in "${m.name}" from my explanation — THIS machine only: its owned devices first, then its sequence (step-1 scope, fast). Do not touch any other machine.`,
+      { isRetry: true } // background fill — never rendered as a typed message
+    )).finally(() => setAutoFillingSm(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sheetSmKey, applying]);
   // FLOW ONLY (Dan, 2026-08-30): the sequence card IS the flow diagram —
   // no list toggle. Diff detail rows appear transiently while change marks
   // are up; ✓ got it returns the flow.
@@ -10659,6 +10680,14 @@ export function CreateStationPage({ embedded = false }) {
                     {/* SM TOGGLE — flip which machine's outputs show; banner
                         chips + diagram follow (setActiveSm). */}
                     <SmOutputToggle entries={smChipEntries} selected={sheetSmKey} onSelect={selectSheetSm} />
+                    {/* NEVER A BLANK PAGE (Dan, 2026-09-01): an unstarted
+                        machine fills in on demand — this is its progress. */}
+                    {autoFillingSm && (
+                      <div data-testid="machine-autofill-progress" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '6px 0', padding: '8px 12px', border: '1px dashed #a8c8e8', borderRadius: 8, background: '#f2f7fd', fontSize: 12, color: C.text }}>
+                        <span className="sdc-chat-pill__spinner" aria-hidden="true" />
+                        Filling in <b>{autoFillingSm}</b> — its devices first, then the sequence. The transcript streams in the chat.
+                      </div>
+                    )}
                   </>
                 )}
 

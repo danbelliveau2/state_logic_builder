@@ -91,8 +91,25 @@ export function loadDrafts(key) {
       localStorage.setItem(key, JSON.stringify(arr));
     }
   } catch { /* storage unavailable */ }
+  // A draft stamped for ANOTHER project never renders here — re-file it
+  // into its own bucket (never deleted; its project's page shows it).
+  const strays = arr.filter(d => d && d.projectKey && d.projectKey !== key);
+  if (strays.length) {
+    try {
+      for (const d of strays) {
+        const other = JSON.parse(localStorage.getItem(d.projectKey) || '[]');
+        if (!other.some(x => x.draftId === d.draftId)) {
+          other.push(d);
+          localStorage.setItem(d.projectKey, JSON.stringify(other));
+        }
+      }
+      arr = arr.filter(d => !(d && d.projectKey && d.projectKey !== key));
+      localStorage.setItem(key, JSON.stringify(arr));
+    } catch { /* storage unavailable — filter below still hides them */ }
+  }
   return arr
     .filter(d => d && d.v === 1 && d.draftId)
+    .filter(d => !d.projectKey || d.projectKey === key)
     .sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
 }
 
@@ -100,6 +117,9 @@ export function loadDrafts(key) {
 export function saveDraft(key, draft) {
   if (!draft || !draft.draftId) return false;
   try {
+    // PROJECT-SCOPED DRAFTS (Dan, 2026-09-01: other projects' drafts showed
+    // on Magnet Dial v3's homepage): every draft carries its owning bucket.
+    draft = { ...draft, projectKey: key };
     const arr = loadDrafts(key);
     const i = arr.findIndex(d => d.draftId === draft.draftId);
     if (i === -1) arr.push(draft); else arr[i] = draft;

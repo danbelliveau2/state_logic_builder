@@ -286,9 +286,37 @@ export function ProjectHomePage() {
   // deleted) surface HERE as the primary action.
   const [drafts, setDrafts] = useState([]);
   useEffect(() => {
-    const key = draftsKeyFor(useDiagramStore.getState());
-    const load = () => setDrafts(loadDrafts(key).filter(d =>
-      !d.smId || !(useDiagramStore.getState().project?.stateMachines ?? []).some(s => s.id === d.smId)));
+    // OWN PROJECT ONLY (Dan, 2026-09-01: Dial_Indexer/ServoPNP drafts from
+    // other projects showed on Magnet Dial v3's homepage). Nothing renders
+    // until the project is actually loaded; loadDrafts already re-files
+    // stamped strays. Legacy UNSTAMPED drafts linked to a station this
+    // project does not have are parked once into the __orphaned bucket —
+    // never shown here (reachable via their own project's page or the
+    // orphaned bucket), never deleted.
+    const st = useDiagramStore.getState();
+    if (!st.project) { setDrafts([]); return undefined; }
+    const key = draftsKeyFor(st);
+    const load = () => {
+      const all = loadDrafts(key);
+      const smIds = new Set((useDiagramStore.getState().project?.stateMachines ?? []).map(s => s.id));
+      const orphanStrays = all.filter(d => !d.projectKey && (
+        (d.smId && !smIds.has(d.smId)) // linked to a station this project doesn't have
+        || (!d.smId && (Date.now() - (d.savedAt || 0)) > 14 * 864e5) // stale unlinked legacy (old test drafts)
+      ));
+      if (orphanStrays.length) {
+        try {
+          const ORPHANS = 'jarvis.createStationDrafts.__orphaned';
+          const bucket = JSON.parse(localStorage.getItem(ORPHANS) || '[]');
+          for (const d of orphanStrays) if (!bucket.some(x => x.draftId === d.draftId)) bucket.push(d);
+          localStorage.setItem(ORPHANS, JSON.stringify(bucket));
+          const kept = all.filter(d => !orphanStrays.includes(d));
+          if (kept.length) localStorage.setItem(key, JSON.stringify(kept));
+          else localStorage.removeItem(key);
+        } catch { /* storage unavailable — the filter below still hides them */ }
+      }
+      setDrafts(all.filter(d => !orphanStrays.includes(d)).filter(d =>
+        !d.smId || !(useDiagramStore.getState().project?.stateMachines ?? []).some(s => s.id === d.smId)));
+    };
     load();
     return onDraftsChanged(load);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -389,6 +417,7 @@ export function ProjectHomePage() {
                   type="button"
                   className="v2-phome__card"
                   data-testid={`home-draft-${d.draftId}`}
+                  data-draft-project={d.projectKey ?? '(unstamped)'}
                   onClick={() => continueDraft(d)}
                   title="Resume this station draft — the cascade continues exactly where it left off"
                   style={{
