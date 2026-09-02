@@ -47,6 +47,7 @@ import { GRAMMAR_CATEGORIES, loadGrammar, parseDetailField, GRAMMAR_TO_DEVICE_TY
 import { getDigitalIoPoints } from '../lib/getProjectIoMap.js';
 import { DeviceIcon, CheckContinueIcon, CheckBranchIcon } from './DeviceIcons.jsx';
 import { useDiagramStore } from '../store/useDiagramStore.js';
+import { isV3Shell } from '../lib/shellFlags.js';
 
 // Map grammar row id → DeviceIcon type so the subject buttons can render
 // the same SVG icons used elsewhere in the app. Keeps visual identity
@@ -386,7 +387,7 @@ export function UniversalPicker({
   }, [grammarRow, mode, subAction, condition, retryEnabled, exitCount, customLabels]);
 
   // Terminal-state path commits standalone — no subject/condition needed.
-  const canCommit = !!terminalType || (
+  const canCommit = !!terminalType || mode === 'describe' || (
     !!subject && !!grammarRow && (
       mode === 'action'
         ? !!actionVerb
@@ -401,10 +402,14 @@ export function UniversalPicker({
     // instead of adding an action.
     if (terminalType) {
       onPick && onPick({
-        terminalType,           // 'complete' | 'fault'
+        terminalType,           // 'complete' | 'fault' | 'initialize' (v3)
         isEdit: !!editAction,
         editActionId: editAction?.id ?? null,
       });
+      return;
+    }
+    if (mode === 'describe') {
+      onPick && onPick({ describe: true, isEdit: !!editAction, editActionId: editAction?.id ?? null });
       return;
     }
     // Derive exit state for Action mode — the input we'd verify on advance.
@@ -522,6 +527,17 @@ export function UniversalPicker({
           blurb="Node observes + reacts"
           color="#7c3aed"
         />
+        {isV3Shell() && (
+          // DESCRIBE (Dan, 2026-09-02): say the intent in plain words instead
+          // of drawing logic — the SDC Engineer implements it at build time.
+          <ModeBtn
+            label="Describe"
+            active={mode === 'describe'}
+            onClick={() => handleModeChange('describe')}
+            blurb="Say it in your words"
+            color="#b45309"
+          />
+        )}
       </div>
 
       {/* Decision controls (v3.3) — left-aligned, two rows.
@@ -1063,6 +1079,15 @@ export function UniversalPicker({
           >
             ⚠ Fault
           </button>
+          {isV3Shell() && (
+            <button
+              onClick={() => setTerminalType(t => t === 'initialize' ? null : 'initialize')}
+              style={terminalChip(terminalType === 'initialize', '#1d4ed8')}
+              title="Mark this state as → Initialize: the machine runs its initialization (init block, state 100). A Check whose retry count is met lands here implicitly."
+            >
+              → Initialize
+            </button>
+          )}
         </div>
         <button
           onClick={handleCommit}

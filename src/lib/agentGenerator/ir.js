@@ -240,6 +240,14 @@ function buildIR(projectJson, smId) {
       stateNumber: numbers.get(n.id) ?? null,
       isInitial: !!d.isInitial,
       isComplete: !!d.isComplete,
+      // "→ Initialize" terminal (Dan, 2026-09-02): entering it = jump to the
+      // init block (state 100). Also the implicit destination when a check's
+      // retry count is met.
+      isInitialize: !!d.isInitialize,
+      // DESCRIBE node (Dan, 2026-09-02): the ME's intent in plain words at
+      // this point of the sequence — the writer implements it; the readiness
+      // study may ask ONE clarifying question if it cannot.
+      intent: d.describe ? String(d.intent ?? '').trim() || null : undefined,
       decisionType: n.type === 'decisionNode' ? (d.decisionType || 'signal') : undefined,
       nodeMode: n.type === 'decisionNode' ? (d.nodeMode || 'wait') : undefined,
       signalSource: d.signalSource,
@@ -577,6 +585,8 @@ function renderIRText(ir) {
     const flags = [
       s.isInitial ? 'INITIAL' : null,
       s.isComplete ? 'CYCLE-COMPLETE' : null,
+      s.isInitialize ? 'INITIALIZE (jump to the init block, state 100 — not a drawn state of its own)' : null,
+      s.intent !== undefined ? 'DESCRIBE' : null,
       s.type === 'decisionNode' ? `DECISION(${s.decisionType})` : null,
     ].filter(Boolean).join(', ');
     const num = s.stateNumber != null ? `State ${s.stateNumber}` : 'UNREACHABLE';
@@ -587,6 +597,9 @@ function renderIRText(ir) {
     for (const a of s.actions) {
       lines.push(`    action: ${a.operation} -> ${a.deviceName || a.deviceId || '(no device)'}` +
         (a.detail ? ` (${a.detail})` : ''));
+    }
+    if (s.intent !== undefined) {
+      lines.push(`    intent (the ME's words — implement this here; if it cannot be implemented as written, ask ONE clarifying question in the readiness study): "${s.intent || '(empty — ask what was meant)'}"`);
     }
     if (s.type === 'decisionNode') {
       lines.push(`    condition: source=${s.signalSource || '?'} signal=${s.signalName || '?'} exits=${s.exitCount || 1}` + (s.nodeMode ? ` mode=${s.nodeMode}` : ''));

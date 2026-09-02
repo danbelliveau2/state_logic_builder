@@ -58,6 +58,9 @@ export const INVARIANTS = [
         // (only ONE canvas is live at a time) — that is not a missing flow.
         const v3 = c.querySelector('[data-testid^="v3-sequence-canvas"]');
         if (v3 && v3.dataset.active !== 'true') continue;
+        // v3: the live canvas is open FULL-WINDOW — the inline card shows its
+        // placeholder by design; the flow nodes are in the overlay.
+        if (v3 && q('[data-testid="v3-canvas-expanded"]').some(vis)) continue;
         if (!c.querySelector('.state-node')) bad.push(`${c.dataset.testid}: no flow nodes`);
         // A visible <ol> in a sequence/recovery card = the degraded list render
         // (diff rows during red marks use a grid, not <ol>).

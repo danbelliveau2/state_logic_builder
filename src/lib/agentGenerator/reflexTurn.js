@@ -130,7 +130,7 @@ function reflexGuard(prevDraft, nextDraft) {
  * @returns {{ handled: boolean, reason?, result?, meta? }}
  *   result matches the loop contract: { reply, diffs, asks, notes, draft }.
  */
-async function runReflexTurn({ draft, message, cascadePosition = null, audience = 'ME', speaker = 'Dan', signal = null }) {
+async function runReflexTurn({ draft, message, cascadePosition = null, audience = 'ME', speaker = 'Dan', signal = null, scope = null }) {
   if (!process.env.ANTHROPIC_API_KEY) return { handled: false, reason: 'no API key' };
   const t0 = Date.now();
   const Anthropic = require('@anthropic-ai/sdk');
@@ -199,9 +199,18 @@ async function runReflexTurn({ draft, message, cascadePosition = null, audience 
 
   // Apply through the SAME typed tools — same diffs, receipts, guards.
   const ALLOWED = new Set(['apply_edit', 'close_question', 'note_to_engineer']);
+  // VALUES-ONLY SCOPE (Dan, 2026-09-02): the sheet widget may change values,
+  // names and answers — never the sequence. Structural ops are refused here
+  // (the caller answers with a pointer to the canvas).
+  const VALUE_OPS = new Set(['value.set', 'device.rename', 'machine.rename', 'device.reassign']);
   const state = createTurnState(draft, cascadePosition, { speaker });
   for (const e of (Array.isArray(parsed.edits) ? parsed.edits : [])) {
     if (!ALLOWED.has(e?.tool)) return { handled: false, reason: `reflex asked for non-reflex tool ${e?.tool}` };
+    if (scope === 'values' && e.tool === 'apply_edit') {
+      const ops = Array.isArray(e.input?.ops) ? e.input.ops : (e.input?.op ? [e.input] : []);
+      const bad = ops.find((o) => !VALUE_OPS.has(String(o?.op ?? '')));
+      if (bad) return { handled: false, reason: `values-only scope refused op ${bad.op} (sequence edits are canvas-only)` };
+    }
     const r = executeTool(state, e.tool, e.input ?? {});
     if (r && r.error) return { handled: false, reason: `reflex edit failed: ${String(r.error).slice(0, 120)}` };
   }

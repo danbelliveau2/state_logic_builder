@@ -38,10 +38,66 @@ import './v3.css';
  *  sheet filters its machine columns by sheetSmKey, so a switch unmounts the
  *  instance that opened the overlay; the flag must outlive it. Whichever
  *  instance resolves to this id renders the overlay. */
+const readControlsDetail = () => { try { return localStorage.getItem('sdc-v3-controls-detail') === '1'; } catch { return false; } };
 export const useV3Ui = create((set) => ({
   expandedSmId: null,
   setExpandedSmId: (id) => set({ expandedSmId: id ?? null }),
+  // CONTROLS DETAIL (Dan, 2026-09-02): tag/condition lines under actions are
+  // controls detail — off by default on the ME canvas, remembered when on.
+  controlsDetail: readControlsDetail(),
+  setControlsDetail: (v) => { try { localStorage.setItem('sdc-v3-controls-detail', v ? '1' : '0'); } catch { /* ignore */ } set({ controlsDetail: !!v }); },
 }));
+
+/** FIT NODE TEXT — Dan's final sizing rule (2026-09-02): nodes are v1's
+ *  fixed 240px; a single line NEVER wraps and NEVER truncates — its font
+ *  shrinks to fit. Picker rows already do this (v1 ShrinkToFit); this pass
+ *  does it for the legacy device-name spans, which classic ellipsizes. Base
+ *  font is remembered per span so a shorter name grows back. */
+function fitNodeText() {
+  const ctx = document.createElement('canvas').getContext('2d');
+  const scaleOf = (el) => {
+    const vp = el.closest('.react-flow__viewport');
+    try { return vp ? (new DOMMatrix(getComputedStyle(vp).transform).a || 1) : 1; } catch { return 1; }
+  };
+  for (const span of document.querySelectorAll('.v3-seq__body .react-flow__node .action-device, .v3-seq-full__body .react-flow__node .action-device')) {
+    if (span.closest('.shrink-fit')) continue; // v1 ShrinkToFit owns picker rows
+    const row = span.closest('.action-row');
+    if (!row) continue;
+    const z = scaleOf(span);
+    const cs = getComputedStyle(span);
+    if (!span.dataset.fitBase) span.dataset.fitBase = cs.fontSize;
+    const base = parseFloat(span.dataset.fitBase) || 12;
+    ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${base}px ${cs.fontFamily}`;
+    const natural = ctx.measureText(span.textContent.trim().replace(/\s+/g, ' ')).width;
+    const rcs = getComputedStyle(row);
+    const gap = parseFloat(rcs.columnGap) || parseFloat(rcs.gap) || 0;
+    let others = 0; let n = 0;
+    for (const k of row.children) {
+      if (k === span) { n++; continue; }
+      const w = k.getBoundingClientRect().width / z;
+      if (w > 0) { others += w; n++; }
+    }
+    const avail = row.getBoundingClientRect().width / z
+      - (parseFloat(rcs.paddingLeft) || 0) - (parseFloat(rcs.paddingRight) || 0) - (parseFloat(rcs.borderLeftWidth) || 0)
+      - others - gap * Math.max(0, n - 1) - 1;
+    if (avail <= 0 || natural <= 0) continue;
+    const size = natural > avail ? Math.max(7, Math.floor(base * (avail / natural) * 10) / 10) : base;
+    const want = `${size}px`;
+    if (span.style.fontSize !== want) span.style.fontSize = want;
+  }
+}
+function FitNodeText({ nodes, devices, controlsDetail }) {
+  useEffect(() => {
+    let alive = true;
+    const run = () => { if (alive) fitNodeText(); };
+    const t1 = setTimeout(run, 120);
+    const t2 = setTimeout(run, 700);
+    document.fonts?.ready?.then(() => setTimeout(run, 50));
+    return () => { alive = false; clearTimeout(t1); clearTimeout(t2); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, devices, controlsDetail]);
+  return null;
+}
 
 /** Machine chips — the station's machines, the live one highlighted. */
 function MachineSwitcher({ machines, activeKey, onPick, dark = false, testId }) {
@@ -167,6 +223,20 @@ export function SequenceCanvas({
   const setActiveSm = useDiagramStore((s) => s.setActiveSm);
   const expandedSmId = useV3Ui((s) => s.expandedSmId);
   const setExpandedSmId = useV3Ui((s) => s.setExpandedSmId);
+  const controlsDetail = useV3Ui((s) => s.controlsDetail);
+  const setControlsDetail = useV3Ui((s) => s.setControlsDetail);
+  const controlsBtn = (dark = false) => (
+    <button
+      type="button"
+      className={`v3-seq__btn${controlsDetail ? ' v3-seq__btn--on' : ''}`}
+      onClick={() => setControlsDetail(!controlsDetail)}
+      data-testid={dark ? 'v3-canvas-controls-detail' : `${testId}-controls-detail`}
+      aria-pressed={controlsDetail}
+      title={controlsDetail ? 'Controls detail: hide the tag / condition lines under each action (i_…=OFF, …Delay.DN)' : 'Controls detail: show the tag / condition lines under each action (i_…=OFF, …Delay.DN)'}
+    >
+      Tag lines{controlsDetail ? ' ✓' : ''}
+    </button>
+  );
   const [showDevices, setShowDevices] = useState(false);
 
   // Resolve (create + migrate on first open) in an effect — never a store
@@ -280,6 +350,7 @@ export function SequenceCanvas({
           {showDevices ? 'Hide devices' : 'Devices'}
         </button>
       )}
+      {isActive && !expanded && controlsBtn(false)}
       {isActive && !expanded && (
         <button
           type="button"
@@ -314,7 +385,7 @@ export function SequenceCanvas({
   }
 
   return (
-    <div className="v3-seq" data-testid={testId} data-sm-id={resolvedId} data-active={isActive ? 'true' : 'false'}>
+    <div className={`v3-seq${controlsDetail ? '' : ' v3-seq--no-controls'}`} data-testid={testId} data-sm-id={resolvedId} data-active={isActive ? 'true' : 'false'}>
       {bar}
       {!isActive && (
         <div className="v3-seq__placeholder">
@@ -327,6 +398,7 @@ export function SequenceCanvas({
           <ReactFlowProvider>
             {showDevices && <DeviceSidebar />}
             <Canvas hideHeader />
+            <FitNodeText nodes={sm?.nodes} devices={sm?.devices} controlsDetail={controlsDetail} />
             <ReadableZoom smId={resolvedId} nodes={sm?.nodes} layoutStamp={sm?.machineSpec?.v3?.measuredLayoutAt ?? null} />
             <MeasuredRelayout smId={resolvedId} enabled={needsMeasuredLayout} />
           </ReactFlowProvider>
@@ -338,7 +410,7 @@ export function SequenceCanvas({
         </div>
       )}
       {isActive && expanded && createPortal(
-        <div className="v3-seq-full" data-testid="v3-canvas-expanded">
+        <div className={`v3-seq-full${controlsDetail ? '' : ' v3-seq-full--no-controls'}`} data-testid="v3-canvas-expanded">
           <div className="v3-seq-full__bar">
             {/* THE WAY BACK — top-left, always visible, unmistakable (Dan). */}
             <button
@@ -354,6 +426,7 @@ export function SequenceCanvas({
             <span style={{ opacity: 0.8 }}>sequence canvas · {nodeCount} states</span>
             <MachineSwitcher machines={machines} activeKey={entry?.key} onPick={switchTo} dark testId="v3-canvas-switch" />
             <span className="v3-seq__spacer" />
+            {controlsBtn(true)}
             <button type="button" className="v3-seq__btn" onClick={redraft} data-testid="v3-canvas-redraft" title="Recompile this machine's canvas from the sheet's approved steps (current drawing kept as a backup)">
               Redraft from sheet
             </button>
@@ -369,6 +442,7 @@ export function SequenceCanvas({
               {/* Readable-first here too: a machine opened FIRST from the
                   full-window switcher gets the same zoom-1 pin and one-time
                   measured re-layout the inline canvas gets. */}
+              <FitNodeText nodes={sm?.nodes} devices={sm?.devices} controlsDetail={controlsDetail} />
               <ReadableZoom smId={resolvedId} nodes={sm?.nodes} layoutStamp={sm?.machineSpec?.v3?.measuredLayoutAt ?? null} />
               <MeasuredRelayout smId={resolvedId} enabled={needsMeasuredLayout} />
             </ReactFlowProvider>

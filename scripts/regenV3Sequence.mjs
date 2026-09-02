@@ -30,7 +30,6 @@ if (!projectFile || !smName || !draftId || !machineName) {
   process.exit(2);
 }
 const dry = flags.includes('--dry');
-const V3_STATE_NODE_W = 320; // keep equal to src/v3/sequenceSm.js V3_STATE_NODE_W
 
 const projPath = path.join(ROOT, 'projects', projectFile);
 const project = JSON.parse(fs.readFileSync(projPath, 'utf8'));
@@ -51,7 +50,7 @@ const devices = (sm.devices ?? []).filter(isRealDevice);
 const compiled = compileLaneFlow(model, { devices, machineName, isPrimary: true });
 const layout = layoutBranchDiagram(compiled.nodes, compiled.edges, {
   getHeight: (n) => (n.type === 'decisionNode' ? 96 : 120),
-  getWidth: (n) => (n.type === 'stateNode' ? V3_STATE_NODE_W : estimateNodeWidth(n)),
+  getWidth: (n) => estimateNodeWidth(n), // fixed v1 width (Dan, 2026-09-02)
 });
 const { nodes, edges } = layout.changed ? applyBranchLayout(compiled.nodes, compiled.edges, layout) : compiled;
 

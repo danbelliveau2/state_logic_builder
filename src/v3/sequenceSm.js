@@ -48,19 +48,13 @@ function applyCompiledSignals(store, smId, compiledSignals, nodes) {
   useDiagramStore.setState((s) => ({ project: { ...s.project, signals: next } }));
 }
 
-/** v3 state-node width (v3.css `.v3-seq .state-node`): wide enough that the
- *  full verb + full device display name always show at zoom 1 (Dan,
- *  2026-09-02: "you don't see the whole word, you don't see the whole
- *  name"). Classic keeps its 240px cap. */
-export const V3_STATE_NODE_W = 320;
-
-/** First-open layout on the v1 column law (center-aligned columns, uniform
- *  gap, loop rails) — the same pass the canvas's Re-layout button runs. */
 export function lawLayout(nodes, edges) {
   try {
+    // Fixed v1 node width (Dan's final sizing rule, 2026-09-02) — the
+    // engine's estimate (240) is the truth.
     const layout = layoutBranchDiagram(nodes, edges, {
       getHeight: (n) => (n.type === 'decisionNode' ? 96 : 120),
-      getWidth: (n) => (n.type === 'stateNode' ? V3_STATE_NODE_W : estimateNodeWidth(n)),
+      getWidth: (n) => estimateNodeWidth(n),
     });
     if (!layout.changed) return { nodes, edges };
     return applyBranchLayout(nodes, edges, layout);

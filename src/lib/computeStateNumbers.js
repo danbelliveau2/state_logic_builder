@@ -102,6 +102,11 @@ export function computeStateNumbers(nodes, edges, devices, options = {}) {
       stateMap.set(n.id, 127);
       continue;
     }
+    // "→ Initialize" terminal (Dan, 2026-09-02): the jump into the init block.
+    if (n.data?.isInitialize) {
+      stateMap.set(n.id, 100);
+      continue;
+    }
     if (completeStep !== undefined && isCycleCompleteNode(n)) {
       stateMap.set(n.id, completeStep);
       continue;

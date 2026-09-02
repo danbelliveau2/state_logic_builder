@@ -6839,6 +6839,9 @@ export function CreateStationPage({ embedded = false }) {
         speaker: (() => { try { return localStorage.getItem('jarvis.speaker') || 'Dan'; } catch { return 'Dan'; } })(),
         draftId: draftIdRef.current, // reconnect key: /agent-turn/last
         clientId: CLIENT_ID, // echo suppression on the live draft channel
+        // v3 (Dan, 2026-09-02): the widget authors VALUES and answers only —
+        // reflex lane, no structural sequence ops (those are canvas-only).
+        scope: 'values',
         draft: {
           name: name.trim(), description: fullExplanation.trim(),
           summary, smProposal: proposalForTurn, jarvisCoverage, controlsNotes,
@@ -9736,12 +9739,22 @@ export function CreateStationPage({ embedded = false }) {
           Not saved — the server refused a sequence line that isn't a structured step: {storeRefusal}
         </div>
       )}
-      {/* v3 (Dan, 2026-09-02): NO authoring input in the chat — this widget
-          is Questions, receipts and ME/CE only. Explanation intake lives in
-          INPUTS; the sequence is edited on the canvas; dev/Jason authoring
-          goes through Open in Claude Code. */}
-      <div data-testid="chat-no-authoring" style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.45, padding: '6px 2px 2px' }}>
-        Edit the sequence on the canvas above and the explanation in INPUTS — this panel shows questions and receipts.
+      {/* v3 (Dan, 2026-09-02, second ruling): VALUES-ONLY authoring returns —
+          delays, positions, names, agree/answers and questions go through the
+          REFLEX lane (scope: 'values'); structural sequence edits are
+          canvas-only and the engine refuses them here with a pointer. */}
+      <DictatedTextarea
+        value={changes}
+        onChange={setChanges}
+        rows={2}
+        className="form-input form-textarea"
+        data-testid="changes-textarea"
+        micTestId="changes-dictate-btn"
+        placeholder="values & questions only — a delay, a position, a name, an answer. Sequence edits happen on the canvas."
+        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleApplyChanges(); } }}
+      />
+      <div data-testid="chat-values-only-hint" style={{ fontSize: 11, color: C.muted, lineHeight: 1.4, padding: '4px 2px 0' }}>
+        Values &amp; questions only — sequence edits happen on the canvas above.
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 6 }}>
         {applying && (
@@ -9777,11 +9790,21 @@ export function CreateStationPage({ embedded = false }) {
         {!applying && (
           <span data-testid="claude-code-hint" style={{ fontSize: 11, color: claudeLaunch?.state === 'failed' ? C.danger : C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
             {claudeLaunch ? claudeLaunch.text : (
-              <>for changes, <button type="button" data-testid="open-claude-code-link" onClick={openInClaudeCode} style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', color: C.primary, cursor: 'pointer', fontWeight: 700 }}>Open in Claude Code</button></>
+              <>for bigger changes, <button type="button" data-testid="open-claude-code-link" onClick={openInClaudeCode} style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', color: C.primary, cursor: 'pointer', fontWeight: 700 }}>Open in Claude Code</button></>
             )}
           </span>
         )}
         <span style={{ flex: 1 }} />
+        <button
+          type="button"
+          className="btn btn--primary"
+          data-testid="apply-changes-btn"
+          onClick={handleApplyChanges}
+          disabled={applying || overSummarizeBudget}
+          title="Send a value change, an answer, or a question (reflex lane). Sequence edits happen on the canvas."
+        >
+          Send
+        </button>
       </div>
       {overSummarizeBudget && (
         <div style={{

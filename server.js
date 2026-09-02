@@ -280,6 +280,29 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
 
       const filePath = path.join(DATA_DIR_, safe);
 
+      // STALE-CANVAS GUARD (2026-09-02: a tab holding an older copy autosaved
+      // over a freshly redrafted v3 canvas — repeatedly). A v3 SM carries
+      // machineSpec.v3.redraftedAt; a payload whose copy of an SM is OLDER
+      // than the one on disk is a stale tab — refuse, tell it to reload.
+      // Only SMs stamped on BOTH sides are compared, so nothing else changes.
+      if (fs.existsSync(filePath) && Array.isArray(parsed?.stateMachines)) {
+        try {
+          const onDisk = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+          const diskBySm = new Map((onDisk?.stateMachines ?? []).map(sm => [sm.id, sm]));
+          for (const sm of parsed.stateMachines) {
+            const mine = Date.parse(sm?.machineSpec?.v3?.redraftedAt ?? '');
+            const theirs = Date.parse(diskBySm.get(sm?.id)?.machineSpec?.v3?.redraftedAt ?? '');
+            if (Number.isFinite(mine) && Number.isFinite(theirs) && mine < theirs) {
+              console.warn(`[projects] REFUSED save of ${safe}: SM "${sm.name}" canvas is stale (${sm.machineSpec.v3.redraftedAt} < on-disk ${diskBySm.get(sm.id).machineSpec.v3.redraftedAt})`);
+              return sendJson(res, 409, {
+                error: `Stale canvas: "${sm.displayName ?? sm.name}" was redrafted after this tab loaded it. Reload the project to pick up the new drawing.`,
+                code: 'STALE_V3_CANVAS', smId: sm.id,
+              });
+            }
+          }
+        } catch { /* unreadable on-disk copy — fall through to the normal save */ }
+      }
+
       // Auto-backup: keep last 5 versions before overwriting
       if (fs.existsSync(filePath)) {
         const backupDir = path.join(DATA_DIR_, '_backups');
@@ -3738,6 +3761,11 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         // CONFIDENTLY (same typed ops → same diffs/receipts) or escalates to
         // the full agent loop below; deterministic guards run in ms either
         // way. Gates (decompose) always take the deep lane.
+        // VALUES-ONLY SCOPE (Dan, 2026-09-02): the sheet widget sends
+        // scope:'values' — reflex lane only, value/name/answer ops only; a
+        // structural ask is answered honestly and pointed at the canvas
+        // instead of escalating to the deep lane.
+        const valuesOnly = body.scope === 'values';
         if (!body.gate && String(process.env.JARVIS_REFLEX_LANE || 'on').toLowerCase() !== 'off') {
           try {
             const rx = await require('./src/lib/agentGenerator/reflexTurn.js').runReflexTurn({
@@ -3747,7 +3775,15 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
               audience: body.audience === 'CE' ? 'CE' : 'ME',
               speaker: String(body.speaker ?? 'Dan').slice(0, 60),
               signal: abort.signal,
+              scope: valuesOnly ? 'values' : null,
             });
+            if (!rx.handled && valuesOnly) {
+              const result = { ok: true, reply: 'That is a change to the sequence itself — draw it on the canvas above (this box is for values, names, answers and questions). ' + (rx.reason ? `(${String(rx.reason).slice(0, 120)})` : ''), diffs: [], asks: [], notes: [], draft: null, meta: { lane: 'reflex', scope: 'values', escalated: false } };
+              if (body.draftId) { agentTurnResults_.set(String(body.draftId), { at: Date.now(), result }); persistAgentTurns_(); }
+              console.log(`[agent-turn] VALUES-ONLY turn not handled by reflex (${rx.reason}) — answered, no deep lane`);
+              send('done', result);
+              return;
+            }
             if (rx.handled) {
               const result = { ...rx.result, meta: rx.meta };
               if (body.draftId) {

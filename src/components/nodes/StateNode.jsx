@@ -4842,6 +4842,17 @@ function HomeConfigPills({ smId, nodeId, sm, machineConfig }) {
 
 export function StateNode({ data, selected, id }) {
   const { actions = [], isInitial, isComplete, isFault, stateNumber } = data;
+  // v3 node kinds (Dan, 2026-09-02): "→ Initialize" terminal (jump to the
+  // init block; the implicit destination when a check's retry count is met)
+  // and the DESCRIBE node (the ME's intent in plain words, implemented by the
+  // SDC Engineer writer at build time). Both are flags on a stateNode so
+  // edges/routing/numbering stay v1.
+  const isInitialize = !!data.isInitialize;
+  const isDescribe = !!data.describe;
+  const [intentDraft, setIntentDraft] = useState(String(data.intent ?? ''));
+  useEffect(() => { setIntentDraft(String(data.intent ?? '')); }, [data.intent]);
+  const [dictating, setDictating] = useState(false);
+  const recogRef = useRef(null);
   const store = useDiagramStore();
   const sm = useDiagramStore(s => s.getActiveSm());
   const machineConfig = useDiagramStore(s => s.project?.machineConfig);
@@ -5051,6 +5062,8 @@ export function StateNode({ data, selected, id }) {
   let borderColor = '#64748b';
   if (isInitial || isComplete) borderColor = '#5a9a48';
   else if (isFault) borderColor = '#dc2626';
+  else if (isInitialize) borderColor = '#1d4ed8';
+  else if (isDescribe) borderColor = '#b45309';
   else if (actions.length > 0) {
     const firstAct = actions[0];
     const firstDevId = firstAct?.pickerV2 ? firstAct.pickerConfig?.subjectId : firstAct?.deviceId;
@@ -5061,7 +5074,7 @@ export function StateNode({ data, selected, id }) {
   }
 
   // Determine node outline shape from primary device
-  const shape = (isComplete || isFault) ? 'rounded' : getNodeShape(actions, devices);
+  const shape = (isComplete || isFault || isInitialize || isDescribe) ? 'rounded' : getNodeShape(actions, devices);
   const useSvgShape = shape !== 'rounded' && shape !== 'pill';
 
   // Vision exit mode: detect if this node has a VisionInspect action with side exits
@@ -5133,7 +5146,7 @@ export function StateNode({ data, selected, id }) {
   return (
     <div
       ref={nodeRootRef}
-      className={`state-node state-node--${shape}${selected ? ' state-node--selected' : ''}${isInitial ? ' state-node--initial' : ''}${isComplete ? ' state-node--complete' : ''}${isFault ? ' state-node--fault' : ''}`}
+      className={`state-node state-node--${shape}${selected ? ' state-node--selected' : ''}${isInitial ? ' state-node--initial' : ''}${isComplete ? ' state-node--complete' : ''}${isFault ? ' state-node--fault' : ''}${isInitialize ? ' state-node--initialize' : ''}${isDescribe ? ' state-node--describe' : ''}`}
       style={{
         '--node-border': borderColor,
         '--pill-inset': `${pill.inset}px`,
@@ -5378,11 +5391,24 @@ export function StateNode({ data, selected, id }) {
               // Terminal-state shortcut from picker — set isComplete or
               // isFault on the node and skip the addAction/edge-spawn flow.
               // Clears the other terminal flag (mutually exclusive).
+              if (config.describe) {
+                // DESCRIBE (Dan, 2026-09-02): the node becomes a plain-words
+                // intent note — no action rows; the writer implements it.
+                store.updateNode(sm.id, id, { data: { describe: true, intent: freshNode?.data?.intent ?? '', isComplete: false, isFault: false, isInitialize: false } });
+                setShowPicker(false);
+                setEditingActionId(null);
+                setPickerInitialStep(null);
+                setPickerDraft(null);
+                return;
+              }
               if (config.terminalType) {
                 store.updateNode(sm.id, id, {
                   data: {
                     isComplete: config.terminalType === 'complete',
                     isFault:    config.terminalType === 'fault',
+                    // "→ Initialize" terminal (Dan, 2026-09-02) — jump to the init block.
+                    isInitialize: config.terminalType === 'initialize',
+                    describe: false,
                   },
                 });
                 setShowPicker(false);
@@ -5731,7 +5757,7 @@ export function StateNode({ data, selected, id }) {
                     const hasOtherIncoming = (smAfterEdges?.edges ?? []).some(e =>
                       e.target === childId
                     );
-                    const isTerminal = child.data?.isInitial || child.data?.isComplete || child.data?.isFault;
+                    const isTerminal = child.data?.isInitial || child.data?.isComplete || child.data?.isFault || child.data?.isInitialize || child.data?.describe;
                     const isEmpty = (child.data?.actions ?? []).length === 0;
                     if (!hasOtherIncoming && isEmpty && !isTerminal) {
                       stAfterEdges.deleteNode(sm.id, childId);
@@ -6019,7 +6045,7 @@ export function StateNode({ data, selected, id }) {
       {/* State number badge (small, top-left corner) */}
       {stateNumber != null && (
         <div className="state-node__step-num" style={{
-          background: isFault ? '#dc2626' : (isInitial || isComplete) ? '#5a9a48' : borderColor,
+          background: isFault ? '#dc2626' : (isInitial || isComplete) ? '#5a9a48' : isInitialize ? '#1d4ed8' : borderColor,
         }}>
           {stateNumber}
         </div>
@@ -6032,6 +6058,55 @@ export function StateNode({ data, selected, id }) {
           <div className="state-node__complete" style={{ color: '#dc2626' }}>
             <span className="state-node__complete-icon">⚠</span>
             <span>Fault State</span>
+          </div>
+        ) : isInitialize ? (
+          // "→ Initialize" terminal (Dan, 2026-09-02): the machine runs its
+          // initialization (init block, state 100). Codegen jumps there.
+          <div className="state-node__complete" style={{ color: '#1d4ed8' }} title="Runs initialization (the init block, state 100). A Check whose retry count is met lands here implicitly.">
+            <span className="state-node__complete-icon">→</span>
+            <span>Initialize</span>
+          </div>
+        ) : isDescribe ? (
+          // DESCRIBE node (Dan, 2026-09-02): the ME's words at this point of
+          // the sequence — typed or dictated; the SDC Engineer writer
+          // implements it at build time (IR `intent`).
+          <div className="state-node__describe nodrag nowheel" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+            <div className="state-node__describe-head">
+              <span>✎ Describe</span>
+              <button
+                type="button"
+                className={`state-node__describe-mic${dictating ? ' state-node__describe-mic--on' : ''}`}
+                title={dictating ? 'Stop dictating' : 'Dictate — say what should happen here'}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+                  if (!SR) { window.alert('Dictation needs Chrome or Edge (speech recognition is not available in this browser).'); return; }
+                  if (recogRef.current) { try { recogRef.current.stop(); } catch { /* ignore */ } recogRef.current = null; setDictating(false); return; }
+                  const r = new SR();
+                  r.continuous = true; r.interimResults = false; r.lang = 'en-US';
+                  let text = intentDraft;
+                  r.onresult = (ev) => {
+                    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+                      if (ev.results[i].isFinal) text = `${text}${text && !/\s$/.test(text) ? ' ' : ''}${ev.results[i][0].transcript.trim()}`;
+                    }
+                    setIntentDraft(text);
+                    if (sm) store.updateNodeData(sm.id, id, { intent: text });
+                  };
+                  r.onend = () => { recogRef.current = null; setDictating(false); };
+                  r.onerror = () => { recogRef.current = null; setDictating(false); };
+                  recogRef.current = r; setDictating(true); r.start();
+                }}
+              >🎤</button>
+            </div>
+            <textarea
+              className="state-node__describe-text nodrag nowheel"
+              value={intentDraft}
+              placeholder="Say what should happen here, in your words — e.g. “if there's no part, retract and try again — don't stop the machine”"
+              rows={3}
+              onChange={(e) => setIntentDraft(e.target.value)}
+              onBlur={() => { if (sm && intentDraft !== String(data.intent ?? '')) store.updateNodeData(sm.id, id, { intent: intentDraft }); }}
+              onKeyDown={(e) => e.stopPropagation()}
+            />
           </div>
         ) : isComplete ? (
           // Complete node: green "Cycle Complete" text

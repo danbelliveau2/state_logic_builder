@@ -3178,7 +3178,7 @@ export function DecisionBody({ data, smId, nodeId, selected, onClick, onContextM
               display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 9, fontWeight: 700,
               background: 'rgba(0,0,0,0.3)', color: '#fbbf24', padding: '1px 6px', borderRadius: 8,
               letterSpacing: '0.03em',
-            }}><span className="node-chip__label">{'\u21BB'} Retry x{retryMax}</span></span>
+            }}><span className="node-chip__label">{'\u21BB'} Retry x{retryMax}{isV3Shell() ? ' \u2192 initialize' : ''}</span></span>
           </div>
         )}
         {/* Log footer pill — names the PT FIELD (or value-log field) being
@@ -3830,7 +3830,7 @@ export function DecisionNode({ data, selected, id }) {
               padding: '1px 6px', borderRadius: 8,
               letterSpacing: '0.03em',
             }}>
-              <span className="node-chip__label">{'\u21BB'} Retry x{retryMax}</span>
+              <span className="node-chip__label">{'\u21BB'} Retry x{retryMax}{isV3Shell() ? ' \u2192 initialize' : ''}</span>
             </span>
           </div>
         )}

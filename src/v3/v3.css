@@ -36,6 +36,7 @@
 }
 .v3-seq__btn:hover { background: #eaf3fc; }
 .v3-seq__btn--primary { background: #1574C4; color: #fff; border-color: #1574C4; }
+.v3-seq__btn--on { background: #eaf3fc; border-color: #1574C4; }
 .v3-seq__btn--primary:hover { background: #125fa1; }
 
 /* The live canvas body: device sidebar (optional) + React Flow. Height is set
@@ -160,19 +161,39 @@
 }
 .v3-seq-full__body .canvas-wrapper { flex: 1; min-width: 0; }
 
-/* FULL NODE TEXT (Dan, 2026-09-02: "you don't see the whole word, you don't
-   see the whole name" — "Retr…" is unacceptable). v3-scoped override of the
-   classic 240px cap + shrink/ellipsize path: every state node in the v3
-   canvas is 320px wide (uniform, so columns still read as columns) and a
-   device name that still will not fit WRAPS to a second line instead of
-   scaling or ellipsizing. Classic (/classic.html) is untouched — these
-   selectors only exist under the v3 sequence containers. Keep
-   V3_STATE_NODE_W in sequenceSm.js equal to the width here. */
-.v3-seq .state-node,
-.v3-seq-full .state-node {
-  min-width: 320px;
-  width: 320px;
-  max-width: 320px;
+/* NODE SIZING — Dan's final rule (2026-09-02): FIXED width, v1's 240px (the
+   classic .state-node cap applies untouched). A single line NEVER wraps and
+   NEVER truncates — its font shrinks to fit (v1's ShrinkToFit on picker rows;
+   SequenceCanvas.FitNodeText on the legacy device-name spans); separate lines
+   stack and the node grows vertically. No ellipsis on the ME canvas. */
+.v3-seq .action-device,
+.v3-seq-full .action-device {
+  overflow: visible;
+  text-overflow: clip;
+}
+/* Pills keep their natural width (classic lets them shrink + ellipsize —
+   "Retr…"); the device/subject text is what shrinks, so the WHOLE row —
+   type pill + text + On/Off pill — stays one line and every node in a
+   column keeps the same height. */
+.v3-seq .action-row,
+.v3-seq-full .action-row {
+  flex-wrap: nowrap;
+}
+.v3-seq .action-row > .action-op,
+.v3-seq-full .action-row > .action-op {
+  flex-shrink: 0;
+  overflow: visible;
+  text-overflow: clip;
+}
+/* CONTROLS DETAIL (Dan, 2026-09-02): the tag/condition lines under actions
+   (i_HoldDownCylinderRetracted=OFF, HoldDownCylinderExtendDelay.DN) are
+   controls detail — hidden on the ME canvas unless the bar's "Controls
+   detail" toggle is on (remembered). */
+.v3-seq--no-controls .action-verify,
+.v3-seq--no-controls .action-verify-text,
+.v3-seq-full--no-controls .action-verify,
+.v3-seq-full--no-controls .action-verify-text {
+  display: none;
 }
 .v3-seq .action-row,
 .v3-seq-full .action-row {
@@ -207,3 +228,14 @@
   row-gap: 2px;
   max-width: 100%;
 }
+
+/* "→ Initialize" terminal + DESCRIBE node (Dan, 2026-09-02). v3 only — the
+   classes only exist on nodes created in the v3 shell. */
+.state-node--initialize { border-color: #1d4ed8; border-width: 2.5px; }
+.state-node--describe { border-color: #b45309; border-style: dashed; background: #fffbeb; }
+.state-node__describe { padding: 6px 8px 8px; display: flex; flex-direction: column; gap: 4px; }
+.state-node__describe-head { display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 800; color: #92400e; letter-spacing: 0.03em; }
+.state-node__describe-mic { border: 1px solid #f59e0b; background: #fff; border-radius: 12px; padding: 1px 7px; font-size: 12px; cursor: pointer; line-height: 1.4; }
+.state-node__describe-mic--on { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.35); }
+.state-node__describe-text { width: 100%; box-sizing: border-box; resize: vertical; min-height: 54px; border: 1px solid #fcd34d; border-radius: 6px; padding: 5px 7px; font: inherit; font-size: 11.5px; line-height: 1.4; color: #1e293b; background: #fff; }
+.state-node__describe-text::placeholder { color: #a16207; opacity: 0.7; font-style: italic; }
