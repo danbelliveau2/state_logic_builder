@@ -17,6 +17,36 @@
 import { useDiagramStore } from '../store/useDiagramStore.js';
 import { compileLaneFlow, stepsToModel } from './compileLaneFlow.js';
 import { layoutBranchDiagram, applyBranchLayout, estimateNodeWidth } from '../lib/branchLayout.mjs';
+import { classifyDeviceRole } from '../lib/deviceTypes.js';
+
+/** SIGNALS / COUNTERS ARE NOT DEVICES (Dan, 2026-09-02): cross-machine
+ *  signals live in the SIGNALS panel (v1 state signals / p_ outputs) and the
+ *  retry counter is a codegen artifact of the check's retry config — neither
+ *  is ever a row in sm.devices. */
+export const isRealDevice = (d) => { const r = classifyDeviceRole(d); return r !== 'signal' && r !== 'counter'; };
+
+/** File the compiler's outgoing signals as v1 STATE SIGNALS on the project
+ *  (upsert by name for this SM — a redraft re-binds, never duplicates). */
+function applyCompiledSignals(store, smId, compiledSignals, nodes) {
+  if (!compiledSignals?.length) return;
+  const project = store.project;
+  const sm = project?.stateMachines?.find((s) => s.id === smId);
+  if (!sm) return;
+  const existing = project.signals ?? [];
+  const next = [...existing];
+  for (const sg of compiledSignals) {
+    const node = nodes.find((n) => n.id === sg.stateNodeId);
+    const rec = {
+      name: sg.name, description: sg.description ?? '', type: 'state', axes: [],
+      smId, smName: sm.displayName ?? sm.name, stateNodeId: sg.stateNodeId,
+      stateName: node?.data?.label ?? sg.stateName ?? '', reachedMode: sg.reachedMode ?? 'in',
+    };
+    const i = next.findIndex((x) => x.type === 'state' && x.smId === smId && String(x.name).toLowerCase() === sg.name.toLowerCase());
+    if (i >= 0) next[i] = { ...next[i], ...rec };
+    else next.push({ id: `id_${Math.random().toString(36).slice(2, 10)}`, ...rec });
+  }
+  useDiagramStore.setState((s) => ({ project: { ...s.project, signals: next } }));
+}
 
 /** v3 state-node width (v3.css `.v3-seq .state-node`): wide enough that the
  *  full verb + full device display name always show at zoom 1 (Dan,
@@ -52,14 +82,17 @@ export function redraftMachineSm({ smId, model = null, steps = null, isPrimary =
   const store = useDiagramStore.getState();
   const sm = store.project?.stateMachines?.find((s) => s.id === smId);
   if (!sm) return false;
-  const useModel = model ?? (steps ? stepsToModel(steps) : null);
+  // Structured steps carry the group hints; the flow model is the fallback.
+  const useModel = (steps?.length ? stepsToModel(steps) : null) ?? model;
   if (!useModel) return false;
-  const compiled = compileLaneFlow(useModel, { devices: sm.devices ?? [], machineName: machineName || sm.displayName || sm.name, isPrimary });
+  const devices = (sm.devices ?? []).filter(isRealDevice);
+  const compiled = compileLaneFlow(useModel, { devices, machineName: machineName || sm.displayName || sm.name, isPrimary });
   const { nodes, edges } = lawLayout(compiled.nodes, compiled.edges);
   const now = new Date().toISOString();
   const prevV3 = sm.machineSpec?.v3 ?? {};
   const backups = [...(prevV3.redraftBackups ?? []), { at: now, nodes: sm.nodes ?? [], edges: sm.edges ?? [] }].slice(-3);
   store.updateStateMachine(smId, {
+    devices,
     nodes,
     edges,
     machineSpec: {
@@ -69,6 +102,7 @@ export function redraftMachineSm({ smId, model = null, steps = null, isPrimary =
       v3: { ...prevV3, migratedAt: now, migratedFrom: 'sheet-structured-steps', redraftedAt: now, measuredLayoutAt: undefined, redraftBackups: backups },
     },
   });
+  applyCompiledSignals(useDiagramStore.getState(), smId, compiled.signals, nodes);
   return true;
 }
 
@@ -93,7 +127,7 @@ function smDevicesFromSheet(sheetDevices, ownedNames) {
     const k = nk(row.displayName ?? row.name);
     return owned.some((o) => o === k || o.includes(k) || k.includes(o));
   };
-  return (sheetDevices ?? []).filter((d) => d && d.name && claims(d)).map((d) => {
+  return (sheetDevices ?? []).filter((d) => d && d.name && claims(d) && isRealDevice(d)).map((d) => {
     const out = {
       id: d.devId || `id_${Math.random().toString(36).slice(2, 10)}`,
       name: String(d.name).replace(/[^A-Za-z0-9_]/g, ''),
@@ -140,7 +174,7 @@ function isUndrawn(sm) {
  * @param {boolean}     p.isPrimary
  * @returns {string} the SM id
  */
-export function ensureMachineSm({ smId = null, draftId, entry, model, sheetDevices, stationName, stationNumber, isPrimary = true }) {
+export function ensureMachineSm({ smId = null, draftId, entry, model, steps = null, sheetDevices, stationName, stationNumber, isPrimary = true }) {
   const store = useDiagramStore.getState();
   const existing = findMachineSm(store.project, { smId, draftId, machineKey: entry?.key });
   if (existing && (existing.machineSpec?.canvasAuthoritative || !isUndrawn(existing))) {
@@ -162,8 +196,9 @@ export function ensureMachineSm({ smId = null, draftId, entry, model, sheetDevic
     });
   }
   const sm = useDiagramStore.getState().project.stateMachines.find((s) => s.id === id);
-  const devices = (sm?.devices?.length ? sm.devices : smDevicesFromSheet(sheetDevices, entry?.deviceNames));
-  const compiled = compileLaneFlow(model, { devices, machineName: entry?.name ?? '', isPrimary });
+  const devices = (sm?.devices?.length ? sm.devices.filter(isRealDevice) : smDevicesFromSheet(sheetDevices, entry?.deviceNames));
+  const useSteps = steps ?? entry?.sequenceSteps ?? null;
+  const compiled = compileLaneFlow((useSteps?.length ? stepsToModel(useSteps) : null) ?? model, { devices, machineName: entry?.name ?? '', isPrimary });
   const { nodes, edges } = lawLayout(compiled.nodes, compiled.edges);
   const now = new Date().toISOString();
   useDiagramStore.getState().updateStateMachine(id, {
@@ -183,5 +218,6 @@ export function ensureMachineSm({ smId = null, draftId, entry, model, sheetDevic
       v3: { draftId, machineKey: entry?.key ?? null, migratedAt: now, migratedFrom: 'sheet-structured-steps' },
     },
   });
+  applyCompiledSignals(useDiagramStore.getState(), id, compiled.signals, nodes);
   return id;
 }

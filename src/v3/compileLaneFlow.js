@@ -123,7 +123,12 @@ function normLine(verb, rest, line, raw = {}) {
   return {
     verb, device: String(dev0 ?? '').trim(), detail: raw.detail || dd.join(' — ').trim(),
     deviceId: raw.deviceId ?? null, title: `${verb} ${String(dev0 ?? '').trim()}`.trim(),
-    concurrent: raw.concurrent === true || /\b(same time|concurrent|simultaneous)/i.test(String(raw.detail ?? '')),
+    // GROUP HINTS (Dan, 2026-09-02 — his v1 multi-action node): 'thenAfterComplete'
+    // joins the previous action node, starting after it completes;
+    // 'concurrent' joins it starting at the same moment.
+    group: raw.group === 'thenAfterComplete' || raw.thenAfterComplete === true ? 'thenAfterComplete'
+      : (raw.group === 'concurrent' || raw.concurrent === true || /\b(same time|concurrent|simultaneous)/i.test(String(raw.detail ?? ''))) ? 'concurrent'
+      : null,
     line,
   };
 }
@@ -322,12 +327,6 @@ export function compileLaneFlow(model, { devices = [], machineName = '', isPrima
       ...(op === 'ServoIndex' && it.detail ? { indexLabel: String(it.detail) } : {}),
     };
   };
-  /** Signal step → SetOn of the Parameter it names (a real p_ output row). */
-  const signalAction = (it) => {
-    const dev = findDev(signalTitle(it));
-    if (!dev || dev.type !== 'Parameter') return null;
-    return { id: uid(), deviceId: dev.id, operation: 'SetOn' };
-  };
 
   /**
    * Place one plain step as a node at (x, y). Returns { node, merged } — merged
@@ -337,20 +336,33 @@ export function compileLaneFlow(model, { devices = [], machineName = '', isPrima
     const kind = kindOf(it);
     if (kind === 'wait') return { node: waitNode(waitTitle(it), counterpartOf(it), { x, y }) };
     if (kind === 'signal') {
-      const act = signalAction(it);
-      return { node: stateNode(`Signal ${signalTitle(it)}`, { x, y, actions: act ? [act] : [], ...(counterpartOf(it) ? { description: `to ${counterpartOf(it)}` } : {}) }) };
+      // SIGNALS ARE NOT DEVICES (Dan, 2026-09-02): an outgoing signal is a v1
+      // STATE SIGNAL (p_ output, SIGNALS panel) — TRUE while the machine is in
+      // the step that follows. Nothing is drawn; sequenceSm files it.
+      pendingSignals.push({ name: String(signalTitle(it)).replace(/\s+/g, '_'), counterpart: counterpartOf(it) });
+      return { node: null, merged: true };
     }
     if (kind === 'hold') return { node: stateNode(`Hold — ${String(it.title ?? '').replace(/^hold\s*[—–-]?\s*/i, '')}`, { x, y }) };
     const act = actionOf(it);
-    if (act && it.concurrent && isActionNode(prevNode) && (prevNode.data.actions ?? []).every((a) => !a.pickerV2)) {
-      // Simultaneous with the previous action → same node, previous row's
-      // advance condition says "concurrent".
+    const grp = it.group ?? (it.concurrent ? 'concurrent' : null);
+    if (act && grp && isActionNode(prevNode) && (prevNode.data.actions ?? []).every((a) => !a.pickerV2)) {
+      // Law (e): the v1 multi-action node — this action joins the previous
+      // node; the previous row's advance condition says when this one starts.
       const prevActs = prevNode.data.actions;
-      prevActs[prevActs.length - 1].advanceCondition = { type: 'none' };
+      prevActs[prevActs.length - 1].advanceCondition = { type: grp === 'concurrent' ? 'none' : 'onComplete' };
       prevActs.push(act);
       return { node: prevNode, merged: true };
     }
     return { node: stateNode(String(it.title ?? it.line ?? '').trim() || 'Step', { x, y, actions: act ? [act] : [] }) };
+  };
+  /** Outgoing signals waiting for the node they belong to (state signals). */
+  const pendingSignals = [];
+  const signals = [];
+  const bindSignals = (node) => {
+    if (!node) return;
+    for (const sgn of pendingSignals.splice(0)) {
+      signals.push({ name: sgn.name, stateNodeId: node.id, stateName: node.data.label ?? '', reachedMode: 'in', description: sgn.counterpart ? `to ${sgn.counterpart}` : '' });
+    }
   };
 
   // ── Split the item list into MAIN + LANES at each loopEnd (the sheet's
@@ -404,6 +416,7 @@ export function compileLaneFlow(model, { devices = [], machineName = '', isPrima
       } else {
         n = decideFallback(it.decide.title, { x: MAIN_X, y });
       }
+      bindSignals(n);
       link(prev, n, { sourceHandle: primaryExit(prev), exit: primaryLabel(prev) });
       mainChecks.push({ node: n, y, shape });
       mainNodes.push({ node: n, it });
@@ -413,12 +426,14 @@ export function compileLaneFlow(model, { devices = [], machineName = '', isPrima
     }
     const { node: n, merged } = placeStep(it, MAIN_X, y, prev);
     if (merged) continue;
+    bindSignals(n);
     link(prev, n, { sourceHandle: primaryExit(prev), exit: primaryLabel(prev), label: it.cond ?? '' });
     mainNodes.push({ node: n, it });
     prev = n;
     y += hOf(n) + GAP_Y;
   }
   const lastMain = prev;
+  bindSignals(lastMain); // a trailing signal belongs to the last step
 
   // ── Loop-target resolution: the plain-words loop point names a main step
   //    ("back to Extend Horizontal Shuttle", "shuttle out again", "back to the
@@ -559,5 +574,5 @@ export function compileLaneFlow(model, { devices = [], machineName = '', isPrima
     cycleComplete.position = { x: MAIN_X, y: maxY + GAP_Y };
   }
 
-  return { nodes, edges };
+  return { nodes, edges, signals };
 }

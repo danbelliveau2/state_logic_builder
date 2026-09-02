@@ -11188,6 +11188,7 @@ export function CreateStationPage({ embedded = false }) {
                                           draftId={draftIdRef.current}
                                           entry={e}
                                           model={buildFlowModel(e.sequenceSteps, e.sequence, composeStepClient, tagOfLine, summary?.devices)}
+                                          steps={e.sequenceSteps ?? null}
                                           sheetDevices={summary?.devices ?? []}
                                           stationName={name.trim() || draft?.name || ''}
                                           stationNumber={station}

@@ -20,6 +20,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compileLaneFlow, stepsToModel } from '../src/v3/compileLaneFlow.js';
 import { layoutBranchDiagram, applyBranchLayout, estimateNodeWidth } from '../src/lib/branchLayout.mjs';
+import { classifyDeviceRole } from '../src/lib/deviceTypes.js';
+const isRealDevice = (d) => { const r = classifyDeviceRole(d); return r !== 'signal' && r !== 'counter'; };
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const [projectFile, smName, draftId, machineName, ...flags] = process.argv.slice(2);
@@ -44,7 +46,9 @@ const isPrimary = (draft.smProposal.stateMachines ?? []).findIndex((m) => m === 
   || /shuttle|primary/i.test(machineName); // the primary machine gets Cycle Complete
 
 const model = stepsToModel(steps);
-const compiled = compileLaneFlow(model, { devices: sm.devices ?? [], machineName, isPrimary: true });
+// SIGNALS / COUNTERS ARE NOT DEVICES (Dan, 2026-09-02) — drop any that slipped in.
+const devices = (sm.devices ?? []).filter(isRealDevice);
+const compiled = compileLaneFlow(model, { devices, machineName, isPrimary: true });
 const layout = layoutBranchDiagram(compiled.nodes, compiled.edges, {
   getHeight: (n) => (n.type === 'decisionNode' ? 96 : 120),
   getWidth: (n) => (n.type === 'stateNode' ? V3_STATE_NODE_W : estimateNodeWidth(n)),
@@ -53,7 +57,7 @@ const { nodes, edges } = layout.changed ? applyBranchLayout(compiled.nodes, comp
 
 // ── Report
 const byId = new Map(nodes.map((n) => [n.id, n]));
-const devName = (id) => (sm.devices ?? []).find((d) => d.id === id)?.displayName ?? id;
+const devName = (id) => devices.find((d) => d.id === id)?.displayName ?? id;
 const describe = (n) => {
   if (n.type === 'decisionNode') {
     const d = n.data;
@@ -75,6 +79,8 @@ for (const e of edges) {
   const lbl = e.data?.outcomeLabel || e.data?.label || '';
   console.log(`    ${describe(byId.get(e.source)).slice(0, 44).padEnd(44)} -[${e.sourceHandle ?? 'bottom'}${lbl ? ` ${lbl}` : ''}]-> ${describe(byId.get(e.target)).slice(0, 44)}${e.targetHandle ? ` th=${e.targetHandle}` : ''}`);
 }
+console.log('\n  state signals:', (compiled.signals ?? []).map((g) => `${g.name} = in "${g.stateName}"${g.description ? ' ' + g.description : ''}`).join('; ') || '(none)');
+console.log('  devices kept:', devices.map((d) => d.displayName).join(', '), '| dropped:', (sm.devices ?? []).filter((d) => !isRealDevice(d)).map((d) => d.displayName).join(', ') || '(none)');
 if (dry) { console.log('\n(dry run — nothing written)'); process.exit(0); }
 
 // ── Write with backup
@@ -97,5 +103,13 @@ sm.machineSpec = {
 delete sm.machineSpec.v3.measuredLayoutAt;
 sm.nodes = nodes;
 sm.edges = edges;
+sm.devices = devices;
+// State signals (SIGNALS panel) — upsert by name for this SM.
+project.signals = project.signals ?? [];
+for (const sg of compiled.signals ?? []) {
+  const rec = { name: sg.name, description: sg.description ?? '', type: 'state', axes: [], smId: sm.id, smName: sm.displayName ?? sm.name, stateNodeId: sg.stateNodeId, stateName: sg.stateName, reachedMode: sg.reachedMode ?? 'in' };
+  const i = project.signals.findIndex((x) => x.type === 'state' && x.smId === sm.id && String(x.name).toLowerCase() === sg.name.toLowerCase());
+  if (i >= 0) project.signals[i] = { ...project.signals[i], ...rec }; else project.signals.push({ id: `id_${Math.random().toString(36).slice(2, 10)}`, ...rec });
+}
 fs.writeFileSync(projPath, JSON.stringify(project, null, 2), 'utf8');
 console.log(`\nwrote ${projPath} (backup in projects/_backups/)`);

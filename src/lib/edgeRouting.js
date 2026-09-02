@@ -289,8 +289,11 @@ export function computeAutoRoute(src, tgt, edgeData, allNodes, sourceHandle, sna
       // alternate child across the source). We can't go "right then down"
       // because right takes us away from target — route around the local
       // source+target bounds, still keeping a perpendicular exit.
-      const DROP = 40;
-      const PAD  = 60;
+      // Parametric like every rail: branchLayout hands each rail its own
+      // slot (loopOffset / loopBottomDrop) so two rails on one side never
+      // share a line. Defaults unchanged for hand-placed edges.
+      const DROP = edgeData?.loopBottomDrop ?? 40;
+      const PAD  = edgeData?.loopOffset     ?? 60;
       const sideX = isLeftHandle
         ? Math.min(src.x, tgt.x) - PAD
         : Math.max(src.x, tgt.x) + NODE_WIDTH + PAD;

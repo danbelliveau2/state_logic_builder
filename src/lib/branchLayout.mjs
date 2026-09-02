@@ -137,23 +137,37 @@ export function layoutBranchDiagram(nodes, edges, opts = {}) {
   const mainX = (initial.position?.x ?? 300) + getW(initial) / 2;
   const colX = new Map([[initial.id, mainX]]);
   {
+    // PRIMARY CLOSURE FIRST (2026-09-02, the Retry-to-a-later-main-step case):
+    // every node reachable by primary exits keeps the column of the chain it
+    // continues; branch (side-handle) targets are assigned only after the
+    // primary frontier is exhausted, and only when nothing primary already
+    // claimed them. Otherwise a Retry pointing at a step further down the
+    // main line pulled that step (and everything after it) into the lane.
     const queue = [initial.id];
     const seen = new Set([initial.id]);
-    while (queue.length) {
-      const id = queue.shift();
+    const deferred = [];
+    const visit = (id) => {
       const x = colX.get(id);
       for (const e of outBySource.get(id) ?? []) {
         if (!isForward(e)) continue;
-        if (!colX.has(e.target)) {
-          if (PRIMARY_HANDLES.has(e.sourceHandle ?? null)) {
-            colX.set(e.target, x);
-          } else {
-            const step = x === mainX ? C.LANE : C.SUBLANE;
-            colX.set(e.target, e.sourceHandle === 'exit-retry' ? x - step : x + step);
-          }
+        if (PRIMARY_HANDLES.has(e.sourceHandle ?? null)) {
+          if (!colX.has(e.target)) colX.set(e.target, x);
+          if (!seen.has(e.target)) { seen.add(e.target); queue.push(e.target); }
+        } else {
+          deferred.push(e);
         }
-        if (!seen.has(e.target)) { seen.add(e.target); queue.push(e.target); }
       }
+    };
+    for (;;) {
+      while (queue.length) visit(queue.shift());
+      const e = deferred.shift();
+      if (!e) break;
+      if (!colX.has(e.target)) {
+        const x = colX.get(e.source) ?? mainX;
+        const step = x === mainX ? C.LANE : C.SUBLANE;
+        colX.set(e.target, e.sourceHandle === 'exit-retry' ? x - step : x + step);
+      }
+      if (!seen.has(e.target)) { seen.add(e.target); queue.push(e.target); }
     }
   }
 
@@ -247,8 +261,23 @@ export function layoutBranchDiagram(nodes, edges, opts = {}) {
   //       final node rects, so the router draws exactly this geometry —
   //       horizontals land in clear bands BETWEEN nodes, rails hug the
   //       outermost node they pass, concentric loops nest inner→outer.
-  const backList = edges.filter(e => backEdges.has(e.id));
   const posOf = (id) => positions.get(id) ?? byId.get(id).position;
+  // A side-handle exit whose target sits on the WRONG side of the handle
+  // (e.g. a Retry from the LEFT handle going back down into the main column)
+  // routes as a rail too (computeAutoRoute wrongSide U) — it needs its own
+  // slot exactly like a back edge, or two rails share one line.
+  const isWrongSideRail = (e) => {
+    const h = e.sourceHandle;
+    if ((h !== 'exit-fail' && h !== 'exit-retry') || backEdges.has(e.id)) return false;
+    const s = byId.get(e.source), t = byId.get(e.target);
+    if (!s || !t) return false;
+    const sp = posOf(e.source), tp = posOf(e.target);
+    const tgtCx = tp.x + getW(t) / 2;
+    return h === 'exit-retry'
+      ? tgtCx > sp.x + 20
+      : tgtCx + C.NODE_W < sp.x + getW(s) - 20;
+  };
+  const backList = edges.filter(e => backEdges.has(e.id) || isWrongSideRail(e));
   const rects = nodes.map(n => ({
     id: n.id, x: posOf(n.id).x, y: posOf(n.id).y,
     w: getW(n), h: getH(n),
@@ -286,8 +315,8 @@ export function layoutBranchDiagram(nodes, edges, opts = {}) {
   const sideLoad = { left: 0, right: 0 };
   const withGeo = backList.map(e => ({ e, g: geoOf(e) }));
   // Longest loops choose first (outermost tracks dominate the picture).
-  withGeo.sort((a, b) =>
-    (b.g.srcHy - b.g.tgtY) - (a.g.srcHy - a.g.tgtY));
+  const span = (g) => Math.abs(g.srcHy - g.tgtY); // rails may run down (wrong-side) or up (loop)
+  withGeo.sort((a, b) => span(b.g) - span(a.g));
   for (const item of withGeo) {
     const { g } = item;
     if (g.sideHandle) { item.side = g.sideHandle; sideLoad[item.side]++; continue; }
@@ -312,7 +341,7 @@ export function layoutBranchDiagram(nodes, edges, opts = {}) {
       (byTgt.get(it.e.target) ?? byTgt.set(it.e.target, []).get(it.e.target)).push(it);
     }
     for (const list of byTgt.values()) {
-      list.sort((a, b) => (a.g.srcHy - a.g.tgtY) - (b.g.srcHy - b.g.tgtY));
+      list.sort((a, b) => span(a.g) - span(b.g));
       list.forEach((it, i) => arrivalIdx.set(it.e.id, i));
     }
   }
@@ -321,7 +350,7 @@ export function layoutBranchDiagram(nodes, edges, opts = {}) {
   // on a side gets its own offset slot — no two loops ever share a line.
   for (const S of ['left', 'right']) {
     const group = withGeo.filter(it => it.side === S);
-    group.sort((a, b) => (a.g.srcHy - a.g.tgtY) - (b.g.srcHy - b.g.tgtY)); // inner first
+    group.sort((a, b) => span(a.g) - span(b.g)); // inner first
     group.forEach((it, slot) => {
       const { e, g } = it;
       const params = { loopSide: S };

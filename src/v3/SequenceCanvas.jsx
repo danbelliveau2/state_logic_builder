@@ -156,7 +156,7 @@ function ReadableZoom({ smId, nodes, layoutStamp = null }) {
 }
 
 export function SequenceCanvas({
-  smId = null, draftId, entry, model, sheetDevices, stationName, stationNumber, isPrimary = true,
+  smId = null, draftId, entry, model, steps = null, sheetDevices, stationName, stationNumber, isPrimary = true,
   onDevicesChanged = null, testId = 'v3-sequence-canvas', autoActivate = false,
   // The station's machines for the on-canvas switcher:
   // [{ key, name, smId, entry, getModel(), isPrimary }] + the sheet-chip sync.
@@ -179,7 +179,7 @@ export function SequenceCanvas({
     if (ensuringRef.current) return;
     ensuringRef.current = true;
     try {
-      ensureMachineSm({ smId, draftId, entry, model, sheetDevices, stationName, stationNumber, isPrimary });
+      ensureMachineSm({ smId, draftId, entry, model, steps, sheetDevices, stationName, stationNumber, isPrimary });
     } catch (e) {
       console.error('[v3] sequence migration failed:', e);
     } finally {
@@ -203,7 +203,7 @@ export function SequenceCanvas({
     let id = m.smId ?? findMachineSm(useDiagramStore.getState().project, { draftId, machineKey: m.key })?.id ?? null;
     try {
       id = ensureMachineSm({
-        smId: m.smId ?? null, draftId, entry: m.entry ?? m, model: m.getModel ? m.getModel() : m.model,
+        smId: m.smId ?? null, draftId, entry: m.entry ?? m, model: m.getModel ? m.getModel() : m.model, steps: m.entry?.sequenceSteps ?? null,
         sheetDevices, stationName, stationNumber, isPrimary: !!m.isPrimary,
       });
     } catch (e) {
@@ -256,7 +256,7 @@ export function SequenceCanvas({
     const n = sm?.nodes?.length ?? 0;
     if (n > 1 && !window.confirm(`Redraft "${title}" from the sheet's approved steps?\n\nThe ${n} states drawn now are kept as a backup on the record (Undo also works).`)) return;
     try {
-      redraftMachineSm({ smId: resolvedId, model, isPrimary, machineName: title });
+      redraftMachineSm({ smId: resolvedId, model, steps: steps ?? entry?.sequenceSteps ?? null, isPrimary, machineName: title });
     } catch (e) {
       console.error('[v3] redraft failed:', e);
     }
