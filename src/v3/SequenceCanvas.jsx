@@ -23,6 +23,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { create } from 'zustand';
 import { ReactFlowProvider, useReactFlow } from '@xyflow/react';
 import { Canvas } from '../components/Canvas.jsx';
 import { DeviceSidebar } from '../components/DeviceSidebar.jsx';
@@ -31,6 +32,42 @@ import { useDiagramStore } from '../store/useDiagramStore.js';
 import { ensureMachineSm, findMachineSm } from './sequenceSm.js';
 import { layoutBranchDiagram, applyBranchLayout, estimateNodeWidth } from '../lib/branchLayout.mjs';
 import './v3.css';
+
+/** Which SM is open full-window — HOISTED out of the per-machine instance
+ *  (Dan, 2026-09-02 Phase A feedback: switch machines ON the canvas). The
+ *  sheet filters its machine columns by sheetSmKey, so a switch unmounts the
+ *  instance that opened the overlay; the flag must outlive it. Whichever
+ *  instance resolves to this id renders the overlay. */
+export const useV3Ui = create((set) => ({
+  expandedSmId: null,
+  setExpandedSmId: (id) => set({ expandedSmId: id ?? null }),
+}));
+
+/** Machine chips — the station's machines, the live one highlighted. */
+function MachineSwitcher({ machines, activeKey, onPick, dark = false, testId }) {
+  if ((machines?.length ?? 0) < 2) return null;
+  return (
+    <div className={`v3-sw${dark ? ' v3-sw--dark' : ''}`} data-testid={testId} role="tablist" aria-label="State machine">
+      {dark && <span className="v3-sw__label">Machine:</span>}
+      {machines.map((m) => {
+        const on = m.key === activeKey;
+        return (
+          <button
+            key={m.key}
+            type="button"
+            role="tab"
+            aria-selected={on}
+            className={`v3-sw__chip${on ? ' v3-sw__chip--on' : ''}`}
+            data-testid={`${testId}-${m.key}`}
+            data-selected={on ? 'true' : 'false'}
+            title={on ? `${m.name} — on the canvas now` : `Switch the canvas to ${m.name} (edits here are kept)`}
+            onClick={() => { if (!on) onPick(m); }}
+          >{m.name}</button>
+        );
+      })}
+    </div>
+  );
+}
 
 // READABLE-FIRST (Dan, 2026-09-01 lane-render supersession): default node
 // size is v1-readable (zoom 1), the section GROWS vertically with the diagram
@@ -59,7 +96,7 @@ function MeasuredRelayout({ smId, enabled }) {
     const sample = () => {
       const zoom = getViewport().zoom || 1;
       const m = new Map();
-      for (const el of document.querySelectorAll('.v3-seq .react-flow__node[data-id]')) {
+      for (const el of document.querySelectorAll('.v3-seq .react-flow__node[data-id], .v3-seq-full .react-flow__node[data-id]')) {
         const r = el.getBoundingClientRect();
         m.set(el.getAttribute('data-id'), { h: r.height / zoom, w: r.width / zoom });
       }
@@ -121,11 +158,15 @@ function ReadableZoom({ smId, nodes, layoutStamp = null }) {
 export function SequenceCanvas({
   smId = null, draftId, entry, model, sheetDevices, stationName, stationNumber, isPrimary = true,
   onDevicesChanged = null, testId = 'v3-sequence-canvas', autoActivate = false,
+  // The station's machines for the on-canvas switcher:
+  // [{ key, name, smId, entry, getModel(), isPrimary }] + the sheet-chip sync.
+  machines = null, onSelectMachine = null,
 }) {
   const project = useDiagramStore((s) => s.project);
   const activeSmId = useDiagramStore((s) => s.activeSmId);
   const setActiveSm = useDiagramStore((s) => s.setActiveSm);
-  const [expanded, setExpanded] = useState(false);
+  const expandedSmId = useV3Ui((s) => s.expandedSmId);
+  const setExpandedSmId = useV3Ui((s) => s.setExpandedSmId);
   const [showDevices, setShowDevices] = useState(false);
 
   // Resolve (create + migrate on first open) in an effect — never a store
@@ -149,6 +190,30 @@ export function SequenceCanvas({
 
   const sm = found;
   const isActive = !!resolvedId && activeSmId === resolvedId;
+  const expanded = !!resolvedId && expandedSmId === resolvedId;
+  const setExpanded = (v) => setExpandedSmId(v ? resolvedId : null);
+
+  // SWITCH MACHINES ON THE CANVAS: resolve (create + migrate on first open,
+  // exactly as the sheet does) SYNCHRONOUSLY, then make it live, keep the
+  // overlay open on it, and sync the sheet's machine chip — so the instance
+  // that mounts under the new filter finds its SM on its first render (no
+  // flash back to the sheet). Edits persist: same store, same SM records.
+  const switchTo = (m) => {
+    if (!m || m.key === entry?.key) return;
+    let id = m.smId ?? findMachineSm(useDiagramStore.getState().project, { draftId, machineKey: m.key })?.id ?? null;
+    try {
+      id = ensureMachineSm({
+        smId: m.smId ?? null, draftId, entry: m.entry ?? m, model: m.getModel ? m.getModel() : m.model,
+        sheetDevices, stationName, stationNumber, isPrimary: !!m.isPrimary,
+      });
+    } catch (e) {
+      console.error('[v3] machine switch migration failed:', e);
+    }
+    if (!id) return;
+    setActiveSm(id);
+    if (expanded) setExpandedSmId(id);
+    if (onSelectMachine) onSelectMachine(m.key);
+  };
   // The sheet filtered to THIS machine (its chip selected) → its canvas is
   // the live one without an extra click.
   useEffect(() => {
@@ -175,9 +240,10 @@ export function SequenceCanvas({
   // Esc closes the full-window canvas.
   useEffect(() => {
     if (!expanded) return undefined;
-    const onKey = (e) => { if (e.key === 'Escape') setExpanded(false); };
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); setExpandedSmId(null); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expanded]);
 
   const activate = () => { if (resolvedId && !isActive) setActiveSm(resolvedId); };
@@ -193,6 +259,9 @@ export function SequenceCanvas({
         </span>
       )}
       <span className="v3-seq__spacer" />
+      {isActive && !expanded && (
+        <MachineSwitcher machines={machines} activeKey={entry?.key} onPick={switchTo} testId={`${testId}-switch`} />
+      )}
       {isActive && !expanded && (
         <button type="button" className="v3-seq__btn" onClick={() => setShowDevices((v) => !v)} data-testid={`${testId}-devices-toggle`}>
           {showDevices ? 'Hide devices' : 'Devices'}
@@ -247,11 +316,22 @@ export function SequenceCanvas({
       {isActive && expanded && createPortal(
         <div className="v3-seq-full" data-testid="v3-canvas-expanded">
           <div className="v3-seq-full__bar">
+            {/* THE WAY BACK — top-left, always visible, unmistakable (Dan). */}
+            <button
+              type="button"
+              className="v3-seq-full__back"
+              onClick={() => setExpandedSmId(null)}
+              title="Back to the station sheet (Esc) — your edits are already on the sheet"
+              data-testid="v3-canvas-collapse"
+            >
+              ← Back to sheet <kbd>Esc</kbd>
+            </button>
             <b>{stationName ? `${stationName} — ` : ''}{title}</b>
             <span style={{ opacity: 0.8 }}>sequence canvas · {nodeCount} states</span>
+            <MachineSwitcher machines={machines} activeKey={entry?.key} onPick={switchTo} dark testId="v3-canvas-switch" />
             <span className="v3-seq__spacer" />
-            <button type="button" className="v3-seq__btn" onClick={() => setExpanded(false)} data-testid="v3-canvas-collapse">
-              Close ↙ back to the sheet
+            <button type="button" className="v3-seq__btn" onClick={() => setExpandedSmId(null)} data-testid="v3-canvas-close">
+              Close ↙
             </button>
           </div>
           <div className="v3-seq-full__body">
@@ -259,6 +339,11 @@ export function SequenceCanvas({
               <DeviceSidebar />
               <Canvas hideHeader />
               <PropertiesPanel />
+              {/* Readable-first here too: a machine opened FIRST from the
+                  full-window switcher gets the same zoom-1 pin and one-time
+                  measured re-layout the inline canvas gets. */}
+              <ReadableZoom smId={resolvedId} nodes={sm?.nodes} layoutStamp={sm?.machineSpec?.v3?.measuredLayoutAt ?? null} />
+              <MeasuredRelayout smId={resolvedId} enabled={needsMeasuredLayout} />
             </ReactFlowProvider>
           </div>
         </div>,

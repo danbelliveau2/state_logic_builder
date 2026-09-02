@@ -11074,6 +11074,24 @@ export function CreateStationPage({ embedded = false }) {
                           const perSm = sheetSmKey !== 'all'
                             ? perSmAll.filter(e => e.key === sheetSmKey)
                             : perSmAll;
+                          // v3 ON-CANVAS MACHINE SWITCHER (Dan, 2026-09-02): the
+                          // station's machines — ALL of them (a pick reveals the machine via
+                          // FREE-ORDER stepRevealed), with the flow model built lazily
+                          // (only a first-open migration needs it).
+                          const ixTagOfLine = (e) => {
+                            const ix = deriveInteractionLines((e.sequence ?? []).map(x => normalizeSeqLine(x)), {
+                              selfName: e.name,
+                              sameMachines: (smChipEntries ?? []).filter(o => o.key !== e.key).map(o => o.name).filter(Boolean),
+                              otherStations: [...new Set([...peerNames, 'Dial'])],
+                            });
+                            const byText = new Map();
+                            (e.sequence ?? []).forEach((ln, i2) => { const info = ix.byLine.get(i2); if (info) byText.set(normalizeSeqLine(ln), info); });
+                            return (line) => byText.get(normalizeSeqLine(line)) ?? null;
+                          };
+                          const v3Machines = (smChipEntries ?? []).filter(e => (e.sequence?.length ?? 0) > 0).map((e, i) => ({
+                            key: e.key, name: e.name, smId: e.smId ?? null, entry: e, isPrimary: i === 0,
+                            getModel: () => buildFlowModel(e.sequenceSteps, e.sequence, composeStepClient, ixTagOfLine(e), summary?.devices),
+                          }));
                           // Handshakes live in the SIGNALS device group now
                           // (one concept, never a separate strip — Dan).
                           const anyPerSmRecovery = perSmAll.some(e => (e.faultRecovery?.length ?? 0) > 0);
@@ -11176,6 +11194,8 @@ export function CreateStationPage({ embedded = false }) {
                                           isPrimary={ei === 0}
                                           autoActivate={sheetSmKey === e.key}
                                           testId={`v3-sequence-canvas-${e.key}`}
+                                          machines={v3Machines}
+                                          onSelectMachine={selectSheetSm}
                                           onDevicesChanged={(smRec) => {
                                             // Sidebar/modal device edits → the sheet's device cards.
                                             setSummary(s => (s ? mergeSmDevices(s, reconstructSummaryFromSm(smRec)) : s));
