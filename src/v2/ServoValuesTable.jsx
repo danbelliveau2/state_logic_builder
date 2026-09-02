@@ -355,7 +355,6 @@ function AxisSection({ smId, device, proposals = [], proposalDrafts, onProposalD
 export function ServoValuesTable() {
   const smId = useV2Shell(s => s.servoTableFor);
   const closeServoTable = useV2Shell(s => s.closeServoTable);
-  const openCompile = useV2Shell(s => s.openCompile);
   const updateDevice = useDiagramStore(s => s.updateDevice);
   const sm = useDiagramStore(s => (s.project?.stateMachines ?? []).find(m => m.id === smId));
   const [proposalDrafts, setProposalDrafts] = useState({});
@@ -380,8 +379,9 @@ export function ServoValuesTable() {
     proposalsByDevice.get(r.deviceId).push(r);
   }
 
-  /** Write every proposed value as a first-class named position on its axis,
-   *  then open the re-compile with the applied values spelled out. */
+  /** Write every proposed value as a first-class named position on its axis.
+   *  (The re-compile kick is gone with the compile modal — 2026-09-02; the
+   *  station sheet's Build reads the device values directly.) */
   function applyProposals() {
     const applied = [];
     for (const [deviceId, rows] of proposalsByDevice) {
@@ -407,11 +407,7 @@ export function ServoValuesTable() {
       }
     }
     if (applied.length === 0) return;
-    const block =
-      'Verified band values from the ME — replace the placeholder wide bands with these:\n' +
-      applied.map(a => `- ${a.deviceName} ${a.rowName}: ${a.value} mm` + (a.flag ? `\n  (flag: ${a.flag})` : '')).join('\n');
     setProposalDrafts({});
-    openCompile(sm.id, block);
     closeServoTable();
   }
 
@@ -438,8 +434,8 @@ export function ServoValuesTable() {
               Servo values — {sm.displayName || sm.name}
             </div>
             <div style={{ fontSize: 11.5, color: 'var(--color-text-light)', marginTop: 2 }}>
-              The mechanical team's position table. Compile and Generate read these values directly;
-              empty cells show as readiness gaps in the Code grid.
+              The mechanical team's position table. The station build reads these values directly;
+              empty cells show as open asks on the station sheet.
             </div>
           </div>
           <button
@@ -486,7 +482,7 @@ export function ServoValuesTable() {
                 background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 6,
                 fontSize: 12, fontWeight: 700, padding: '6px 16px', cursor: 'pointer',
               }}
-            >Apply values (re-compile)</button>
+            >Apply values</button>
           </div>
         )}
       </div>

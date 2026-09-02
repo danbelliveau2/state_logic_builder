@@ -1,5 +1,29 @@
 # Architecture — SDC State Logic Builder
 
+## v2 shell — the ONE DOOR (2026-09-02)
+
+The v2 shell (`index.html` → `src/v2/`) has exactly one station view and one
+station-creation path, per the law "FLOW REPLACEMENT = PREDECESSOR DELETION"
+(meKnowledge 2026-08-26) and Dan's 2026-09-02 ruling ("we revamped this —
+there's no use for this page anymore. I want the v2 app to always show the
+right things"):
+
+| Path | Goes to |
+|------|---------|
+| Any station (tree row, home card, device row, landing, reload) | the cascade **Station Sheet** (`CreateStationPage` embedded) via `src/v2/openStation.js` |
+| Legacy-shaped station (no `machineSpec.cascadeState`, not hand-drawn) | migrated on open: `cascadeState = { steps: {}, migratedFromLegacy }`, sheet rebuilt from the SM (`ensureStationSheetDraft`) |
+| Pure v1 canvas station (hand-drawn nodes/edges, no `sourceDescription`) | read-only `ClassicStationCard` → link to `/classic.html` |
+| "+ New" / "Add Station" (tree, home, classic card) | the sheet's describe-first **INPUTS** band (fresh draft, full viewport, over the project home) |
+
+**Deleted from the v2 bundle (never re-add):** the `Canvas` mount, the Spec
+Sheet|Diagram pill, `DiagramSubBar`, `ControlsFlowView`, `controlsFlowDerive`,
+`GenerationResultCard`, `CompileSequenceModal`, the `JarvisGenerateModal` mount,
+the SpecEditorModal tree line, the summarize-era intake form, the
+unfinished-drafts banner, the EXPLANATION coverage strip, the init-time
+`autoGenerateIndexerSM` call. The classic canvas exists only at `/classic.html`
+(`src/main.jsx`, frozen). Gate: `no-legacy-surface-in-v2`,
+`add-station-opens-cascade`, `reload-lands-on-sheet` in `src/v2/layoutInvariants.js`.
+
 ## File Map
 
 ```

@@ -139,50 +139,8 @@ const GEN_LEVELS = [
 ];
 const genLevelOf = (id) => GEN_LEVELS.find(l => l.id === id) ?? GEN_LEVELS[1];
 
-/** The "Level of code generation" field: preset chips + the free specifics
- *  line. Shared by the input and summary phases. Readable measure (≤900px). */
-function GenerationLevelField({ level, onLevel, purpose, onPurpose, disabled, savedTick }) {
-  return (
-    <div style={{ marginBottom: 12, maxWidth: 900 }}>
-      <label className="form-label" style={{ marginTop: 0 }}>
-        Level of code generation
-        <SaveTick state={savedTick} testId="gen-level-savetick" />
-      </label>
-      <div data-testid="gen-level-chips" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
-        {GEN_LEVELS.map(l => {
-          const on = l.id === level;
-          return (
-            <button
-              key={l.id}
-              type="button"
-              data-testid={`gen-level-${l.id}`}
-              onClick={() => onLevel(l.id)}
-              disabled={disabled}
-              title={l.title}
-              style={{
-                ...chipBase, cursor: disabled ? 'default' : 'pointer',
-                fontSize: 11, padding: '3px 12px',
-                color: on ? '#fff' : C.muted,
-                background: on ? C.primary : 'var(--color-sidebar)',
-                border: `1px solid ${on ? C.primary : C.border}`,
-              }}
-            >{on ? '✓ ' : ''}{l.label}</button>
-          );
-        })}
-      </div>
-      <DictatedTextarea
-        value={purpose}
-        onChange={v => onPurpose(v.replace(/\n/g, ' '))}
-        rows={1}
-        data-testid="build-purpose-input"
-        micTestId="build-purpose-mic"
-        placeholder="specifics — type or talk"
-        className="form-input"
-        style={{ width: '100%', boxSizing: 'border-box', fontSize: 12.5, resize: 'none', lineHeight: 1.5, paddingTop: 7, paddingBottom: 7, paddingLeft: 10 }}
-      />
-    </div>
-  );
-}
+// (GenerationLevelField — the legacy no-cascade "Level of code generation"
+//  field — DELETED 2026-09-02; the scope chooser lives on the Generate card.)
 
 // ── SAVE-STATE TICKS (Dan, 2026-08-25: "did it take?" is never a question) ──
 // Every prose input on the sheet shows a subtle ⟳ while its value awaits the
@@ -1859,37 +1817,9 @@ function CoverageItem({ item, score, message, optional }) {
   );
 }
 
-function NeedsStrip({ scores, messages, hasOtherSms, sourceLabel }) {
-  return (
-    <div
-      data-testid="needs-strip"
-      style={{
-        display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '6px 24px',
-        border: `1px solid ${C.border}`, borderRadius: 8,
-        background: 'var(--color-sidebar)', padding: '8px 14px', marginBottom: 12,
-      }}
-    >
-      <span
-        title={sourceLabel}
-        style={{
-          fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: '0.05em',
-          textTransform: 'uppercase', paddingTop: 3, whiteSpace: 'nowrap', flexShrink: 0,
-        }}
-      >
-        Explanation
-      </span>
-      {COVERAGE_ITEMS.map(item => (
-        <CoverageItem
-          key={item.key}
-          item={item}
-          score={scores[item.key]}
-          message={messages[item.key]}
-          optional={item.optionalWhenAlone && !hasOtherSms}
-        />
-      ))}
-    </div>
-  );
-}
+// (NeedsStrip — the summarize-era "EXPLANATION" coverage strip with its four
+//  category checks — DELETED 2026-09-02, one door: the cascade's own steps
+//  are the coverage; nothing grades the raw explanation on the sheet.)
 
 // (SyntheticSignalGroup DELETED — Dan, 2026-08-30: signals are not devices;
 //  they get no cards on the sheet. Signal steps stay in the sequence DATA —
@@ -4685,14 +4615,9 @@ export function CreateStationPage({ embedded = false }) {
   // Server image files this sheet absorbed from twin drafts — hydration pulls
   // these too, then merges everything into THIS draft's server file.
   const absorbedIdsRef = useRef(draft?.absorbedDraftIds ?? []);
-  // Unfinished drafts in THIS project (excluding the one being edited) —
-  // listed in a banner on the fresh page, resumed only by explicit click.
-  const [otherDrafts, setOtherDrafts] = useState(() =>
-    // Sheets linked to a built station (smId) are living specs, not
-    // "unfinished drafts" — they never show in the resume banner. A draft
-    // whose station was DELETED is an unfinished draft again (self-heal).
-    loadDrafts(draftKey).filter(d => d.draftId !== draftIdRef.current
-      && (!d.smId || !smExists(d.smId))));
+  // (The "N unfinished drafts — resume one or keep starting fresh" banner is
+  //  DELETED — 2026-09-02, one door: drafts live on the project home's "Pick
+  //  up where you left off" and the tree's Drafts row, nowhere else.)
   const [draftImagesDropped, setDraftImagesDropped] = useState(0);
 
   // Summary loop state (summary is the STRUCTURED object, or null)
@@ -5405,7 +5330,6 @@ export function CreateStationPage({ embedded = false }) {
     setExplLayers([]); setExplAddingLayer(false); setExplLayerDraft('');
     setQaRounds(0); setQaHistory([]); setLearnedNotes([]);
     setSummarizeCost(0); setError(null); setDraftImagesDropped(0);
-    setOtherDrafts(loadDrafts(draftKey).filter(d => d.draftId !== draftIdRef.current && (!d.smId || !smExists(d.smId))));
     setPhase('input');
   }
 
@@ -5462,7 +5386,6 @@ export function CreateStationPage({ embedded = false }) {
     setExplLayers(Array.isArray(d.explanationLayers) ? d.explanationLayers : []);
     setExplAddingLayer(false); setExplLayerDraft('');
     reconciledDraftRef.current = null; // re-run the load reconcile for this draft
-    setOtherDrafts(loadDrafts(draftKey).filter(x => x.draftId !== d.draftId && (!x.smId || !smExists(x.smId))));
     setPhase(d.phase === 'summary' && s ? 'summary' : 'input');
   }
 
@@ -6061,28 +5984,15 @@ export function CreateStationPage({ embedded = false }) {
     setSectionReviewed('stateMachines', true);
   }
 
-  /** Re-propose the decomposition: the compile modal opens PRE-FILLED at its
-   *  confirm step (explicit Start — a compile costs real money). Triggered by
-   *  the inconsistency guard and available on the error card. */
+  /** Re-propose the decomposition through the SAME decompose engine the
+   *  cascade uses (the compile modal is DELETED — 2026-09-02, one door). An
+   *  explicit click on the card's re-propose button; never auto-run — a
+   *  proposal costs real money. */
   function reproposeSmSplit(note) {
-    if (!linkedSmId) return;
-    useV2Shell.getState().openCompile(linkedSmId,
-      String(note ?? '').trim()
-      || 'Your previous proposal was internally inconsistent (the reasoning and the stateMachines list disagreed on the machine count). Re-propose the state machine decomposition consistently — the reasoning, the machine list and the count must agree.');
+    splitCounterRef.current = String(note ?? '').trim()
+      || 'Your previous proposal was internally inconsistent (the reasoning and the stateMachines list disagreed on the machine count). Re-propose the state machine decomposition consistently — the reasoning, the machine list and the count must agree.';
+    kickProposal();
   }
-
-  // AUTO RE-PROPOSE on an inconsistent proposal — once per compile output
-  // (sessionStorage guard), lands on the compile modal's explicit-start step.
-  useEffect(() => {
-    if (!panelModel.inconsistent || !linkedSmId) return;
-    const key = `sdc-repropose-${linkedSmId}-${linkedSm?.compiledSequence?.compiledAt ?? ''}`;
-    try {
-      if (sessionStorage.getItem(key)) return;
-      sessionStorage.setItem(key, '1');
-    } catch { /* storage unavailable — still show the manual button */ return; }
-    reproposeSmSplit();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [panelModel.inconsistent, linkedSmId]);
 
   /** Inline rename on a split entry — the edit RE-OPENS approval (SDC Engineer
    *  tweaks -> re-approve). Move/merge/split goes through the corrections
@@ -9036,6 +8946,14 @@ export function CreateStationPage({ embedded = false }) {
   // STRICT PROGRESSIVE DISCLOSURE (Dan, 2026-08-26): the cascade governs the
   // whole summary phase — fresh drafts included, not just built stations.
   const cascadeLive = phase === 'summary' && cascade.steps.length > 0;
+  // NO DEAD END (2026-09-02, one door): a sheet with NO explanation yet — a
+  // legacy station migrated on open — opens its explanation box in edit mode
+  // so the ME can type the station in right there; Apply sends it and the
+  // proposal starts.
+  useEffect(() => {
+    if (cascadeLive && !description.trim() && !explEditing && !explAddingLayer && !inputsCollapsed) setExplEditing(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cascadeLive, description, inputsCollapsed]);
   // Derived IO reveals once every devices step is agreed.
   const ioRevealed = !cascadeLive
     || cascade.steps.filter(s => s.kind === 'devices').every(s => s.status === 'approved');
@@ -10051,74 +9969,7 @@ export function CreateStationPage({ embedded = false }) {
             up to center-screen (Dan, Aug 24). */}
         <div style={{ width: '100%', boxSizing: 'border-box', padding: inSummary ? '14px 28px 45vh' : '14px 28px 40px' }}>
 
-          {/* Never on a Station Specs visit (linkedSmId) — that's spec view,
-              not the new-station flow. */}
-          {phase === 'input' && !linkedSmId && otherDrafts.length > 0 && (
-            <div
-              data-testid="unfinished-drafts-banner"
-              style={{
-                display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8,
-                marginBottom: 12, background: C.primaryBg,
-                border: `1px solid ${C.primaryBorder}`,
-                borderRadius: 6, padding: '7px 12px', fontSize: 12, color: C.text,
-              }}
-            >
-              <span>
-                {otherDrafts.length} unfinished draft{otherDrafts.length > 1 ? 's' : ''} in
-                this project:
-              </span>
-              {otherDrafts.map(d => (
-                <span
-                  key={d.draftId}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 4,
-                    background: '#fff', border: `1px solid ${C.primaryBorder}`,
-                    borderRadius: 12, padding: '2px 6px 2px 10px',
-                  }}
-                >
-                  <button
-                    type="button"
-                    data-testid={`resume-draft-${d.draftId}`}
-                    onClick={() => resumeDraft(d)}
-                    title="Resume this draft"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 6,
-                      background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                      fontSize: 11, fontWeight: 600, color: C.primary,
-                    }}
-                  >
-                    {draftLabel(d)}
-                    <span style={{ fontWeight: 400, color: C.muted }}>· {timeAgo(d.savedAt)}</span>
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Discard the ${draftLabel(d)} draft`}
-                    data-testid={`discard-draft-${d.draftId}`}
-                    title="Discard this draft permanently"
-                    onClick={() => {
-                      if (!window.confirm(`Discard the "${draftLabel(d)}" draft? This can't be undone.`)) return;
-                      deleteDraft(draftKey, d.draftId);
-                      setOtherDrafts(list => list.filter(x => x.draftId !== d.draftId));
-                    }}
-                    style={{
-                      background: 'none', border: 'none', cursor: 'pointer',
-                      color: C.muted, fontSize: 12, lineHeight: 1, padding: '0 2px',
-                    }}
-                  >×</button>
-                </span>
-              ))}
-              <span style={{ color: C.muted }}>— resume one or keep starting fresh.</span>
-              <button
-                type="button"
-                onClick={() => setOtherDrafts([])}
-                title="Dismiss (drafts stay in the Stations panel)"
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer', marginLeft: 'auto',
-                  fontSize: 13, color: C.muted, lineHeight: 1, padding: '0 2px',
-                }}
-              >✕</button>
-            </div>
-          )}
+          {/* (unfinished-drafts banner DELETED — 2026-09-02, one door) */}
           {draftImagesDropped > 0 && (
             <div style={{
               marginBottom: 12, fontSize: 11, color: '#6b5513',
@@ -10231,19 +10082,8 @@ export function CreateStationPage({ embedded = false }) {
             />
           )}
 
-          {/* "What's needed" — horizontal strip under the blocking bar (Dan,
-              Aug 24): checkmarks fill as sections complete; it GROWS to show
-              everything, never scrolls. */}
-          {(phase === 'input' || phase === 'summarizing' || (inSummary && !cascadeLive)) && (
-            <NeedsStrip
-              scores={effScores}
-              messages={effMessages}
-              hasOtherSms={hasPeers}
-              sourceLabel={usingJarvisVerdicts
-                ? 'Explanation coverage — covered for THIS build, or its needs are listed on the section. Open needs never block the Build.'
-                : 'Checks off live as you type — nothing is sent until Done explaining or Build.'}
-            />
-          )}
+          {/* (the "What's needed" / EXPLANATION coverage strip is DELETED —
+              2026-09-02, one door: the cascade steps are the coverage) */}
 
           {/* Tiny top row: name + number — CREATE flow only. A built station
               was named at creation; its header already names it (Dan, Aug 24). */}
@@ -10304,149 +10144,147 @@ export function CreateStationPage({ embedded = false }) {
               moved to the GENERATE step's card, asked at the moment of
               generation. Internal default stays the standard full station.) */}
 
-          {/* ══ INPUT phase — raw explanation, full width (the "What's
-              needed" strip above replaces the old right rail) ══ */}
-          {(phase === 'input' || phase === 'summarizing') && (
-            <div>
-              <div style={{ minWidth: 0 }}>
-                <DescribeSurface
-                  description={description}
-                  onDescriptionChange={setDescription}
-                  // WHAT TO COVER (Dan's list, 2026-08-26) — the explanation
-                  // hints name the cascade's own inputs.
-                  hint={(
-                    <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5, marginBottom: 6 }}>
-                      Cover: <b>how the station breaks down</b> (state machines) · <b>the devices</b> ·{' '}
-                      <b>the sequence</b> · <b>fault recovery</b> · <b>the challenges</b>
-                    </div>
-                  )}
-                  images={images}
-                  onImagesChange={changeImages}
-                  syncStates={imgSync}
-                  rows={13}
-                  autoFocus={false}
-                  error={error}
-                  errorTitle="Request failed:"
-                  onDictationEnd={() => setPulseDone(true)}
-                />
+          {/* (The summarize-era INTAKE FORM — "Explain this station like you
+              would to a new engineer", "Done explaining →" — is DELETED —
+              2026-09-02, one door. A fresh draft opens straight into the
+              cascade sheet: the INPUTS band below carries the explanation
+              editor until the proposal lands, then the walk takes over.) */}
 
-                {/* Action row — real progress ring while SDC ENGINEER summarizes */}
-                {phase === 'summarizing' ? (
-                  <div
-                    data-testid="summarize-progress"
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
-                      gap: 14, marginTop: 16, minHeight: 76,
-                    }}
-                  >
-                    <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
-                      {SUMMARIZE_STAGE_TEXT[sumStage] ?? 'Working…'}
-                    </div>
-                    <ProgressRing pct={sumPct} size={76} subLabel="" />
-                  </div>
-                ) : (
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 16 }}>
-                  {/* ("start blank instead" DELETED — Dan, 2026-08-31: one
-                      door; every new station walks the cascade. Classic
-                      blank SMs remain reachable from the classic shell.) */}
-                  <span style={{ marginRight: 'auto' }} />
-                  {(description.trim() || images.length > 0) && (
-                    <button
-                      type="button"
-                      onClick={handleDiscardDraft}
-                      disabled={busy}
-                      style={{
-                        background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                        fontSize: 11, color: C.muted, textDecoration: 'underline',
-                      }}
-                    >
-                      Discard draft
-                    </button>
-                  )}
-                  {buildHint && (
-                    <span data-testid="build-hint" style={{ fontSize: 11.5, fontWeight: 600, color: C.danger, whiteSpace: 'nowrap' }}>
-                      {buildHint}
-                    </span>
-                  )}
-                  {/* ("Build without summary" is DELETED — Dan's one-door law,
-                      2026-08-26: nothing draws before the cascade approvals;
-                      Generate is the last step.) */}
-                  <button
-                    className="btn btn--primary"
-                    data-testid="done-explaining-btn"
-                    onClick={handleDoneExplainingClick}
-                    onMouseEnter={() => { if (!description.trim() && !busy) setBuildHint('Describe the station first'); }}
-                    title={description.trim() ? undefined : 'Describe the station first'}
-                    disabled={busy}
-                    style={{
-                      fontSize: 14, padding: '9px 22px',
-                      transition: 'box-shadow 0.35s ease, opacity 0.35s ease',
-                      boxShadow: pulseDone && description.trim() && !busy
-                        ? `0 0 0 4px ${C.primaryBg}, 0 0 14px 2px ${C.primaryBorder}`
-                        : description.trim() && !busy ? `0 0 0 3px ${C.primaryBg}` : 'none',
-                      animation: pulseDone && description.trim() && !busy
-                        ? 'sdc-mic-pulse 1.6s ease-in-out 3' : 'none',
-                    }}
-                  >
-                    Done explaining →
-                  </button>
-                </div>
-                )}
-                <div style={{ fontSize: 11, color: C.light, marginTop: 8, textAlign: 'right', lineHeight: 1.5 }}>
-                  SDC Engineer proposes the machine split from your words, then walks
-                  you through it step by step — devices, sequence, recovery —
-                  each approved before the next. Code builds at the end.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ══ SUMMARY phase — TWO BANDS (Dan, Aug 24): INPUT (what you give
-              SDC Engineer: reference material, notes, interactions, corrections)
-              then REVIEW (the station: devices, sequence, IO). Full page
-              width — no right rail. ══ */}
-          {inSummary && (
+          {/* ══ THE SHEET — TWO BANDS (Dan, Aug 24): INPUTS (what you give
+              SDC Engineer: explanation, reference material, layers) then
+              STATION (the guided review: state machines, devices, sequence,
+              recovery, build). Same SectionBar stack in every phase. ══ */}
+          {(phase === 'input' || phase === 'summarizing' || inSummary) && (
             <div style={cascadeLive ? { display: 'flex', gap: 18, alignItems: 'flex-start' } : undefined}>
               <div style={{ minWidth: 0, flex: 1 }}>
                 {/* COLLAPSIBLE INPUTS (Dan, 2026-08-30): deep in the walk the
                     inputs fold to one line — remembered per draft; auto-
                     collapses once step 1 is approved; + Add a layer stays
-                    reachable from the collapsed line. */}
-                {cascadeLive ? (
-                  /* UNIFORM BAR (Dan, 2026-08-31): same anatomy as every
-                     other section — dark band, chevron, folded note. */
-                  <SectionBar
-                    testId="inputs-band-header"
-                    title="Inputs"
-                    color="#1574C4" /* SDC light blue — MEs are blue (Dan, 2026-08-31) */
-                    foldedNote={`${images.length ? `${images.length} file${images.length === 1 ? '' : 's'} · ` : ''}explanation${explLayers.length ? ` · ${explLayers.length} layer${explLayers.length === 1 ? '' : 's'}` : ''} — click to expand`}
-                    collapsed={inputsCollapsed}
-                    onToggle={() => {
-                      const next = !inputsCollapsed;
-                      setInputsCollapsed(next);
-                      try { localStorage.setItem(`jarvis.inputsCollapsed.${draftIdRef.current}`, next ? '1' : '0'); } catch { /* private mode */ }
-                    }}
-                    status={inputsCollapsed ? (
-                      <button
-                        type="button"
-                        data-testid="inputs-add-layer-collapsed"
-                        onClick={() => {
-                          setInputsCollapsed(false);
-                          try { localStorage.setItem(`jarvis.inputsCollapsed.${draftIdRef.current}`, '0'); } catch { /* private mode */ }
-                          setExplLayerDraft(''); setExplAddingLayer(true);
+                    reachable from the collapsed line. Never folded before
+                    the explanation is sent. */}
+                {/* UNIFORM BAR (Dan, 2026-08-31): same anatomy as every
+                    other section — dark band, chevron, folded note. */}
+                <SectionBar
+                  testId="inputs-band-header"
+                  title="Inputs"
+                  color="#1574C4" /* SDC light blue — MEs are blue (Dan, 2026-08-31) */
+                  note={!inSummary ? 'describe the station — SDC Engineer proposes the state machines from your words' : null}
+                  foldedNote={`${images.length ? `${images.length} file${images.length === 1 ? '' : 's'} · ` : ''}explanation${explLayers.length ? ` · ${explLayers.length} layer${explLayers.length === 1 ? '' : 's'}` : ''} — click to expand`}
+                  collapsed={inSummary && inputsCollapsed}
+                  onToggle={() => {
+                    if (!inSummary) return;
+                    const next = !inputsCollapsed;
+                    setInputsCollapsed(next);
+                    try { localStorage.setItem(`jarvis.inputsCollapsed.${draftIdRef.current}`, next ? '1' : '0'); } catch { /* private mode */ }
+                  }}
+                  status={inSummary && inputsCollapsed ? (
+                    <button
+                      type="button"
+                      data-testid="inputs-add-layer-collapsed"
+                      onClick={() => {
+                        setInputsCollapsed(false);
+                        try { localStorage.setItem(`jarvis.inputsCollapsed.${draftIdRef.current}`, '0'); } catch { /* private mode */ }
+                        setExplLayerDraft(''); setExplAddingLayer(true);
+                      }}
+                      style={{ ...chipBase, cursor: 'pointer', fontWeight: 800, fontSize: 10, color: '#fff', background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.4)' }}
+                    >+ Add a layer</button>
+                  ) : null}
+                  marginBottom={inSummary && inputsCollapsed ? 10 : 6}
+                />
+
+                {/* ══ BEFORE THE PROPOSAL (fresh draft): the explanation
+                    editor lives INSIDE the Inputs band — one door in, no
+                    intake form. Sending kicks the state-machine proposal. ══ */}
+                {!inSummary && (
+                  <div data-testid="inputs-explanation-editor" style={{ marginBottom: 12 }}>
+                    <DescribeSurface
+                      description={description}
+                      onDescriptionChange={setDescription}
+                      label="Your explanation"
+                      // WHAT TO COVER (Dan's list, 2026-08-26) — the explanation
+                      // hints name the cascade's own inputs.
+                      hint={(
+                        <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5, marginBottom: 6 }}>
+                          Cover: <b>how the station breaks down</b> (state machines) · <b>the devices</b> ·{' '}
+                          <b>the sequence</b> · <b>fault recovery</b> · <b>the challenges</b>
+                        </div>
+                      )}
+                      images={images}
+                      onImagesChange={changeImages}
+                      syncStates={imgSync}
+                      rows={13}
+                      autoFocus={false}
+                      error={error}
+                      errorTitle="Request failed:"
+                      onDictationEnd={() => setPulseDone(true)}
+                    />
+                    {/* Action row — real progress ring while SDC ENGINEER reads */}
+                    {phase === 'summarizing' ? (
+                      <div
+                        data-testid="summarize-progress"
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+                          gap: 14, marginTop: 16, minHeight: 76,
                         }}
-                        style={{ ...chipBase, cursor: 'pointer', fontWeight: 800, fontSize: 10, color: '#fff', background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.4)' }}
-                      >+ Add a layer</button>
-                    ) : null}
-                    marginBottom={inputsCollapsed ? 10 : 6}
-                  />
-                ) : (
-                  <BandHeader first label="Inputs" />
+                      >
+                        <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
+                          {SUMMARIZE_STAGE_TEXT[sumStage] ?? 'Working…'}
+                        </div>
+                        <ProgressRing pct={sumPct} size={76} subLabel="" />
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 16 }}>
+                        <span style={{ marginRight: 'auto' }} />
+                        {(description.trim() || images.length > 0) && (
+                          <button
+                            type="button"
+                            onClick={handleDiscardDraft}
+                            disabled={busy}
+                            style={{
+                              background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                              fontSize: 11, color: C.muted, textDecoration: 'underline',
+                            }}
+                          >
+                            Discard draft
+                          </button>
+                        )}
+                        {buildHint && (
+                          <span data-testid="build-hint" style={{ fontSize: 11.5, fontWeight: 600, color: C.danger, whiteSpace: 'nowrap' }}>
+                            {buildHint}
+                          </span>
+                        )}
+                        <button
+                          className="btn btn--primary"
+                          data-testid="send-explanation-btn"
+                          onClick={handleDoneExplainingClick}
+                          onMouseEnter={() => { if (!description.trim() && !busy) setBuildHint('Describe the station first'); }}
+                          title={description.trim() ? 'SDC Engineer reads your explanation and proposes the state machines' : 'Describe the station first'}
+                          disabled={busy}
+                          style={{
+                            fontSize: 14, padding: '9px 22px',
+                            transition: 'box-shadow 0.35s ease, opacity 0.35s ease',
+                            boxShadow: pulseDone && description.trim() && !busy
+                              ? `0 0 0 4px ${C.primaryBg}, 0 0 14px 2px ${C.primaryBorder}`
+                              : description.trim() && !busy ? `0 0 0 3px ${C.primaryBg}` : 'none',
+                            animation: pulseDone && description.trim() && !busy
+                              ? 'sdc-mic-pulse 1.6s ease-in-out 3' : 'none',
+                          }}
+                        >
+                          Send to SDC Engineer →
+                        </button>
+                      </div>
+                    )}
+                    <div style={{ fontSize: 11, color: C.light, marginTop: 8, textAlign: 'right', lineHeight: 1.5 }}>
+                      SDC Engineer proposes the machine split from your words, then walks
+                      you through it step by step — devices, sequence, recovery —
+                      each approved before the next. Code builds at the end.
+                    </div>
+                  </div>
                 )}
 
                 {/* REFERENCE MATERIAL — drop anything (pictures / code /
                     docs) + the engineer's named past-job references. */}
-                {!(cascadeLive && inputsCollapsed) && (
+                {inSummary && !inputsCollapsed && (
                 <ReferenceMaterialSection
                   items={images}
                   onItemsChange={changeImages}
@@ -10461,7 +10299,7 @@ export function CreateStationPage({ embedded = false }) {
                 {/* THE EXPLANATION NEVER DISAPPEARS (Dan, 2026-08-26) — but
                     it CAN fold (Dan, 2026-08-30): one header line when he's
                     deep in the walk, one click to reopen. */}
-                {cascadeLive && !inputsCollapsed && description.trim() && (
+                {cascadeLive && !inputsCollapsed && (description.trim() || explEditing) && (
                   <div
                     data-testid="sheet-explanation"
                     style={{
@@ -10474,7 +10312,11 @@ export function CreateStationPage({ embedded = false }) {
                         Your explanation
                       </span>
                       <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.78)' }}>
-                        {explEditing ? 'add or rewrite — SDC Engineer re-thinks and reconciles with what you approved' : ''}
+                        {explEditing
+                          ? (description.trim()
+                            ? 'add or rewrite — SDC Engineer re-thinks and reconciles with what you approved'
+                            : 'describe the station — SDC Engineer proposes the state machines from your words')
+                          : ''}
                       </span>
                       <span style={{ flex: 1 }} />
                       {/* EDITABLE (Dan, 2026-08-28: "maybe I thought about
@@ -10544,13 +10386,19 @@ export function CreateStationPage({ embedded = false }) {
                                 console.log('[chat] dispatched: explanation revision → decompose engine');
                                 setApplying(true);
                                 try { await kickProposal(nextText); } finally { setApplying(false); }
+                              } else if (!description.trim()) {
+                                // FIRST explanation on a migrated sheet: send it —
+                                // the proposal starts from it (same as a fresh draft).
+                                console.log('[chat] dispatched: first explanation → decompose engine');
+                                setApplying(true);
+                                try { await kickProposal(nextText); } finally { setApplying(false); }
                               }
                             }}
                             style={{
                               background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 6,
                               fontSize: 12, fontWeight: 700, padding: '5px 16px', cursor: 'pointer',
                             }}
-                          >Apply — SDC Engineer re-thinks</button>
+                          >{description.trim() ? 'Apply — SDC Engineer re-thinks' : 'Send to SDC Engineer →'}</button>
                           <button
                             type="button"
                             data-testid="explanation-edit-cancel"
@@ -10676,47 +10524,41 @@ export function CreateStationPage({ embedded = false }) {
                   ))}
                 </SectionBar>
 
-                {/* (Level of code generation moved to the GENERATE step —
-                    Dan, 2026-08-26. The chooser renders with the Generate
-                    card once every step is agreed.) */}
-                {!cascadeLive && (
-                  <GenerationLevelField
-                    level={genLevel} onLevel={setGenLevel}
-                    purpose={purpose} onPurpose={setPurpose}
-                    disabled={busy} savedTick={purposeTick}
-                  />
-                )}
+                {/* (Level of code generation lives on the GENERATE step's card
+                    — Dan, 2026-08-26. The legacy no-cascade chooser and the
+                    standalone state-machines section are DELETED — 2026-09-02:
+                    the smSplit step ALWAYS exists once a summary does, so the
+                    no-cascade summary render was unreachable.) */}
 
-                {/* THE ONE CHAT — right below the inputs (Dan, 2026-08-26):
-                    the conversation channel; a message applies to the active
-                    step by default. Collapsible. */}
-                {/* (in-page chat REMOVED — the slide-out panel is the chat) */}
+                {/* THE ONE CHAT (Dan, 2026-08-26) — the slide-out panel + pill. */}
                 {chatPanelUi}
 
-                {/* STATE MACHINES — folded INTO the cascade's step-1 card
-                    (Dan, 2026-08-26); the standalone section renders only in
-                    legacy (no-cascade) mode. ONE truth: cards, count, prose
-                    and stamp all from the ONE displayed source (panelModel). */}
-                {!cascadeLive && <SmDecompositionSection
-                  decomp={panelModel.decomp ?? smDecomp}
-                  approval={smApproval}
-                  expectedPills={expectedSmPills}
-                  expectationRaw={expectedSms.trim()}
-                  expectedCount={expectedSmCount}
-                  reasoning={panelModel.reasoning}
-                  onApprove={approveSmSplit}
-                  onRename={renameSmSplitEntry}
-                  onEditViaChat={() => document.querySelector('[data-testid="changes-textarea"]')?.focus()}
-                  onCounter={sendSmSplitCounter}
-                  busy={applying}
-                  versionLabel={panelModel.versionLabel}
-                  awaitingApproval={panelModel.awaitingApproval}
-                  approvedStamp={panelModel.approvedStamp}
-                  supersededNote={panelModel.supersededNote}
-                  inconsistent={panelModel.inconsistent}
-                  onRepropose={() => reproposeSmSplit()}
-                  chatMode={cascadeLive}
-                />}
+                {/* STEP 1 BEFORE THE PROPOSAL (fresh draft): the Station band
+                    already shows where the walk starts — SDC Engineer's
+                    state-machine proposal — so the sheet reads as the same
+                    stack from the first second (one door, 2026-09-02). */}
+                {!inSummary && (
+                  <>
+                    <BandHeader label="Station" note="the guided review — approve each step, it locks in below" />
+                    <div
+                      data-testid="cascade-smsplit-pending"
+                      style={{
+                        border: `1px dashed ${C.primaryBorder}`, borderLeft: `4px solid ${C.primaryBorder}`,
+                        background: '#fff', borderRadius: 8, padding: '10px 14px 12px',
+                        margin: '0 0 12px', maxWidth: 900,
+                      }}
+                    >
+                      <div style={{ fontSize: 10.5, fontWeight: 800, color: C.primary, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 4 }}>
+                        Step 1 — state machines
+                      </div>
+                      <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.55 }}>
+                        {phase === 'summarizing'
+                          ? 'SDC Engineer is reading your explanation — the state-machine proposal lands here.'
+                          : 'Send your explanation above — SDC Engineer proposes how the station breaks into state machines, you approve or correct, then devices → sequence → recovery per machine.'}
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 {/* THE CASCADE'S CURRENT STEP (Dan, 2026-08-26): everything
                     below follows the conversation order; steps not reached
@@ -11581,26 +11423,9 @@ export function CreateStationPage({ embedded = false }) {
                     {/* Interactions closes the INPUT band: the Corrections
                         box comes next (shown once a summary exists), then the
                         REVIEW band header before Devices / Sequence / IO. */}
-                    {/* LEGACY (no cascade): the chat + Station band header
-                        stay in their old spot. In cascade mode both moved up
-                        with the inputs (strict order, Dan 2026-08-26). */}
-                    {section.key === 'interactions' && !cascadeLive && (
-                      <>
-                        {/* (in-page chat REMOVED — the panel is the chat; it
-                            renders once from the cascade spot or here) */}
-                        {!cascadeLive && chatPanelUi}
-                        <BandHeader label="Station" note="review and correct" />
-                        {reviewSections.length > 0 && (
-                          <div
-                            data-testid="review-progress-line"
-                            style={{ fontSize: 11.5, fontWeight: 600, color: allReviewed ? '#2f6b3c' : C.muted, margin: '-2px 0 8px' }}
-                          >
-                            {allReviewed ? '✓ ' : ''}{reviewedCount} of {reviewSections.length} sections reviewed
-                            {!allReviewed && <span style={{ fontWeight: 400, color: C.light }}> — Edit a section to change it, ✓ to approve it as-is</span>}
-                          </div>
-                        )}
-                      </>
-                    )}
+                    {/* (the LEGACY no-cascade chat + "Station — review and
+                        correct" band is DELETED — 2026-09-02; unreachable
+                        since the smSplit step always exists in summary.) */}
                   </div>
                 ))}
                 <NonStandardCard flags={nonStandardFlags} />

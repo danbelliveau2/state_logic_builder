@@ -3,35 +3,32 @@
  *
  * Layout (CSS grid, see v2.css):
  *   ┌──────────────── TopBarV2 (48px) ────────────────┐
- *   │ Stations (260px) │  Canvas + view switcher │ Context (300px) │
+ *   │ Stations (340px) │  the STATION SHEET / project home / classic card │
  *   └──────────────────────────────────────────────────┘
  *
- * Everything below the shell is REUSED from the classic app:
- *   - useDiagramStore  — same store, same localStorage key, same server API
- *   - Canvas           — full React Flow canvas incl. Normal/Recovery toggle,
- *                        undo/redo keyboard shortcuts (Ctrl+Z / Ctrl+Y are
- *                        wired inside Canvas on window, so v2 gets them free)
- *   - Modals           — JarvisGenerateModal, SpecEditorModal,
- *                        ProjectPickerModal, plus the store-flag modals below
+ * ONE DOOR (Dan, 2026-09-02 — "we revamped this — there's no use for this
+ * page anymore. I want the v2 app to always show the right things"; law:
+ * meKnowledge 2026-08-26 FLOW REPLACEMENT = PREDECESSOR DELETION):
+ *   - EVERY station opens the cascade STATION SHEET (CreateStationPage
+ *     embedded: SectionBar stack, flows, chat pill). openStation.js is the
+ *     only opener; legacy-shaped stations are migrated on open; pure v1
+ *     canvas work renders as the read-only ClassicStationCard.
+ *   - EVERY "+ New" / "Add Station" opens the sheet's describe-first INPUTS.
+ *   - The classic canvas, the Spec Sheet|Diagram pill, the Diagram sub-bar
+ *     (Sequence|Controls detail, ⚙ Compile, ✨ Generate), the controls-flow
+ *     overlay, the in-place generation card, the compile modal, the Generate
+ *     modal mount and the canvas modals are DELETED from this bundle. The
+ *     classic canvas lives ONLY at /classic.html (frozen).
  *
- * Pages (Dan's two-pill model, Aug 23): Spec Sheet | Diagram. The Diagram is
- * ONE page — the mechanical canvas by default, an ON-PAGE "Controls detail"
- * toggle flips to the compiled flowchart (ControlsFlowView), the sub-bar
- * carries Approve and ✨ Generate, and fresh results land in place as the
- * GenerationResultCard. History lives in the SDC Engineer pill. The view state
- * lives in useV2Shell so the compile modal can land the user on the controls
- * detail after a compile finishes.
+ * Reused from the classic app below the shell: useDiagramStore (same store,
+ * same localStorage key, same server API) and the project-level modals.
  */
 
 import { useEffect, useLayoutEffect, useRef, useCallback, Component } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
-import { Canvas } from '../components/Canvas.jsx';
 import { CreateStationPage } from '../components/jarvis/CreateStationPage.jsx';
-import { consumeResumeRequest, ensureStationSheetDraft, requestResumeDraft } from '../components/jarvis/createStationDrafts.js';
-import { AddDeviceModal } from '../components/modals/AddDeviceModal.jsx';
-import { ActionModal } from '../components/modals/ActionModal.jsx';
+import { consumeResumeRequest } from '../components/jarvis/createStationDrafts.js';
 import { ProjectManagerModal } from '../components/modals/ProjectManagerModal.jsx';
-import { RecipeManagerModal } from '../components/modals/RecipeManagerModal.jsx';
 import { VersionBadge } from '../components/VersionBadge.jsx';
 import { useDiagramStore } from '../store/useDiagramStore.js';
 import { initStandardsLibrary } from '../lib/standardsLibrary.js';
@@ -41,14 +38,11 @@ import { NewBuildBar } from './NewBuildBar.jsx';
 import { StationsPanel } from './StationsPanel.jsx';
 import { TREE_WIDTH } from './FeatureTreeV2.jsx';
 import { StartScreen } from './StartScreen.jsx';
-import { ControlsFlowView } from './ControlsFlowView.jsx';
-import { GenerationResultCard } from './GenerationResultCard.jsx';
-import { DiagramSubBar } from './DiagramSubBar.jsx';
-import { CompileSequenceModal } from './CompileSequenceModal.jsx';
 import { ServoValuesTable } from './ServoValuesTable.jsx';
 import { StationBanner } from './StationBanner.jsx';
 import { ProjectHomePage } from './ProjectHomePage.jsx';
-import { JarvisGenerateModal } from '../components/modals/JarvisGenerateModal.jsx';
+import { ClassicStationCard } from './ClassicStationCard.jsx';
+import { isClassicStation, openStationSheet } from './openStation.js';
 import { useV2Shell } from './useV2Shell.js';
 import './projectHome.css';
 
@@ -69,8 +63,7 @@ class ErrorBoundary extends Component {
         <div style={{ padding: 40, maxWidth: 600, margin: '60px auto', fontFamily: 'system-ui, sans-serif' }}>
           <h1 style={{ color: '#b83c3c', fontSize: 22 }}>Something went wrong</h1>
           <p style={{ color: '#5a6a7e', marginTop: 8 }}>
-            The v2 shell crashed during rendering. Try refreshing, or open the
-            classic app at <a href="/">/</a> — projects are shared between both.
+            The v2 shell crashed during rendering. Try refreshing — your drafts are saved.
           </p>
           <button
             onClick={() => window.location.reload()}
@@ -116,40 +109,17 @@ class SurfaceBoundary extends Component {
   }
 }
 
-// (The view switcher, Spec Sheet|Diagram toggle, Normal|Recovery, and the
-//  star all live in the persistent StationBanner now — Dan: "on a banner
-//  that STAYS no matter what you're looking at". See StationBanner.jsx.)
-
-// (The bottom flow-guidance bar is gone — its stage logic became THE one
-//  two-pill banner (StationBanner); Generate lives on the Diagram sub-bar.)
-
 export function AppV2() {
   const store = useDiagramStore();
-  const {
-    showNewSmModal,
-    showAddDeviceModal,
-    showEditDeviceModal,
-    showActionModal,
-    showProjectManager,
-    showRecipeManager,
-  } = store;
+  const { showNewSmModal, showProjectManager } = store;
 
-  // View lives in the v2 shell store so the compile modal can land the user
-  // on the Diagram page's Controls detail when a compile finishes.
-  const view = useV2Shell(s => s.view);
-
-  // ── Station banner / sheet state ─────────────────────────────────────────
-  // (Normal|Recovery is gone from the v2 UI — Dan; Canvas keeps its own local
-  // recovery state untouched.) sheetLinkedSmId marks the embedded
-  // built-station sheet (vs the full-viewport "+ New" fresh-draft flow) and
-  // is cleared whenever the sheet closes.
+  // sheetLinkedSmId marks the embedded built-station sheet (vs the
+  // full-viewport "+ New" fresh-draft flow) and is cleared whenever the
+  // sheet closes.
   const sheetLinkedSmId = useV2Shell(s => s.sheetLinkedSmId);
   // Fresh "+ Add Station" create flow (full-viewport page). While it's open
-  // the station banner + diagram sub-bar hide — there IS no station context.
+  // the station banner hides — there IS no station context.
   const freshCreateOpen = showNewSmModal && !sheetLinkedSmId;
-  // Shared Generate-modal mount — opened from the top-right pipeline button
-  // (the old mount rode inside the removed Build ▾ menu).
-  const generateOpen = useV2Shell(s => s.generateOpen);
   useEffect(() => {
     // TWO-STORE GAP GUARD (Dan's reload trap, 2026-08-31): every open-sheet
     // path sets the shell's sheetLinkedSmId (one store) then openNewSmModal
@@ -202,13 +172,9 @@ export function AppV2() {
       //  - showNewSmModal: keeps CreateStationPage (fresh OR embedded)
       //    mounted across the switch — its component state and autosave
       //    would write the old project's draft under the NEW project's key.
-      //    (createNewProject sets it true for the classic shell; v2 lands on
-      //    the Project Home instead — same as StartScreen's create path.)
-      //  - view: reset the Diagram page to the Sequence view.
       consumeResumeRequest();
       const shell = useV2Shell.getState();
       if (shell.sheetLinkedSmId) shell.setSheetLinkedSmId(null);
-      shell.setView('mech');
       if (useDiagramStore.getState().showNewSmModal) {
         useDiagramStore.setState({ showNewSmModal: false });
       }
@@ -221,13 +187,14 @@ export function AppV2() {
   // (declared BEFORE the landing effect below — dep arrays evaluate at
   // render; a later declaration is the TDZ crash class.)
   const smCount = useDiagramStore(s => s.project?.stateMachines?.length ?? 0);
+  const activeSm = useDiagramStore(s =>
+    (s.project?.stateMachines ?? []).find(m => m.id === s.activeSmId) ?? null);
 
-  // CASCADE PROJECTS LAND ON THE SHEET (Dan, 2026-08-31: reload dropped him
-  // on the classic canvas again). App open / reload / tab switch: a project
-  // with cascade-built stations lands on the STATION SHEET (single station)
-  // or the machine homepage (multiple). The classic canvas opens ONLY by an
-  // explicit navigation this session — never as a restored default. Classic
-  // v1-era projects (no cascadeState anywhere) are untouched.
+  // LANDING (Dan, 2026-08-31: reload dropped him on the classic canvas; 2026-
+  // 09-02: it did again, on a stray legacy station). App open / reload / tab
+  // switch: a project with ONE station lands on that station (its sheet, or
+  // the classic card), otherwise on the machine homepage. Every project —
+  // there is no "classic project" landing anymore.
   const landedRef = useRef(null);
   useEffect(() => {
     if (!currentFilename || home) return;
@@ -235,32 +202,31 @@ export function AppV2() {
     const proj = useDiagramStore.getState().project;
     if (!proj?.stateMachines) return; // not restored yet — effect re-runs
     landedRef.current = currentFilename;
-    const cascadeSms = proj.stateMachines.filter(sm => sm?.machineSpec?.cascadeState);
-    try { window.__slbCascadeProject = cascadeSms.length > 0; } catch { /* gate hint */ }
-    if (!cascadeSms.length) return;
     const shell = useV2Shell.getState();
-    if (cascadeSms.length === 1 && proj.stateMachines.length === 1) {
-      const sm = cascadeSms[0];
-      try {
-        const draft = ensureStationSheetDraft(useDiagramStore.getState(), sm);
-        requestResumeDraft(draft.draftId);
-        shell.setSheetLinkedSmId(sm.id);
-        useDiagramStore.getState().openNewSmModal();
-        shell.closeProjectHome();
-      } catch { shell.openProjectHome(); }
+    if (proj.stateMachines.length === 1) {
+      try { openStationSheet(proj.stateMachines[0]); } catch { shell.openProjectHome(); }
     } else {
       shell.openProjectHome();
     }
   }, [currentFilename, home, smCount]);
 
-  // ZERO-STATION / NO-SELECTION LANDING (Dan, 2026-08-26): the classic canvas
-  // empty state is dead in v2 — a project with no station selected (reload
-  // included) lands on PROJECT HOME, where the draft-continue cards live.
+  // ZERO-STATION / NO-SELECTION LANDING (Dan, 2026-08-26): a project with no
+  // station selected (reload included) lands on PROJECT HOME, where the
+  // draft-continue cards live.
   useEffect(() => {
     if (!currentFilename || home || showNewSmModal) return;
     if (activeSmId && smCount > 0) return;
     if (!useV2Shell.getState().projectHomeOpen) useV2Shell.getState().openProjectHome();
   }, [currentFilename, home, showNewSmModal, activeSmId, smCount]);
+
+  // ONE DOOR (2026-09-02): a selected station with nothing on screen — no
+  // sheet, no home, no fresh draft — always resolves to its sheet (or the
+  // classic card, which renders in place below). There is no other view.
+  useEffect(() => {
+    if (!currentFilename || home || projectHomeOpen || showNewSmModal) return;
+    if (!activeSm || isClassicStation(activeSm)) return;
+    try { openStationSheet(activeSm); } catch (e) { console.error('[one-door] open failed:', e); }
+  }, [currentFilename, home, projectHomeOpen, showNewSmModal, activeSm?.id, activeSm?.machineSpec?.cascadeState]);
 
   // Bootstrap — identical to classic App so both entries share behavior.
   useEffect(() => {
@@ -270,7 +236,7 @@ export function AppV2() {
   }, []);
 
   // Ctrl+S save (replicates Toolbar's handleSaveProject: JSON download +
-  // background server save). Ctrl+Z / Ctrl+Y live inside Canvas already.
+  // background server save).
   const handleSave = useCallback(async () => {
     const { project, serverAvailable, saveCurrentProject } = useDiagramStore.getState();
     exportProjectJSON(project);
@@ -290,6 +256,9 @@ export function AppV2() {
     return () => window.removeEventListener('keydown', onKey);
   }, [handleSave]);
 
+  const classicOnScreen = !projectHomeOpen && !freshCreateOpen && !!activeSm && isClassicStation(activeSm)
+    && !(showNewSmModal && sheetLinkedSmId);
+
   return (
     <ErrorBoundary>
       <ReactFlowProvider>
@@ -299,68 +268,35 @@ export function AppV2() {
             <StartScreen />
           ) : (
             <>
-              {/* THE persistent station row — badge+name, the three-stop
-                  pill (Spec Sheet | Diagram), star. Stays
-                  put on every page; the content flips beneath it.
-                  Hidden on the PROJECT HOME — that page is machine-level,
-                  no station context (its crumb lives on the banner) — and
-                  while the FRESH-CREATE flow is open (Dan, Aug 24: a new
+              {/* THE persistent station row — "‹ project" crumb + S## + name.
+                  Hidden on the PROJECT HOME (machine-level, no station
+                  context) and while the FRESH-CREATE flow is open (a new
                   station has no station context; the create page and its
-                  ‹ Back own the screen — never a mashup with a banner). */}
+                  ‹ Back own the screen). */}
               {!projectHomeOpen && !freshCreateOpen && <StationBanner />}
-              {/* Diagram page's ONE slim sub-row — in-flow (never overlaps):
-                  Sequence|Controls detail toggle, compiled meta, legend (when
-                  it fits), and the single small Approve/Compile control.
-                  Dan: "the diagram page is the diagram." */}
-              {!projectHomeOpen && !freshCreateOpen && (view === 'mech' || view === 'controls') && <DiagramSubBar />}
               <div className="v2-body-wrap">
                 <div
                   className="v2-body v2-body--context-collapsed"
                   style={{ '--v2-tree-width': `${TREE_WIDTH}px` }}
                 >
                   <StationsPanel />
-                  {/* Page 2 (Mechanical) is the canvas, kept mounted so the
-                      viewport survives flips — state numbers hidden (CSS)
-                      and controls-domain nodes (waits/decisions) filtered
-                      out at render time because "the mechanical view is
-                      just a sequence". */}
-                  <main className={`v2-center${view === 'mech' ? ' v2-center--mech' : ''}`}>
-                    <Canvas hideHeader mechanicalView={view === 'mech'} />
-                    {/* Controls detail — SAME page, more nodes/edges: the
-                        compiled flowchart overlays the canvas AREA ONLY, so
-                        the stations panel, SDC Engineer pill dock, and every other
-                        piece of page chrome stays exactly where the Sequence
-                        view has it (true view parity — Dan, Aug 22). */}
-                    {view === 'controls' && (
-                      <div className="v2-center-overlay" data-testid="controls-overlay">
-                        <ControlsFlowView />
-                      </div>
-                    )}
+                  <main className="v2-center" data-testid="v2-center">
                     {/* PROJECT HOME — the machine overview (stations grid,
-                        + Add Station, notes). Overlays the canvas AREA ONLY
-                        (same pattern as Controls detail) so the canvas stays
-                        mounted and the stations panel keeps working. */}
+                        + Add Station, notes). */}
                     {projectHomeOpen && (
                       <div className="v2-phome-overlay" data-testid="project-home-overlay">
                         <ProjectHomePage />
                       </div>
                     )}
-                    {/* Fresh generation results land IN PLACE on the diagram
-                        page (Dan, Aug 23: "grab it right where you made it") —
-                        history lives in the SDC Engineer pill. */}
-                    {!projectHomeOpen && <GenerationResultCard />}
+                    {/* CLASSIC STATION — v1 canvas work: read-only card, the
+                        canvas itself lives only at /classic.html. */}
+                    {classicOnScreen && <ClassicStationCard sm={activeSm} />}
                   </main>
-                  {/* Right-side Program Properties panel removed — Dan,
-                      Aug 22 2026: unused, asked repeatedly. Node/edge
-                      properties remain reachable in the classic app. */}
                 </div>
-                {/* (The Code Generation page is retired — Generate lives on
-                    the Diagram sub-bar; history lives in the SDC Engineer pill.) */}
-                {/* Page 1 — the EMBEDDED built-station spec sheet, above all
-                    covers; the pill never moves when flipping. */}
-                {/* key = project + station identity: a project switch (or a
-                    sheet flip to another station) force-remounts the page so
-                    its component state can never leak across either boundary. */}
+                {/* THE STATION SHEET — embedded below the banner. key =
+                    project + station identity: a project switch (or a flip
+                    to another station) force-remounts the page so its
+                    component state can never leak across either boundary. */}
                 {showNewSmModal && sheetLinkedSmId && (
                   <SurfaceBoundary label="sheet"><CreateStationPage embedded key={`sheet:${currentFilename ?? ''}:${sheetLinkedSmId}`} /></SurfaceBoundary>
                 )}
@@ -369,28 +305,12 @@ export function AppV2() {
           )}
         </div>
 
-        {/* Store-flag modals — same set the classic App mounts, so canvas
-            interactions (add device, edit action…) keep working in v2. */}
-        {/* v2 uses the describe-first Create Station flow as a FULL-VIEWPORT
-            page (round-2 rework — was CreateStationModal): overlays the whole
-            shell on showNewSmModal, no outside-click dismissal, draft
-            autosave, SDC ENGINEER summary loop. "start blank instead" inside it
-            still reaches the classic NewStateMachineModal. */}
         {/* Full-viewport create page — ONLY for fresh "+ New" drafts; a
             built station's sheet renders embedded below the banner above. */}
         {showNewSmModal && !home && !sheetLinkedSmId && (
           <SurfaceBoundary label="create"><CreateStationPage key={`fresh:${currentFilename ?? ''}`} /></SurfaceBoundary>
         )}
-        {(showAddDeviceModal || showEditDeviceModal) && <AddDeviceModal />}
-        {showActionModal && <ActionModal />}
         {showProjectManager && <ProjectManagerModal />}
-        {showRecipeManager && <RecipeManagerModal />}
-        {/* Compile-sequence modal — self-gates on useV2Shell.compileFor. */}
-        <CompileSequenceModal />
-        {/* Generate modal — shared mount for the top-right pipeline button. */}
-        {generateOpen && !home && (
-          <JarvisGenerateModal onClose={() => useV2Shell.getState().closeGenerate()} />
-        )}
         {/* Servo values table — self-gates on useV2Shell.servoTableFor. */}
         <ServoValuesTable />
         <VersionBadge />

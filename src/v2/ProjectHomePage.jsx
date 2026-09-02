@@ -13,7 +13,7 @@
  *   │  STATIONS grid — one card per station:                         │
  *   │    S## badge · name · pipeline glance (Described → Diagrammed  │
  *   │    → Compiled → Generated w/ last build label + score) · red   │
- *   │    blockers badge · click → that station's Spec Sheet          │
+ *   │    blockers badge · click → that station's sheet (one door)     │
  *   │  + Add Station card → the describe-first Create Station flow   │
  *   └─────────────────────────────────────────────────────────────────┘
  *
@@ -26,9 +26,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useDiagramStore } from '../store/useDiagramStore.js';
-import { useV2Shell } from './useV2Shell.js';
 import { computeMachineTotals } from '../lib/machineTotals.js';
-import { ensureStationSheetDraft, requestResumeDraft, draftsKeyFor, loadDrafts, onDraftsChanged, draftLabel, timeAgo } from '../components/jarvis/createStationDrafts.js';
+import { requestResumeDraft, draftsKeyFor, loadDrafts, onDraftsChanged, draftLabel, timeAgo } from '../components/jarvis/createStationDrafts.js';
+import { openStationSheet, openFreshStationDraft } from './openStation.js';
 import { draftCascadeStepNote, signalPairsOf } from '../components/jarvis/cascadeModel.js';
 import { heldBuildsOf, needsCount } from './stationNeeds.js';
 import { buildLabel } from './buildMeta.js';
@@ -39,28 +39,28 @@ import './projectHome.css';
 // ── Pipeline glance (per-station stage logic — same signals the tree and
 //    compiledSequence helpers use: spec → nodes → compiledSequence → build) ──
 
+// (2026-09-02, one door: the canvas/compile-era stages — Diagrammed, Compiled
+//  — are gone with those surfaces. A station is Described → Walked (every
+//  cascade step approved) → Built.)
 function stationStages(sm, latestBuild) {
+  const cs = sm.machineSpec?.cascadeState;
+  const steps = Object.values(cs?.steps ?? {});
+  const approved = steps.filter(r => r?.approved === true).length;
   return [
-    { id: 'described', label: 'Described', done: !!sm.machineSpec },
-    { id: 'diagrammed', label: 'Diagrammed', done: (sm.nodes ?? []).length > 0 },
-    {
-      id: 'compiled',
-      label: sm.compiledSequence?.approved ? 'Compiled ✓ approved' : 'Compiled',
-      done: !!sm.compiledSequence,
-    },
-    { id: 'generated', label: 'Generated', done: !!latestBuild },
+    { id: 'described', label: 'Described', done: !!(sm.machineSpec?.sourceDescription || sm.description || steps.length) },
+    { id: 'walked', label: approved > 0 && approved === steps.length ? 'Walked' : approved > 0 ? `Walking (${approved} approved)` : 'Walked', done: steps.length > 0 && approved === steps.length },
+    { id: 'built', label: 'Built', done: !!latestBuild },
   ];
 }
 
 /** One-line plain-English status: the first thing the station still needs. */
 function stageCaption(stages) {
   const next = stages.find(s => !s.done);
-  if (!next) return 'Code generated';
+  if (!next) return 'Code built';
   return {
     described: 'Needs a description',
-    diagrammed: 'Needs a diagram',
-    compiled: 'Ready to compile',
-    generated: 'Ready to generate',
+    walked: 'Walk in progress — open the sheet',
+    built: 'Ready to build',
   }[next.id];
 }
 
@@ -157,7 +157,7 @@ function StationCard({ sm, latestBuild, blockers, onOpen }) {
       className="v2-phome__card"
       data-testid={`home-station-card-${sm.name}`}
       onClick={onOpen}
-      title={`Open the ${sm.displayName ?? sm.name} Spec Sheet`}
+      title={`Open the ${sm.displayName ?? sm.name} station sheet`}
     >
       <div className="v2-phome__card-top">
         <span className="v2-phome__snum">S{String(sm.stationNumber ?? 0).padStart(2, '0')}</span>
@@ -170,7 +170,7 @@ function StationCard({ sm, latestBuild, blockers, onOpen }) {
           <span
             className="v2-phome__blockers"
             data-testid={`home-blockers-${sm.name}`}
-            title={`${blockers} open question${blockers === 1 ? '' : 's'} blocking code generation — they're on the Spec Sheet`}
+            title={`${blockers} open question${blockers === 1 ? '' : 's'} blocking code generation — they're on the station sheet`}
           >{blockers}</span>
         )}
       </div>
@@ -326,40 +326,34 @@ export function ProjectHomePage() {
     useDiagramStore.getState().openNewSmModal(); // full-viewport create page resumes the cascade
   }
 
-  function openStationSheet(sm) {
-    const store = useDiagramStore.getState();
-    if (sm.id !== store.activeSmId) store.setActiveSm(sm.id);
-    const draft = ensureStationSheetDraft(useDiagramStore.getState(), sm);
-    requestResumeDraft(draft.draftId);
-    useV2Shell.getState().setSheetLinkedSmId(sm.id);
-    useDiagramStore.getState().openNewSmModal();
-    useV2Shell.getState().closeProjectHome();
-  }
-
-  function addStation() {
-    // The describe-first Create Station flow — full-viewport page. Home stays
-    // open underneath: cancel returns here; a created station switches
-    // activeSmId, which lands the user on the new station (AppV2 effect).
-    useDiagramStore.getState().openNewSmModal();
-  }
+  // ONE DOOR (2026-09-02): opening a station and starting a station both go
+  // through openStation.js — the cascade sheet (legacy shapes migrate on
+  // open; v1 canvas work shows the classic card) and the describe-first
+  // INPUTS for a fresh draft. Home stays open underneath the fresh page:
+  // ‹ Back returns here.
+  const addStation = openFreshStationDraft;
 
   if (!project) return null;
 
   // THE CHAT IS REACHABLE EVERYWHERE (Dan, 2026-08-31): the docked pill on
-  // the homepage opens the newest draft's sheet with the chat panel open.
+  // the homepage opens the newest draft's sheet with the chat panel open —
+  // or, with no draft, the first station's sheet, or a fresh draft (one
+  // door, 2026-09-02: the pill is never missing on the home).
   // Hidden while a full-viewport surface (the sheet) overlays — that surface
   // carries its own pill.
   const surfaceUp = useDiagramStore(s => s.showNewSmModal);
   const chatTarget = drafts[0] ?? null;
-  const chatPill = chatTarget && !surfaceUp && (
+  const chatPill = !surfaceUp && (
     <button
       type="button"
       data-testid="chat-pill"
       onClick={() => {
         try { localStorage.setItem('jarvis.chatPanelOpen', '1'); } catch { /* private mode */ }
-        continueDraft(chatTarget);
+        if (chatTarget) continueDraft(chatTarget);
+        else if (sms[0]) openStationSheet(sms[0]);
+        else openFreshStationDraft();
       }}
-      title={`Open the chat on ${draftLabel(chatTarget)}`}
+      title={chatTarget ? `Open the chat on ${draftLabel(chatTarget)}` : sms[0] ? `Open the chat on ${sms[0].displayName ?? sms[0].name}` : 'Describe the first station — the chat opens with it'}
       style={{
         position: 'fixed', right: 12, bottom: 48, zIndex: 60,
         display: 'inline-flex', alignItems: 'center', gap: 8,

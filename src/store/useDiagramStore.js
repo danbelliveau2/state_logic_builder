@@ -4816,11 +4816,13 @@ export const useDiagramStore = create(
           // One-time cleanup: remove duplicate auto-vision params from earlier bug
           get().deduplicateAutoVisionParams();
 
-          // Auto-generate indexer SM for indexing machines if it doesn't exist yet
-          const mcType = get().project?.machineConfig?.machineType;
-          if (mcType === 'indexing' || mcType === 'linear') {
-            get().autoGenerateIndexerSM();
-          }
+          // (The silent init-time auto-generation of a "Dial_Indexer" S99 SM
+          //  for machineType indexing/linear is DELETED — 2026-09-02. It was
+          //  a second door that created stations outside the cascade: Magnet
+          //  Dial v3 got a stray "S99 Dial_Indexer" after its fresh restart
+          //  because machineConfig.machineType stayed 'indexing'. The classic
+          //  MachineConfigEditor still calls autoGenerateIndexerSM on an
+          //  explicit user action; nothing runs on load.)
 
           // Ensure project has a tab
           get()._ensureCurrentTab();

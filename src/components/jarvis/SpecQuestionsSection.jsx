@@ -356,7 +356,6 @@ function HeldBuildCard({ build, onResumed }) {
 }
 
 function ValueAsks({ sm }) {
-  const openCompile = useV2Shell((s) => s.openCompile);
   const [vals, setVals] = useState({});
   const blanks = valueFlagsOf(sm);
   if (blanks.length === 0) return null;
@@ -377,10 +376,8 @@ function ValueAsks({ sm }) {
         persistTimerOnDevice(sm.id, home.device, b.label, n);
       }
     }
-    const block =
-      'Verified values from the ME — replace the defaults with these:\n' +
-      filled.map(({ b, v }) => `- ${b.label}: ${v}${b.unit && !/[a-z]/i.test(v) ? ` ${b.unit}` : ''}\n  (flag: ${b.full})`).join('\n');
-    openCompile(sm.id, block);
+    // (The re-compile kick is gone with the compile modal — 2026-09-02. The
+    //  values now live on the devices; the sheet's Build reads them.)
     setVals({});
   }
 
@@ -696,9 +693,8 @@ export function SpecQuestionsSection({ smId, extraItems = [], readyText }) {
   const sm = useDiagramStore((s) =>
     (s.project?.stateMachines ?? []).find((m) => m.id === smId) ?? null
   );
-  const compiledBump = useV2Shell((s) => s.compiledBump);
   const [resumeBump, setResumeBump] = useState(0);
-  const heldBuilds = useHeldBuilds(sm?.name, compiledBump + resumeBump);
+  const heldBuilds = useHeldBuilds(sm?.name, resumeBump);
 
   if (!sm) return null;
   // THREE SHAPES, enforced here too: extra items marked kind:'note' render

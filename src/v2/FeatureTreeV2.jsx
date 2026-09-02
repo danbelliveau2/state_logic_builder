@@ -13,18 +13,19 @@
  *   ├─ Machine   (quoting tally lives here)       → right-value: IO count
  *                (estimate nature lives in the hover tooltip, not a ~ prefix)
  *   ├─ Stations  (+ New action on the row)        → right-value: station count
- *   │   ├─ S## station (square colored by state:  → right-value: node count
- *   │   │   amber = no spec · red = last SDC Engineer build failed validation ·
- *   │   │   green ✓ = spec + drawn · blue = spec, nothing drawn yet)
- *   │   │   ├─ Spec line (✓ / —, opens SpecEditorModal)
+ *   │   ├─ S## station (square colored by state:  → right-value: device count
+ *   │   │   amber = not walked yet · red = last SDC Engineer build failed
+ *   │   │   validation · green ✓ = walked + built · blue = walked, not built)
  *   │   │   └─ devices (DeviceIcon + name + muted type subtext)
+ *   │   │   (2026-09-02, one door: the Spec line + SpecEditorModal are
+ *   │   │    DELETED; every row click opens the station SHEET — openStation.js)
  *   │   └─ Drafts (unfinished Create-Station drafts — they ARE stations
  *   │      in progress, so they live in the Stations section, not per station)
  *   └─ Documents (opens the drawer)               → right-value: doc count
  *   (No SDC Engineer node — Dan: "questions about SDC Engineer don't go on the tree";
  *    the machine structure only. SDC Engineer lives in the top bar.)
  *
- * THE TREE IS MASTER: clicking a station drives the canvas (setActiveSm);
+ * THE TREE IS MASTER: clicking a station opens its sheet (openStationSheet);
  * expansion state is an openKeys Set ('station:{id}' keys) mirrored both
  * ways — selecting a station anywhere ensure-opens its node (never
  * toggle-closes it).
@@ -35,14 +36,14 @@ import { useDiagramStore } from '../store/useDiagramStore.js';
 import { DeviceIcon } from '../components/DeviceIcons.jsx';
 import { DEVICE_TYPES } from '../lib/deviceTypes.js';
 import { computeMachineTotals } from '../lib/machineTotals.js';
-import { SpecEditorModal } from '../components/modals/SpecEditorModal.jsx';
 import { DocumentsDrawer } from './DocumentsDrawer.jsx';
 import { hasServoAxes, servoGaps } from './servoValues.js';
 import { useV2Shell } from './useV2Shell.js';
+import { openStationSheet, openFreshStationDraft } from './openStation.js';
 import { stationsOf, smLabelOf, stationKeyOf } from '../lib/stationModel.js';
 import {
   draftsKeyFor, loadDrafts, deleteDraft, onDraftsChanged,
-  requestResumeDraft, draftLabel, timeAgo, ensureStationSheetDraft,
+  requestResumeDraft, draftLabel, timeAgo,
 } from '../components/jarvis/createStationDrafts.js';
 import { draftCascadeStepNote } from '../components/jarvis/cascadeModel.js';
 
@@ -147,9 +148,9 @@ function stationStatus(sm, buildFailed) {
   const hasSpec = !!sm.machineSpec;
   const drawn = (sm.nodes ?? []).length > 0;
   if (buildFailed) return { color: RED, check: false, hint: 'Last SDC Engineer build FAILED validation' };
-  if (!hasSpec) return { color: AMBER_BORDER, check: false, hint: 'Incomplete — no machine spec yet' };
-  if (drawn) return { color: GREEN, check: true, hint: 'Spec saved + logic drawn' };
-  return { color: BLUE, check: false, hint: 'Spec saved — nothing drawn yet' };
+  if (!hasSpec) return { color: AMBER_BORDER, check: false, hint: 'Not walked yet — open the station sheet' };
+  if (drawn) return { color: GREEN, check: true, hint: 'Walked + built' };
+  return { color: BLUE, check: false, hint: 'Walked — not built yet' };
 }
 
 // ── Nodes ────────────────────────────────────────────────────────────────────
@@ -157,8 +158,7 @@ function stationStatus(sm, buildFailed) {
 /** ONE STATE MACHINE row (Dan, 2026-08-25: a station can hold several).
  *  `snum` is rendered only for a single-SM station, where the row IS the
  *  station; inside a multi-SM station the S## lives on the station row. */
-function SmTreeNode({ sm, label, snum, open, active, buildFailed, onRowClick, onCaretClick, onOpenSpec, onOpenDevice }) {
-  const nodeCount = (sm.nodes ?? []).length;
+function SmTreeNode({ sm, label, snum, open, active, buildFailed, onRowClick, onCaretClick, onOpenSheet }) {
   const devices = sm.devices ?? [];
   const status = stationStatus(sm, buildFailed);
   const name = label ?? smLabelOf(sm);
@@ -186,28 +186,10 @@ function SmTreeNode({ sm, label, snum, open, active, buildFailed, onRowClick, on
         )}
         <span className={`v2-tree__name${status.color === RED ? ' v2-tree__name--problem' : ''}`}>{name}</span>
         <Leader />
-        <Value>{nodeCount}</Value>
+        <Value>{devices.length}</Value>
       </div>
       {open && (
         <div className="v2-tree__children" data-testid={`tree-sm-children-${sm.name}`}>
-          {/* Spec line — ✓ / — , opens SpecEditorModal for THIS station */}
-          <div
-            className="v2-tree__row v2-tree__row--small"
-            data-testid={`tree-spec-${sm.name}`}
-            role="button" tabIndex={0}
-            onClick={(e) => { e.stopPropagation(); onOpenSpec(); }}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onOpenSpec(); } }}
-            title={sm.machineSpec ? 'Machine spec saved — click to review/edit' : 'No machine spec yet — click to write one'}
-          >
-            <span className="v2-tree__dot">·</span>
-            <span className="v2-tree__name-small">Spec</span>
-            <Leader />
-            <Value small>
-              {sm.machineSpec
-                ? <span style={{ color: GREEN, fontWeight: 700 }}>✓</span>
-                : <span style={{ color: AMBER, fontWeight: 700 }}>—</span>}
-            </Value>
-          </div>
           {/* Servo values line — only when the station has servo axes. The
               mechanical team's position table: gaps in amber, opens the
               station-level Servo values table. */}
@@ -239,8 +221,8 @@ function SmTreeNode({ sm, label, snum, open, active, buildFailed, onRowClick, on
           {devices.length === 0 && (
             <div className="v2-tree__empty-leaf">No devices declared.</div>
           )}
-          {/* Devices — icon + full name + muted type subtext (kept from the
-              old rows); right value intentionally blank. */}
+          {/* Devices — icon + full name + muted type subtext; a click opens
+              the station SHEET (devices are edited there — one door). */}
           {devices.map(d => {
             const typeInfo = DEVICE_TYPES[d.type];
             return (
@@ -248,9 +230,9 @@ function SmTreeNode({ sm, label, snum, open, active, buildFailed, onRowClick, on
                 key={d.id}
                 className="v2-tree__row v2-tree__row--small v2-tree__device"
                 role="button" tabIndex={0}
-                onClick={(e) => { e.stopPropagation(); onOpenDevice(d.id); }}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onOpenDevice(d.id); } }}
-                title={`Edit ${d.displayName ?? d.name}`}
+                onClick={(e) => { e.stopPropagation(); onOpenSheet(); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onOpenSheet(); } }}
+                title={`${d.displayName ?? d.name} — on the station sheet`}
               >
                 <span className="v2-tree__device-icon"><DeviceIcon type={d.type} size={14} /></span>
                 <span className="v2-tree__device-info">
@@ -341,7 +323,6 @@ export function FeatureTreeV2() {
   }, [activeSmId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Overlays owned by the tree.
-  const [specOpen, setSpecOpen] = useState(false);
   const [docsOpen, setDocsOpen] = useState(false);
 
   // Unfinished Create-Station drafts for THIS project (localStorage isn't
@@ -369,38 +350,17 @@ export function FeatureTreeV2() {
   // hold several SMs; legacy records with no stationId are their own station.
   const stations = stationsOf(project);
   const totals = computeMachineTotals(project);
-  const noSpecCount = sms.filter(sm => !sm.machineSpec).length;
 
+  // ONE DOOR (Dan, 2026-08-31 "the tree landed him on the classic canvas";
+  // 2026-09-02 "always show the right things"): EVERY station row opens the
+  // station SHEET (openStation.js — cascade as-is, legacy shapes migrated on
+  // open, v1 canvas work as the read-only classic card). Clicking the
+  // already-active row also toggles its node.
   function clickStation(sm) {
-    if (sm.id !== activeSmId) {
-      // Drives the center pane; the mirror effect ensure-opens the node.
-      store.setActiveSm(sm.id);
-      ensureOpen('stations', `station:${sm.id}`);
-      // ONE VIEW FOR CASCADE STATIONS (Dan, 2026-08-31: the tree landed him
-      // on the classic canvas — "a super cached old version"): a station
-      // built through the walk opens its STATION SHEET; the classic canvas
-      // stays the default only for v1-era stations.
-      if (sm.machineSpec?.cascadeState) {
-        try {
-          const draft = ensureStationSheetDraft(useDiagramStore.getState(), sm);
-          requestResumeDraft(draft.draftId);
-          useV2Shell.getState().setSheetLinkedSmId(sm.id);
-          store.openNewSmModal();
-        } catch { /* the StationBanner effect is the backstop */ }
-      }
-    } else {
-      toggle(`station:${sm.id}`);
-    }
-  }
-
-  function openSpecFor(sm) {
-    if (sm.id !== activeSmId) store.setActiveSm(sm.id); // modal reads active SM
-    setSpecOpen(true);
-  }
-
-  function openDevice(sm, deviceId) {
-    if (sm.id !== activeSmId) store.setActiveSm(sm.id);
-    store.openEditDeviceModal(deviceId);
+    const wasActive = sm.id === activeSmId;
+    ensureOpen('stations', `station:${sm.id}`);
+    try { openStationSheet(sm); } catch (e) { console.error('[tree] open station failed:', e); }
+    if (wasActive) toggle(`station:${sm.id}`);
   }
 
   function resumeDraft(draftId) {
@@ -440,15 +400,6 @@ export function FeatureTreeV2() {
           {project?.name ?? 'Untitled'}
           {project?.jobNumber ? <span className="v2-tree__job"> · #{project.jobNumber}</span> : null}
         </span>
-        {noSpecCount > 0 && (
-          <span
-            className="v2-tree__badge-amber"
-            data-testid="tree-incomplete-badge"
-            title={`${noSpecCount} station${noSpecCount !== 1 ? 's' : ''} without a machine spec — open the station and click its Spec line`}
-          >
-            incomplete: {noSpecCount} no spec
-          </span>
-        )}
         <Leader />
         <Value>{stations.length}</Value>
       </div>
@@ -543,7 +494,7 @@ export function FeatureTreeV2() {
             className="v2-tree__add"
             data-testid="new-station-btn"
             title="Add a new station to this project (describe it to SDC Engineer)"
-            onClick={(e) => { e.stopPropagation(); store.openNewSmModal(); }}
+            onClick={(e) => { e.stopPropagation(); openFreshStationDraft(); }}
           >
             + New
           </button>
@@ -569,8 +520,7 @@ export function FeatureTreeV2() {
                   buildFailed={buildFailures.has(sm.name)}
                   onRowClick={() => clickStation(sm)}
                   onCaretClick={() => toggle(`station:${sm.id}`)}
-                  onOpenSpec={() => openSpecFor(sm)}
-                  onOpenDevice={(deviceId) => openDevice(sm, deviceId)}
+                  onOpenSheet={() => openStationSheet(sm)}
                 />
               );
               // ONE state machine → its row IS the station (as before).
@@ -588,7 +538,7 @@ export function FeatureTreeV2() {
                   onRowClick={() => {
                     ensureOpen('stations', `stationgroup:${st.key}`);
                     const first = st.sms[0];
-                    if (first && first.id !== activeSmId) store.setActiveSm(first.id);
+                    if (first) openStationSheet(first); // ONE sheet per station (primary SM)
                   }}
                   renderSm={(sm) => smRow(st.sms.find(s => s.id === sm.id) ?? sm, null)}
                 />
@@ -659,7 +609,6 @@ export function FeatureTreeV2() {
 
       </div>
 
-      {specOpen && <SpecEditorModal onClose={() => setSpecOpen(false)} />}
       {docsOpen && <DocumentsDrawer onClose={() => setDocsOpen(false)} />}
     </div>
   );

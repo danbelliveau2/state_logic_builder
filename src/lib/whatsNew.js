@@ -10,12 +10,23 @@
  *   3. Prune IN_PROGRESS — move finished items into the new SHIPPED entry.
  */
 
-export const UI_BUILD = 'v2.6.51';
+export const UI_BUILD = 'v2.6.52';
 
-export const BUILT_AT = '2026-09-01';
+export const BUILT_AT = '2026-09-02';
 
 // Newest first. items are short, plain-English, user-visible changes.
 export const SHIPPED = [
+  {
+    version: 'v2.6.52',
+    date: '2026-09-02',
+    items: [
+      'ONE DOOR — the v2 app always shows the station sheet. The old classic-canvas station page (Spec Sheet | Diagram toggle, Sequence/Controls detail, ⚙ Compile / ✨ Generate buttons, "No Home node" banner, the Spec line and "incomplete: N no spec" badge on the tree) is deleted from the v2 app, not hidden. Every station click — tree, home card, device row, reload — opens its sheet; the classic canvas exists only at /classic.html',
+      'ADD STATION opens the sheet itself: the Inputs band carries your explanation and a "Send to SDC Engineer →" button, with the Station band showing where Step 1 lands. The old intake form ("Explain this station like you would to a new engineer", "Done explaining →", the four EXPLANATION checks, the "N unfinished drafts — resume or keep starting fresh" banner) is gone',
+      'Stations built before the cascade are migrated the moment you open them (empty walk; name, number, devices and description carried over). Hand-drawn v1 canvas stations show a read-only "Classic station" card with an open-in-classic link and a "Describe it as a new station" button',
+      'Magnet Dial v3: the stray "S99 Dial_Indexer" (an auto-generated indexer the app created on load because the machine type was still "indexing" after the fresh restart — not your work) is removed and backed up; the app no longer auto-creates stations on load. Your Magnet Dial draft is untouched',
+      'Gate: two new invariants — no legacy surface may render anywhere in v2, and every Add Station entry must land on the cascade Inputs. Route sweep: 30 stations in 9 projects + 18 Add Station entries, all land on the sheet / classic card',
+    ],
+  },
   {
     version: 'v2.6.51',
     date: '2026-09-01',

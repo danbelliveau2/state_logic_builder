@@ -9,6 +9,14 @@ If your task isn't listed here, use the **Explore sub-agent** — don't probe.
 
 ## Common tasks (most-frequent first)
 
+### v2 shell — opening a station / adding a station (ONE DOOR, 2026-09-02)
+- THE only opener            → `v2/openStation.js` (`openStationSheet`, `openFreshStationDraft`, `isClassicStation`, `migrateSmToCascade`)
+- The station sheet          → `components/jarvis/CreateStationPage.jsx` (embedded for built stations, full-viewport for fresh drafts; the INPUTS band holds the explanation editor before the proposal)
+- v1 canvas stations in v2   → `v2/ClassicStationCard.jsx` (read-only card → /classic.html)
+- Shell composition + landing → `v2/AppV2.jsx`; banner (crumb + identity only) → `v2/StationBanner.jsx`
+- Gate                       → `v2/layoutInvariants.js` (`no-legacy-surface-in-v2`, `add-station-opens-cascade`, `reload-lands-on-sheet`)
+- **DELETED — do not re-add a door:** the classic canvas mount in v2, the Spec Sheet|Diagram pill, `DiagramSubBar` (Sequence|Controls detail, ⚙ Compile, ✨ Generate), `ControlsFlowView`/`controlsFlowDerive`, `GenerationResultCard`, `CompileSequenceModal`, the Generate-modal mount, the `SpecEditorModal` tree line, the summarize-era intake form ("Explain this station like you would…", "Done explaining →"), the unfinished-drafts banner, the EXPLANATION coverage strip, the init-time `autoGenerateIndexerSM` (S99 Dial_Indexer). The classic canvas lives ONLY at `/classic.html` (frozen, `src/main.jsx`).
+
 ### JARVIS Inbox librarian (learning from dropped/network files)
 - Classify/distill/file logic → `lib/agentGenerator/librarian.js` (local inbox + network watch folders)
 - Server routes + daily timer → `server.js` (search `librarian`)

@@ -197,17 +197,56 @@ export const INVARIANTS = [
   },
   {
     id: 'reload-lands-on-sheet',
-    what: 'A cascade-built project never shows the classic canvas as a landing — reload/open/tab-switch land on the Station Sheet or the machine homepage (Dan, 2026-08-31, exhaustive)',
+    what: 'A project never shows the classic canvas — reload/open/tab-switch/station-click land on the Station Sheet, the machine homepage, or the read-only classic card (Dan, 2026-08-31 + 2026-09-02, every project)',
     run() {
-      if (!window.__slbCascadeProject) return { skip: 'not a cascade project (or landing effect not run)' };
+      const workbench = q('[data-testid="v2-center"]').some(vis);
+      if (!workbench) return { skip: 'no project open (start screen)' };
       // SheetFlow renders React Flow INSIDE the sheet — only a canvas
       // OUTSIDE the sheet is the classic diagram page.
       const canvas = q('.react-flow').some((el) => vis(el) && !el.closest('[data-testid="create-station-page"]'));
       const sheet = q('[data-testid="create-station-page"]').some(vis);
       const homeV = q('[data-testid="project-home"]').some(vis);
-      if (canvas && !sheet && !homeV) return { fail: 'classic canvas showing on a cascade project' };
-      if (!sheet && !homeV) return { fail: 'neither the sheet nor the homepage is on screen' };
+      const classic = q('[data-testid="classic-station-card"]').some(vis);
+      if (canvas) return { fail: 'classic canvas mounted in the v2 shell' };
+      if (!sheet && !homeV && !classic) return { fail: 'neither the sheet, the homepage nor the classic card is on screen' };
       return {};
+    },
+  },
+  {
+    id: 'no-legacy-surface-in-v2',
+    what: 'ONE DOOR (Dan, 2026-09-02): none of the pre-cascade surfaces may render anywhere in the v2 shell — the Spec Sheet|Diagram pill, the Diagram sub-bar (Sequence|Controls detail, ⚙ Compile, ✨ Generate), the "No Home node" canvas banner, the summarize-era intake form ("Explain this station like you would…", "Done explaining"), the "N unfinished drafts — resume or keep starting fresh" banner, the EXPLANATION coverage strip, the "incomplete: N no spec" tree badge, the SpecEditorModal',
+    run() {
+      const bad = [];
+      const testids = ['page-pill', 'page-diagram', 'page-sheet', 'diagram-subbar', 'diagram-detail-toggle',
+        'diagbar-compile-btn', 'diagbar-generate-btn', 'diagbar-approve-btn', 'controls-overlay',
+        'unfinished-drafts-banner', 'done-explaining-btn', 'needs-strip', 'tree-incomplete-badge', 'tree-spec-'];
+      for (const t of testids) {
+        const sel = t.endsWith('-') ? `[data-testid^="${t}"]` : `[data-testid="${t}"]`;
+        if (q(sel).some(vis)) bad.push(`legacy surface rendering: ${t}`);
+      }
+      const body = document.body.innerText ?? '';
+      const copy = ['No Home node', 'Done explaining', 'Explain this station like you would', 'unfinished draft',
+        'keep starting fresh', 'Controls detail', 'incomplete:', 'no spec', 'Spec Sheet'];
+      for (const s of copy) if (body.includes(s)) bad.push(`legacy copy on screen: "${s}"`);
+      if (q('.react-flow').some((el) => vis(el) && !el.closest('[data-testid="create-station-page"]'))) bad.push('classic canvas outside the sheet');
+      return bad.length ? { fail: [...new Set(bad)].join('; ') } : {};
+    },
+  },
+  {
+    id: 'add-station-opens-cascade',
+    what: 'Every "+ New" / "Add Station" path opens the cascade sheet at its describe-first INPUTS band (SectionBar stack from the first second) — never the old intake form (Dan, 2026-09-02)',
+    run() {
+      const fresh = q('[data-testid="create-station-page"]').filter(vis)
+        .filter((el) => getComputedStyle(el).position === 'fixed')[0]; // fresh draft = full-viewport page
+      if (!fresh) return { skip: 'fresh create page not on screen' };
+      const bad = [];
+      if (!q('[data-testid="inputs-band-header"]', fresh).some(vis)) bad.push('INPUTS band missing on the fresh sheet');
+      const preProposal = q('[data-testid="inputs-explanation-editor"]', fresh).some(vis);
+      const walk = q('[data-testid^="cascade-"]', fresh).some(vis) || q('[data-testid^="summary-section-"]', fresh).some(vis);
+      if (!preProposal && !walk) bad.push('neither the explanation editor nor a cascade step is on the fresh sheet');
+      if (preProposal && !q('[data-testid="send-explanation-btn"]', fresh).some(vis) && !q('[data-testid="summarize-progress"]', fresh).some(vis)) bad.push('explanation editor without its send button');
+      if (!q('[data-testid="controls-notes-section"]', fresh).some(vis)) bad.push('Controls information bar missing');
+      return bad.length ? { fail: bad.join('; ') } : {};
     },
   },
   {
