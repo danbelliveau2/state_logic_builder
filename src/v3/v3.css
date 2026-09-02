@@ -12,6 +12,8 @@
 .v3-seq__bar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  row-gap: 4px;
   gap: 8px;
   padding: 5px 10px;
   background: #f3f6fa;
@@ -157,3 +159,51 @@
   display: flex;
 }
 .v3-seq-full__body .canvas-wrapper { flex: 1; min-width: 0; }
+
+/* FULL NODE TEXT (Dan, 2026-09-02: "you don't see the whole word, you don't
+   see the whole name" — "Retr…" is unacceptable). v3-scoped override of the
+   classic 240px cap + shrink/ellipsize path: every state node in the v3
+   canvas is 320px wide (uniform, so columns still read as columns) and a
+   device name that still will not fit WRAPS to a second line instead of
+   scaling or ellipsizing. Classic (/classic.html) is untouched — these
+   selectors only exist under the v3 sequence containers. Keep
+   V3_STATE_NODE_W in sequenceSm.js equal to the width here. */
+.v3-seq .state-node,
+.v3-seq-full .state-node {
+  min-width: 320px;
+  width: 320px;
+  max-width: 320px;
+}
+.v3-seq .action-row,
+.v3-seq-full .action-row {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+.v3-seq .action-device,
+.v3-seq-full .action-device {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  line-height: 1.2;
+}
+.v3-seq .action-op,
+.v3-seq-full .action-op {
+  flex-shrink: 0;
+  overflow: visible;
+  text-overflow: clip;
+}
+/* The picker-row ShrinkToFit wrapper: let its content wrap instead of
+   measuring wider than the row (which is what triggered the scale-down). */
+.v3-seq .shrink-fit,
+.v3-seq-full .shrink-fit {
+  overflow: visible;
+}
+.v3-seq .shrink-fit__inner,
+.v3-seq-full .shrink-fit__inner {
+  display: inline-flex;
+  flex-wrap: wrap;
+  white-space: normal;
+  row-gap: 2px;
+  max-width: 100%;
+}

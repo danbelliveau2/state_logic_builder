@@ -15,15 +15,22 @@
  */
 
 import { useDiagramStore } from '../store/useDiagramStore.js';
-import { compileLaneFlow } from './compileLaneFlow.js';
-import { layoutBranchDiagram, applyBranchLayout } from '../lib/branchLayout.mjs';
+import { compileLaneFlow, stepsToModel } from './compileLaneFlow.js';
+import { layoutBranchDiagram, applyBranchLayout, estimateNodeWidth } from '../lib/branchLayout.mjs';
+
+/** v3 state-node width (v3.css `.v3-seq .state-node`): wide enough that the
+ *  full verb + full device display name always show at zoom 1 (Dan,
+ *  2026-09-02: "you don't see the whole word, you don't see the whole
+ *  name"). Classic keeps its 240px cap. */
+export const V3_STATE_NODE_W = 320;
 
 /** First-open layout on the v1 column law (center-aligned columns, uniform
  *  gap, loop rails) — the same pass the canvas's Re-layout button runs. */
-function lawLayout(nodes, edges) {
+export function lawLayout(nodes, edges) {
   try {
     const layout = layoutBranchDiagram(nodes, edges, {
       getHeight: (n) => (n.type === 'decisionNode' ? 96 : 120),
+      getWidth: (n) => (n.type === 'stateNode' ? V3_STATE_NODE_W : estimateNodeWidth(n)),
     });
     if (!layout.changed) return { nodes, edges };
     return applyBranchLayout(nodes, edges, layout);
@@ -31,6 +38,38 @@ function lawLayout(nodes, edges) {
     console.warn('[v3] law layout skipped:', e);
     return { nodes, edges };
   }
+}
+
+/**
+ * PHASE B — REDRAFT FROM THE SHEET (Dan, 2026-09-02): recompile a machine's
+ * canvas from its approved steps in the v1 grammar (compileLaneFlow), keeping
+ * the drawing the engineer had as a dated backup on the record
+ * (`machineSpec.v3.redraftBackups`). Clears the measured-layout stamp so the
+ * canvas re-runs its one-time measured re-layout on the new nodes.
+ * @returns {boolean} true when the SM was redrafted
+ */
+export function redraftMachineSm({ smId, model = null, steps = null, isPrimary = true, machineName = '' }) {
+  const store = useDiagramStore.getState();
+  const sm = store.project?.stateMachines?.find((s) => s.id === smId);
+  if (!sm) return false;
+  const useModel = model ?? (steps ? stepsToModel(steps) : null);
+  if (!useModel) return false;
+  const compiled = compileLaneFlow(useModel, { devices: sm.devices ?? [], machineName: machineName || sm.displayName || sm.name, isPrimary });
+  const { nodes, edges } = lawLayout(compiled.nodes, compiled.edges);
+  const now = new Date().toISOString();
+  const prevV3 = sm.machineSpec?.v3 ?? {};
+  const backups = [...(prevV3.redraftBackups ?? []), { at: now, nodes: sm.nodes ?? [], edges: sm.edges ?? [] }].slice(-3);
+  store.updateStateMachine(smId, {
+    nodes,
+    edges,
+    machineSpec: {
+      ...(sm.machineSpec ?? {}),
+      canvasAuthoritative: true,
+      canvasAuthoritativeAt: now,
+      v3: { ...prevV3, migratedAt: now, migratedFrom: 'sheet-structured-steps', redraftedAt: now, measuredLayoutAt: undefined, redraftBackups: backups },
+    },
+  });
+  return true;
 }
 
 const nk = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');

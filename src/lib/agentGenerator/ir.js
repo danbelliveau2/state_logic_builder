@@ -184,6 +184,10 @@ function transitionConditionText(edge, sourceNode) {
  *  ('init' is reserved for the 100..127 template block, which lives in
  *   stateRanges — flowchart edges never carry it.) */
 function transitionKind(edge, sourceNode, fromState, toState) {
+  // RETRY LOOP (Dan, 2026-09-02): the check's exit-retry edge goes back to
+  // the step to redo; the counter + exhaustion → INITIALIZATION are generated
+  // from the check's retry config, never drawn.
+  if (edge.sourceHandle === 'exit-retry') return 'retry';
   if (sourceNode?.type === 'decisionNode') {
     return (sourceNode.data?.exitCount ?? 1) === 2 ? 'branch' : 'wait';
   }
@@ -237,9 +241,25 @@ function buildIR(projectJson, smId) {
       isInitial: !!d.isInitial,
       isComplete: !!d.isComplete,
       decisionType: n.type === 'decisionNode' ? (d.decisionType || 'signal') : undefined,
+      nodeMode: n.type === 'decisionNode' ? (d.nodeMode || 'wait') : undefined,
       signalSource: d.signalSource,
       signalName: d.signalName,
       exitCount: d.exitCount,
+      // RETRY CONFIG (Dan, 2026-09-02 — retry is configured on the check, not
+      // drawn): on failure re-enter `redoState` up to `max` times; when the
+      // count is met the machine runs INITIALIZATION (the init block) — the
+      // standard, implicit, generated here. Embedded `_decision` rows carry
+      // the same fields on the action.
+      retry: (() => {
+        const src = d.retryEnabled ? d : (d.actions || []).find(a => a?.deviceId === '_decision' && a.retryEnabled);
+        if (!src) return undefined;
+        return {
+          max: Number(src.retryMax) || 3,
+          redoNodeId: src.retryTargetNodeId ?? null,
+          redoState: src.retryTargetNodeId ? (numbers.get(src.retryTargetNodeId) ?? null) : null,
+          onExhausted: 'initialize',
+        };
+      })(),
       actions: (d.actions || []).map(a => ({
         operation: a.operation,
         deviceId: a.deviceId,
@@ -569,7 +589,16 @@ function renderIRText(ir) {
         (a.detail ? ` (${a.detail})` : ''));
     }
     if (s.type === 'decisionNode') {
-      lines.push(`    condition: source=${s.signalSource || '?'} signal=${s.signalName || '?'} exits=${s.exitCount || 1}`);
+      lines.push(`    condition: source=${s.signalSource || '?'} signal=${s.signalName || '?'} exits=${s.exitCount || 1}` + (s.nodeMode ? ` mode=${s.nodeMode}` : ''));
+    }
+    if (s.retry) {
+      // Dan, 2026-09-02: retry is a PROPERTY of the check. Emit the counter
+      // (increment on each failed check, reset on pass), the jump back to the
+      // redo state while count < max, and on the count being met the jump to
+      // the INITIALIZATION block (MOV 100 → Step, per the SDC template) — no
+      // alarm on a plain exhaustion, no drawn exhaustion state.
+      lines.push(`    retry: on fail re-enter ${s.retry.redoState != null ? `State ${s.retry.redoState}` : (s.retry.redoNodeId ? `node ${s.retry.redoNodeId}` : 'the step named by the retry loop edge')}` +
+        ` up to ${s.retry.max}x (counter increments per failed check, resets on pass); when the count is met → INITIALIZE (jump to the init block, state 100) — standard, not drawn`);
     }
   }
 

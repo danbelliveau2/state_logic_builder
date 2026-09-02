@@ -1188,6 +1188,9 @@ function ShrinkToFit({ children, minScale = 0.55 }) {
   return (
     <div
       ref={outerRef}
+      // classNames are styling hooks only (v3 lets the row WRAP instead of
+      // shrinking — src/v3/v3.css); classic has no rules for them.
+      className="shrink-fit"
       style={{
         flex: '1 1 auto',
         minWidth: 0,
@@ -1200,6 +1203,7 @@ function ShrinkToFit({ children, minScale = 0.55 }) {
     >
       <div
         ref={innerRef}
+        className="shrink-fit__inner"
         style={{
           display: 'inline-flex',
           alignItems: 'center',

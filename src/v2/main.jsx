@@ -18,6 +18,11 @@ import './v2.css';
 // Restore the persisted UI scale BEFORE first paint — no 100% flash.
 initAppScale();
 
+// v3 SHELL FLAG (Dan, 2026-09-02): shared v1 components (DecisionNode's
+// retry → "go back to" picker, self-drawn retry loops) enable v3-only
+// behavior off this stamp — /classic.html never sets it (src/lib/shellFlags.js).
+document.documentElement.dataset.shell = 'v3';
+
 // Dev-only handle for the layout-acceptance harness (same as classic entry).
 if (import.meta.env.DEV) {
   import('../store/useDiagramStore.js').then(m => { window.__sdcStore = m.useDiagramStore; });

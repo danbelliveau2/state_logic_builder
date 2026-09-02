@@ -653,6 +653,27 @@ export const INVARIANTS = [
       return {};
     },
   },
+  {
+    id: 'v3-node-text-unclipped',
+    what: 'On the v3 sequence canvas every state-node row shows the FULL verb and the FULL device name at the default zoom — no ellipsis, no clipped text, no shrink-scaled row (Dan, 2026-09-02: "Retr…" / cut-off names are unacceptable)',
+    run() {
+      const roots = q('[data-testid^="v3-sequence-canvas"][data-active="true"], [data-testid="v3-canvas-expanded"]').filter(vis);
+      if (!roots.length) return { skip: 'no live v3 canvas on screen' };
+      const bad = [];
+      for (const root of roots) {
+        for (const el of q('.state-node .action-device, .state-node .action-op', root).filter(vis)) {
+          if (el.scrollWidth > el.clientWidth + 1) bad.push(`clipped "${el.textContent.trim()}"`);
+          const cs = getComputedStyle(el);
+          if (cs.textOverflow === 'ellipsis' && cs.overflow === 'hidden' && el.scrollWidth > el.clientWidth) bad.push(`ellipsized "${el.textContent.trim()}"`);
+        }
+        for (const el of q('.state-node .shrink-fit__inner', root).filter(vis)) {
+          const m = getComputedStyle(el).transform.match(/matrix\(([^,]+),/);
+          if (m && Number(m[1]) < 0.99) bad.push(`shrink-scaled row "${el.textContent.trim().slice(0, 40)}" (${Number(m[1]).toFixed(2)}x)`);
+        }
+      }
+      return bad.length ? { fail: [...new Set(bad)].slice(0, 6).join('; ') } : {};
+    },
+  },
 ];
 
 /** Run every invariant against the CURRENT DOM (async — some checks read the

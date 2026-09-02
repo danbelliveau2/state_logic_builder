@@ -23,6 +23,8 @@ import { DeviceIcon } from '../DeviceIcons.jsx';
 import { PtBadge } from './PtBadge.jsx';
 import { ConnectMenu, HandleClickZone } from '../ConnectMenu.jsx';
 import { OUTCOME_COLORS } from '../../lib/outcomeColors.js';
+import { isV3Shell } from '../../lib/shellFlags.js';
+import { listRetryTargets, syncRetryLoopEdge } from '../../v3/retryTargets.js';
 
 // ── Subject color palette ─────────────────────────────────────────────────────
 // v1.31 unified-grammar: every node body is `[Action verb] [Detail] [Value]`,
@@ -274,6 +276,13 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
   // Retry counter config (only meaningful for 'wait' mode)
   const [retryEnabled, setRetryEnabled] = useState(data.retryEnabled ?? false);
   const [retryMax, setRetryMax] = useState(data.retryMax ?? 3);
+  // v3 (Dan, 2026-09-02): RETRY IS CONFIGURED, NOT DRAWN — the ME picks which
+  // earlier step to go back to; the loop edge draws itself on Done (see
+  // src/v3/retryTargets.js). Exhausted → initialization, nothing drawn.
+  // Classic never sets the shell flag, so none of this renders there.
+  const v3 = isV3Shell();
+  const [retryTargetNodeId, setRetryTargetNodeId] = useState(data.retryTargetNodeId ?? null);
+  const retryTargets = useMemo(() => (v3 && currentSm ? listRetryTargets(currentSm, nodeId) : []), [v3, currentSm, nodeId]);
 
   // After picking any signal/vision, show branch config step
   // Always start on the branch config builder — no separate signal picker step
@@ -802,6 +811,8 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
       // Retry counter (available for wait, decide, and verify modes)
       retryEnabled,
       retryMax: retryEnabled ? Number(retryMax) || 3 : undefined,
+      // v3: the step the retry goes back to + the standard exhaustion rule.
+      ...(v3 ? { retryTargetNodeId: retryEnabled ? retryTargetNodeId : null, retryOnExhausted: retryEnabled ? 'initialize' : undefined } : {}),
       // Part tracking. Unified-flag model (v1.28+): ptEnabled is an orthogonal
       // toggle that composes with any mode — Verify+Log, Decide+Log, Wait+Log
       // all persist PT fields the same way. Log mode auto-flips the local
@@ -888,13 +899,15 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
           store.addDecisionMultiBranch(smId, nodeId, outcomeLabels.slice(0, finalExitCount));
         } else if (finalExitCount === 2) {
           store.addDecisionBranches(smId, nodeId, finalExit1Label, finalExit2Label);
-          if (retryEnabled) {
+          if (retryEnabled && !v3) {
             store.addDecisionRetryBranch(smId, nodeId);
           }
         }
         // exitCount === 1 → use the state's default bottom handle; no branch
         // creation needed. User can draw the onward edge manually.
       }
+      // v3: the retry loop draws itself from the parent state to the picked step.
+      if (v3) syncRetryLoopEdge(useDiagramStore.getState(), smId, nodeId, { retryEnabled, retryTargetNodeId });
     } else {
       store.updateNodeData(smId, nodeId, updatedData);
       if (finalExitCount > 2) {
@@ -904,8 +917,12 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
       } else if (finalExitCount === 1) {
         store.addDecisionSingleBranch(smId, nodeId, finalExit1Label);
       }
-      // Create retry branch if retry is enabled (any mode with 2 exits)
-      if (retryEnabled && finalExitCount === 2) {
+      if (v3) {
+        // v3 (Dan, 2026-09-02): no spawned "Retry_Fail" node — the retry loop
+        // edge draws itself to the step the ME picked; exhaustion → init.
+        syncRetryLoopEdge(useDiagramStore.getState(), smId, nodeId, { retryEnabled, retryTargetNodeId });
+      } else if (retryEnabled && finalExitCount === 2) {
+        // Create retry branch if retry is enabled (any mode with 2 exits)
         store.addDecisionRetryBranch(smId, nodeId);
       }
     }
@@ -2611,12 +2628,12 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
                   {retryEnabled ? '\u2713' : ''}
                 </span>
                 <span style={{ fontSize: 10, fontWeight: 600, color: retryEnabled ? '#d97706' : '#64748b' }}>
-                  Enable retry counter
+                  {v3 ? 'Retry' : 'Enable retry counter'}
                 </span>
               </label>
               {retryEnabled && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ fontSize: 9, color: '#94a3b8' }}>Max:</span>
+                  <span style={{ fontSize: 9, color: '#94a3b8' }}>{v3 ? 'Count:' : 'Max:'}</span>
                   <input
                     className="nodrag"
                     type="number"
@@ -2633,9 +2650,43 @@ export function DecisionEditPopup({ nodeId, smId, data, onClose, style, saveTarg
                 </div>
               )}
             </div>
+            {retryEnabled && v3 && (
+              // v3: RETRY IS CONFIGURED, NOT DRAWN (Dan, 2026-09-02) — pick the
+              // step to go back to; the loop edge draws itself on Done.
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }} data-testid="decision-retry-target">
+                <span style={{ fontSize: 9, color: '#64748b', whiteSpace: 'nowrap' }}>Go back to:</span>
+                <select
+                  className="nodrag"
+                  value={retryTargetNodeId ?? ''}
+                  onChange={e => setRetryTargetNodeId(e.target.value || null)}
+                  onMouseDown={e => e.stopPropagation()}
+                  style={{ flex: 1, minWidth: 0, fontSize: 10, padding: '2px 4px', border: `1px solid ${retryTargetNodeId ? '#d1d5db' : '#f59e0b'}`, borderRadius: 4, background: '#fff', color: '#1e293b' }}
+                >
+                  <option value="">— pick the step to redo —</option>
+                  {retryTargets.some(t => t.group === 'upstream') && (
+                    <optgroup label="Earlier steps">
+                      {retryTargets.filter(t => t.group === 'upstream').map(t => (
+                        <option key={t.id} value={t.id}>{t.step != null ? `[${t.step}] ` : ''}{t.label}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {retryTargets.some(t => t.group === 'other') && (
+                    <optgroup label="Other steps">
+                      {retryTargets.filter(t => t.group === 'other').map(t => (
+                        <option key={t.id} value={t.id}>{t.step != null ? `[${t.step}] ` : ''}{t.label}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+            )}
             {retryEnabled && (
               <div style={{ fontSize: 8, color: '#94a3b8', marginTop: 3, lineHeight: 1.3 }}>
-                {nodeMode === 'verify'
+                {v3
+                  ? (retryTargetNodeId
+                    ? `Fails → go back to the picked step, up to ${retryMax}× (the loop draws itself). Count met → the machine runs initialization (controls).`
+                    : 'Pick the step to go back to — the retry loop draws itself. Count met → the machine runs initialization (controls).')
+                  : nodeMode === 'verify'
                   ? `If verify fails, retry up to ${retryMax}x before taking the fail branch.`
                   : nodeMode === 'decide'
                   ? `If decision comes back false, retry up to ${retryMax}x before taking the false branch.`

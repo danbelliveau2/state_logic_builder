@@ -29,7 +29,7 @@ import { Canvas } from '../components/Canvas.jsx';
 import { DeviceSidebar } from '../components/DeviceSidebar.jsx';
 import { PropertiesPanel } from '../components/PropertiesPanel.jsx';
 import { useDiagramStore } from '../store/useDiagramStore.js';
-import { ensureMachineSm, findMachineSm } from './sequenceSm.js';
+import { ensureMachineSm, findMachineSm, redraftMachineSm } from './sequenceSm.js';
 import { layoutBranchDiagram, applyBranchLayout, estimateNodeWidth } from '../lib/branchLayout.mjs';
 import './v3.css';
 
@@ -249,6 +249,19 @@ export function SequenceCanvas({
   const activate = () => { if (resolvedId && !isActive) setActiveSm(resolvedId); };
   const title = entry?.name ?? sm?.displayName ?? 'Sequence';
 
+  // PHASE B — the AI first draft in Dan's shape, on demand: recompile from
+  // the sheet's approved steps; the current drawing is kept as a backup.
+  const redraft = () => {
+    if (!resolvedId) return;
+    const n = sm?.nodes?.length ?? 0;
+    if (n > 1 && !window.confirm(`Redraft "${title}" from the sheet's approved steps?\n\nThe ${n} states drawn now are kept as a backup on the record (Undo also works).`)) return;
+    try {
+      redraftMachineSm({ smId: resolvedId, model, isPrimary, machineName: title });
+    } catch (e) {
+      console.error('[v3] redraft failed:', e);
+    }
+  };
+
   const bar = (
     <div className="v3-seq__bar" data-testid={`${testId}-bar`}>
       <b>{title}</b>
@@ -265,6 +278,17 @@ export function SequenceCanvas({
       {isActive && !expanded && (
         <button type="button" className="v3-seq__btn" onClick={() => setShowDevices((v) => !v)} data-testid={`${testId}-devices-toggle`}>
           {showDevices ? 'Hide devices' : 'Devices'}
+        </button>
+      )}
+      {isActive && !expanded && (
+        <button
+          type="button"
+          className="v3-seq__btn"
+          onClick={redraft}
+          data-testid={`${testId}-redraft`}
+          title="Recompile this machine's canvas from the sheet's approved steps in the v1 grammar (Action / Check with Retry / Wait). Your current drawing is kept as a backup on the record."
+        >
+          Redraft from sheet
         </button>
       )}
       {!isActive && (
@@ -330,6 +354,9 @@ export function SequenceCanvas({
             <span style={{ opacity: 0.8 }}>sequence canvas · {nodeCount} states</span>
             <MachineSwitcher machines={machines} activeKey={entry?.key} onPick={switchTo} dark testId="v3-canvas-switch" />
             <span className="v3-seq__spacer" />
+            <button type="button" className="v3-seq__btn" onClick={redraft} data-testid="v3-canvas-redraft" title="Recompile this machine's canvas from the sheet's approved steps (current drawing kept as a backup)">
+              Redraft from sheet
+            </button>
             <button type="button" className="v3-seq__btn" onClick={() => setExpandedSmId(null)} data-testid="v3-canvas-close">
               Close ↙
             </button>
