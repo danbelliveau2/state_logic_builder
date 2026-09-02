@@ -48,6 +48,9 @@ import { SpecQuestionsSection, BlockingShell, ExtraBlockerRow } from './SpecQues
 import { GenerationScopeNote } from './GenerationScopeNote.jsx';
 import { useV2Shell } from '../../v2/useV2Shell.js';
 import { SheetFlow } from '../../v2/SheetFlow.jsx';
+// v3 (Dan, 2026-09-02): the SEQUENCE section IS the v1 canvas per machine.
+import { SequenceCanvas } from '../../v3/SequenceCanvas.jsx';
+import { mergeSmDevices, reconstructSummaryFromSm } from './createStationDrafts.js';
 import { useHeldBuilds } from '../../v2/stationNeeds.js';
 import { agentTurnRequest, readSse, TURN_DEAD_MESSAGE } from '../../lib/agentTurnTransport.js';
 import { fmtETTime } from '../../v2/fmtTime.js';
@@ -9733,16 +9736,13 @@ export function CreateStationPage({ embedded = false }) {
           Not saved — the server refused a sequence line that isn't a structured step: {storeRefusal}
         </div>
       )}
-      <DictatedTextarea
-        value={changes}
-        onChange={setChanges}
-        rows={linkedSmId ? 3 : 2}
-        className="form-input form-textarea"
-        data-testid="changes-textarea"
-        micTestId="changes-dictate-btn"
-        placeholder="type or talk"
-        style={{ lineHeight: 1.5, fontFamily: 'inherit', fontSize: 12.5 }}
-      />
+      {/* v3 (Dan, 2026-09-02): NO authoring input in the chat — this widget
+          is Questions, receipts and ME/CE only. Explanation intake lives in
+          INPUTS; the sequence is edited on the canvas; dev/Jason authoring
+          goes through Open in Claude Code. */}
+      <div data-testid="chat-no-authoring" style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.45, padding: '6px 2px 2px' }}>
+        Edit the sequence on the canvas above and the explanation in INPUTS — this panel shows questions and receipts.
+      </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 6 }}>
         {applying && (
           <div
@@ -9782,15 +9782,6 @@ export function CreateStationPage({ embedded = false }) {
           </span>
         )}
         <span style={{ flex: 1 }} />
-        <button
-          className="btn btn--primary"
-          data-testid="apply-changes-btn"
-          onClick={handleApplyChanges}
-          disabled={applying || overSummarizeBudget}
-          title={overSummarizeBudget ? budgetMessage : undefined}
-        >
-          Send
-        </button>
       </div>
       {overSummarizeBudget && (
         <div style={{
@@ -11152,7 +11143,9 @@ export function CreateStationPage({ embedded = false }) {
                                     {/* RECOVERY BESIDE THE SEQUENCE (Dan, 2026-08-31 — layout
                                         invariant #1): same block, right side; auto-fit collapses
                                         to stacked only when the viewport can't hold both. */}
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '6px 24px', alignItems: 'start' }}>
+                                    {/* v3: the sequence column is the live canvas — it gets the
+                                        wider share; Initialization stays beside it (invariant #1). */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(420px, 1.7fr) minmax(300px, 1fr)', gap: '6px 24px', alignItems: 'start' }}>
                                     <div style={{ minWidth: 0 }}>
                                       <SubHead color="#1574C4">{e.name} sequence</SubHead>
                                       {/* LIVE DIFF (Dan, 2026-08-28): a correction shows right
@@ -11166,11 +11159,27 @@ export function CreateStationPage({ embedded = false }) {
                                           IS a diagram" — no list toggle). Changes ring the
                                           flow RED until ✓ got it; the diff detail rows render
                                           only while marks are up, then the flow returns. */}
+                                      {/* v3 (Dan, 2026-09-02): the SEQUENCE IS the v1 canvas.
+                                          The SheetFlow lane render for sequences is RETIRED
+                                          (one door); the approved structured steps migrate
+                                          ONCE into the machine's SM nodes/edges, then the
+                                          canvas is the only source. */}
                                       {!seqDiff?.byKey?.[e.key] ? (
-                                        <SheetFlow
+                                        <SequenceCanvas
+                                          smId={e.smId ?? null}
+                                          draftId={draftIdRef.current}
+                                          entry={e}
                                           model={buildFlowModel(e.sequenceSteps, e.sequence, composeStepClient, tagOfLine, summary?.devices)}
-                                          mode="seq"
-                                          storageKey={`seq-${e.key}`}
+                                          sheetDevices={summary?.devices ?? []}
+                                          stationName={name.trim() || draft?.name || ''}
+                                          stationNumber={station}
+                                          isPrimary={ei === 0}
+                                          autoActivate={sheetSmKey === e.key}
+                                          testId={`v3-sequence-canvas-${e.key}`}
+                                          onDevicesChanged={(smRec) => {
+                                            // Sidebar/modal device edits → the sheet's device cards.
+                                            setSummary(s => (s ? mergeSmDevices(s, reconstructSummaryFromSm(smRec)) : s));
+                                          }}
                                         />
                                       ) : (
                                       <div style={{

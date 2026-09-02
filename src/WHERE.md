@@ -9,6 +9,16 @@ If your task isn't listed here, use the **Explore sub-agent** — don't probe.
 
 ## Common tasks (most-frequent first)
 
+### v3 — the SEQUENCE section IS the v1 canvas (Dan, 2026-09-02)
+- Embedded canvas per machine (Expand ↗ full-window, device sidebar) → `v3/SequenceCanvas.jsx`
+- Sheet machine ↔ SM record, ONE-TIME migration on first open        → `v3/sequenceSm.js` (`ensureMachineSm`, `findMachineSm`; stamps `machineSpec.canvasAuthoritative` + `machineSpec.v3`)
+- Structured steps (Decide/Loop lane grid) → v1 nodes/edges         → `v3/compileLaneFlow.js`
+- Where the sheet mounts it                                          → `components/jarvis/CreateStationPage.jsx` (search `SequenceCanvas`)
+- Opening a v3-created SM lands on ITS DRAFT (never a twin sheet)    → `v2/openStation.js` (`v3DraftIdOf`)
+- Canvas modals in the shell                                         → `v2/AppV2.jsx` (AddDeviceModal / ActionModal / RecipeManagerModal)
+- **RETIRED for sequences:** the `SheetFlow mode="seq"` lane render (SheetFlow stays for the Initialization panel only); the chat pill's free-text authoring input (Questions/receipts/ME-CE only — authoring = canvas + INPUTS + Open in Claude Code).
+- Entries: `index.html` → v3 (default); `v2.html` frozen v2; `classic.html` frozen v1.
+
 ### v2 shell — opening a station / adding a station (ONE DOOR, 2026-09-02)
 - THE only opener            → `v2/openStation.js` (`openStationSheet`, `openFreshStationDraft`, `isClassicStation`, `migrateSmToCascade`)
 - The station sheet          → `components/jarvis/CreateStationPage.jsx` (embedded for built stations, full-viewport for fresh drafts; the INPUTS band holds the explanation editor before the proposal)

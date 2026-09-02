@@ -363,7 +363,7 @@ export function dedupeSheetDevices(rows) {
   return out;
 }
 
-function mergeSmDevices(summary, recon) {
+export function mergeSmDevices(summary, recon) {
   const rows = dedupeSheetDevices(summary.devices ?? []);
   const claimed = new Set(); // row indexes already bound to an SM device
   const findRowFor = (smDev) => {

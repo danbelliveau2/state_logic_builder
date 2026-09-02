@@ -5,8 +5,9 @@ import { resolve } from 'path';
 export default defineConfig({
   plugins: [react()],
   // Three HTML entries, all shipped in the production build:
-  //   index.html   → v2 shell (src/v2/) — THE DEFAULT / LIVE APP
-  //   v2.html      → alias for the v2 shell (legacy links/bookmarks)
+  //   index.html   → v3 shell (src/v2/ + src/v3/) — THE DEFAULT / LIVE APP
+  //                  (v2 structure; SEQUENCE section = the v1 canvas)
+  //   v2.html      → FROZEN v2 shell entry (kept reachable, like classic)
   //   classic.html → FROZEN v1 classic shell (src/main.jsx) — do not modify
   build: {
     rollupOptions: {

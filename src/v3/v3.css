@@ -1,0 +1,88 @@
+/* v3 — the v1 canvas embedded as the SEQUENCE section of the station sheet
+   (Dan, 2026-09-02). The canvas subtree stays an un-zoom island (v2.css
+   already divides the app scale back out over .canvas-wrapper). */
+
+.v3-seq {
+  border: 1px solid var(--color-border, #d5dde6);
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+  margin-top: 4px;
+}
+.v3-seq__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: #f3f6fa;
+  border-bottom: 1px solid var(--color-border, #d5dde6);
+  font-size: 11.5px;
+  color: #3a4a5e;
+}
+.v3-seq__bar b { color: #061d39; }
+.v3-seq__bar .v3-seq__spacer { flex: 1; }
+.v3-seq__btn {
+  border: 1px solid #b9c7d6;
+  background: #fff;
+  color: #1574C4;
+  border-radius: 5px;
+  padding: 2px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.v3-seq__btn:hover { background: #eaf3fc; }
+.v3-seq__btn--primary { background: #1574C4; color: #fff; border-color: #1574C4; }
+.v3-seq__btn--primary:hover { background: #125fa1; }
+
+/* The live canvas body: device sidebar (optional) + React Flow. Height is set
+   inline from the diagram's extent so the section GROWS with the sequence. */
+.v3-seq__body {
+  display: flex;
+  min-height: 420px;
+  position: relative;
+}
+.v3-seq__body .canvas-wrapper { flex: 1; min-width: 0; }
+.v3-seq__body .device-sidebar { max-height: 100%; }
+
+/* Inactive machine: one click makes it the live canvas. */
+.v3-seq__placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 120px;
+  color: #5a6a7e;
+  font-size: 12.5px;
+  background: #f8fafc;
+}
+
+/* Full-window canvas (Expand ↗) — a fixed overlay over the whole shell. */
+.v3-seq-full {
+  position: fixed;
+  inset: 0;
+  /* Above the fresh-draft sheet (itself a fixed full-viewport surface), the
+     chat card (60) and the corner stack — the canvas owns the window. */
+  z-index: 5000;
+  background: #edf1f5;
+  display: flex;
+  flex-direction: column;
+}
+.v3-seq-full__bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  background: #061d39;
+  color: #fff;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.v3-seq-full__bar b { font-size: 13px; letter-spacing: 0.02em; }
+.v3-seq-full__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.v3-seq-full__body .canvas-wrapper { flex: 1; min-width: 0; }

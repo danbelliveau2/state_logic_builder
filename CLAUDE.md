@@ -174,6 +174,15 @@ Mistakes made previously that must NOT be repeated:
 
 ---
 
+## 7a. v3 SHELL (Dan's decision, 2026-09-02)
+
+`index.html` → v3 = v2's structure with the Station Sheet's **SEQUENCE section being the v1 canvas**
+(`src/v3/SequenceCanvas.jsx`). ONE source of truth: the SM's nodes/edges ARE the sequence; the
+structured-steps copy migrates ONCE into canvas nodes/edges on first open (`src/v3/sequenceSm.js`),
+then `machineSpec.canvasAuthoritative` is set and codegen reads the diagram. The SheetFlow lane render
+is retired for sequences (kept for the Initialization panel). Chat pill = Questions/receipts/ME-CE only,
+no authoring input. `v2.html` = frozen v2; `classic.html` = frozen v1 (both reachable, do not modify).
+
 ## 7b. STATION-BUILDER MODE (Claude Code as the authoring interface)
 
 Any Claude Code session in this repo can DRIVE the station sheet — same

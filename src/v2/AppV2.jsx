@@ -29,6 +29,11 @@ import { ReactFlowProvider } from '@xyflow/react';
 import { CreateStationPage } from '../components/jarvis/CreateStationPage.jsx';
 import { consumeResumeRequest } from '../components/jarvis/createStationDrafts.js';
 import { ProjectManagerModal } from '../components/modals/ProjectManagerModal.jsx';
+// v3 (Dan, 2026-09-02): the v1 canvas is the sheet's SEQUENCE section, so the
+// canvas modals it opens (add/edit device, action editor, recipes) mount here.
+import { AddDeviceModal } from '../components/modals/AddDeviceModal.jsx';
+import { ActionModal } from '../components/modals/ActionModal.jsx';
+import { RecipeManagerModal } from '../components/modals/RecipeManagerModal.jsx';
 import { VersionBadge } from '../components/VersionBadge.jsx';
 import { useDiagramStore } from '../store/useDiagramStore.js';
 import { initStandardsLibrary } from '../lib/standardsLibrary.js';
@@ -111,7 +116,7 @@ class SurfaceBoundary extends Component {
 
 export function AppV2() {
   const store = useDiagramStore();
-  const { showNewSmModal, showProjectManager } = store;
+  const { showNewSmModal, showProjectManager, showAddDeviceModal, showEditDeviceModal, showActionModal, showRecipeManager } = store;
 
   // sheetLinkedSmId marks the embedded built-station sheet (vs the
   // full-viewport "+ New" fresh-draft flow) and is cleared whenever the
@@ -311,6 +316,10 @@ export function AppV2() {
           <SurfaceBoundary label="create"><CreateStationPage key={`fresh:${currentFilename ?? ''}`} /></SurfaceBoundary>
         )}
         {showProjectManager && <ProjectManagerModal />}
+        {/* v3 canvas modals — opened from the embedded sequence canvas. */}
+        {(showAddDeviceModal || showEditDeviceModal) && <AddDeviceModal />}
+        {showActionModal && <ActionModal />}
+        {showRecipeManager && <RecipeManagerModal />}
         {/* Servo values table — self-gates on useV2Shell.servoTableFor. */}
         <ServoValuesTable />
         <VersionBadge />

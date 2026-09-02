@@ -29,7 +29,18 @@
 import { useDiagramStore } from '../store/useDiagramStore.js';
 import { useV2Shell } from './useV2Shell.js';
 import { stationOfSm, primarySmOf } from '../lib/stationModel.js';
-import { ensureStationSheetDraft, requestResumeDraft, consumeResumeRequest } from '../components/jarvis/createStationDrafts.js';
+import { ensureStationSheetDraft, requestResumeDraft, consumeResumeRequest, loadDrafts, draftsKeyFor } from '../components/jarvis/createStationDrafts.js';
+
+/** v3 (2026-09-02): an SM record created by the sheet's SEQUENCE canvas for a
+ *  still-unbuilt draft points back at that draft (machineSpec.v3.draftId).
+ *  Opening such a station opens THE DRAFT — never a reconstructed twin sheet. */
+function v3DraftIdOf(sm, storeState) {
+  const id = sm?.machineSpec?.v3?.draftId;
+  if (!id) return null;
+  try {
+    return loadDrafts(draftsKeyFor(storeState)).some(d => d.draftId === id && !d.smId) ? id : null;
+  } catch { return null; }
+}
 
 /** Hand-drawn v1 canvas work with no describe-first sheet behind it. */
 export function isClassicStation(sm) {
@@ -83,6 +94,17 @@ export function openStationSheet(sm) {
     if (useDiagramStore.getState().showNewSmModal) useDiagramStore.getState().closeNewSmModal();
     shell.closeProjectHome();
     return 'classic';
+  }
+  const v3Draft = v3DraftIdOf(sm, useDiagramStore.getState());
+  if (v3Draft) {
+    // The station's machines live on the (unbuilt) draft's sheet — resume it
+    // as the full-viewport sheet, exactly like Continue on the home card.
+    consumeResumeRequest();
+    requestResumeDraft(v3Draft);
+    if (shell.sheetLinkedSmId) shell.setSheetLinkedSmId(null);
+    if (!useDiagramStore.getState().showNewSmModal) useDiagramStore.getState().openNewSmModal();
+    shell.closeProjectHome();
+    return 'sheet';
   }
   const station = stationOfSm(useDiagramStore.getState().project, sm.id);
   let sheetSm = primarySmOf(station) ?? sm;

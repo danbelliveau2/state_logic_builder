@@ -45,7 +45,7 @@ export const INVARIANTS = [
   },
   {
     id: 'flows-not-lists',
-    what: 'Sequences and recoveries render as SheetFlow diagrams, never numbered text lists; grid type tokens stay inside the action vocabulary — NEW/PER/RE/BACK/STACK tokens are raw prose leaking through (Dan, 2026-08-30/31; checker rule 2026-09-01)',
+    what: 'Sequences render as the v1 canvas (v3) / recoveries as SheetFlow diagrams, never numbered text lists; grid type tokens stay inside the action vocabulary — NEW/PER/RE/BACK/STACK tokens are raw prose leaking through (Dan, 2026-08-30/31; checker rule 2026-09-01)',
     run() {
       const cards = q('[data-testid^="sequence-sm-"]').filter(vis);
       if (!cards.length) return { skip: 'no sequence cards on screen' };
@@ -54,6 +54,10 @@ export const INVARIANTS = [
       const VOCAB = new Set(['wait', 'signal', 'home', 'repeat', 'extend', 'retract', 'engage',
         'disengage', 'servo move', 'move', 'index', 'decide', 'loop', 'hold', 'yes', 'no', 'verify', 'rejoin']);
       for (const c of cards) {
+        // v3: an inactive machine shows its one-click "Open canvas" placeholder
+        // (only ONE canvas is live at a time) — that is not a missing flow.
+        const v3 = c.querySelector('[data-testid^="v3-sequence-canvas"]');
+        if (v3 && v3.dataset.active !== 'true') continue;
         if (!c.querySelector('.state-node')) bad.push(`${c.dataset.testid}: no flow nodes`);
         // A visible <ol> in a sequence/recovery card = the degraded list render
         // (diff rows during red marks use a grid, not <ol>).
@@ -72,7 +76,10 @@ export const INVARIANTS = [
     id: 'readable-node-size',
     what: 'Flow nodes render READABLE at the default view — on-screen state-node width ≥ 150px; a wide lane graph scrolls inside its own card instead of fit-shrinking everything (Dan, 2026-09-01: "where did our zoom go?")',
     run() {
-      const flows = q('[data-testid^="sequence-sm-"] .react-flow').filter(vis);
+      // v3: the v1 canvas has its own pan/zoom — the readable floor guards
+      // the SheetFlow lane render (recoveries) only.
+      const flows = q('[data-testid^="sequence-sm-"] .react-flow').filter(vis)
+        .filter((f) => !f.closest('[data-testid^="v3-sequence-canvas"]'));
       if (!flows.length) return { skip: 'no sequence flows on screen' };
       const bad = [];
       for (const f of flows) {
@@ -100,6 +107,9 @@ export const INVARIANTS = [
       const bad = [];
       for (const f of flows) {
         const card = f.closest('[data-testid^="sequence-sm-"]')?.dataset.testid ?? '?';
+        // The v1 canvas (v3 sequence) is user-editable — overlaps there are the
+        // engineer's own draft state, not a render regression.
+        if (f.closest('[data-testid^="v3-sequence-canvas"]')) continue;
         const nodes = q('.react-flow__node', f).filter(vis);
         for (let i = 0; i < nodes.length; i++) {
           for (let j = i + 1; j < nodes.length; j++) {
@@ -122,7 +132,9 @@ export const INVARIANTS = [
     id: 'icons-on-flow-nodes',
     what: 'Every flow action row with a device carries its v1 DeviceIcon (Dan, 2026-08-31)',
     run() {
-      const rows = q('.action-row').filter(vis).filter((r) => r.querySelector('.action-device'));
+      // Decision pills (Decide / Wait rows in the v1 DecisionNode) are not
+      // device action rows — only StateNode device rows carry the icon.
+      const rows = q('.action-row').filter(vis).filter((r) => r.querySelector('.action-device') && !r.closest('.react-flow__node-decisionNode'));
       if (!rows.length) return { skip: 'no device action rows on screen' };
       const missing = rows.filter((r) => !r.querySelector('svg')).length;
       return missing ? { fail: `${missing} of ${rows.length} device rows missing the icon` } : {};
@@ -202,8 +214,12 @@ export const INVARIANTS = [
       const workbench = q('[data-testid="v2-center"]').some(vis);
       if (!workbench) return { skip: 'no project open (start screen)' };
       // SheetFlow renders React Flow INSIDE the sheet — only a canvas
-      // OUTSIDE the sheet is the classic diagram page.
-      const canvas = q('.react-flow').some((el) => vis(el) && !el.closest('[data-testid="create-station-page"]'));
+      // OUTSIDE the sheet is the classic diagram page. v3: the sheet's own
+      // sequence canvas expanded full-window is the SHEET's canvas, not the
+      // classic page.
+      const canvas = q('.react-flow').some((el) => vis(el)
+        && !el.closest('[data-testid="create-station-page"]')
+        && !el.closest('[data-testid="v3-canvas-expanded"]'));
       const sheet = q('[data-testid="create-station-page"]').some(vis);
       const homeV = q('[data-testid="project-home"]').some(vis);
       const classic = q('[data-testid="classic-station-card"]').some(vis);
@@ -228,7 +244,7 @@ export const INVARIANTS = [
       const copy = ['No Home node', 'Done explaining', 'Explain this station like you would', 'unfinished draft',
         'keep starting fresh', 'Controls detail', 'incomplete:', 'no spec', 'Spec Sheet'];
       for (const s of copy) if (body.includes(s)) bad.push(`legacy copy on screen: "${s}"`);
-      if (q('.react-flow').some((el) => vis(el) && !el.closest('[data-testid="create-station-page"]'))) bad.push('classic canvas outside the sheet');
+      if (q('.react-flow').some((el) => vis(el) && !el.closest('[data-testid="create-station-page"]') && !el.closest('[data-testid="v3-canvas-expanded"]'))) bad.push('classic canvas outside the sheet');
       return bad.length ? { fail: [...new Set(bad)].join('; ') } : {};
     },
   },
