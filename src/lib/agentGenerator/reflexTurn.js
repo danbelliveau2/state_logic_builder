@@ -74,6 +74,19 @@ const CONTRACT = [
   '(decisions, loops, retry lanes) = decision "deep".',
   'Anything beyond these ops (device.add/remove, split changes, recovery.set,',
   'multi-machine restructures) = decision "deep".',
+  '',
+  'THE BUILD PLAN (when the prompt carries a BUILD PLAN block): the engineer is',
+  'reading a one-page-per-station plan derived from this sheet — machine split,',
+  'devices, sequence-as-states, branches/retries, handshakes, initialization,',
+  'standards + decisions + open questions. His chat message EDITS THE PLAN: change',
+  'the SHEET with the ops above and the plan redlines by itself. Plan-only ops:',
+  '  plan.answer {machine, ask, value}  — a STANDARD machine\'s station-specific value',
+  '    (fixture count, index angle, robot program number …) he just gave you;',
+  '  plan.note {machine?, section:"decisions"|"standards"|"questions", text} — record',
+  '    a decision he made, a standard he named, or a question he raised;',
+  '  plan.resolve {text} — drop an open question/note he answered or withdrew.',
+  'A device\'s purpose is value.set {device, field:"purpose", value}. When the plan',
+  'block shows a value as NEEDED and his message supplies it, plan.answer it.',
 ].join('\n');
 
 /** Slim sheet snapshot — everything a reflex decision can need, small. */
@@ -93,7 +106,10 @@ function sheetBlock(draft, cascadePosition) {
     deviceTombstones: draft?.deviceTombstones ?? [],
     controlsNotes: (draft?.controlsNotes ?? []).map((n) => n.text ?? n),
     cascadePosition: cascadePosition ?? null,
-  });
+    // BUILD PLAN (Dan, 2026-09-03): the plan overlay (answered asks, notes)
+    // rides the sheet block; the rendered plan text is appended by the caller.
+    plan: draft?.plan ? { status: draft.plan.status ?? 'draft', extras: draft.plan.extras ?? {} } : null,
+  }) + (draft?.buildPlan ? `\n\n# BUILD PLAN (as the engineer sees it — derived from the sheet above)\n${String(draft.buildPlan).slice(0, 12000)}` : '');
 }
 
 /** Deterministic guard, runs in ms — a reflex result that trips ANY of these
@@ -202,7 +218,11 @@ async function runReflexTurn({ draft, message, cascadePosition = null, audience 
   // VALUES-ONLY SCOPE (Dan, 2026-09-02): the sheet widget may change values,
   // names and answers — never the sequence. Structural ops are refused here
   // (the caller answers with a pointer to the canvas).
-  const VALUE_OPS = new Set(['value.set', 'device.rename', 'machine.rename', 'device.reassign']);
+  const VALUE_OPS = new Set(['value.set', 'device.rename', 'machine.rename', 'device.reassign', 'plan.answer', 'plan.note', 'plan.resolve']);
+  // PLAN SCOPE (Dan, 2026-09-03): before the Build Plan is approved the chat
+  // EDITS THE PLAN — values plus single-line sequence edits and device
+  // purpose/add ride the reflex; structural work escalates to the deep lane.
+  const PLAN_OPS = new Set([...VALUE_OPS, 'sequence.reword', 'sequence.insert', 'sequence.remove', 'recovery.reword', 'recovery.insert', 'recovery.remove', 'device.add', 'device.remove']);
   const state = createTurnState(draft, cascadePosition, { speaker });
   for (const e of (Array.isArray(parsed.edits) ? parsed.edits : [])) {
     if (!ALLOWED.has(e?.tool)) return { handled: false, reason: `reflex asked for non-reflex tool ${e?.tool}` };
@@ -210,6 +230,11 @@ async function runReflexTurn({ draft, message, cascadePosition = null, audience 
       const ops = Array.isArray(e.input?.ops) ? e.input.ops : (e.input?.op ? [e.input] : []);
       const bad = ops.find((o) => !VALUE_OPS.has(String(o?.op ?? '')));
       if (bad) return { handled: false, reason: `values-only scope refused op ${bad.op} (sequence edits are canvas-only)` };
+    }
+    if (scope === 'plan' && e.tool === 'apply_edit') {
+      const ops = Array.isArray(e.input?.ops) ? e.input.ops : (e.input?.op ? [e.input] : []);
+      const bad = ops.find((o) => !PLAN_OPS.has(String(o?.op ?? '')));
+      if (bad) return { handled: false, reason: `plan scope escalates op ${bad.op} to the deep lane` };
     }
     const r = executeTool(state, e.tool, e.input ?? {});
     if (r && r.error) return { handled: false, reason: `reflex edit failed: ${String(r.error).slice(0, 120)}` };

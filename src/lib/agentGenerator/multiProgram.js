@@ -315,13 +315,45 @@ async function generateStationPrograms(projectJson, smId, options = {}) {
   const totalCost = { v: 0 };
 
   const deviceSets = assignDevices(split, sm.devices ?? []);
+  // THE BUILD PLAN (Dan, 2026-09-03): when the station carries an approved
+  // plan (machineSpec.buildPlan = planForCodegen), codegen reads devices /
+  // handshakes / initialization / standards from the PLAN, and the sequence
+  // from the machine's CANVAS when that canvas is authoritative (the v3 SM
+  // record stamped for this machine) — the structured steps are the fallback.
+  const buildPlan = sm?.machineSpec?.buildPlan ?? null;
+  const planMachineOf = (machine) => (buildPlan?.machines ?? []).find((m) => nk(m.name) === nk(machine?.name) || nk(m.key) === nk(machine?.name)) ?? null;
+  const canvasSmOf = (machine) => {
+    const key = nk(machine?.name);
+    const rec = (projectJson.stateMachines ?? []).find((s) => s.id !== smId && s.machineSpec?.v3?.machineKey === key && s.machineSpec?.canvasAuthoritative);
+    return rec && (rec.nodes?.length ?? 0) > 1 && (rec.edges?.length ?? 0) > 0 ? rec : null;
+  };
+  const planTextOf = (pm) => (pm ? [
+    '',
+    `# BUILD PLAN — ${pm.name} (${pm.program}) — APPROVED BY THE ENGINEER`,
+    `Design owner: ${pm.design?.owner === 'standard' ? `STANDARD SDC MACHINE built from shipped work (${pm.design.precedent ?? 'precedent'})` : 'designed from the engineer\'s explanation'}`,
+    ...(pm.design?.asks?.length ? ['Station-specific values:', ...pm.design.asks.map((a) => `- ${a.ask}: ${a.value ?? 'NOT GIVEN'}`)] : []),
+    'Devices:', ...(pm.devices ?? []).map((d) => `- ${d.name} (${d.type}${d.sensors ? ', ' + d.sensors : ''}${d.home ? ', home ' + d.home : ''}${d.values ? ', ' + d.values : ''})${d.purpose ? ' — ' + d.purpose : ''}`),
+    ...(pm.handshakes?.length ? ['Handshakes (p_ public parameters on the producer):', ...pm.handshakes.map((h) => `- step ${h.atStep} ${h.dir} ${h.tag} (${h.signal}) ${h.dir === 'sends' ? 'to' : 'from'} ${h.counterpart}`)] : []),
+    ...(pm.branches?.length ? ['Checks / retries:', ...pm.branches.map((b) => `- step ${b.atStep} ${b.check}: On → ${b.on || 'continue'}; Off → ${b.off || (b.retry ? `retry ×${b.retry.max} back to ${b.retry.backTo}` : 'alternate path')}${b.retry ? '; exhausted → Initialize (state 100)' : ''}`)] : []),
+    `Initialization (${pm.initialization?.template ?? 'SDC standard'}):`, ...(pm.initialization?.lines ?? []).map((l) => `- ${l}`),
+    'Standards applied:', ...(pm.standards ?? []).map((s) => `- ${s}`),
+    ...(pm.decisions?.length ? ['Decisions:', ...pm.decisions.map((s) => `- ${s}`)] : []),
+    `Sequence source: ${pm.sequenceSource === 'canvas' ? 'the engineer\'s CANVAS (nodes/edges below are authoritative)' : 'the plan\'s states'}`,
+  ] : []);
   for (let i = 0; i < split.length; i++) {
     const machine = split[i];
     const devs = deviceSets[i];
-    const vsm = compileMachineSm(machine, devs, { stationNumber: sm.stationNumber ?? 1 });
+    const pm = planMachineOf(machine);
+    const canvasSm = pm?.sequenceSource === 'canvas' ? canvasSmOf(machine) : null;
+    // Canvas-authoritative machine: its real SM record IS the sequence (the
+    // v7 path — decisions, retries, waits, loops all ride in nodes/edges).
+    const vsm = canvasSm
+      ? { ...canvasSm, id: canvasSm.id, name: canvasSm.name, devices: (canvasSm.devices?.length ? canvasSm.devices : devs), stationNumber: sm.stationNumber ?? 1 }
+      : compileMachineSm(machine, devs, { stationNumber: sm.stationNumber ?? 1 });
     // The machine's OWN initialization + controls info + handshake contract.
     vsm.machineSpec = {
       version: 1,
+      ...(pm ? { buildPlan: pm, sequenceSource: canvasSm ? 'canvas' : 'plan' } : {}),
       purpose: machine.oneLiner || machine.why || '',
       ...(sm.machineSpec?.controlsNotes ? { controlsNotes: sm.machineSpec.controlsNotes } : {}),
       smSplit: [machine], // its own approved steps ride for init coverage
@@ -342,6 +374,7 @@ async function generateStationPrograms(projectJson, smId, options = {}) {
         '',
         '# THIS MACHINE\'S APPROVED INITIALIZATION',
         ...(machine.faultRecovery ?? []).map((l) => `- ${l}`),
+        ...planTextOf(pm),
       ].join('\n'),
     };
     const vproj = { ...projectJson, name: projectJson.name, stateMachines: [vsm] };

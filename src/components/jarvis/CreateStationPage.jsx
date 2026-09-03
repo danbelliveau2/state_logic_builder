@@ -50,6 +50,12 @@ import { useV2Shell } from '../../v2/useV2Shell.js';
 import { SheetFlow } from '../../v2/SheetFlow.jsx';
 // v3 (Dan, 2026-09-02): the SEQUENCE section IS the v1 canvas per machine.
 import { SequenceCanvas } from '../../v3/SequenceCanvas.jsx';
+// THE BUILD PLAN (Dan, 2026-09-03): INPUTS → BUILD PLAN (document + chat
+// redlines) → SEQUENCE (first pass | build your own) → Build.
+import { BuildPlanDoc, StageStrip, SequenceChoiceCard } from './BuildPlanDoc.jsx';
+import { buildPlan, redlinePlan, planText, planForCodegen, toDeliveryPlan } from '../../lib/agentGenerator/buildPlan.mjs';
+import { startMachineSequence, findMachineSm, stampBuildPlan } from '../../v3/sequenceSm.js';
+import { APP_VERSION } from '../../lib/version.js';
 import { mergeSmDevices, reconstructSummaryFromSm } from './createStationDrafts.js';
 import { useHeldBuilds } from '../../v2/stationNeeds.js';
 import { agentTurnRequest, readSse, TURN_DEAD_MESSAGE } from '../../lib/agentTurnTransport.js';
@@ -1721,6 +1727,10 @@ function receiptFromAgentDiffs(diffs = []) {
   for (const d of diffs.filter(x => x.op === 'device.rename' || x.op === 'machine.rename')) parts.push(`renamed ${d.before} → ${d.after}`);
   for (const d of diffs.filter(x => x.op === 'device.reassign')) parts.push(`moved ${d.device} to ${d.after}`);
   for (const d of diffs.filter(x => x.op === 'value.set')) parts.push(`set ${d.device} ${d.field} = ${d.after}`);
+  // BUILD PLAN overlay ops (Dan, 2026-09-03) — the plan redlines show them.
+  for (const d of diffs.filter(x => x.op === 'plan.answer')) parts.push(`${d.machine}: ${d.ask} = ${d.after} (on the plan)`);
+  for (const d of diffs.filter(x => x.op === 'plan.note' && !x.noop)) parts.push(`noted on ${d.machine === 'station' ? 'the station' : d.machine}'s plan (${d.section}): ${String(d.after).slice(0, 80)}`);
+  for (const d of diffs.filter(x => x.op === 'plan.resolve')) parts.push(`cleared from the plan: ${String(d.before).slice(0, 80)}`);
   const closed = diffs.filter(x => x.op === 'question.close').length;
   if (closed) parts.push(`closed ${closed} question${closed === 1 ? '' : 's'}`);
   const filedCtrl = diffs.filter(x => x.op === 'controls.note').length;
@@ -4818,6 +4828,16 @@ export function CreateStationPage({ embedded = false }) {
   // machines exist as records. Cascade approvals persist per station on
   // machineSpec.cascadeState; fresh drafts keep them locally.
   const [sheetSmKey, setSheetSmKey] = useState('all');
+  // THE BUILD PLAN (Dan, 2026-09-03) — plan-only overlay on the draft:
+  // { status, approvedAt, approvedBy, snapshot (last acknowledged plan),
+  //   snapshotAt, extras { [machineKey]: { asks, decisions, standards,
+  //   questions } }, seq { [machineKey]: 'firstPass' | 'own' } }.
+  // The plan DOCUMENT itself is derived (buildPlan) — one truth.
+  const [planState, setPlanState] = useState(draft?.plan ?? null);
+  // The stage the ME is looking at (null = follow the plan's state).
+  const [stageChoice, setStageChoice] = useState(() => {
+    try { return localStorage.getItem(`jarvis.stage.${draft?.draftId ?? ''}`) || null; } catch { return null; }
+  });
   // ON-DEMAND MACHINE FILL (Dan, 2026-09-01: clicking an unstarted machine
   // showed a BLANK page). Selecting a machine whose proposal has no content
   // yet kicks ITS OWN devices+sequence proposal right then — machines fill
@@ -5054,6 +5074,7 @@ export function CreateStationPage({ embedded = false }) {
     chatThread: chatThread.filter(t => !t.ack).slice(-40),
     ...(localCascade ? { cascadeLocal: localCascade } : {}),
     ...(smProposal ? { smProposal } : {}),
+    ...(planState ? { plan: planState } : {}),
     ...(stationAccepted ? { stationAccepted } : {}),
     ...(explLayers.length ? { explanationLayers: explLayers } : {}),
     ...(Object.keys(deviceAssignments ?? {}).length ? { deviceAssignments } : {}),
@@ -5328,7 +5349,7 @@ export function CreateStationPage({ embedded = false }) {
     setNonStandardFlags([]); setDirty(false); baselineRef.current = null;
     setPurpose(''); setExpectedSms(''); setAgreedNeeds(new Set());
     setSheetAhead(false); setApplyReceipt(null); setLocalCascade(null);
-    setSmProposal(null); setProposeRun(null);
+    setSmProposal(null); setProposeRun(null); setPlanState(null); setStageChoice(null);
     setDeviceAssignments({}); setStationAccepted(null);
     setExplLayers([]); setExplAddingLayer(false); setExplLayerDraft('');
     setQaRounds(0); setQaHistory([]); setLearnedNotes([]);
@@ -5342,6 +5363,8 @@ export function CreateStationPage({ embedded = false }) {
     setLinkedSmId(smExists(d.smId) ? d.smId : null);
     setLocalCascade(d.cascadeLocal ?? null);
     setSmProposal(d.smProposal ?? null);
+    setPlanState(d.plan ?? null);
+    try { setStageChoice(localStorage.getItem(`jarvis.stage.${d.draftId ?? ''}`) || null); } catch { setStageChoice(null); }
     setDeviceAssignments(d.deviceAssignments ?? {});
     setProposeRun(null);
     autoKickRef.current = false; // a resumed draft auto-runs too (Dan)
@@ -6841,10 +6864,15 @@ export function CreateStationPage({ embedded = false }) {
         clientId: CLIENT_ID, // echo suppression on the live draft channel
         // v3 (Dan, 2026-09-02): the widget authors VALUES and answers only —
         // reflex lane, no structural sequence ops (those are canvas-only).
-        scope: 'values',
+        // BUILD PLAN (Dan, 2026-09-03): before approval the chat EDITS THE
+        // PLAN — reflex for small edits, deep lane for structural — and the
+        // document redlines; after approval the widget is values-only again.
+        scope: planApproved ? 'values' : 'plan',
         draft: {
           name: name.trim(), description: fullExplanation.trim(),
           summary, smProposal: proposalForTurn, jarvisCoverage, controlsNotes,
+          plan: planState ? { status: planState.status ?? 'draft', extras: planState.extras ?? {} } : null,
+          buildPlan: planDoc ? planText(planDoc).slice(0, 12000) : null,
           agreedNeeds: [...agreedNeeds], deviceAssignments,
           chatThread: chatThread.slice(-24).map(t => ({ role: t.role, text: String(t.text ?? '').slice(0, 300) })),
         },
@@ -6896,6 +6924,9 @@ export function CreateStationPage({ embedded = false }) {
         if (d.draft.jarvisCoverage) setJarvisCoverage(normCoverage(d.draft.jarvisCoverage));
         if (Array.isArray(d.draft.agreedNeeds)) setAgreedNeeds(new Set(d.draft.agreedNeeds));
         if (d.draft.deviceAssignments) setDeviceAssignments(d.draft.deviceAssignments);
+        // BUILD PLAN overlay (plan.answer / plan.note ops) — keep our
+        // snapshot/status, take the engine's extras.
+        if (d.draft.plan && typeof d.draft.plan === 'object') setPlanState(p => ({ ...(p ?? {}), ...d.draft.plan, snapshot: p?.snapshot ?? d.draft.plan.snapshot ?? null, status: p?.status ?? d.draft.plan.status ?? 'draft' }));
         if (Array.isArray(d.draft.controlsNotes)) setControlsNotes(d.draft.controlsNotes);
         setDirty(true);
       }
@@ -7786,7 +7817,97 @@ export function CreateStationPage({ embedded = false }) {
   // ── SM TOGGLE (Dan, 2026-08-26): the sheet's outputs show the SELECTED
   // machine; selection syncs BOTH WAYS with the banner chips + the diagram
   // (store.activeSmId) whenever the machines exist as records.
-  const smChipEntries = approvedSmDecomp ?? (draftSplitApproved ? draftProposalEntries : null);
+  // ── THE BUILD PLAN (Dan, 2026-09-03) ─────────────────────────────────────
+  // Derived DOCUMENT over the sheet: machines / devices / structured steps /
+  // interactions / failure handling + the plan-only overlay (planState).
+  // Redlines = diff(snapshot, current); "✓ got it" moves the snapshot;
+  // Approve stamps status + the codegen slice on the SM records.
+  const planApproved = planState?.status === 'approved';
+  const planDraftView = useMemo(() => ({
+    draftId: draftIdRef.current, name: name.trim() || draft?.name || 'Station', station,
+    purpose, summary, smProposal, controlsNotes, plan: planState,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [name, station, purpose, summary, smProposal, controlsNotes, planState]);
+  const planDoc = useMemo(() => {
+    if (!(smProposal?.stateMachines?.length)) return null;
+    try { return buildPlan(planDraftView, { project: store.project }); } catch (e) { console.error('[build-plan] derive failed:', e); return null; }
+  }, [planDraftView, store.project]);
+  const planRedline = useMemo(() => {
+    if (!planDoc) return { tree: null, count: 0 };
+    if (!planState?.snapshot) return { tree: planDoc, count: 0 };
+    try { return redlinePlan(planState.snapshot, planDoc); } catch (e) { console.error('[build-plan] redline failed:', e); return { tree: planDoc, count: 0 }; }
+  }, [planDoc, planState?.snapshot]);
+  // First derivation: the snapshot IS the plan (no marks) — from here every
+  // sheet change shows as a redline until acknowledged.
+  useEffect(() => {
+    if (!planDoc || planState?.snapshot) return;
+    setPlanState(p => ({ ...(p ?? {}), status: p?.status ?? 'draft', generatedAt: p?.generatedAt ?? new Date().toISOString(), snapshot: planDoc, snapshotAt: new Date().toISOString() }));
+    setDirty(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planDoc, planState?.snapshot]);
+  const planGotIt = () => {
+    if (!planDoc) return;
+    setPlanState(p => ({ ...(p ?? {}), snapshot: planDoc, snapshotAt: new Date().toISOString() }));
+    setDirty(true);
+  };
+  const stampPlanOnRecords = (doc) => {
+    try { stampBuildPlan({ draftId: draftIdRef.current, linkedSmId, planForCodegen: planForCodegen(doc) }); } catch (e) { console.warn('[build-plan] stamp failed:', e); }
+  };
+  const approvePlan = () => {
+    if (!planDoc) return;
+    const at = new Date().toISOString();
+    const by = (() => { try { return localStorage.getItem('jarvis.speaker') || 'ME'; } catch { return 'ME'; } })();
+    setPlanState(p => ({ ...(p ?? {}), status: 'approved', approvedAt: at, approvedBy: by, snapshot: planDoc, snapshotAt: at }));
+    // The plan approval IS the split approval (one artifact, no second gate).
+    if (!linkedSmId && !draftSplitApproved) approveDraftSplit();
+    stampPlanOnRecords(planDoc);
+    setChatThread(t => [...t, { role: 'me', text: `Approved the Build Plan (${planDoc.machines.length} machines).`, at: Date.now() }]);
+    setDirty(true);
+    setStage('sequence');
+  };
+  const reopenPlan = () => {
+    setPlanState(p => ({ ...(p ?? {}), status: 'draft', reopenedAt: new Date().toISOString() }));
+    setDirty(true);
+    setStage('plan');
+  };
+  const exportPlanJson = () => {
+    if (!planDoc) return;
+    try {
+      // ONE interchange shape with the delivered .docx plan's JSON (kind 'build-plan').
+      const blob = new Blob([JSON.stringify({ ...toDeliveryPlan(planDoc, { draftId: draftIdRef.current, draftRev: lastServerRevRef.current }), codegen: planForCodegen(planDoc), text: planText(planDoc) }, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e) { console.warn('[build-plan] export failed:', e); }
+  };
+  // Stage: the ME's pick, else where the plan stands.
+  const autoStage = planApproved ? 'sequence' : ((smProposal?.stateMachines?.length || proposeRun) ? 'plan' : 'inputs');
+  // A remembered pick never outranks the plan's state: a sequence pick on a
+  // plan that went back to draft lands on the plan; a plan pick with no plan
+  // yet lands on inputs.
+  const stage = (stageChoice === 'sequence' && !planApproved) ? autoStage
+    : (stageChoice === 'plan' && !(smProposal?.stateMachines?.length || proposeRun)) ? 'inputs'
+      : (stageChoice ?? autoStage);
+  function setStage(key) {
+    setStageChoice(key);
+    try { localStorage.setItem(`jarvis.stage.${draftIdRef.current ?? ''}`, key); } catch { /* per-viewer convenience */ }
+    if (key === 'build') setTimeout(() => document.querySelector('[data-testid="generate-scope-card"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+  }
+  /** SEQUENCE STAGE entry per machine — opt-in first pass or an empty canvas. */
+  const startSequenceFor = (entry, choice) => {
+    try {
+      startMachineSequence(choice, {
+        smId: entry.smId ?? null, draftId: draftIdRef.current, entry,
+        sheetDevices: summary?.devices ?? [], stationName: name.trim() || draft?.name || '', stationNumber: station,
+        isPrimary: (smChipEntries ?? []).findIndex(e => e.key === entry.key) === 0,
+      });
+    } catch (e) { console.error('[build-plan] sequence start failed:', e); }
+    setPlanState(p => ({ ...(p ?? {}), seq: { ...(p?.seq ?? {}), [entry.key]: choice } }));
+    setChatThread(t => [...t, { role: 'jarvis', text: choice === 'firstPass' ? `${entry.name}: first pass compiled onto the canvas from the plan — edit from here.` : `${entry.name}: empty canvas opened — Home Conditions and the devices, you draw the sequence.`, at: Date.now() }]);
+    setDirty(true);
+    selectSheetSm(entry.key);
+  };
+  const smChipEntries = approvedSmDecomp ?? ((draftSplitApproved || planApproved) ? draftProposalEntries : null);
   function selectSheetSm(key) {
     setSheetSmKey(key);
     const e = (smChipEntries ?? []).find(x => x.key === key);
@@ -8735,16 +8856,25 @@ export function CreateStationPage({ embedded = false }) {
       name: m.name, sequence: [...(m.sequence ?? [])], faultRecovery: [...(m.faultRecovery ?? [])],
     }));
     const newMachines = draft.smProposal?.stateMachines ?? [];
+    // ADOPTING AN IDENTICAL DRAFT IS A NO-OP (2026-09-03: two tabs on one
+    // draft ping-ponged ~1 write/s — each adoption re-set state objects the
+    // autosave watches, which re-posted, which the other tab adopted…).
+    // Only content that actually differs lands; equal content leaves the
+    // local objects (and the autosave deps) untouched.
+    const same = (a, b) => { try { return JSON.stringify(a ?? null) === JSON.stringify(b ?? null); } catch { return false; } };
     // Land the state (the same setters every apply path uses).
-    if (isStructuredSummary(draft.summary)) setSummary(withSheetPrefill(draft.summary));
-    if (draft.smProposal?.stateMachines) setSmProposal(p => ({ ...(p ?? {}), stateMachines: draft.smProposal.stateMachines, at: Date.now() }));
-    if (draft.jarvisCoverage) setJarvisCoverage(normCoverage(draft.jarvisCoverage));
-    if (Array.isArray(draft.agreedNeeds)) setAgreedNeeds(new Set(draft.agreedNeeds));
-    if (draft.deviceAssignments) setDeviceAssignments(draft.deviceAssignments);
-    if (Array.isArray(draft.explanationLayers)) setExplLayers(draft.explanationLayers);
-    if (draft.stationAccepted) setStationAccepted(draft.stationAccepted);
+    if (isStructuredSummary(draft.summary) && !same(draft.summary, summary)) setSummary(withSheetPrefill(draft.summary));
+    if (draft.smProposal?.stateMachines && !same(draft.smProposal.stateMachines, smProposal?.stateMachines)) setSmProposal(p => ({ ...(p ?? {}), stateMachines: draft.smProposal.stateMachines, at: Date.now() }));
+    if (draft.jarvisCoverage && !same(draft.jarvisCoverage, jarvisCoverage)) setJarvisCoverage(normCoverage(draft.jarvisCoverage));
+    if (Array.isArray(draft.agreedNeeds) && !same([...draft.agreedNeeds].sort(), [...agreedNeeds].sort())) setAgreedNeeds(new Set(draft.agreedNeeds));
+    if (draft.deviceAssignments && !same(draft.deviceAssignments, deviceAssignments)) setDeviceAssignments(draft.deviceAssignments);
+    if (Array.isArray(draft.explanationLayers) && !same(draft.explanationLayers, explLayers)) setExplLayers(draft.explanationLayers);
+    if (draft.stationAccepted && !same(draft.stationAccepted, stationAccepted)) setStationAccepted(draft.stationAccepted);
     setChatThread(t => ((draft.chatThread?.length ?? 0) > t.length ? draft.chatThread : t));
-    if (draft.cascadeLocal) setLocalCascade(draft.cascadeLocal);
+    if (draft.cascadeLocal && !same(draft.cascadeLocal, localCascade)) setLocalCascade(draft.cascadeLocal);
+    // The plan overlay rides the draft too (approval / snapshot / choices
+    // made from another tab or a Claude Code session).
+    if (draft.plan && typeof draft.plan === 'object' && !same(draft.plan, planState)) setPlanState(draft.plan);
     lastServerRevRef.current = Number(rev) || lastServerRevRef.current;
     // THE RED (the loop contract): mark exactly what changed.
     if (newMachines.length) {
@@ -8952,6 +9082,13 @@ export function CreateStationPage({ embedded = false }) {
   // STRICT PROGRESSIVE DISCLOSURE (Dan, 2026-08-26): the cascade governs the
   // whole summary phase — fresh drafts included, not just built stations.
   const cascadeLive = phase === 'summary' && cascade.steps.length > 0;
+  // THE SEVENTEEN-STEP WALK UI IS RETIRED (Dan, 2026-09-03): the Build Plan
+  // is the review artifact. The walk's render stays gated off here (data
+  // model — cascadeState — is unchanged and still feeds codegen scoping).
+  const LEGACY_WALK = false;
+  // Build unlocks on an approved plan (or, for pre-plan stations, the old
+  // fully-agreed walk).
+  const buildReady = planApproved || (cascadeLive && cascade.allApproved);
   // NO DEAD END (2026-09-02, one door): a sheet with NO explanation yet — a
   // legacy station migrated on open — opens its explanation box in edit mode
   // so the ME can type the station in right there; Apply sends it and the
@@ -9750,11 +9887,15 @@ export function CreateStationPage({ embedded = false }) {
         className="form-input form-textarea"
         data-testid="changes-textarea"
         micTestId="changes-dictate-btn"
-        placeholder="values & questions only — a delay, a position, a name, an answer. Sequence edits happen on the canvas."
+        placeholder={planApproved
+          ? 'values & questions — a delay, a position, a name, an answer. Sequence edits happen on the canvas.'
+          : 'edit the Build Plan — a device, a value, a step, a handshake, an answer. Changes redline on the plan.'}
         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleApplyChanges(); } }}
       />
       <div data-testid="chat-values-only-hint" style={{ fontSize: 11, color: C.muted, lineHeight: 1.4, padding: '4px 2px 0' }}>
-        Values &amp; questions only — sequence edits happen on the canvas above.
+        {planApproved
+          ? 'Values & questions only — the plan is approved; sequence edits happen on the canvas.'
+          : 'Edits land on the Build Plan as redlines — ✓ got it clears them, Approve moves to the Sequence.'}
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 6 }}>
         {applying && (
@@ -9966,6 +10107,12 @@ export function CreateStationPage({ embedded = false }) {
             ? `S${String(Number(station) || linkedSm?.stationNumber || 1).padStart(2, '0')} — ${name.trim() || 'Station'}`
             : (name.trim() ? `S${String(Number(station) || 1).padStart(2, '0')} — ${name.trim()}` : 'Station Sheet')}
         </span>
+        {/* VERSION CLARITY (Dan, 2026-09-03): the shell + version, plainly,
+            so he always knows what he is looking at. */}
+        <span data-testid="shell-version-chip" title={`v3 shell · app ${APP_VERSION} — /v2.html is the frozen v2, /classic.html the frozen v1`} style={{
+          fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#1574c4',
+          background: '#e8f0fa', border: '1px solid #a8c8e8', borderRadius: 3, padding: '1px 7px', whiteSpace: 'nowrap',
+        }}>v3 · Station Sheet · {APP_VERSION}</span>
         <span style={{
           marginLeft: 'auto', fontSize: 10, color: C.light,
           fontFamily: 'Consolas, monospace', whiteSpace: 'nowrap',
@@ -9998,7 +10145,7 @@ export function CreateStationPage({ embedded = false }) {
           {/* Living spec sheet only: open mechanical-domain questions for this
               station — the ME's list, fed by the same question API. Hidden
               while the cascade runs (questions surface WITH their step). */}
-          {linkedSmId && !(cascadeLive && !cascade.allApproved) && (
+          {linkedSmId && !(cascadeLive && !buildReady) && (
             <ModelNeedsPanel
               smName={sms.find(s => s.id === linkedSmId)?.name ?? name.trim()}
               smDisplayName={name.trim() || null}
@@ -10017,7 +10164,7 @@ export function CreateStationPage({ embedded = false }) {
             // (Dan, 2026-08-26): while the cascade runs, every ask surfaces
             // WITH its step ("To agree on X, I need: …") — the strip returns
             // only once everything is agreed and generation is the stage.
-            if (cascadeLive && !cascade.allApproved) return null;
+            if (cascadeLive && !buildReady) return null;
             // Fault recovery lives inside the Sequence card now.
             const covToSection = { devices: 'devices', sequence: 'sequence', failures: 'sequence', interactions: 'interactions' };
             const extras = [
@@ -10547,11 +10694,203 @@ export function CreateStationPage({ embedded = false }) {
                 {/* THE ONE CHAT (Dan, 2026-08-26) — the slide-out panel + pill. */}
                 {chatPanelUi}
 
+                {/* ══ THE THREE STAGES (Dan, 2026-09-03) ══════════════════════
+                    INPUTS (the band above) → BUILD PLAN (a document the ME
+                    chats with; edits redline) → SEQUENCE (the v3 canvas per
+                    machine, entered by choice) → Build (the card below). */}
+                {inSummary && (() => {
+                  const seqStarted = (smChipEntries ?? []).filter(e => {
+                    const rec = findMachineSm(store.project, { smId: e.smId ?? null, draftId: draftIdRef.current, machineKey: e.key });
+                    return !!planState?.seq?.[e.key] || (rec && ((rec.edges?.length ?? 0) > 0 || (rec.nodes?.length ?? 0) > 1));
+                  }).length;
+                  const total = (smChipEntries ?? []).length;
+                  return (
+                    <StageStrip
+                      stage={stage}
+                      onStage={(key) => {
+                        if (key === 'inputs') { setInputsCollapsed(false); setStage('inputs'); setTimeout(() => document.querySelector('[data-testid="inputs-band-header"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); return; }
+                        if (key === 'build') { setStage(planApproved ? 'sequence' : stage); setTimeout(() => document.querySelector('[data-testid="generate-scope-card"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); return; }
+                        setStage(key);
+                      }}
+                      stages={[
+                        { key: 'inputs', label: 'Inputs', note: description.trim() ? 'explanation · references · controls information' : 'explain the station first', state: description.trim() ? 'done' : 'todo' },
+                        { key: 'plan', label: 'Build Plan', state: planApproved ? 'done' : (planDoc ? 'active' : 'todo'),
+                          note: planDoc
+                            ? `${planDoc.machines.length} machine${planDoc.machines.length === 1 ? '' : 's'} · ${planApproved ? 'approved' : (planRedline.count ? `${planRedline.count} redline${planRedline.count === 1 ? '' : 's'}` : 'draft — edit it in the chat')}`
+                            : (proposeRun?.stage === 'compile' ? 'SDC Engineer is drafting it…' : 'drafts from your explanation') },
+                        { key: 'sequence', label: 'Sequence', state: planApproved ? (total && seqStarted >= total ? 'done' : 'todo') : 'locked', lockedReason: 'approve the Build Plan first',
+                          note: planApproved ? `${seqStarted} of ${total} canvases started — first pass or build your own` : 'the canvas per machine' },
+                        { key: 'build', label: 'Build', state: buildReady ? 'todo' : 'locked', lockedReason: 'approve the Build Plan first', note: buildReady ? 'generate the station code' : 'after the sequence' },
+                      ]}
+                    />
+                  );
+                })()}
+
+                {/* ── STAGE 2: THE BUILD PLAN ─────────────────────────────── */}
+                {inSummary && stage === 'plan' && (
+                  <SectionBar
+                    testId="build-plan-section"
+                    title="Build Plan"
+                    color="#061d39"
+                    note={planDoc ? 'one page per station · one section per machine · chat edits show as redlines' : undefined}
+                    foldedNote={planDoc ? `${planDoc.machines.length} machines — click to expand` : 'click to expand'}
+                    status={planDoc ? (
+                      <span style={{ fontSize: 10, fontWeight: 700, color: planApproved ? '#2f6b3c' : '#6b5513', background: planApproved ? '#e9f5ec' : '#fdf6e3', border: `1px solid ${planApproved ? '#7fb08c' : '#e6d9a8'}`, borderRadius: 3, padding: '1px 8px' }}>
+                        {planApproved ? 'approved' : (planRedline.count ? `${planRedline.count} redlines` : 'draft')}
+                      </span>
+                    ) : null}
+                    collapsed={secFolded('buildPlan')}
+                    onToggle={() => toggleSectionCollapse('buildPlan')}
+                  >
+                    {planDoc ? (
+                      <BuildPlanDoc
+                        tree={planRedline.tree}
+                        count={planRedline.count}
+                        status={planApproved ? 'approved' : 'draft'}
+                        approvedAt={planState?.approvedAt ?? null}
+                        approvedBy={planState?.approvedBy ?? null}
+                        generatedAt={planState?.generatedAt ?? smProposal?.at ?? null}
+                        onGotIt={planGotIt}
+                        onApprove={approvePlan}
+                        onReopen={reopenPlan}
+                        onOpenSequence={(key) => { setStage('sequence'); selectSheetSm(key); }}
+                        onRegenerate={() => { splitCounterRef.current = ''; kickProposal(); }}
+                        onExportJson={exportPlanJson}
+                        busy={applying || proposeRun?.stage === 'compile'}
+                        canvasStates={Object.fromEntries((smChipEntries ?? []).map(e => {
+                          const rec = findMachineSm(store.project, { smId: e.smId ?? null, draftId: draftIdRef.current, machineKey: e.key });
+                          const n = rec?.nodes?.length ?? 0;
+                          return [e.key, rec ? (n > 1 ? `${n} states on the canvas` : 'canvas: Home only') : null];
+                        }))}
+                      />
+                    ) : (
+                      <div className="bp-pending" data-testid="build-plan-pending">
+                        {proposeRun?.stage === 'compile' ? (
+                          <>
+                            <div style={{ fontWeight: 700, color: C.text, marginBottom: 4 }}>SDC Engineer is drafting the Build Plan from your explanation…</div>
+                            <SmProposalWait startedAt={proposeRun.startedAt} />
+                          </>
+                        ) : proposeRun?.stage === 'error' ? (
+                          <>
+                            <div data-testid="sm-propose-error" style={{ color: C.danger, marginBottom: 6 }}>The plan run didn't go through — {proposeRun.msg}</div>
+                            <button type="button" className="bp-btn bp-btn--primary" data-testid="sm-propose-retry" onClick={kickProposal}>Retry</button>
+                          </>
+                        ) : description.trim() ? (
+                          <div data-testid="sm-propose-starting">Starting — SDC Engineer drafts the machine split, devices, sequences, handshakes and initialization into one plan…</div>
+                        ) : (
+                          <div data-testid="sm-propose-starting">Explain the station in INPUTS above — the Build Plan drafts itself when you send it.</div>
+                        )}
+                      </div>
+                    )}
+                  </SectionBar>
+                )}
+
+                {/* ── STAGE 3: THE SEQUENCE (the v3 canvas per machine) ───── */}
+                {inSummary && stage === 'sequence' && planApproved && planDoc && (
+                  <SectionBar
+                    testId="sequence-stage-section"
+                    title="Sequence"
+                    color="#061d39"
+                    note="the canvas per machine — the sequence IS the diagram; Initialization beside it from the plan"
+                    foldedNote="click to expand"
+                    collapsed={secFolded('sequenceStage')}
+                    onToggle={() => toggleSectionCollapse('sequenceStage')}
+                  >
+                    {(smChipEntries?.length ?? 0) >= 2 && (
+                      <SmOutputToggle entries={smChipEntries} selected={sheetSmKey} onSelect={selectSheetSm} />
+                    )}
+                    {(() => {
+                      const all = smChipEntries ?? [];
+                      const shown = sheetSmKey !== 'all' ? all.filter(e => e.key === sheetSmKey) : all;
+                      const v3Machines = all.map((e, i) => ({
+                        key: e.key, name: e.name, smId: e.smId ?? null, entry: e, isPrimary: i === 0,
+                        getModel: () => buildFlowModel(e.sequenceSteps, e.sequence, composeStepClient, () => null, summary?.devices),
+                      }));
+                      return (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(330px, 1fr))', gap: '6px 20px', alignItems: 'start' }}>
+                          {shown.map((e) => {
+                            const ei = all.findIndex(x => x.key === e.key);
+                            const rec = findMachineSm(store.project, { smId: e.smId ?? null, draftId: draftIdRef.current, machineKey: e.key });
+                            const drawn = !!rec && ((rec.edges?.length ?? 0) > 0 || (rec.nodes?.length ?? 0) > 1);
+                            const chosen = planState?.seq?.[e.key] ?? null;
+                            const pm = planDoc.machines.find(m => m.key === e.key) ?? null;
+                            const stepCount = (pm?.states ?? []).filter(s => s.step != null).length;
+                            return (
+                              <div key={e.key} style={{ minWidth: 0 }} data-testid={`sequence-sm-${e.key}`}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(420px, 1.7fr) minmax(300px, 1fr)', gap: '6px 24px', alignItems: 'start' }}>
+                                  <div style={{ minWidth: 0 }}>
+                                    <SubHead color="#1574C4">{e.name} sequence</SubHead>
+                                    {(!chosen && !drawn) ? (
+                                      // THE CHOICE (Dan, 2026-09-03; law 2026-09-02: the AI
+                                      // draft is opt-in): first pass from the plan, or an
+                                      // empty canvas — never an auto-compiled drawing.
+                                      <SequenceChoiceCard
+                                        machine={pm ?? { key: e.key, name: e.name }}
+                                        stepCount={stepCount}
+                                        onFirstPass={() => startSequenceFor(e, 'firstPass')}
+                                        onOwn={() => startSequenceFor(e, 'own')}
+                                        busy={applying}
+                                      />
+                                    ) : (
+                                      <SequenceCanvas
+                                        smId={e.smId ?? null}
+                                        draftId={draftIdRef.current}
+                                        entry={e}
+                                        model={buildFlowModel(e.sequenceSteps, e.sequence, composeStepClient, () => null, summary?.devices)}
+                                        steps={e.sequenceSteps ?? null}
+                                        sheetDevices={summary?.devices ?? []}
+                                        stationName={name.trim() || draft?.name || ''}
+                                        stationNumber={station}
+                                        isPrimary={ei === 0}
+                                        autoActivate={sheetSmKey === e.key}
+                                        testId={`v3-sequence-canvas-${e.key}`}
+                                        machines={v3Machines}
+                                        onSelectMachine={selectSheetSm}
+                                        onDevicesChanged={(smRec) => {
+                                          setSummary(s => (s ? mergeSmDevices(s, reconstructSummaryFromSm(smRec)) : s));
+                                        }}
+                                      />
+                                    )}
+                                  </div>
+                                  {/* INITIALIZATION BESIDE THE SEQUENCE (invariant #1) —
+                                      from the plan; codegen generates it. */}
+                                  <div style={{ minWidth: 0 }} data-testid={`recovery-sm-${e.key}`} className="bp-init-panel">
+                                    <SubHead color="#b45309">Initialization</SubHead>
+                                    <div className="bp-src" style={{ marginBottom: 3 }}>{pm?.initialization?.template ?? 'SDC standard init block'}</div>
+                                    <pre className="bp-init">{(pm?.initialization?.lines ?? []).join('\n')}</pre>
+                                    {(pm?.handshakes?.length ?? 0) > 0 && (
+                                      <>
+                                        <SubHead color="#0e7490">Handshakes</SubHead>
+                                        <table className="bp-table">
+                                          <tbody>
+                                            {pm.handshakes.map((h, i) => (
+                                              <tr key={i}><td className="num">{h.atStep}</td><td>{h.dir}</td><td className="tag">{h.tag}</td><td>{h.counterpart}</td></tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </>
+                                    )}
+                                    {(pm?.branches ?? []).some(b => b.retry) && (
+                                      <div className="bp-src" style={{ marginTop: 6 }}>
+                                        Retry exhausted → Initialize (state 100): {pm.branches.filter(b => b.retry).map(b => `${b.check} ×${b.retry.max}`).join('; ')}.
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </SectionBar>
+                )}
+
                 {/* STEP 1 BEFORE THE PROPOSAL (fresh draft): the Station band
                     already shows where the walk starts — SDC Engineer's
                     state-machine proposal — so the sheet reads as the same
                     stack from the first second (one door, 2026-09-02). */}
-                {!inSummary && (
+                {LEGACY_WALK && !inSummary && (
                   <>
                     <BandHeader label="Station" note="the guided review — approve each step, it locks in below" />
                     <div
@@ -10577,7 +10916,7 @@ export function CreateStationPage({ embedded = false }) {
                 {/* THE CASCADE'S CURRENT STEP (Dan, 2026-08-26): everything
                     below follows the conversation order; steps not reached
                     yet are HIDDEN entirely (the side guide lists them). */}
-                {cascadeLive && (
+                {LEGACY_WALK && cascadeLive && (
                   <>
                     <BandHeader label="Station" note="the guided review — approve each step, it locks in below" />
                     {(() => {
@@ -10744,7 +11083,7 @@ export function CreateStationPage({ embedded = false }) {
                   </>
                 )}
 
-                {summary && (cascadeLive
+                {LEGACY_WALK && summary && (cascadeLive
                   ? [...SUMMARY_SECTIONS.filter(s => !s.renderInside)].sort((a, b) =>
                     (a.key === 'interactions' ? 1 : 0) - (b.key === 'interactions' ? 1 : 0))
                   : SUMMARY_SECTIONS.filter(s => !s.renderInside)
@@ -11483,7 +11822,7 @@ export function CreateStationPage({ embedded = false }) {
                 ))}
                 <NonStandardCard flags={nonStandardFlags} />
 
-                {(visibleQuestions.length > 0 || tabularQuestionCount > 0) && !(cascadeLive && !cascade.allApproved) && (
+                {(visibleQuestions.length > 0 || tabularQuestionCount > 0) && !(cascadeLive && !buildReady) && (
                   <div style={{
                     marginTop: 12, border: `1px solid ${C.primaryBorder}`, background: C.primaryBg,
                     borderRadius: 8, padding: '10px 14px',
@@ -11542,7 +11881,7 @@ export function CreateStationPage({ embedded = false }) {
 
                 {/* INPUTS & OUTPUTS — derived, at the bottom (Dan, Aug 23).
                     Reveals once every devices step is agreed (strict order). */}
-                {summary && ioRevealed && (
+                {summary && (ioRevealed || (planDoc && stage === 'plan')) && (
                   <IoDerivedCard
                     devices={summary.devices}
                     ioNotes={summary.io?.ioNotes}
@@ -11597,7 +11936,7 @@ export function CreateStationPage({ embedded = false }) {
                     (Dan, 2026-08-26: never a standing form on the sheet).
                     Renders only when the cascade is fully agreed, right above
                     the spend button. */}
-                {cascadeLive && cascade.allApproved && (
+                {buildReady && (
                   <SectionBar
                     testId="generate-scope-card"
                     title="Build station code"
@@ -11833,14 +12172,14 @@ export function CreateStationPage({ embedded = false }) {
                       non-cascade sheets (linked stations), plus the gated
                       note while the walk is unfinished. */}
                   {(() => {
-                    if (cascadeLive && !cascade.allApproved) {
+                    if (cascadeLive && !buildReady) {
                       return (
                         <span data-testid="build-gated-note" style={{ fontSize: 11, color: C.muted }}>
-                          Build code unlocks when every step is agreed — {cascade.approvedCount} of {cascade.steps.length} agreed.
+                          Build code unlocks when the Build Plan is approved.
                         </span>
                       );
                     }
-                    if (cascadeLive && cascade.allApproved) return null; // the card owns both lanes
+                    if (buildReady) return null; // the card owns both lanes
                     return renderBuildAction('right');
                   })()}
                 </div>
@@ -11899,7 +12238,7 @@ export function CreateStationPage({ embedded = false }) {
                   UPDATES card docks here too (Dan, 2026-08-30: never a
                   floating overlay covering content — only the one-shot
                   reload bar may overlay). */}
-              {cascadeLive && (
+              {LEGACY_WALK && cascadeLive && (
                 <div style={{ position: 'sticky', top: 10, flexShrink: 0, width: 200 }}>
                   {anyMarks && (
                     <div

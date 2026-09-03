@@ -9,6 +9,16 @@ If your task isn't listed here, use the **Explore sub-agent** — don't probe.
 
 ## Common tasks (most-frequent first)
 
+### v3 — THE BUILD PLAN (Dan, 2026-09-03): INPUTS → BUILD PLAN → SEQUENCE → Build
+- Plan document builder (pure, client+server, redlines, codegen slice) → `lib/agentGenerator/buildPlan.mjs` (`buildPlan`, `redlinePlan`, `planText`, `planForCodegen`, `detectStandard`)
+- Plan document render + stage strip + first-pass|build-your-own card → `components/jarvis/BuildPlanDoc.jsx` (+ `buildPlan.css`)
+- Stage state, approval, redline snapshot, chat scope ('plan' before approval, 'values' after) → `components/jarvis/CreateStationPage.jsx` (search `THE BUILD PLAN (Dan, 2026-09-03)`, `planState`, `stage ===`)
+- Sequence entry by choice (`startMachineSequence`, `wipeMachineSm`), plan stamp on SM records (`stampBuildPlan`) → `v3/sequenceSm.js`
+- Plan-only chat ops (`plan.answer`, `plan.note`, `plan.resolve`), dotted `value.set` paths → `lib/agentGenerator/agentTools.js`; reflex 'plan' scope → `reflexTurn.js`; scope routing → `server.js` (search `planScope`)
+- Codegen reads the plan (`machineSpec.buildPlan`) + the canvas when authoritative → `lib/agentGenerator/multiProgram.js` (search `buildPlan`), `ir.js` (`buildMachineSpecIR`)
+- Gates → `v2/layoutInvariants.js` (`three-stages-one-strip`, `plan-redlines-acknowledgeable`, `sequence-stage-is-a-choice`, `version-in-header`)
+- **RETIRED (render gated off by `LEGACY_WALK = false`):** the seventeen-step walk UI (Step 1 card, per-machine devices/sequence/interactions/recovery sections, the CascadeGuide rail). `cascadeState` data stays (codegen scoping).
+
 ### v3 — the SEQUENCE section IS the v1 canvas (Dan, 2026-09-02)
 - Embedded canvas per machine (Expand ↗ full-window, device sidebar) → `v3/SequenceCanvas.jsx`
 - Sheet machine ↔ SM record, ONE-TIME migration on first open        → `v3/sequenceSm.js` (`ensureMachineSm`, `findMachineSm`; stamps `machineSpec.canvasAuthoritative` + `machineSpec.v3`)

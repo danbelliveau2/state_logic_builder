@@ -97,3 +97,21 @@ rewrite existing turns.
 - Doctrine lives in `src/lib/agentGenerator/meKnowledge.md` (+ concepts) —
   read it before making controls judgments; file new engineer rulings with
   `appendLearnedFacts` (dated, attributed), never as loose notes.
+
+
+## The Build Plan (Dan, 2026-09-03)
+
+The station page is INPUTS → BUILD PLAN → SEQUENCE → Build. The plan is a
+DERIVED document over the draft (`src/lib/agentGenerator/buildPlan.mjs`
+`buildPlan(draft)`) plus a small overlay on `draft.plan`:
+`{ status: 'draft'|'approved', approvedAt, approvedBy, snapshot, extras: { [machineKey]:
+{ asks: {ask: value}, decisions[], standards[], questions[] } }, seq: { [machineKey]: 'firstPass'|'own' } }`.
+Redlines on the page = diff(`plan.snapshot`, current plan) — so ANY sheet edit you
+make through the typed ops (sequence.insert, device.rename, value.set with dotted
+paths like `delays.extendMs` …) shows up struck/highlighted on Dan's plan until
+he clicks "✓ got it". Plan-only ops: `plan.answer {machine, ask, value}` (a
+standard machine's station-specific value), `plan.note {machine?, section:
+decisions|standards|questions, text}`, `plan.resolve {text}`. Never set
+`plan.status`/`snapshot` yourself — approval is his click. Engine turns from the
+widget carry `scope: 'plan'` before approval (reflex + deep lane) and
+`scope: 'values'` after (reflex only; sequence edits are canvas-only).

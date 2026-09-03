@@ -445,11 +445,85 @@ function applyEdit(state, input) {
     case 'value.set': {
       const row = (summary.devices ?? []).find((x) => keysMatch(x?.displayName ?? x?.name, input.device));
       if (!row) return { error: `No device matching "${input.device}".` };
-      const field = String(input.field ?? '').trim();
+      let field = String(input.field ?? '').trim();
       if (!field || field === 'name' || field === 'displayName') return { error: 'value.set: bad field' };
-      const before = row[field];
-      row[field] = input.value;
-      return pushDiff(state, { op, device: row.displayName ?? row.name, field, before: before ?? null, after: input.value });
+      // DOTTED PATHS SET NESTED VALUES (2026-09-03: "delays.extendMs" landed
+      // as a literal key beside `delays` and the sheet never saw it). Bare
+      // delay names alias into the delays object the sheet reads.
+      const ALIAS = { extendMs: 'delays.extendMs', retractMs: 'delays.retractMs', extendDelayMs: 'delays.extendMs', retractDelayMs: 'delays.retractMs', engageMs: 'delays.extendMs', disengageMs: 'delays.retractMs' };
+      field = ALIAS[field] ?? field;
+      const path = field.split('.').filter(Boolean);
+      let host = row;
+      for (const seg of path.slice(0, -1)) {
+        if (host[seg] == null || typeof host[seg] !== 'object') host[seg] = {};
+        host = host[seg];
+      }
+      const leaf = path[path.length - 1];
+      const before = host[leaf];
+      // Numbers arrive as numbers (a delay typed "1.5 s" by the model is its job to convert; "1500" → 1500).
+      const val = typeof input.value === 'string' && /^-?\d+(\.\d+)?$/.test(input.value.trim()) && /Ms$|Mm$|Deg$|Count$|value/i.test(leaf) ? Number(input.value) : input.value;
+      host[leaf] = val;
+      if (path.length > 1 && Object.prototype.hasOwnProperty.call(row, field)) delete row[field]; // a stray literal "a.b" key from before this fix
+      return pushDiff(state, { op, device: row.displayName ?? row.name, field, before: before ?? null, after: val });
+    }
+    // ── BUILD PLAN OVERLAY (Dan, 2026-09-03) ────────────────────────────────
+    // The plan DOCUMENT derives from the sheet (devices / steps / interactions
+    // — edited through the ops above); these ops edit the plan-only overlay:
+    // a standard machine's station-specific ask, an engineer-authored
+    // decision / standards note / open question. Overlay path:
+    // draft.plan.extras[machineKey] = { asks: {ask: value}, decisions[], standards[], questions[] }.
+    case 'plan.answer': {
+      const m = machinesOf(state).find((x) => keysMatch(x.name, input.machine));
+      if (!m) return { error: `No machine matching "${input.machine}".` };
+      const ask = String(input.ask ?? '').trim();
+      if (!ask) return { error: 'plan.answer: ask is required' };
+      const plan = d.plan ?? (d.plan = { status: 'draft' });
+      const extras = plan.extras ?? (plan.extras = {});
+      const key = normKey(m.name);
+      const mx = extras[key] ?? (extras[key] = {});
+      const asks = mx.asks ?? (mx.asks = {});
+      // Match the ask by loose text so "fixture count" hits "fixture/station count".
+      const known = Object.keys(asks).find((k) => keysMatch(k, ask)) ?? (Array.isArray(m.standardPattern?.asks) ? m.standardPattern.asks.find((k) => normKey(k).includes(normKey(ask)) || normKey(ask).includes(normKey(k))) : null) ?? ask;
+      const before = asks[known] ?? null;
+      asks[known] = String(input.value ?? '').trim();
+      return pushDiff(state, { op, machine: m.name, ask: known, before, after: asks[known] });
+    }
+    case 'plan.note': {
+      const section = String(input.section ?? '').trim();
+      if (!['decisions', 'standards', 'questions'].includes(section)) return { error: 'plan.note: section must be decisions | standards | questions' };
+      const text = String(input.text ?? '').trim();
+      if (!text) return { error: 'plan.note: text is required' };
+      const plan = d.plan ?? (d.plan = { status: 'draft' });
+      const extras = plan.extras ?? (plan.extras = {});
+      let key = '_station';
+      let mName = 'station';
+      if (input.machine) {
+        const m = machinesOf(state).find((x) => keysMatch(x.name, input.machine));
+        if (!m) return { error: `No machine matching "${input.machine}".` };
+        key = normKey(m.name); mName = m.name;
+      }
+      const mx = extras[key] ?? (extras[key] = {});
+      const list = mx[section] ?? (mx[section] = []);
+      if (list.some((t) => normKey(typeof t === 'string' ? t : t?.text) === normKey(text))) return pushDiff(state, { op, machine: mName, section, before: text, after: text, noop: true });
+      list.push(section === 'questions' ? text : { text, source: state.speaker ? `${state.speaker} (chat)` : 'chat' });
+      return pushDiff(state, { op, machine: mName, section, before: null, after: text });
+    }
+    case 'plan.resolve': {
+      // Remove an open question / note from the overlay (answered or withdrawn).
+      const text = String(input.text ?? '').trim();
+      const plan = d.plan ?? {};
+      const extras = plan.extras ?? {};
+      let hit = null;
+      for (const [key, mx] of Object.entries(extras)) {
+        for (const section of ['questions', 'decisions', 'standards']) {
+          const list = Array.isArray(mx?.[section]) ? mx[section] : [];
+          const i = list.findIndex((t) => normKey(typeof t === 'string' ? t : t?.text).includes(normKey(text)) || normKey(text).includes(normKey(typeof t === 'string' ? t : t?.text)));
+          if (i >= 0) { hit = { key, section, item: list[i] }; list.splice(i, 1); break; }
+        }
+        if (hit) break;
+      }
+      if (!hit) return { error: `No plan note matching "${text}".` };
+      return pushDiff(state, { op, machine: hit.key, section: hit.section, before: typeof hit.item === 'string' ? hit.item : hit.item?.text, after: null });
     }
     default:
       return { error: `Unknown op "${op}".` };

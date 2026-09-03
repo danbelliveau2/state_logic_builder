@@ -390,7 +390,8 @@ function specHasContent(spec) {
     (spec.sequence || []).length ||
     (spec.outcomeRules || []).length ||
     (spec.relationships || []).length ||
-    (spec.controlsNotes || []).length
+    (spec.controlsNotes || []).length ||
+    Boolean(spec.buildPlan)
   );
 }
 
@@ -461,6 +462,11 @@ function buildMachineSpecIR(sm, allSms) {
       text: cn?.text || '', by: cn?.by || 'CE', at: String(cn?.at || '').slice(0, 10),
     })).filter(cn => cn.text),
     partnerDeclarations,
+    // THE BUILD PLAN (Dan, 2026-09-03): the approved plan's codegen slice for
+    // THIS machine — devices / handshakes / initialization / standards /
+    // decisions. Sequence comes from the canvas when canvas-authoritative.
+    buildPlan: spec?.buildPlan && typeof spec.buildPlan === 'object' && !Array.isArray(spec.buildPlan.machines) ? spec.buildPlan : null,
+    sequenceSource: spec?.sequenceSource || null,
   };
 }
 
@@ -471,6 +477,20 @@ function renderMachineSpecText(ms, lines) {
   lines.push('realize it. EVERY wait you create must have an exit for every partner');
   lines.push('failure mode listed here PLUS a timeout — no exitless waits.');
   if (ms.purpose) lines.push('', `Station purpose: ${ms.purpose}`);
+  if (ms.buildPlan) {
+    const pm = ms.buildPlan;
+    lines.push('', `### THE APPROVED BUILD PLAN (${pm.program ?? pm.name}) — the engineer approved THIS; build exactly it`);
+    lines.push(pm.design?.owner === 'standard'
+      ? `Standard SDC machine built from shipped work: ${pm.design.precedent ?? 'precedent'}. The engineer supplied only the station-specific values below.`
+      : 'Designed from the engineer\'s explanation.');
+    for (const a of (pm.design?.asks ?? [])) lines.push(`- ${a.ask}: ${a.value ?? 'NOT GIVEN — ask once, then default to the precedent'}`);
+    if (pm.handshakes?.length) { lines.push('Handshakes (p_ PUBLIC parameters on the producing program):'); for (const h of pm.handshakes) lines.push(`- step ${h.atStep} ${h.dir} ${h.tag} (${h.signal}) ${h.dir === 'sends' ? 'to' : 'from'} ${h.counterpart}`); }
+    if (pm.branches?.length) { lines.push('Checks / retries (retry exhausted → Initialize, state 100):'); for (const b of pm.branches) lines.push(`- step ${b.atStep} ${b.check}${b.retry ? ` retry ×${b.retry.max} back to ${b.retry.backTo}` : ''}`); }
+    if (pm.initialization?.lines?.length) { lines.push(`Initialization (${pm.initialization.template}):`); for (const l of pm.initialization.lines) lines.push(`- ${l}`); }
+    if (pm.standards?.length) { lines.push('Standards applied:'); for (const s of pm.standards) lines.push(`- ${s}`); }
+    if (pm.decisions?.length) { lines.push('Decisions:'); for (const s of pm.decisions) lines.push(`- ${s}`); }
+    lines.push(`Sequence source: ${ms.sequenceSource === 'canvas' ? 'the engineer\'s canvas — the nodes/edges in this IR are authoritative' : 'the plan\'s states (no canvas drawn yet)'}`);
+  }
   if (ms.expectedStateMachines) {
     lines.push('', "### ME'S EXPECTED STATE MACHINES (guidance — weigh it, never rubber-stamp it)");
     lines.push(`The mechanical engineer expects this decomposition: "${ms.expectedStateMachines}"`);

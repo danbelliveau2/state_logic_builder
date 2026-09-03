@@ -3766,6 +3766,11 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
         // structural ask is answered honestly and pointed at the canvas
         // instead of escalating to the deep lane.
         const valuesOnly = body.scope === 'values';
+        // PLAN SCOPE (Dan, 2026-09-03): before the Build Plan is approved the
+        // widget sends scope:'plan' — the reflex takes small plan edits
+        // (values, plan answers/notes, single-line sequence edits) and
+        // structural asks fall through to the deep lane, full context.
+        const planScope = body.scope === 'plan';
         if (!body.gate && String(process.env.JARVIS_REFLEX_LANE || 'on').toLowerCase() !== 'off') {
           try {
             const rx = await require('./src/lib/agentGenerator/reflexTurn.js').runReflexTurn({
@@ -3775,7 +3780,7 @@ function startServer({ port, dataDir, standardsDir, distDir } = {}) {
               audience: body.audience === 'CE' ? 'CE' : 'ME',
               speaker: String(body.speaker ?? 'Dan').slice(0, 60),
               signal: abort.signal,
-              scope: valuesOnly ? 'values' : null,
+              scope: valuesOnly ? 'values' : (planScope ? 'plan' : null),
             });
             if (!rx.handled && valuesOnly) {
               const result = { ok: true, reply: 'That is a change to the sequence itself — draw it on the canvas above (this box is for values, names, answers and questions). ' + (rx.reason ? `(${String(rx.reason).slice(0, 120)})` : ''), diffs: [], asks: [], notes: [], draft: null, meta: { lane: 'reflex', scope: 'values', escalated: false } };

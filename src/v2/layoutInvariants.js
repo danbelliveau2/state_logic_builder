@@ -61,6 +61,9 @@ export const INVARIANTS = [
         // v3: the live canvas is open FULL-WINDOW — the inline card shows its
         // placeholder by design; the flow nodes are in the overlay.
         if (v3 && q('[data-testid="v3-canvas-expanded"]').some(vis)) continue;
+        // v3 BUILD PLAN (Dan, 2026-09-03): before the ME picks "Use first
+        // pass" / "Build your own" the card shows the choice — no flow yet.
+        if (c.querySelector('[data-testid^="sequence-choice-"]')) continue;
         if (!c.querySelector('.state-node')) bad.push(`${c.dataset.testid}: no flow nodes`);
         // A visible <ol> in a sequence/recovery card = the degraded list render
         // (diff rows during red marks use a grid, not <ol>).
@@ -261,8 +264,11 @@ export const INVARIANTS = [
       const bad = [];
       if (!q('[data-testid="inputs-band-header"]', fresh).some(vis)) bad.push('INPUTS band missing on the fresh sheet');
       const preProposal = q('[data-testid="inputs-explanation-editor"]', fresh).some(vis);
-      const walk = q('[data-testid^="cascade-"]', fresh).some(vis) || q('[data-testid^="summary-section-"]', fresh).some(vis);
-      if (!preProposal && !walk) bad.push('neither the explanation editor nor a cascade step is on the fresh sheet');
+      // v3 BUILD PLAN (2026-09-03): after the explanation the fresh sheet shows
+      // the stage strip + the Build Plan (or its drafting card) — the walk is retired.
+      const walk = q('[data-testid^="cascade-"]', fresh).some(vis) || q('[data-testid^="summary-section-"]', fresh).some(vis)
+        || q('[data-testid="stage-strip"]', fresh).some(vis) || q('[data-testid="build-plan-section"]', fresh).some(vis);
+      if (!preProposal && !walk) bad.push('neither the explanation editor nor the Build Plan stage is on the fresh sheet');
       if (preProposal && !q('[data-testid="send-explanation-btn"]', fresh).some(vis) && !q('[data-testid="summarize-progress"]', fresh).some(vis)) bad.push('explanation editor without its send button');
       if (!q('[data-testid="controls-notes-section"]', fresh).some(vis)) bad.push('Controls information bar missing');
       return bad.length ? { fail: bad.join('; ') } : {};
@@ -414,7 +420,7 @@ export const INVARIANTS = [
     what: 'Every sheet region is one consistent section bar — same header anatomy (dark band, chevron, uppercase title), no odd-one-out (Dan, 2026-08-31)',
     run() {
       const barSel = ['[data-testid="inputs-band-header"]', '[data-testid="controls-notes-section"]', 
-        '[data-testid^="summary-section-"]', '[data-testid="changelog-section"]', '[data-testid="generate-scope-card"]'];
+        '[data-testid^="summary-section-"]', '[data-testid="build-plan-section"]', '[data-testid="sequence-stage-section"]', '[data-testid="changelog-section"]', '[data-testid="generate-scope-card"]'];
       const bars = barSel.flatMap((s) => q(s)).filter(vis);
       if (bars.length < 3) return { skip: 'not enough section bars on screen' };
       const bad = [];
@@ -438,7 +444,7 @@ export const INVARIANTS = [
     what: 'Every section bar spans the same full content width — no narrow odd-one-out (Dan, 2026-08-31)',
     run() {
       const sel = ['[data-testid="inputs-band-header"]', '[data-testid="controls-notes-section"]', 
-        '[data-testid^="summary-section-"]', '[data-testid="changelog-section"]', '[data-testid="generate-scope-card"]'];
+        '[data-testid^="summary-section-"]', '[data-testid="build-plan-section"]', '[data-testid="sequence-stage-section"]', '[data-testid="changelog-section"]', '[data-testid="generate-scope-card"]'];
       const bars = sel.flatMap((s) => q(s)).filter(vis);
       if (bars.length < 3) return { skip: 'not enough bars on screen' };
       const widths = bars.map((b) => b.getBoundingClientRect().width);
@@ -459,7 +465,7 @@ export const INVARIANTS = [
       const ctrl = bg('[data-testid="controls-notes-section"]');
       if (ctrl && ctrl !== 'rgb(90, 154, 72)') bad.push(`CONTROLS INFORMATION band ${ctrl} ≠ SDC green`);
       // No OTHER bar may use the two role colors.
-      const others = [ '[data-testid^="summary-section-"]', '[data-testid="changelog-section"]', '[data-testid="generate-scope-card"]']
+      const others = [ '[data-testid^="summary-section-"]', '[data-testid="build-plan-section"]', '[data-testid="sequence-stage-section"]', '[data-testid="changelog-section"]', '[data-testid="generate-scope-card"]']
         .flatMap((s) => q(s)).filter(vis);
       for (const b of others) {
         const c = getComputedStyle(b.firstElementChild).backgroundColor;
@@ -675,6 +681,71 @@ export const INVARIANTS = [
         }
       }
       return bad.length ? { fail: [...new Set(bad)].slice(0, 6).join('; ') } : {};
+    },
+  },
+  {
+    id: 'three-stages-one-strip',
+    what: 'A station sheet in summary shows THE stage strip (Inputs → Build Plan → Sequence → Build) with exactly one active stage, and never the retired seventeen-step walk (Dan, 2026-09-03)',
+    run() {
+      const sheet = q('[data-testid="create-station-page"]').some(vis);
+      if (!sheet) return { skip: 'sheet not on screen' };
+      const strip = q('[data-testid="stage-strip"]').filter(vis)[0];
+      const summaryOn = q('[data-testid="build-plan-section"], [data-testid="sequence-stage-section"], [data-testid="build-plan-pending"]').some(vis);
+      if (!strip) return summaryOn ? { fail: 'stage content on screen without the stage strip' } : { skip: 'sheet not in summary (no strip)' };
+      const bad = [];
+      const stages = q('[data-testid^="stage-"]', strip).filter((el) => el.tagName === 'BUTTON');
+      if (stages.length !== 4) bad.push(`${stages.length} stages (want 4)`);
+      const active = stages.filter((el) => el.dataset.state === 'active');
+      if (active.length !== 1) bad.push(`${active.length} active stages (want exactly 1)`);
+      if (q('[data-testid="cascade-smsplit-step"], [data-testid="cascade-smsplit-pending"]').some(vis)) bad.push('the retired walk (Step 1 card) is rendering');
+      const planOn = q('[data-testid="build-plan-doc"]').some(vis);
+      const seqOn = q('[data-testid="sequence-stage-section"]').some(vis);
+      if (planOn && seqOn) bad.push('Build Plan document and Sequence stage both on screen (one stage at a time)');
+      return bad.length ? { fail: bad.join('; ') } : {};
+    },
+  },
+  {
+    id: 'plan-redlines-acknowledgeable',
+    what: 'Redlines on the Build Plan always come with the "✓ got it" bar (tell/do/show — never marks without the clear); Approve is disabled while marks are up (Dan, 2026-09-03)',
+    run() {
+      const doc = q('[data-testid="build-plan-doc"]').filter(vis)[0];
+      if (!doc) return { skip: 'no Build Plan document on screen' };
+      const marks = q('.bp-ins, .bp-del, .bp-row--add, .bp-row--remove, .bp-row--change', doc).filter(vis);
+      const bar = q('[data-testid="plan-redlines"]', doc).filter(vis)[0];
+      const bad = [];
+      if (marks.length && !bar) bad.push(`${marks.length} redline marks without the got-it bar`);
+      if (bar && !q('[data-testid="plan-gotit"]', bar).some(vis)) bad.push('redline bar without ✓ got it');
+      const approve = q('[data-testid="plan-approve"]', doc)[0];
+      if (bar && approve && !approve.disabled) bad.push('Approve enabled while redlines are up');
+      return bad.length ? { fail: bad.join('; ') } : {};
+    },
+  },
+  {
+    id: 'sequence-stage-is-a-choice',
+    what: 'A machine with no drawing shows the first-pass | build-your-own choice, never an auto-compiled canvas (law 2026-09-02: the AI draft is opt-in); Initialization renders beside each machine from the plan (Dan, 2026-09-03)',
+    run() {
+      const stage = q('[data-testid="sequence-stage-section"]').filter(vis)[0];
+      if (!stage) return { skip: 'Sequence stage not on screen' };
+      const bad = [];
+      for (const card of q('[data-testid^="sequence-sm-"]', stage).filter(vis)) {
+        const choice = card.querySelector('[data-testid^="sequence-choice-"]');
+        const canvas = card.querySelector('[data-testid^="v3-sequence-canvas"]');
+        if (!choice && !canvas) bad.push(`${card.dataset.testid}: neither the choice card nor a canvas`);
+        if (choice && canvas) bad.push(`${card.dataset.testid}: choice card AND canvas at once`);
+        if (!card.querySelector('[data-testid^="recovery-sm-"]')) bad.push(`${card.dataset.testid}: no Initialization panel beside the sequence`);
+      }
+      return bad.length ? { fail: bad.join('; ') } : {};
+    },
+  },
+  {
+    id: 'version-in-header',
+    what: 'The sheet header names the shell and version plainly ("v3 · Station Sheet · x.y.z") so the engineer always knows what he is looking at (Dan, 2026-09-03)',
+    run() {
+      const title = q('[data-testid="station-header-title"]')[0];
+      if (!title || !vis(title)) return { skip: 'sheet header not on screen' };
+      const chip = q('[data-testid="shell-version-chip"]').filter(vis)[0];
+      if (!chip) return { fail: 'no shell/version chip in the header' };
+      return /v3 · Station Sheet · \d+\.\d+/.test(chip.textContent ?? '') ? {} : { fail: `chip reads "${chip.textContent}"` };
     },
   },
 ];

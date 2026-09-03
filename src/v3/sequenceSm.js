@@ -215,3 +215,73 @@ export function ensureMachineSm({ smId = null, draftId, entry, model, steps = nu
   applyCompiledSignals(useDiagramStore.getState(), id, compiled.signals, nodes);
   return id;
 }
+
+/**
+ * BUILD PLAN → SEQUENCE (Dan, 2026-09-03). Entering the SEQUENCE stage for a
+ * machine is a CHOICE, never automatic (law 2026-09-02: the AI draft is
+ * opt-in):
+ *   "Use first pass" — compile the plan's sequence (the machine's approved
+ *     structured steps) onto the canvas in the v1 grammar;
+ *   "Build your own" — Home Conditions + the machine's devices, nothing else.
+ * Both resolve/create the SM record the same way the sheet does.
+ * @returns {string|null} the SM id
+ */
+export function startMachineSequence(choice, { smId = null, draftId, entry, sheetDevices, stationName, stationNumber, isPrimary = true }) {
+  const steps = entry?.sequenceSteps ?? null;
+  const emptyModel = { items: [] };
+  const store = useDiagramStore.getState();
+  const existing = findMachineSm(store.project, { smId, draftId, machineKey: entry?.key });
+  let id = existing?.id ?? null;
+  if (!id) {
+    id = ensureMachineSm({ smId, draftId, entry, model: emptyModel, steps: choice === 'firstPass' ? steps : [], sheetDevices, stationName, stationNumber, isPrimary });
+  } else if (choice === 'firstPass') {
+    redraftMachineSm({ smId: id, model: emptyModel, steps, isPrimary, machineName: entry?.name ?? '' });
+  }
+  if (choice === 'own') wipeMachineSm(id);
+  return id;
+}
+
+/** Home Conditions only — the ME draws the rest (law 2026-09-02). Keeps the
+ *  current drawing as a dated backup on the record, like a redraft. */
+export function wipeMachineSm(smId) {
+  const store = useDiagramStore.getState();
+  const sm = store.project?.stateMachines?.find((s) => s.id === smId);
+  if (!sm) return false;
+  const home = (sm.nodes ?? []).find((n) => n.data?.isInitial) ?? {
+    id: `id_${Math.random().toString(36).slice(2, 10)}`, type: 'stateNode', position: { x: 220, y: 80 },
+    data: { label: 'Home', actions: [], isInitial: true, isComplete: false },
+  };
+  const now = new Date().toISOString();
+  const prevV3 = sm.machineSpec?.v3 ?? {};
+  const hadDrawing = (sm.edges?.length ?? 0) > 0 || (sm.nodes?.length ?? 0) > 1;
+  const backups = hadDrawing ? [...(prevV3.redraftBackups ?? []), { at: now, nodes: sm.nodes ?? [], edges: sm.edges ?? [] }].slice(-3) : (prevV3.redraftBackups ?? []);
+  store.updateStateMachine(smId, {
+    nodes: [{ ...home, position: { x: 220, y: 80 } }],
+    edges: [],
+    machineSpec: {
+      ...(sm.machineSpec ?? {}),
+      canvasAuthoritative: true,
+      canvasAuthoritativeAt: now,
+      v3: { ...prevV3, wipedAt: now, measuredLayoutAt: undefined, redraftBackups: backups },
+    },
+  });
+  return true;
+}
+
+/** Stamp the codegen slice of the approved Build Plan on every SM record the
+ *  plan covers (station SM when linked + each v3 machine SM) — codegen reads
+ *  devices/handshakes/init/standards from the plan and the sequence from the
+ *  canvas when the canvas is authoritative. */
+export function stampBuildPlan({ draftId, linkedSmId = null, planForCodegen }) {
+  const store = useDiagramStore.getState();
+  const sms = store.project?.stateMachines ?? [];
+  const targets = new Set();
+  if (linkedSmId) targets.add(linkedSmId);
+  for (const s of sms) if (s.machineSpec?.v3?.draftId === draftId) targets.add(s.id);
+  for (const id of targets) {
+    const sm = sms.find((s) => s.id === id);
+    if (!sm) continue;
+    store.updateStateMachine(id, { machineSpec: { ...(sm.machineSpec ?? {}), buildPlan: planForCodegen } });
+  }
+  return targets.size;
+}

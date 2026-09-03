@@ -183,6 +183,16 @@ then `machineSpec.canvasAuthoritative` is set and codegen reads the diagram. The
 is retired for sequences (kept for the Initialization panel). Chat pill = Questions/receipts/ME-CE only,
 no authoring input. `v2.html` = frozen v2; `classic.html` = frozen v1 (both reachable, do not modify).
 
+**BUILD PLAN (Dan, 2026-09-03):** the station page is THREE STAGES — INPUTS → **BUILD PLAN** (a
+one-page-per-station document: machine split w/ design owner [yours vs standard SDC machine built from
+shipped work + the few values he supplies], devices, sequence-as-states, branches/retries, handshakes,
+initialization, standards + decisions + open questions) → **SEQUENCE** (the v3 canvas per machine, entered
+by CHOICE: "Use first pass" compiles the plan's sequence, "Build your own" opens Home + devices) → Build.
+The chat EDITS THE PLAN before approval (reflex for small edits, deep lane for structural) and the document
+shows REDLINES (removed struck red, added highlighted, "✓ got it" clears). The plan is DERIVED from the
+sheet (`buildPlan.mjs`) + a small overlay (`draft.plan`); the seventeen-step walk UI is retired. Header
+shows "v3 · Station Sheet · x.y.z". Files: see `src/WHERE.md` → "THE BUILD PLAN".
+
 ## 7b. STATION-BUILDER MODE (Claude Code as the authoring interface)
 
 Any Claude Code session in this repo can DRIVE the station sheet — same
