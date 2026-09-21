@@ -48,6 +48,36 @@ Network devices (§9): prefix + sequential number + station description —
 `rob`, `fd` (VFD), `gd` (generic 3rd party). CIP motion axes (§10):
 `a02_S01PNPXAxis`.
 
+## The device prefixes name a fixed hardware palette
+
+§9's prefix list isn't an abstract taxonomy someone invented — it enumerates
+the short list of hardware EE is allowed to specify, which is why the names can
+be that terse and still unambiguous. Seen in EE Hardware Specification
+Regulations.extracted.md: Allen-Bradley is the default PLC and every AB project
+uses Compact GuardLogix or GuardLogix; `sd` drives are AB 5300/5500 series
+(5100 only case-by-case — an existing PLC out of motion axes, cost reduction
+across many repeated simple moves, repeat jobs); on-machine IO is the SMC EX600
+as the **primary platform, not IO-Link** — an EX600 with its IO-Link module
+carries any IO-Link devices, so those sensors hang off that node rather than
+becoming network devices of their own; `cam` is Keyence. Knowing the palette is
+what lets a CE read `io03_S04Nest` and already know the physical box.
+
+GuardLogix everywhere has a structural consequence: **safety lives as a task in
+the same controller**, not in a separate box — Keyence safety PLCs are reserved
+for non-AB projects (First Solar), and contact expansion is Banner relays wired
+bipolar (not Omron). So a station program never re-derives safety from the
+guard-door switches (Keyence GS-M51P) itself; it consumes the safety task's
+mapped standard-side status and gates its outputs on that. The non-networked
+palette (Puls CP 5/10/20 A supplies, Noark breakers) produces no PLC tags at
+all — when it appears on a sheet, that's EE following its own standard, not
+something to generate logic for.
+
+One judgment call rides along: the document opens by allowing that "duplicate
+machines or other exceptions may grandfather in old standards." A repeat build
+legitimately carries yesterday's hardware. Mirror the sheet — don't upgrade a
+duplicate machine's devices in code to match today's palette, and don't
+generalize its non-standard part numbers into the next greenfield build.
+
 ## State logic shape (what the document adds to the templates)
 
 - Standard states every station carries (§19): 0 Safety Stop, 1 Manual,
@@ -82,7 +112,8 @@ rename. The reason is fleet-wide readability: every SDC program a CE opens
 has an X and a Z; "which one is HorizontalAxis" is a question the convention
 exists to make impossible. Map the ME's description to the letter once, at
 naming time, and use the letter everywhere — routines, HMI_ tags,
-MotionParameters, RangeCheck instances, alarm text.
+MotionParameters, RangeCheck instances, alarm text. The drive series behind it
+(5300, 5500, or a case-by-case 5100) never shows in the axis name.
 
 ## State 4 is "Start Of Sequence, Wait For Part Present"
 *(Jason Perry review of v5, 2026-08-24, item 4)*

@@ -235,16 +235,16 @@
     "name": "Revision History.md",
     "location": "\\\\…\\Electrical Dept\\Standards - Software\\Allen Bradley\\Projects\\SDC Chassis Template\\Revision History.md",
     "accessStatus": "full-access",
-    "lastIngested": "2026-08-30",
+    "lastIngested": "2026-09-04",
     "takeaways": [
-      "'Waiting For Part' was downgraded from fault to warning on part-load/PNP stations — consistent with SDC's low-nuisance-stop philosophy.",
-      "Downtime now accrues only on fault stops, not cycle stops; a batch counter and recipe program/HMI were added as new production capabilities; OkToIndex was renamed StationComplete.",
-      "Alarm generation moved from pure state-timeout faulting to detecting faults directly from output/input state (v3.0), a change in the alarms mechanism worth knowing.",
-      "Servo template gained quick-stop logic (axis in motion + permissive/safety drop), torque monitoring, and manual-mode accel/decel loading — deepens servo-motion standard behavior.",
-      "'Waiting For Part' was reclassified from fault to warning on S01/S03/S05 — a template-wide judgment call about what should stop the machine vs just notify.",
-      "State machines gained a formal 'PartStarted' concept with an optional jump state, and the indexer gained a pause feature implemented as two dedicated states (40 & 42) rather than a flag — reinforces the pattern of representing behavior as explicit states.",
-      "Downtime accounting was refined: accumulates only on fault stop, never on ordinary cycle stop — a production-metrics rule.",
-      "AOI_RangeCheck gained a wideband/deadband parameter as a template feature (v3.0), consistent with the later corner-blend RangeCheck-per-corner pattern already learned from Dan."
+      "Alarm philosophy shifted from pure state-timeout faulting to detecting faults from actual output/input state (more precise fault causes), with servo quick-stop warnings layered on top",
+      "'Waiting For Part' was deliberately downgraded from fault to warning on PartLoad/PnP-style stations — absence of a part is not machine-stopping",
+      "Downtime now only accumulates on fault stop, not on ordinary cycle stop — a production-metrics distinction",
+      "AOI_RangeCheck gained a wideband deadband option, and a Recipe program + PanelView 5310 recipe HMI were added as standard offerings",
+      "Indexer stations gained a pause feature implemented as two new states (40 & 42) rather than repurposing existing states",
+      "This file is a bare revision table (version/date/one-line note) — no mechanism, standard, or judgment content to extract.",
+      "The only substantive hint is 'Added two up machine template' (8/26/26) but the document itself gives no detail on what a two-up machine template actually entails.",
+      "Nothing here changes or deepens how SDC builds machines or PLC code — it's boilerplate per the filing rules."
     ]
   },
   {
@@ -1734,6 +1734,33 @@
       "Symptom progression: servo won't jog at all first, then after touching commutation params to 'match' other axes, it throws FLT S04.",
       "Fix: delete the drive from both the IO tree and the motion axis, re-add the same module under the original name, let it use the auto-detected motor profile's commutation settings (don't manually re-enter the old values), then redownload.",
       "When migrating/replicating a servo config across machines or Studio 5000 versions, don't blindly copy commutation parameters between projects on different Studio 5000/motor-profile versions — verify whether the motor has a native profile first."
+    ]
+  },
+  {
+    "id": "inbox-58d92a34",
+    "name": "SDC Flex Feeder Primary.txt",
+    "location": "\\\\…\\Electrical Dept\\SDC Engineer\\Examples\\SDC Flex Feeder Primary\\SDC Flex Feeder Primary.txt",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-09-05",
+    "takeaways": [
+      "Flex Feeder Primary = Fanuc SCARA robot w/ Fanuc vision + Fanuc encoder, a Kinetix 5300-driven TLP motor process conveyor, and two Lenze VFDs driving incline/return conveyors.",
+      "Sequence logic splits into two programs: S10_FlexFeederConveyor.L5X (process/incline/return conveyors) and S10_FlexFeedRobot.L5X (Fanuc robot).",
+      "For this configuration, MapInputs.L5X and MapOutputs.L5X only need rung 1 — the rest of those standard mapping programs don't apply here.",
+      "This is a new station archetype (robot + vision + encoder-tracked conveyor + VFD conveyors) not previously captured in station-archetypes."
+    ]
+  },
+  {
+    "id": "inbox-dd522e7f",
+    "name": "Rockwell Ticket - 4011630515 - PVP6,, slow response from objects -IG.docx",
+    "location": "\\\\…\\Electrical Dept\\SDC Knowledgebase\\SDC Tech Notes\\Rockwell Ticket - 4011630515 - PVP6,, slow response from objects -IG.docx",
+    "accessStatus": "full-access",
+    "lastIngested": "2026-09-15",
+    "takeaways": [
+      "PVP6 HMI performance degraded as more screens/features/animations (mostly visibility logic) were added over the project — a symptom of HMI complexity growth, not a coding error.",
+      "Common HMI-tuning fixes (tag update rate, button hold time, removing unused comm nodes) did NOT resolve the slowdown.",
+      "The actual fix was a PanelView firmware upgrade (v10→v12) plus a fresh runtime build from the project on the new firmware — a hardware/firmware-layer fix, not a screen-design fix.",
+      "v12 was the latest Rockwell-supported firmware for PVP6 even though it wasn't officially listed as compatible with the project's Studio 5000 v37 controller firmware — it worked anyway.",
+      "If firmware upgrade doesn't resolve severe HMI slowness, Rockwell's next recommended step is hardware replacement: PVP6 → PVP7 running v15/v16."
     ]
   }
 ]

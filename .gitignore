@@ -52,3 +52,6 @@ jarvis-knowledge/librarian-state.json
 
 jarvis-knowledge/agent-runtime/
 _covernote_tmp.cjs
+
+# job 1160 machine build workspace (refs, plans, per-program XML, assembled L5X)
+generated/1160/

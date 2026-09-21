@@ -26,6 +26,10 @@ Each has a **TABLE OF CONTENTS at the top** (lines 1-80) mapping every section t
 
 ---
 
+## 0a. SDC ENGINEER — BUILDING A MACHINE'S PLC CODE
+
+Read [docs/sdc-engineer/PLAYBOOK.md](docs/sdc-engineer/PLAYBOOK.md) before any code build, review or cover note. Skills: `/sdc-readiness` → `/sdc-build` → `/sdc-review` → `/sdc-cover-note`; `/sdc-learn-return` for anything the CE sends back. The CE's own rules: `X:\Electrical Dept\SDC Engineer\Knowledge\SDC-Engineer-Knowledge.md` → `## Engineer additions`, read at every build start.
+
 ## 1. PROJECT OVERVIEW
 
 A React web app that converts ME flowchart state machine diagrams into Allen Bradley L5X PLC code.
@@ -87,6 +91,15 @@ Full file map + all schemas → [@docs/architecture.md](docs/architecture.md)
 - `HMI_Toggle.0` → Lockout (forces Step=99)
 - `HMI_Toggle.1` → DryRun
 - `HMI_Toggle.2` → SS (Single-Step)
+
+### Fewest words, everywhere (Dan, 2026-09-19)
+Documents, code comments, tag descriptions, chat: portray the information with as few words as possible. Tables and phrases, never paragraphs; a page or two. A wordy document does not get used.
+
+### Readability is part of the standard (Jason on the 1160 build, 2026-09-18: "much easier to read")
+- Rung comment = ONE concise sentence about the machine. Tag description ≤ 30 characters.
+- Comments never carry build history, sources, dates, names, question numbers, "STUB" or "DECLARED EXTENSION"; a placeholder is `XIC(g_MachineBasic.AlwaysOff)` on a real rung.
+- A program stays the size of its closest example (tags, rungs, latches). No feature, timer, interlock, bypass constant or HMI setpoint the examples do not have. Same look and feel on every station (Dan, 2026-09-18).
+- Gate: `node scripts/shapeLint1160.cjs` for 1160; `validator.js` emits READABILITY warnings on every generated L5X.
 
 Full L5X generator rules, layered output architecture, servo details → [@docs/architecture.md](docs/architecture.md)
 

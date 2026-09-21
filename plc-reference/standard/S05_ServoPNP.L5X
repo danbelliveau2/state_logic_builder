@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<RSLogix5000Content SchemaRevision="1.0" SoftwareRevision="37.00" TargetName="S05_ServoPNP" TargetType="Program" TargetClass="Standard" ContainsContext="true" ExportDate="Tue Aug 18 14:09:57 2026" ExportOptions="References NoRawData L5KData DecoratedData Context Dependencies ForceProtectedEncoding AllProjDocTrans">
+<RSLogix5000Content SchemaRevision="1.0" SoftwareRevision="37.00" TargetName="S05_ServoPNP" TargetType="Program" TargetClass="Standard" ContainsContext="true" ExportDate="Mon Sep 14 10:47:35 2026" ExportOptions="References NoRawData L5KData DecoratedData Context Dependencies ForceProtectedEncoding AllProjDocTrans">
 <Controller Use="Context" Name="SoftwareStandardization">
 <DataTypes Use="Context">
 <DataType Name="AlarmData" Family="NoFamily" Class="User">
@@ -273,6 +273,60 @@
 <Members>
 <Member Name="LEN" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
 <Member Name="DATA" DataType="SINT" Dimension="100" Radix="ASCII" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+</DataType>
+<DataType Name="Tracking_Part_Assy_Stat" Family="NoFamily" Class="User">
+<Description>
+<![CDATA[Tracking Part Assembly Status From Stations]]>
+</Description>
+<Members>
+<Member Name="ZZZZZZZZZZTracking_P0" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="Good" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZTracking_P0" BitNumber="0" ExternalAccess="Read/Write"/>
+<Member Name="Bad" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZTracking_P0" BitNumber="1" ExternalAccess="Read/Write"/>
+<Member Name="PartLoaded" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZTracking_P0" BitNumber="2" ExternalAccess="Read/Write"/>
+<Member Name="Station" DataType="Tracking_Process_Op_Result" Dimension="21" Radix="NullType" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="FailureType" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Failure (Reject ) Type - Station Num + Inc Number 0-9]]>
+</Description>
+</Member>
+<Member Name="FailureMessage" DataType="STRING" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Failure Type Description]]>
+</Description>
+</Member>
+</Members>
+<Dependencies>
+<Dependency Type="DataType" Name="Tracking_Process_Op_Result"/>
+</Dependencies>
+</DataType>
+<DataType Name="Tracking_Process_Op_Result" Family="NoFamily" Class="User">
+<Description>
+<![CDATA[Tracking
+Process Operation Results]]>
+</Description>
+<Members>
+<Member Name="ZZZZZZZZZZTracking_P0" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="Attempt" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZTracking_P0" BitNumber="0" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Process Attempted]]>
+</Description>
+</Member>
+<Member Name="Success" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZTracking_P0" BitNumber="1" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Process Completed Successful]]>
+</Description>
+</Member>
+<Member Name="Failure" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZTracking_P0" BitNumber="2" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Process Failed]]>
+</Description>
+</Member>
+<Member Name="Lockout" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZTracking_P0" BitNumber="3" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Station Was In Lockout Mode When Nest Present]]>
+</Description>
+</Member>
 </Members>
 </DataType>
 </DataTypes>
@@ -2315,6 +2369,17 @@ Warnings]]>
 </Structure>
 </Data>
 </Tag>
+<Tag Name="g_HMI_DryRun" Class="Standard" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+<![CDATA[Global Dry Run Mode (Toggle)]]>
+</Description>
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
 <Tag Name="g_MachineBasic" Class="Standard" TagType="Base" DataType="MachineBasic" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
 <Data Format="L5K">
 <![CDATA[[0,0]]]>
@@ -2363,7 +2428,7 @@ Warnings]]>
 		],[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'
 		],[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'
 		],[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'
-		],[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'
+		],[15,'S10 Flex Feeder$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'
 		],[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'
 		],[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'
 		],[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'
@@ -2460,9 +2525,9 @@ Warnings]]>
 </Element>
 <Element Index="[10]">
 <Structure DataType="STRING">
-<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="15"/>
 <DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
-<![CDATA[]]>
+<![CDATA['S10 Flex Feeder']]>
 </DataValueMember>
 </Structure>
 </Element>
@@ -2568,6 +2633,8 @@ Warnings]]>
 </Program>
 <Program Use="Context" Name="S00_IndexerSP" Class="Standard">
 <Tags Use="Context">
+<Tag Use="Reference" Name="p_OnStation">
+</Tag>
 <Tag Use="Reference" Name="q_WaitStationsComplete">
 </Tag>
 </Tags>
@@ -2900,6 +2967,14 @@ Warnings]]>
 </Array>
 </Data>
 </Tag>
+<Tag Name="AutoIdle" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
 <Tag Name="CloseGripperDelay" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
 <Description>
 <![CDATA[Close Gripper Delay Timer]]>
@@ -2986,6 +3061,22 @@ Warnings]]>
 <DataValueMember Name="TT" DataType="BOOL" Value="0"/>
 <DataValueMember Name="DN" DataType="BOOL" Value="0"/>
 </Structure>
+</Data>
+</Tag>
+<Tag Name="DisableCornerRounding" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+<Tag Name="DisableZSpeedTransition" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
 </Data>
 </Tag>
 <Tag Name="DryRun" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
@@ -3218,6 +3309,22 @@ Warnings]]>
 </Tag>
 <Tag Name="iq_XAxis" TagType="Base" DataType="AXIS_CIP_DRIVE" Usage="InOut" ExternalAccess="Read/Write" OpcUaAccess="None"/>
 <Tag Name="iq_ZAxis" TagType="Base" DataType="AXIS_CIP_DRIVE" Usage="InOut" ExternalAccess="Read/Write" OpcUaAccess="None"/>
+<Tag Name="i_DisableCornerRounding" TagType="Base" DataType="DINT" Radix="Decimal" Usage="Input" Constant="true" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+<Tag Name="i_DisableZSpeedTransition" TagType="Base" DataType="DINT" Radix="Decimal" Usage="Input" Constant="true" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="DINT" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
 <Tag Name="i_PartPresent" TagType="Base" DataType="BOOL" Radix="Decimal" Usage="Input" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
 <Description>
 <![CDATA[Part Is Present At Dead Nest]]>
@@ -3690,6 +3797,36 @@ Warnings]]>
 <DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
 </Data>
 </Tag>
+<Tag Name="SingleCycle" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+<Tag Name="SingleDisableTracking" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[0]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
+</Data>
+</Tag>
+<Tag Name="SingleResetDelay" TagType="Base" DataType="TIMER" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[0,2000,0]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="TIMER">
+<DataValueMember Name="PRE" DataType="DINT" Radix="Decimal" Value="2000"/>
+<DataValueMember Name="ACC" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TT" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+</Structure>
+</Data>
+</Tag>
 <Tag Name="SS" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
 <Data Format="L5K">
 <![CDATA[0]]>
@@ -3792,34 +3929,58 @@ Warnings]]>
 <![CDATA[Start Of Sequence, Wait For Part Present]]>
 </Comment>
 <Comment Operand=".STATE[7]">
-<![CDATA[Extend Z Axis To Pick Position]]>
+<![CDATA[Extend Z Axis To Pick Position (Fast Approach)]]>
 </Comment>
 <Comment Operand=".STATE[10]">
-<![CDATA[Close Gripper]]>
+<![CDATA[Reduce Speed / Wait At Pick Position]]>
 </Comment>
 <Comment Operand=".STATE[13]">
-<![CDATA[Retract Z Axis]]>
+<![CDATA[Close Gripper]]>
 </Comment>
 <Comment Operand=".STATE[16]">
-<![CDATA[Extend X Axis]]>
+<![CDATA[Retract Z Axis (Slow Retreat)]]>
 </Comment>
 <Comment Operand=".STATE[19]">
-<![CDATA[Wait For Index Complete]]>
+<![CDATA[Increase Speed / Wait At Retract Position]]>
 </Comment>
 <Comment Operand=".STATE[22]">
-<![CDATA[Extend Z Axis To Place Position]]>
+<![CDATA[Extend X Axis]]>
 </Comment>
 <Comment Operand=".STATE[25]">
-<![CDATA[Open Gripper]]>
+<![CDATA[Wait For Index Complete]]>
 </Comment>
 <Comment Operand=".STATE[28]">
-<![CDATA[Retract Z Axis]]>
+<![CDATA[Extend Z Axis To Place Position (Fast Approach)]]>
 </Comment>
 <Comment Operand=".STATE[31]">
+<![CDATA[Reduce Speed / Wait At Place Position]]>
+</Comment>
+<Comment Operand=".STATE[34]">
+<![CDATA[Open Gripper]]>
+</Comment>
+<Comment Operand=".STATE[37]">
+<![CDATA[Retract Z Axis (Slow Retreat)]]>
+</Comment>
+<Comment Operand=".STATE[40]">
+<![CDATA[Increase Speed / Wait At Retract Position]]>
+</Comment>
+<Comment Operand=".STATE[43]">
 <![CDATA[Retract X Axis]]>
+</Comment>
+<Comment Operand=".STATE[46]">
+<![CDATA[Retract Z Axis (Slow Retreat)]]>
+</Comment>
+<Comment Operand=".STATE[49]">
+<![CDATA[Wait To Reach Fast Speed Transition]]>
 </Comment>
 <Comment Operand=".STATE[50]">
 <![CDATA[Cycle Complete]]>
+</Comment>
+<Comment Operand=".STATE[52]">
+<![CDATA[Increase Speed / Wait At Retract Position]]>
+</Comment>
+<Comment Operand=".STATE[55]">
+<![CDATA[Retract X Axis]]>
 </Comment>
 <Comment Operand=".STATE[99]">
 <![CDATA[Lockout]]>
@@ -4570,6 +4731,30 @@ Warnings]]>
 <DataValue DataType="BOOL" Radix="Decimal" Value="0"/>
 </Data>
 </Tag>
+<Tag Name="ZAxisMCDAccel" TagType="Base" DataType="REAL" Radix="Float" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[0.00000000e+000]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="REAL" Radix="Float" Value="0.0"/>
+</Data>
+</Tag>
+<Tag Name="ZAxisMCDDecel" TagType="Base" DataType="REAL" Radix="Float" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[0.00000000e+000]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="REAL" Radix="Float" Value="0.0"/>
+</Data>
+</Tag>
+<Tag Name="ZAxisMCDSpeed" TagType="Base" DataType="REAL" Radix="Float" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[0.00000000e+000]]>
+</Data>
+<Data Format="Decorated">
+<DataValue DataType="REAL" Radix="Float" Value="0.0"/>
+</Data>
+</Tag>
 <Tag Name="ZAxisMotionParameters" TagType="Base" DataType="MAMParam" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
 <Data Format="L5K">
 <![CDATA[[0,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000]]]>
@@ -4920,6 +5105,31 @@ Warnings]]>
 </Structure>
 </Data>
 </Tag>
+<Tag Name="ZAxis_MCD" TagType="Base" DataType="MOTION_INSTRUCTION" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[0,0,0,0,0,0,0,0,0]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="MOTION_INSTRUCTION">
+<DataValueMember Name="FLAGS" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DN" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ER" DataType="BOOL" Value="0"/>
+<DataValueMember Name="PC" DataType="BOOL" Value="0"/>
+<DataValueMember Name="IP" DataType="BOOL" Value="0"/>
+<DataValueMember Name="AC" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ACCEL" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DECEL" DataType="BOOL" Value="0"/>
+<DataValueMember Name="TrackingMaster" DataType="BOOL" Value="0"/>
+<DataValueMember Name="CalculatedDataAvailable" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ERR" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="STATUS" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="STATE" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="SEGMENT" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="EXERR" DataType="SINT" Radix="Decimal" Value="0"/>
+</Structure>
+</Data>
+</Tag>
 <Tag Name="ZAxis_MSF" TagType="Base" DataType="MOTION_INSTRUCTION" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
 <Data Format="L5K">
 <![CDATA[[0,0,0,0,0,0,0,0,0]]]>
@@ -4967,6 +5177,196 @@ Warnings]]>
 <DataValueMember Name="STATE" DataType="SINT" Radix="Decimal" Value="0"/>
 <DataValueMember Name="SEGMENT" DataType="DINT" Radix="Decimal" Value="0"/>
 <DataValueMember Name="EXERR" DataType="SINT" Radix="Decimal" Value="0"/>
+</Structure>
+</Data>
+</Tag>
+<Tag Name="ZeroPartAssyStat" TagType="Base" DataType="Tracking_Part_Assy_Stat" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[0,[[0],[0],[0],[0],[0],[0],[0],[0],[0],[0],[0],[0],[0],[0],[0],[0],[0],[0],[0],[0],[0]],0,[0,'$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00$00'
+		]]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="Tracking_Part_Assy_Stat">
+<DataValueMember Name="Good" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Bad" DataType="BOOL" Value="0"/>
+<DataValueMember Name="PartLoaded" DataType="BOOL" Value="0"/>
+<ArrayMember Name="Station" DataType="Tracking_Process_Op_Result" Dimensions="21">
+<Element Index="[0]">
+<Structure DataType="Tracking_Process_Op_Result">
+<DataValueMember Name="Attempt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Success" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Failure" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Lockout" DataType="BOOL" Value="0"/>
+</Structure>
+</Element>
+<Element Index="[1]">
+<Structure DataType="Tracking_Process_Op_Result">
+<DataValueMember Name="Attempt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Success" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Failure" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Lockout" DataType="BOOL" Value="0"/>
+</Structure>
+</Element>
+<Element Index="[2]">
+<Structure DataType="Tracking_Process_Op_Result">
+<DataValueMember Name="Attempt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Success" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Failure" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Lockout" DataType="BOOL" Value="0"/>
+</Structure>
+</Element>
+<Element Index="[3]">
+<Structure DataType="Tracking_Process_Op_Result">
+<DataValueMember Name="Attempt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Success" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Failure" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Lockout" DataType="BOOL" Value="0"/>
+</Structure>
+</Element>
+<Element Index="[4]">
+<Structure DataType="Tracking_Process_Op_Result">
+<DataValueMember Name="Attempt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Success" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Failure" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Lockout" DataType="BOOL" Value="0"/>
+</Structure>
+</Element>
+<Element Index="[5]">
+<Structure DataType="Tracking_Process_Op_Result">
+<DataValueMember Name="Attempt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Success" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Failure" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Lockout" DataType="BOOL" Value="0"/>
+</Structure>
+</Element>
+<Element Index="[6]">
+<Structure DataType="Tracking_Process_Op_Result">
+<DataValueMember Name="Attempt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Success" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Failure" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Lockout" DataType="BOOL" Value="0"/>
+</Structure>
+</Element>
+<Element Index="[7]">
+<Structure DataType="Tracking_Process_Op_Result">
+<DataValueMember Name="Attempt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Success" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Failure" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Lockout" DataType="BOOL" Value="0"/>
+</Structure>
+</Element>
+<Element Index="[8]">
+<Structure DataType="Tracking_Process_Op_Result">
+<DataValueMember Name="Attempt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Success" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Failure" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Lockout" DataType="BOOL" Value="0"/>
+</Structure>
+</Element>
+<Element Index="[9]">
+<Structure DataType="Tracking_Process_Op_Result">
+<DataValueMember Name="Attempt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Success" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Failure" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Lockout" DataType="BOOL" Value="0"/>
+</Structure>
+</Element>
+<Element Index="[10]">
+<Structure DataType="Tracking_Process_Op_Result">
+<DataValueMember Name="Attempt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Success" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Failure" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Lockout" DataType="BOOL" Value="0"/>
+</Structure>
+</Element>
+<Element Index="[11]">
+<Structure DataType="Tracking_Process_Op_Result">
+<DataValueMember Name="Attempt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Success" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Failure" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Lockout" DataType="BOOL" Value="0"/>
+</Structure>
+</Element>
+<Element Index="[12]">
+<Structure DataType="Tracking_Process_Op_Result">
+<DataValueMember Name="Attempt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Success" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Failure" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Lockout" DataType="BOOL" Value="0"/>
+</Structure>
+</Element>
+<Element Index="[13]">
+<Structure DataType="Tracking_Process_Op_Result">
+<DataValueMember Name="Attempt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Success" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Failure" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Lockout" DataType="BOOL" Value="0"/>
+</Structure>
+</Element>
+<Element Index="[14]">
+<Structure DataType="Tracking_Process_Op_Result">
+<DataValueMember Name="Attempt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Success" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Failure" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Lockout" DataType="BOOL" Value="0"/>
+</Structure>
+</Element>
+<Element Index="[15]">
+<Structure DataType="Tracking_Process_Op_Result">
+<DataValueMember Name="Attempt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Success" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Failure" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Lockout" DataType="BOOL" Value="0"/>
+</Structure>
+</Element>
+<Element Index="[16]">
+<Structure DataType="Tracking_Process_Op_Result">
+<DataValueMember Name="Attempt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Success" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Failure" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Lockout" DataType="BOOL" Value="0"/>
+</Structure>
+</Element>
+<Element Index="[17]">
+<Structure DataType="Tracking_Process_Op_Result">
+<DataValueMember Name="Attempt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Success" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Failure" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Lockout" DataType="BOOL" Value="0"/>
+</Structure>
+</Element>
+<Element Index="[18]">
+<Structure DataType="Tracking_Process_Op_Result">
+<DataValueMember Name="Attempt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Success" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Failure" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Lockout" DataType="BOOL" Value="0"/>
+</Structure>
+</Element>
+<Element Index="[19]">
+<Structure DataType="Tracking_Process_Op_Result">
+<DataValueMember Name="Attempt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Success" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Failure" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Lockout" DataType="BOOL" Value="0"/>
+</Structure>
+</Element>
+<Element Index="[20]">
+<Structure DataType="Tracking_Process_Op_Result">
+<DataValueMember Name="Attempt" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Success" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Failure" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Lockout" DataType="BOOL" Value="0"/>
+</Structure>
+</Element>
+</ArrayMember>
+<DataValueMember Name="FailureType" DataType="INT" Radix="Decimal" Value="0"/>
+<StructureMember Name="FailureMessage" DataType="STRING">
+<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">
+<![CDATA[]]>
+</DataValueMember>
+</StructureMember>
 </Structure>
 </Data>
 </Tag>
@@ -5021,28 +5421,41 @@ Warnings]]>
 </Rung>
 <Rung Number="1" Type="N">
 <Comment>
+<![CDATA[Disable Blending Options - If Required By Application]]>
+</Comment>
+<Text>
+<![CDATA[EQ(i_DisableCornerRounding,1)OTE(DisableCornerRounding);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Text>
+<![CDATA[EQ(i_DisableZSpeedTransition,1)OTE(DisableZSpeedTransition);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Comment>
 <![CDATA[Mapped/debounced inputs]]>
 </Comment>
 <Text>
 <![CDATA[NOP();]]>
 </Text>
 </Rung>
-<Rung Number="2" Type="N">
+<Rung Number="4" Type="N">
 <Text>
 <![CDATA[AOI_Debounce(PartPresentDebounce,i_PartPresent,100,100);]]>
 </Text>
 </Rung>
-<Rung Number="3" Type="N">
+<Rung Number="5" Type="N">
 <Text>
 <![CDATA[XIC(q_OpenGripper)XIO(q_CloseGripper)TON(OpenGripperDelay,?,?)XIC(OpenGripperDelay.DN)OTE(GripperOpened);]]>
 </Text>
 </Rung>
-<Rung Number="4" Type="N">
+<Rung Number="6" Type="N">
 <Text>
 <![CDATA[XIC(q_CloseGripper)XIO(q_OpenGripper)TON(CloseGripperDelay,?,?)XIC(CloseGripperDelay.DN)OTE(GripperClosed);]]>
 </Text>
 </Rung>
-<Rung Number="5" Type="N">
+<Rung Number="7" Type="N">
 <Comment>
 <![CDATA[Logic inputs
 
@@ -5052,37 +5465,42 @@ Warnings]]>
 <![CDATA[XIC(\Supervisor.q_ManualMode)XIO(HMI_LocalManualOverride)OTE(ManualMode);]]>
 </Text>
 </Rung>
-<Rung Number="6" Type="N">
-<Text>
-<![CDATA[XIC(\Supervisor.q_SafetyOK)OTE(SafetyOK);]]>
-</Text>
-</Rung>
-<Rung Number="7" Type="N">
-<Text>
-<![CDATA[XIC(\Supervisor.q_FaultReset)OTE(FaultReset);]]>
-</Text>
-</Rung>
 <Rung Number="8" Type="N">
 <Text>
-<![CDATA[XIC(\Supervisor.q_CycleStartLatch)OTE(CycleRunning);]]>
+<![CDATA[XIC(\Supervisor.q_AutoIdle)OTE(AutoIdle);]]>
 </Text>
 </Rung>
 <Rung Number="9" Type="N">
 <Text>
-<![CDATA[XIO(\Supervisor.q_CycleStartLatch)OTE(CycleStopping);]]>
+<![CDATA[XIC(\Supervisor.q_SafetyOK)OTE(SafetyOK);]]>
 </Text>
 </Rung>
 <Rung Number="10" Type="N">
 <Text>
-<![CDATA[XIC(\Supervisor.q_CycleStopped)ONS(ONS.0)XIO(Status.State[2])XIO(Status.State[3])OTE(CycleStopped);]]>
+<![CDATA[XIC(\Supervisor.q_FaultReset)OTE(FaultReset);]]>
 </Text>
 </Rung>
 <Rung Number="11" Type="N">
 <Text>
-<![CDATA[XIC(ZAxisRetract.InPos)[XIC(GripperOpened) XIC(XAxisRetract.InPos) ,XIC(GripperClosed) XIC(XAxisExtend.InPos) ]OTE(Initialized);]]>
+<![CDATA[[XIC(\Supervisor.q_CycleStartLatch) ,XIC(HMI_LocalManualOverride) ,XIC(\Tracking.p_Data.Station[StaNum].OpStatus.SingleStep) ,XIC(\Tracking.p_Data.Station[StaNum].OpStatus.SingleCycle) ]OTE(CycleRunning);]]>
 </Text>
 </Rung>
 <Rung Number="12" Type="N">
+<Text>
+<![CDATA[XIO(\Supervisor.q_CycleStartLatch)XIO(HMI_LocalManualOverride)XIO(\Tracking.p_Data.Station[StaNum].OpStatus.SingleStep)XIO(\Tracking.p_Data.Station[StaNum].OpStatus.SingleCycle)OTE(CycleStopping);]]>
+</Text>
+</Rung>
+<Rung Number="13" Type="N">
+<Text>
+<![CDATA[XIC(\Supervisor.q_CycleStopped)ONS(ONS.0)XIO(Status.State[2])XIO(Status.State[3])OTE(CycleStopped);]]>
+</Text>
+</Rung>
+<Rung Number="14" Type="N">
+<Text>
+<![CDATA[XIC(ZAxisRetract.InPos)[XIC(GripperOpened) XIC(XAxisRetract.InPos) ,XIC(GripperClosed) XIC(XAxisExtend.InPos) ]OTE(Initialized);]]>
+</Text>
+</Rung>
+<Rung Number="15" Type="N">
 <Comment>
 <![CDATA[Lockout]]>
 </Comment>
@@ -5090,28 +5508,58 @@ Warnings]]>
 <![CDATA[XIC(\Tracking.p_Data.Station[StaNum].OpStatus.Lockout)XIO(ManualMode)OTE(Lockout);]]>
 </Text>
 </Rung>
-<Rung Number="13" Type="N">
+<Rung Number="16" Type="N">
 <Comment>
 <![CDATA[Dry run logic (can add supervisor dry run condition if needed as parallel branch)]]>
 </Comment>
 <Text>
-<![CDATA[XIC(\Tracking.p_Data.Station[StaNum].OpStatus.DryRun)OTE(DryRun);]]>
+<![CDATA[[XIC(\Tracking.p_Data.Station[StaNum].OpStatus.DryRun) ,XIC(g_HMI_DryRun) ]OTE(DryRun);]]>
 </Text>
 </Rung>
-<Rung Number="14" Type="N">
+<Rung Number="17" Type="N">
 <Comment>
 <![CDATA[Single Step Logic]]>
 </Comment>
 <Text>
-<![CDATA[XIC(\Tracking.p_Data.Station[StaNum].OpStatus.SingleStep)OTE(SS);]]>
+<![CDATA[[XIC(AutoIdle) ,XIC(HMI_LocalManualOverride) ][XIC(\Tracking.p_Data.Station[StaNum].OpStatus.SingleStep) ,XIC(\Tracking.p_Data.Station[StaNum].OpStatus.SingleCycle) ]OTE(SS);]]>
 </Text>
 </Rung>
-<Rung Number="15" Type="N">
+<Rung Number="18" Type="N">
 <Text>
-<![CDATA[[XIO(SS) ,XIC(LocalSSONS) ONS(ONS.1) ]OTE(SS_OK);]]>
+<![CDATA[XIC(SS)XIC(\Tracking.p_Data.Station[StaNum].OpStatus.SingleDisableTracking)OTE(SingleDisableTracking);]]>
 </Text>
 </Rung>
-<Rung Number="16" Type="N">
+<Rung Number="19" Type="N">
+<Text>
+<![CDATA[XIC(\Tracking.p_Data.Station[StaNum].OpStatus.SingleStep)ONS(ONS.12)OTU(\Tracking.p_Data.Station[StaNum].OpStatus.SingleCycle);]]>
+</Text>
+</Rung>
+<Rung Number="20" Type="N">
+<Text>
+<![CDATA[XIC(\Tracking.p_Data.Station[StaNum].OpStatus.SingleCycle)ONS(ONS.13)OTU(\Tracking.p_Data.Station[StaNum].OpStatus.SingleStep);]]>
+</Text>
+</Rung>
+<Rung Number="21" Type="N">
+<Text>
+<![CDATA[[XIC(AutoIdle) ,XIC(HMI_LocalManualOverride) ]XIC(\Tracking.p_Data.Station[StaNum].OpStatus.SingleCycle)XIC(\Tracking.p_Data.Station[StaNum].OpStatus.SingleTrigger)ONS(ONS.14)OTL(SingleCycle);]]>
+</Text>
+</Rung>
+<Rung Number="22" Type="N">
+<Text>
+<![CDATA[XIC(SingleCycle)[XIO(AutoIdle) XIO(HMI_LocalManualOverride) ,XIO(\Tracking.p_Data.Station[StaNum].OpStatus.SingleCycle) ,XIC(q_AlarmActive) ,XIC(Status.State[4]) ONS(ONS.15) ]OTU(SingleCycle);]]>
+</Text>
+</Rung>
+<Rung Number="23" Type="N">
+<Text>
+<![CDATA[[XIO(SS) ,[XIC(AutoIdle) ,XIC(HMI_LocalManualOverride) ] XIC(\S00_IndexerSP.p_OnStation) [[XIC(LocalSSONS) ,XIC(\Tracking.p_Data.Station[StaNum].OpStatus.SingleTrigger) ] ONS(ONS.1) ,XIC(SingleCycle) ] ]OTE(SS_OK);]]>
+</Text>
+</Rung>
+<Rung Number="24" Type="N">
+<Text>
+<![CDATA[XIC(SS)XIC(\Tracking.p_Data.Station[StaNum].OpStatus.SingleClearTracking)TON(SingleResetDelay,?,?)XIC(SingleResetDelay.DN)COP(ZeroPartAssyStat,\Tracking.p_Data.Nest[NestNumCurrent].PartStatus,1);]]>
+</Text>
+</Rung>
+<Rung Number="25" Type="N">
 <Comment>
 <![CDATA[Cycle Station]]>
 </Comment>
@@ -5119,7 +5567,7 @@ Warnings]]>
 <![CDATA[[XIC(\Tracking.p_Data.Nest[NestNumCurrent].PartStatus.PartLoaded) [XIC(\Tracking.p_Data.Nest[NestNumCurrent].PartStatus.Station[StaNumPre].Success) ,XIC(\Tracking.p_Data.Nest[NestNumCurrent].PartStatus.Station[StaNumPre].Lockout) ] ,XIC(DryRun) ][XIO(\Tracking.p_Data.Nest[NestNumCurrent].PartStatus.Station[StaNum].Attempt) OTE(CycleStationA) ,OTE(CycleStationB) ];]]>
 </Text>
 </Rung>
-<Rung Number="17" Type="N">
+<Rung Number="26" Type="N">
 <Comment>
 <![CDATA[Clear HMI Manual Triggers]]>
 </Comment>
@@ -5127,7 +5575,7 @@ Warnings]]>
 <![CDATA[XIC(HMI_MomentaryOnPrevScan)MOVE(0,HMI_Momentary);]]>
 </Text>
 </Rung>
-<Rung Number="18" Type="N">
+<Rung Number="27" Type="N">
 <Text>
 <![CDATA[NE(HMI_Momentary,0)OTE(HMI_MomentaryOnPrevScan);]]>
 </Text>
@@ -5157,7 +5605,7 @@ Warnings]]>
 <![CDATA[State 3: Auto mode idle ready]]>
 </Comment>
 <Text>
-<![CDATA[[[XIC(Status.State[2]) ,XIC(CycleStopped) ] XIC(Initialized) ,[XIC(Status.State[4]) ,XIC(Status.State[19]) ,XIC(Status.State[31]) XIC(XAxis_MAM.PC) XIC(XAxisRetract.InPos) ,XIC(Status.State[124]) ] XIO(CycleRunning) ]MOVE(3,Control.StateReg);]]>
+<![CDATA[[[XIC(Status.State[2]) ,XIC(CycleStopped) ] XIC(Initialized) ,[XIC(Status.State[4]) ,XIC(Status.State[19]) ,XIC(Status.State[43]) XIC(XAxis_MAM.PC) XIC(XAxisRetract.InPos) ,XIC(Status.State[124]) ] XIO(CycleRunning) ]MOVE(3,Control.StateReg);]]>
 </Text>
 </Rung>
 <Rung Number="3" Type="N">
@@ -5165,12 +5613,12 @@ Warnings]]>
 <![CDATA[State 4: Start of sequence, wait for part present]]>
 </Comment>
 <Text>
-<![CDATA[[[XIC(Status.State[3]) XIC(Initialized) ,XIC(Status.State[124]) ] XIC(GripperOpened) ,XIC(Status.State[31]) XIC(XAxis_MAM.PC) XIC(XAxisRetract.InPos) ]XIC(CycleRunning)XIO(Lockout)MOVE(4,Control.StateReg);]]>
+<![CDATA[[[XIC(Status.State[3]) XIC(Initialized) ,XIC(Status.State[124]) ] XIC(GripperOpened) ,XIC(Status.State[43]) [XIC(XAxis_MAM.PC) XIC(XAxisRetract.InPos) ,XIO(DisableCornerRounding) XIC(XAxis_MAM.IP) XIC(XAxisRetract.InPosWide) ] ]XIC(CycleRunning)XIO(Lockout)MOVE(4,Control.StateReg);]]>
 </Text>
 </Rung>
 <Rung Number="4" Type="N">
 <Comment>
-<![CDATA[State 7: Extend z axis to pick position]]>
+<![CDATA[State 7: Extend z axis to pick position (fast approach)]]>
 </Comment>
 <Text>
 <![CDATA[XIC(Status.State[4])[XIC(PartPresentDebounce.On) ,XIC(DryRun) ]XIC(SS_OK)MOVE(7,Control.StateReg);]]>
@@ -5178,71 +5626,101 @@ Warnings]]>
 </Rung>
 <Rung Number="5" Type="N">
 <Comment>
-<![CDATA[State 10: Close gripper]]>
+<![CDATA[State 10: Reduce speed / Wait at pick position]]>
 </Comment>
 <Text>
-<![CDATA[XIC(Status.State[7])XIC(ZAxis_MAM.PC)XIC(ZAxisPick.InPos)XIC(SS_OK)MOVE(10,Control.StateReg);]]>
+<![CDATA[XIC(Status.State[7])XIO(DisableZSpeedTransition)XIC(ZAxis_MAM.IP)XIC(ZAxisPick.InPosWide)XIC(SS_OK)MOVE(10,Control.StateReg);]]>
 </Text>
 </Rung>
 <Rung Number="6" Type="N">
 <Comment>
-<![CDATA[State 13: Retract z axis]]>
+<![CDATA[State 13: Close gripper]]>
 </Comment>
 <Text>
-<![CDATA[[XIC(Status.State[10]) ,XIC(Status.State[2]) XIO(Initialized) XIC(PartStarted) XIC(CycleRunning) ]XIC(GripperClosed)XIC(SS_OK)MOVE(13,Control.StateReg);]]>
+<![CDATA[[XIC(Status.State[7]) ,XIC(Status.State[10]) ]XIC(ZAxis_MAM.PC)XIC(ZAxisPick.InPos)XIC(SS_OK)MOVE(13,Control.StateReg);]]>
 </Text>
 </Rung>
 <Rung Number="7" Type="N">
 <Comment>
-<![CDATA[State 16: Extend x axis (Application dependent - add wideband positioning permissive to advance to next state before move finishes)]]>
+<![CDATA[State 16: Retract z axis (slow retreat)]]>
 </Comment>
 <Text>
-<![CDATA[XIC(Status.State[13])[XIC(ZAxis_MAM.PC) XIC(ZAxisRetract.InPos) ,XIC(ZAxis_MAM.IP) XIC(ZAxisRetract.InPosWide) ]XIC(SS_OK)MOVE(16,Control.StateReg);]]>
+<![CDATA[[XIC(Status.State[13]) ,XIC(Status.State[2]) XIO(Initialized) XIC(PartStarted) XIC(CycleRunning) ]XIC(GripperClosed)XIC(SS_OK)MOVE(16,Control.StateReg);]]>
 </Text>
 </Rung>
 <Rung Number="8" Type="N">
 <Comment>
-<![CDATA[State 19: Wait for index complete (Application dependent - add wideband positioning permissive to advance to next state before move finishes)]]>
+<![CDATA[State 19: Increase speed / Wait at retract position]]>
 </Comment>
 <Text>
-<![CDATA[[[XIC(Status.State[3]) XIC(Initialized) ,XIC(Status.State[124]) ] XIC(GripperClosed) XIC(CycleRunning) ,XIC(Status.State[16]) [XIC(XAxis_MAM.PC) XIC(XAxisExtend.InPos) ,XIC(XAxis_MAM.IP) XIC(XAxisExtend.InPosWide) ] ]MOVE(19,Control.StateReg);]]>
+<![CDATA[XIC(Status.State[16])XIO(DisableZSpeedTransition)XIC(ZAxis_MAM.IP)XIC(ZAxisPick.InPosWide)XIC(SS_OK)MOVE(19,Control.StateReg);]]>
 </Text>
 </Rung>
 <Rung Number="9" Type="N">
 <Comment>
-<![CDATA[State 22: Extend z axis to place position
-
-Replace AlwaysOff with required part tracking and dial safe logic]]>
+<![CDATA[State 22: Extend x axis]]>
 </Comment>
 <Text>
-<![CDATA[XIC(Status.State[19])XIC(\S00_IndexerSP.q_WaitStationsComplete)XIC(CycleStationA)XIC(SS_OK)MOVE(22,Control.StateReg)OTL(\Tracking.p_Data.Nest[NestNumCurrent].PartStatus.Station[StaNum].Attempt);]]>
+<![CDATA[[XIC(Status.State[16]) ,XIC(Status.State[19]) ][XIC(ZAxis_MAM.PC) XIC(ZAxisRetract.InPos) ,XIO(DisableCornerRounding) XIC(ZAxis_MAM.IP) XIC(ZAxisRetract.InPosWide) ]XIC(SS_OK)MOVE(22,Control.StateReg);]]>
 </Text>
 </Rung>
 <Rung Number="10" Type="N">
 <Comment>
-<![CDATA[State 25: Open gripper]]>
+<![CDATA[State 25: Wait for index complete ]]>
 </Comment>
 <Text>
-<![CDATA[XIC(Status.State[22])XIC(ZAxis_MAM.PC)XIC(ZAxisPlace.InPos)XIC(SS_OK)MOVE(25,Control.StateReg);]]>
+<![CDATA[[[XIC(Status.State[3]) XIC(Initialized) ,XIC(Status.State[124]) ] XIC(GripperClosed) XIC(CycleRunning) ,XIC(Status.State[22]) [XIC(XAxis_MAM.PC) XIC(XAxisExtend.InPos) ,XIO(DisableCornerRounding) XIC(XAxis_MAM.IP) XIC(XAxisExtend.InPosWide) ] ]MOVE(25,Control.StateReg);]]>
 </Text>
 </Rung>
 <Rung Number="11" Type="N">
 <Comment>
-<![CDATA[State 28: Retract z axis]]>
+<![CDATA[State 28: Extend z axis to place position (fast approach)]]>
 </Comment>
 <Text>
-<![CDATA[XIC(Status.State[25])XIC(GripperOpened)XIC(SS_OK)MOVE(28,Control.StateReg)OTL(\Tracking.p_Data.Nest[NestNumCurrent].PartStatus.Station[StaNum].Success);]]>
+<![CDATA[XIC(Status.State[25])XIC(\S00_IndexerSP.q_WaitStationsComplete)XIC(CycleStationA)XIC(SS_OK)MOVE(28,Control.StateReg)XIO(SingleDisableTracking)OTL(\Tracking.p_Data.Nest[NestNumCurrent].PartStatus.Station[StaNum].Attempt);]]>
 </Text>
 </Rung>
 <Rung Number="12" Type="N">
 <Comment>
-<![CDATA[State 31: Retract x axis (Application dependent - add wideband positioning permissive to advance to next state before move finishes)]]>
+<![CDATA[State 31: Reduce speed / Wait at place position]]>
 </Comment>
 <Text>
-<![CDATA[XIC(Status.State[28])[XIC(ZAxis_MAM.PC) XIC(ZAxisRetract.InPos) ,XIC(ZAxis_MAM.IP) XIC(ZAxisRetract.InPosWide) ]XIC(SS_OK)MOVE(31,Control.StateReg);]]>
+<![CDATA[XIC(Status.State[28])XIO(DisableZSpeedTransition)XIC(ZAxis_MAM.IP)XIC(ZAxisPlace.InPosWide)XIC(SS_OK)MOVE(31,Control.StateReg);]]>
 </Text>
 </Rung>
 <Rung Number="13" Type="N">
+<Comment>
+<![CDATA[State 34: Open gripper]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[28]) ,XIC(Status.State[31]) ]XIC(ZAxis_MAM.PC)XIC(ZAxisPlace.InPos)XIC(SS_OK)MOVE(34,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="14" Type="N">
+<Comment>
+<![CDATA[State 37: Retract z axis (slow retreat)]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[34])XIC(GripperOpened)XIC(SS_OK)MOVE(37,Control.StateReg)XIO(SingleDisableTracking)OTL(\Tracking.p_Data.Nest[NestNumCurrent].PartStatus.Station[StaNum].Success);]]>
+</Text>
+</Rung>
+<Rung Number="15" Type="N">
+<Comment>
+<![CDATA[State 40: Increase speed / Wait at retract position]]>
+</Comment>
+<Text>
+<![CDATA[XIC(Status.State[37])XIO(DisableZSpeedTransition)XIC(ZAxis_MAM.IP)XIC(ZAxisPlace.InPosWide)XIC(SS_OK)MOVE(40,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="16" Type="N">
+<Comment>
+<![CDATA[State 43: Retract X Axis]]>
+</Comment>
+<Text>
+<![CDATA[[XIC(Status.State[37]) ,XIC(Status.State[40]) ][XIC(ZAxis_MAM.PC) XIC(ZAxisRetract.InPos) ,XIO(DisableCornerRounding) XIC(ZAxis_MAM.IP) XIC(ZAxisRetract.InPosWide) ]XIC(SS_OK)MOVE(43,Control.StateReg);]]>
+</Text>
+</Rung>
+<Rung Number="17" Type="N">
 <Comment>
 <![CDATA[State 99: Lockout]]>
 </Comment>
@@ -5250,7 +5728,7 @@ Replace AlwaysOff with required part tracking and dial safe logic]]>
 <![CDATA[XIC(CycleRunning)XIC(Lockout)MOVE(99,Control.StateReg);]]>
 </Text>
 </Rung>
-<Rung Number="14" Type="N">
+<Rung Number="18" Type="N">
 <Comment>
 <![CDATA[State 100:Start of initialization sequence, retract z axis]]>
 </Comment>
@@ -5258,7 +5736,7 @@ Replace AlwaysOff with required part tracking and dial safe logic]]>
 <![CDATA[XIC(Status.State[2])XIO(Initialized)XIO(PartStarted)XIC(CycleRunning)XIC(SS_OK)MOVE(100,Control.StateReg);]]>
 </Text>
 </Rung>
-<Rung Number="15" Type="N">
+<Rung Number="19" Type="N">
 <Comment>
 <![CDATA[State 103: Initialization retract x axis]]>
 </Comment>
@@ -5266,7 +5744,7 @@ Replace AlwaysOff with required part tracking and dial safe logic]]>
 <![CDATA[XIC(Status.State[100])XIC(ZAxis_MAM.PC)XIC(ZAxisRetract.InPos)XIC(GripperOpened)XIC(SS_OK)MOVE(103,Control.StateReg);]]>
 </Text>
 </Rung>
-<Rung Number="16" Type="N">
+<Rung Number="20" Type="N">
 <Comment>
 <![CDATA[State 106: Initialization extend x axis]]>
 </Comment>
@@ -5274,7 +5752,7 @@ Replace AlwaysOff with required part tracking and dial safe logic]]>
 <![CDATA[XIC(Status.State[100])XIC(ZAxis_MAM.PC)XIC(ZAxisRetract.InPos)XIC(GripperClosed)XIC(SS_OK)MOVE(106,Control.StateReg);]]>
 </Text>
 </Rung>
-<Rung Number="17" Type="N">
+<Rung Number="21" Type="N">
 <Comment>
 <![CDATA[State 124: Initialization complete]]>
 </Comment>
@@ -5282,7 +5760,7 @@ Replace AlwaysOff with required part tracking and dial safe logic]]>
 <![CDATA[[XIC(Status.State[103]) XIC(XAxisRetract.InPos) ,XIC(Status.State[106]) XIC(XAxisExtend.InPos) ]XIC(XAxis_MAM.PC)MOVE(124,Control.StateReg);]]>
 </Text>
 </Rung>
-<Rung Number="18" Type="N">
+<Rung Number="22" Type="N">
 <Comment>
 <![CDATA[Restart Logic
 
@@ -5294,7 +5772,7 @@ Also, you do not always need to go into the state you left. Some cases require y
 <![CDATA[XIC(Status.State[2])XIC(UseRestartLogic)XIC(CycleRunning)XIC(g_MachineBasic.AlwaysOff)MOVE(RestartState,FaultState);]]>
 </Text>
 </Rung>
-<Rung Number="19" Type="N">
+<Rung Number="23" Type="N">
 <Comment>
 <![CDATA[State 127: Fault]]>
 </Comment>
@@ -5302,7 +5780,7 @@ Also, you do not always need to go into the state you left. Some cases require y
 <![CDATA[XIC(q_AlarmActive)[ONS(ONS.2) LIMIT(4,Control.StateReg,99) MOVE(Control.StateReg,FaultState) MOVE(Control.StateReg,RestartState) ,MOVE(127,Control.StateReg) ];]]>
 </Text>
 </Rung>
-<Rung Number="20" Type="N">
+<Rung Number="24" Type="N">
 <Comment>
 <![CDATA[State 1: Manual Mode]]>
 </Comment>
@@ -5310,7 +5788,7 @@ Also, you do not always need to go into the state you left. Some cases require y
 <![CDATA[XIC(ManualMode)MOVE(1,Control.StateReg);]]>
 </Text>
 </Rung>
-<Rung Number="21" Type="N">
+<Rung Number="25" Type="N">
 <Comment>
 <![CDATA[State 0: Safety Stop]]>
 </Comment>
@@ -5318,12 +5796,12 @@ Also, you do not always need to go into the state you left. Some cases require y
 <![CDATA[[XIO(SafetyOK) ,XIC(S:FS) ][ONS(ONS.3) LIMIT(4,Control.StateReg,98) MOVE(Control.StateReg,SafetyStopState) MOVE(Control.StateReg,RestartState) ,MOVE(0,Control.StateReg) ];]]>
 </Text>
 </Rung>
-<Rung Number="22" Type="N">
+<Rung Number="26" Type="N">
 <Text>
 <![CDATA[State_Engine_128Max(StateEngine,Control,Status,StateHistory);]]>
 </Text>
 </Rung>
-<Rung Number="23" Type="N">
+<Rung Number="27" Type="N">
 <Comment>
 <![CDATA[Cycle Time
 
@@ -5345,7 +5823,7 @@ Also, you do not always need to go into the state you left. Some cases require y
 *Replace always off with real conditions]]>
 </Comment>
 <Text>
-<![CDATA[XIC(iq_XAxis.ServoActionStatus)XIC(iq_XAxis.AxisHomedStatus)XIC(iq_ZAxis.ServoActionStatus)XIC(iq_ZAxis.AxisHomedStatus)OTE(q_StartOK);]]>
+<![CDATA[XIC(iq_XAxis.ServoActionStatus)XIC(iq_XAxis.AxisHomedStatus)XIC(iq_ZAxis.ServoActionStatus)XIC(iq_ZAxis.AxisHomedStatus)XIO(\Tracking.p_Data.Station[StaNum].OpStatus.SingleStep)XIO(\Tracking.p_Data.Station[StaNum].OpStatus.SingleCycle)OTE(q_StartOK);]]>
 </Text>
 </Rung>
 <Rung Number="1" Type="N">
@@ -5403,12 +5881,12 @@ Also, you do not always need to go into the state you left. Some cases require y
 <![CDATA[Gripper Control]]>
 </Comment>
 <Text>
-<![CDATA[[XIO(Status.State[1]) [XIC(Status.State[10]) ,XIC(q_CloseGripper) XIO(Status.State[25]) ] ,XIC(Status.State[1]) [XIC(HMI_Momentary.0) ,XIC(q_CloseGripper) XIO(HMI_Momentary.1) ] ]OTE(q_CloseGripper);]]>
+<![CDATA[[XIO(Status.State[1]) [XIC(Status.State[13]) ,XIC(q_CloseGripper) XIO(Status.State[34]) ] ,XIC(Status.State[1]) [XIC(HMI_Momentary.0) ,XIC(q_CloseGripper) XIO(HMI_Momentary.1) ] ]OTE(q_CloseGripper);]]>
 </Text>
 </Rung>
 <Rung Number="9" Type="N">
 <Text>
-<![CDATA[[XIO(Status.State[1]) [XIC(Status.State[25]) ,XIC(q_OpenGripper) XIO(Status.State[10]) ] ,XIC(Status.State[1]) [XIC(HMI_Momentary.1) ,XIC(q_OpenGripper) XIO(HMI_Momentary.0) ] ]OTE(q_OpenGripper);]]>
+<![CDATA[[XIO(Status.State[1]) [XIC(Status.State[34]) ,XIC(q_OpenGripper) XIO(Status.State[13]) ] ,XIC(Status.State[1]) [XIC(HMI_Momentary.1) ,XIC(q_OpenGripper) XIO(HMI_Momentary.0) ] ]OTE(q_OpenGripper);]]>
 </Text>
 </Rung>
 <Rung Number="10" Type="N">
@@ -5536,7 +6014,7 @@ Home Direction = 0 Is Positive, 1 Is Negative]]>
 <![CDATA[Auto Mode]]>
 </Comment>
 <Text>
-<![CDATA[XIC(SafetyOK)XIO(Status.State[1])[MOVE(0,XAxisMotionParameters.MoveType) ,MOVE(HMI_XAxis.Parameters.AutoSpeed[0],XAxisMotionParameters.Speed) ,MOVE(HMI_XAxis.Parameters.Accel[0],XAxisMotionParameters.Accel) ,MOVE(HMI_XAxis.Parameters.Decel[0],XAxisMotionParameters.Decel) ,[XIC(Status.State[16]) ,XIC(Status.State[106]) ] MOVE(HMI_XAxis.Parameters.Positions[0],XAxisMotionParameters.Position) ,[XIC(Status.State[31]) ,XIC(Status.State[103]) ] MOVE(HMI_XAxis.Parameters.Positions[1],XAxisMotionParameters.Position) ];]]>
+<![CDATA[XIC(SafetyOK)XIO(Status.State[1])[MOVE(0,XAxisMotionParameters.MoveType) ,MOVE(HMI_XAxis.Parameters.AutoSpeed[0],XAxisMotionParameters.Speed) ,MOVE(HMI_XAxis.Parameters.Accel[0],XAxisMotionParameters.Accel) ,MOVE(HMI_XAxis.Parameters.Decel[0],XAxisMotionParameters.Decel) ,[XIC(Status.State[22]) ,XIC(Status.State[106]) ] MOVE(HMI_XAxis.Parameters.Positions[0],XAxisMotionParameters.Position) ,[XIC(Status.State[43]) ,XIC(Status.State[103]) ] MOVE(HMI_XAxis.Parameters.Positions[1],XAxisMotionParameters.Position) ];]]>
 </Text>
 </Rung>
 <Rung Number="15" Type="N">
@@ -5544,7 +6022,7 @@ Home Direction = 0 Is Positive, 1 Is Negative]]>
 <![CDATA[Axis Motion Command]]>
 </Comment>
 <Text>
-<![CDATA[XIC(SafetyOK)[XIC(Status.State[1]) XIC(XAxisManMoveTrig) ,XIO(Status.State[1]) [XIC(Status.State[16]) ,XIC(Status.State[31]) ,XIC(Status.State[103]) ,XIC(Status.State[106]) ] ]XIC(iq_XAxis.ServoActionStatus)XIC(iq_XAxis.AxisHomedStatus)XIC(XAxisPermissive)MAM(iq_XAxis,XAxis_MAM,XAxisMotionParameters.MoveType,XAxisMotionParameters.Position,XAxisMotionParameters.Speed,Units per sec,XAxisMotionParameters.Accel,Units per sec2,XAxisMotionParameters.Decel,Units per sec2,Trapezoidal,0,0,Units per sec3,Disabled,0,0,None,0,0);]]>
+<![CDATA[XIC(SafetyOK)[XIC(Status.State[1]) XIC(XAxisManMoveTrig) ,XIO(Status.State[1]) [XIC(Status.State[22]) ,XIC(Status.State[43]) ,XIC(Status.State[103]) ,XIC(Status.State[106]) ] ]XIC(iq_XAxis.ServoActionStatus)XIC(iq_XAxis.AxisHomedStatus)XIC(XAxisPermissive)MAM(iq_XAxis,XAxis_MAM,XAxisMotionParameters.MoveType,XAxisMotionParameters.Position,XAxisMotionParameters.Speed,Units per sec,XAxisMotionParameters.Accel,Units per sec2,XAxisMotionParameters.Decel,Units per sec2,Trapezoidal,0,0,Units per sec3,Disabled,0,0,None,0,0);]]>
 </Text>
 </Rung>
 <Rung Number="16" Type="N">
@@ -5706,21 +6184,29 @@ Home Direction = 0 Is Positive, 1 Is Negative]]>
 </Rung>
 <Rung Number="14" Type="N">
 <Comment>
-<![CDATA[Auto Mode]]>
+<![CDATA[Auto Mode - 0 Is Fast Speed, 1 Is Slow Speed]]>
 </Comment>
 <Text>
-<![CDATA[XIC(SafetyOK)XIO(Status.State[1])[MOVE(0,ZAxisMotionParameters.MoveType) ,MOVE(HMI_ZAxis.Parameters.AutoSpeed[0],ZAxisMotionParameters.Speed) ,MOVE(HMI_ZAxis.Parameters.Accel[0],ZAxisMotionParameters.Accel) ,MOVE(HMI_ZAxis.Parameters.Decel[0],ZAxisMotionParameters.Decel) ,XIC(Status.State[7]) MOVE(HMI_ZAxis.Parameters.Positions[0],ZAxisMotionParameters.Position) ,XIC(Status.State[22]) MOVE(HMI_ZAxis.Parameters.Positions[1],ZAxisMotionParameters.Position) ,[XIC(Status.State[13]) ,XIC(Status.State[28]) ,XIC(Status.State[100]) ] MOVE(HMI_ZAxis.Parameters.Positions[2],ZAxisMotionParameters.Position) ];]]>
+<![CDATA[XIC(SafetyOK)XIO(Status.State[1])[MOVE(0,ZAxisMotionParameters.MoveType) ,[[XIC(Status.State[7]) ,XIC(Status.State[28]) ,XIC(Status.State[100]) ] ,[XIC(Status.State[16]) ,XIC(Status.State[37]) ] XIC(DisableZSpeedTransition) ] [MOVE(HMI_ZAxis.Parameters.AutoSpeed[0],ZAxisMotionParameters.Speed) ,MOVE(HMI_ZAxis.Parameters.Accel[0],ZAxisMotionParameters.Accel) ,MOVE(HMI_ZAxis.Parameters.Decel[0],ZAxisMotionParameters.Decel) ] ,[XIC(Status.State[16]) ,XIC(Status.State[37]) ] XIO(DisableZSpeedTransition) [MOVE(HMI_ZAxis.Parameters.AutoSpeed[1],ZAxisMotionParameters.Speed) ,MOVE(HMI_ZAxis.Parameters.Accel[1],ZAxisMotionParameters.Accel) ,MOVE(HMI_ZAxis.Parameters.Decel[1],ZAxisMotionParameters.Decel) ] ,XIC(Status.State[7]) MOVE(HMI_ZAxis.Parameters.Positions[0],ZAxisMotionParameters.Position) ,XIC(Status.State[28]) MOVE(HMI_ZAxis.Parameters.Positions[1],ZAxisMotionParameters.Position) ,[XIC(Status.State[16]) ,XIC(Status.State[37]) ,XIC(Status.State[100]) ] MOVE(HMI_ZAxis.Parameters.Positions[2],ZAxisMotionParameters.Position) ];]]>
 </Text>
 </Rung>
 <Rung Number="15" Type="N">
 <Comment>
-<![CDATA[Axis Motion Command]]>
+<![CDATA[Use MCD For Speed Changes]]>
 </Comment>
 <Text>
-<![CDATA[XIC(SafetyOK)[XIC(Status.State[1]) XIC(ZAxisManMoveTrig) ,XIO(Status.State[1]) [XIC(Status.State[7]) ,XIC(Status.State[13]) ,XIC(Status.State[22]) ,XIC(Status.State[28]) ,XIC(Status.State[100]) ] ]XIC(iq_ZAxis.ServoActionStatus)XIC(iq_ZAxis.AxisHomedStatus)XIC(ZAxisPermissive)MAM(iq_ZAxis,ZAxis_MAM,ZAxisMotionParameters.MoveType,ZAxisMotionParameters.Position,ZAxisMotionParameters.Speed,Units per sec,ZAxisMotionParameters.Accel,Units per sec2,ZAxisMotionParameters.Decel,Units per sec2,Trapezoidal,0,0,Units per sec3,Disabled,0,0,None,0,0);]]>
+<![CDATA[[[XIC(Status.State[10]) ,XIC(Status.State[31]) ] [MOVE(HMI_ZAxis.Parameters.AutoSpeed[1],ZAxisMCDSpeed) ,MOVE(HMI_ZAxis.Parameters.Accel[1],ZAxisMCDAccel) ,MOVE(HMI_ZAxis.Parameters.Decel[1],ZAxisMCDDecel) ] ,[XIC(Status.State[19]) ,XIC(Status.State[40]) ] [MOVE(HMI_ZAxis.Parameters.AutoSpeed[0],ZAxisMCDSpeed) ,MOVE(HMI_ZAxis.Parameters.Accel[0],ZAxisMCDAccel) ,MOVE(HMI_ZAxis.Parameters.Decel[0],ZAxisMCDDecel) ] ]MCD(iq_ZAxis,ZAxis_MCD,Move,Yes,ZAxisMCDSpeed,Yes,ZAxisMCDAccel,Yes,ZAxisMCDDecel,No,0,No,0,Units per sec,Units per sec2,Units per sec2,Units per sec3);]]>
 </Text>
 </Rung>
 <Rung Number="16" Type="N">
+<Comment>
+<![CDATA[Axis Motion Command]]>
+</Comment>
+<Text>
+<![CDATA[XIC(SafetyOK)[XIC(Status.State[1]) XIC(ZAxisManMoveTrig) ,XIO(Status.State[1]) [XIC(Status.State[7]) ,XIC(Status.State[16]) ,XIC(Status.State[28]) ,XIC(Status.State[37]) ,XIC(Status.State[100]) ] ]XIC(iq_ZAxis.ServoActionStatus)XIC(iq_ZAxis.AxisHomedStatus)XIC(ZAxisPermissive)MAM(iq_ZAxis,ZAxis_MAM,ZAxisMotionParameters.MoveType,ZAxisMotionParameters.Position,ZAxisMotionParameters.Speed,Units per sec,ZAxisMotionParameters.Accel,Units per sec2,ZAxisMotionParameters.Decel,Units per sec2,Trapezoidal,0,0,Units per sec3,Disabled,0,0,None,0,0);]]>
+</Text>
+</Rung>
+<Rung Number="17" Type="N">
 <Comment>
 <![CDATA[Stop axis if permissive turns off while in motion and use max or close to max decel value]]>
 </Comment>
@@ -5728,7 +6214,7 @@ Home Direction = 0 Is Positive, 1 Is Negative]]>
 <![CDATA[XIO(iq_ZAxis.MotionStatus.0)[XIO(ZAxisPermissive) ,XIO(SafetyOK) ]MAS(iq_ZAxis,ZAxis_MAS_All,All,Yes,HMI_ZAxis.Status.MaxDecel,Units per sec2,Yes,10,% of Time);]]>
 </Text>
 </Rung>
-<Rung Number="17" Type="N">
+<Rung Number="18" Type="N">
 <Comment>
 <![CDATA[Set torque]]>
 </Comment>
@@ -5736,12 +6222,12 @@ Home Direction = 0 Is Positive, 1 Is Negative]]>
 <![CDATA[XIC(HMI_ZAxis.Control.SetTorquePos)MOVE(HMI_ZAxis.Parameters.TorquePos,iq_ZAxis.TorqueLimitPositive);]]>
 </Text>
 </Rung>
-<Rung Number="18" Type="N">
+<Rung Number="19" Type="N">
 <Text>
 <![CDATA[XIC(HMI_ZAxis.Control.SetTorqueNeg)MOVE(HMI_ZAxis.Parameters.TorqueNeg,iq_ZAxis.TorqueLimitNegative);]]>
 </Text>
 </Rung>
-<Rung Number="19" Type="N">
+<Rung Number="20" Type="N">
 <Comment>
 <![CDATA[Retrieve values from axis]]>
 </Comment>
@@ -5749,7 +6235,7 @@ Home Direction = 0 Is Positive, 1 Is Negative]]>
 <![CDATA[MOVE(iq_ZAxis.ActualPosition,HMI_ZAxis.Status.ActualPosition)MOVE(iq_ZAxis.ActualVelocity,HMI_ZAxis.Status.ActualVelocity)MOVE(iq_ZAxis.TorqueReferenceFiltered,HMI_ZAxis.Status.ActualTorque);]]>
 </Text>
 </Rung>
-<Rung Number="20" Type="N">
+<Rung Number="21" Type="N">
 <Comment>
 <![CDATA[Retrieve the maximum speed value from the axis and calculate max accel and decel.  The max velocity is 85% of full speed.  Equation is based upon 100% speed at a 30ms accel/decel time.]]>
 </Comment>
@@ -5757,12 +6243,12 @@ Home Direction = 0 Is Positive, 1 Is Negative]]>
 <![CDATA[XIC(S:FS)GSV(Axis,iq_ZAxis,MaximumSpeed,HMI_ZAxis.Status.MaxVelocity)CPT(HMI_ZAxis.Status.MaxAccel,(HMI_ZAxis.Status.MaxVelocity/0.85)/0.03)MOVE(HMI_ZAxis.Status.MaxAccel,HMI_ZAxis.Status.MaxDecel);]]>
 </Text>
 </Rung>
-<Rung Number="21" Type="N">
+<Rung Number="22" Type="N">
 <Comment>
 <![CDATA[Axis Position Monitor]]>
 </Comment>
 <Text>
-<![CDATA[[AOI_RangeCheck(ZAxisPick,HMI_ZAxis.Parameters.Positions[0],0.5,HMI_ZAxis.Status.ActualPosition,5) ,AOI_RangeCheck(ZAxisPlace,HMI_ZAxis.Parameters.Positions[1],0.5,HMI_ZAxis.Status.ActualPosition,5) ,AOI_RangeCheck(ZAxisRetract,HMI_ZAxis.Parameters.Positions[2],0.5,HMI_ZAxis.Status.ActualPosition,5) ];]]>
+<![CDATA[[AOI_RangeCheck(ZAxisPick,HMI_ZAxis.Parameters.Positions[0],0.5,HMI_ZAxis.Status.ActualPosition,10) ,AOI_RangeCheck(ZAxisPlace,HMI_ZAxis.Parameters.Positions[1],0.5,HMI_ZAxis.Status.ActualPosition,10) ,AOI_RangeCheck(ZAxisRetract,HMI_ZAxis.Parameters.Positions[2],0.5,HMI_ZAxis.Status.ActualPosition,10) ];]]>
 </Text>
 </Rung>
 </RLLContent>
@@ -5774,7 +6260,7 @@ Home Direction = 0 Is Positive, 1 Is Negative]]>
 <![CDATA[X Axis Servo Drive Is Faulted]]>
 </Comment>
 <Text>
-<![CDATA[XIO(Lockout)NE(iq_XAxis.AxisFault,0)[OTE(ServoAlarm[0].Active) ,ONS(ONS.5) DTOS(iq_XAxis.AxisFault,XAxisFault) CONCAT(g_StationList[StaNum],ServoAlarmList[0],XAxisFaultMessage) CONCAT(XAxisFaultMessage,XAxisFault,ServoAlarm[0].Message) ];]]>
+<![CDATA[XIO(Lockout)NE(iq_XAxis.AxisFault,0)[OTE(ServoAlarm[0].Active) ,ONS(ONS.16) DTOS(iq_XAxis.AxisFault,XAxisFault) CONCAT(g_StationList[StaNum],ServoAlarmList[0],XAxisFaultMessage) CONCAT(XAxisFaultMessage,XAxisFault,ServoAlarm[0].Message) ];]]>
 </Text>
 </Rung>
 <Rung Number="1" Type="N">
@@ -5782,7 +6268,7 @@ Home Direction = 0 Is Positive, 1 Is Negative]]>
 <![CDATA[X Axis Loss Of Absolute Position Reference]]>
 </Comment>
 <Text>
-<![CDATA[XIO(Lockout)XIC(g_MachineBasic.PowerUpCP)XIO(iq_XAxis.AxisHomedStatus)[OTE(ServoAlarm[1].Active) ,ONS(ONS.6) CONCAT(g_StationList[StaNum],ServoAlarmList[1],ServoAlarm[1].Message) ];]]>
+<![CDATA[XIO(Lockout)XIC(g_MachineBasic.PowerUpCP)XIO(iq_XAxis.AxisHomedStatus)[OTE(ServoAlarm[1].Active) ,ONS(ONS.17) CONCAT(g_StationList[StaNum],ServoAlarmList[1],ServoAlarm[1].Message) ];]]>
 </Text>
 </Rung>
 <Rung Number="2" Type="N">
@@ -5790,7 +6276,7 @@ Home Direction = 0 Is Positive, 1 Is Negative]]>
 <![CDATA[Z Axis Servo Drive Is Faulted]]>
 </Comment>
 <Text>
-<![CDATA[XIO(Lockout)NE(iq_ZAxis.AxisFault,0)[OTE(ServoAlarm[2].Active) ,ONS(ONS.7) DTOS(iq_ZAxis.AxisFault,ZAxisFault) CONCAT(g_StationList[StaNum],ServoAlarmList[2],ZAxisFaultMessage) CONCAT(ZAxisFaultMessage,ZAxisFault,ServoAlarm[2].Message) ];]]>
+<![CDATA[XIO(Lockout)NE(iq_ZAxis.AxisFault,0)[OTE(ServoAlarm[2].Active) ,ONS(ONS.18) DTOS(iq_ZAxis.AxisFault,ZAxisFault) CONCAT(g_StationList[StaNum],ServoAlarmList[2],ZAxisFaultMessage) CONCAT(ZAxisFaultMessage,ZAxisFault,ServoAlarm[2].Message) ];]]>
 </Text>
 </Rung>
 <Rung Number="3" Type="N">
@@ -5798,7 +6284,7 @@ Home Direction = 0 Is Positive, 1 Is Negative]]>
 <![CDATA[Z Axis Loss Of Absolute Position Reference]]>
 </Comment>
 <Text>
-<![CDATA[XIO(Lockout)XIC(g_MachineBasic.PowerUpCP)XIO(iq_ZAxis.AxisHomedStatus)[OTE(ServoAlarm[3].Active) ,ONS(ONS.8) CONCAT(g_StationList[StaNum],ServoAlarmList[3],ServoAlarm[3].Message) ];]]>
+<![CDATA[XIO(Lockout)XIC(g_MachineBasic.PowerUpCP)XIO(iq_ZAxis.AxisHomedStatus)[OTE(ServoAlarm[3].Active) ,ONS(ONS.19) CONCAT(g_StationList[StaNum],ServoAlarmList[3],ServoAlarm[3].Message) ];]]>
 </Text>
 </Rung>
 <Rung Number="4" Type="N">
@@ -5814,7 +6300,7 @@ Home Direction = 0 Is Positive, 1 Is Negative]]>
 <![CDATA[Waiting For X Axis To Extend]]>
 </Comment>
 <Text>
-<![CDATA[[[XIC(Status.State[16]) ,XIC(Status.State[106]) ] MOVE(3000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[0].Active) XIO(FaultReset) ][OTE(Alarm[0].Active) ,ONS(ONS.9) CONCAT(g_StationList[StaNum],AlarmList[0],Alarm[0].Message) ];]]>
+<![CDATA[[[XIC(Status.State[22]) ,XIC(Status.State[106]) ] MOVE(3000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[0].Active) XIO(FaultReset) ][OTE(Alarm[0].Active) ,ONS(ONS.20) CONCAT(g_StationList[StaNum],AlarmList[0],Alarm[0].Message) ];]]>
 </Text>
 </Rung>
 <Rung Number="6" Type="N">
@@ -5822,7 +6308,7 @@ Home Direction = 0 Is Positive, 1 Is Negative]]>
 <![CDATA[Waiting For X Axis To Retract]]>
 </Comment>
 <Text>
-<![CDATA[[[XIC(Status.State[31]) ,XIC(Status.State[103]) ] MOVE(3000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[1].Active) XIO(FaultReset) ][OTE(Alarm[1].Active) ,ONS(ONS.10) CONCAT(g_StationList[StaNum],AlarmList[1],Alarm[1].Message) ];]]>
+<![CDATA[[[XIC(Status.State[43]) ,XIC(Status.State[103]) ] MOVE(3000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[1].Active) XIO(FaultReset) ][OTE(Alarm[1].Active) ,ONS(ONS.21) CONCAT(g_StationList[StaNum],AlarmList[1],Alarm[1].Message) ];]]>
 </Text>
 </Rung>
 <Rung Number="7" Type="N">
@@ -5830,7 +6316,7 @@ Home Direction = 0 Is Positive, 1 Is Negative]]>
 <![CDATA[Waiting For Z Axis To Extend To Pick]]>
 </Comment>
 <Text>
-<![CDATA[[XIC(Status.State[7]) MOVE(3000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[2].Active) XIO(FaultReset) ][OTE(Alarm[2].Active) ,ONS(ONS.11) CONCAT(g_StationList[StaNum],AlarmList[2],Alarm[2].Message) ];]]>
+<![CDATA[[[XIC(Status.State[7]) ,XIC(Status.State[10]) ] MOVE(3000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[2].Active) XIO(FaultReset) ][OTE(Alarm[2].Active) ,ONS(ONS.22) CONCAT(g_StationList[StaNum],AlarmList[2],Alarm[2].Message) ];]]>
 </Text>
 </Rung>
 <Rung Number="8" Type="N">
@@ -5838,7 +6324,7 @@ Home Direction = 0 Is Positive, 1 Is Negative]]>
 <![CDATA[Waiting For Z Axis To Extend To Place]]>
 </Comment>
 <Text>
-<![CDATA[[XIC(Status.State[22]) MOVE(3000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[3].Active) XIO(FaultReset) ][OTE(Alarm[3].Active) ,ONS(ONS.12) CONCAT(g_StationList[StaNum],AlarmList[3],Alarm[3].Message) ];]]>
+<![CDATA[[[XIC(Status.State[28]) ,XIC(Status.State[31]) ] MOVE(3000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[3].Active) XIO(FaultReset) ][OTE(Alarm[3].Active) ,ONS(ONS.23) CONCAT(g_StationList[StaNum],AlarmList[3],Alarm[3].Message) ];]]>
 </Text>
 </Rung>
 <Rung Number="9" Type="N">
@@ -5846,7 +6332,7 @@ Home Direction = 0 Is Positive, 1 Is Negative]]>
 <![CDATA[Waiting For Z Axis To Retract]]>
 </Comment>
 <Text>
-<![CDATA[[[XIC(Status.State[13]) ,XIC(Status.State[28]) ,XIC(Status.State[100]) ] MOVE(3000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[4].Active) XIO(FaultReset) ][OTE(Alarm[4].Active) ,ONS(ONS.13) CONCAT(g_StationList[StaNum],AlarmList[4],Alarm[4].Message) ];]]>
+<![CDATA[[[XIC(Status.State[16]) ,XIC(Status.State[19]) ,XIC(Status.State[37]) ,XIC(Status.State[40]) ,XIC(Status.State[100]) ] MOVE(3000,Control.FaultTime) XIC(Status.TimeoutFlt) ,XIC(Alarm[4].Active) XIO(FaultReset) ][OTE(Alarm[4].Active) ,ONS(ONS.24) CONCAT(g_StationList[StaNum],AlarmList[4],Alarm[4].Message) ];]]>
 </Text>
 </Rung>
 <Rung Number="10" Type="N">
@@ -5854,7 +6340,7 @@ Home Direction = 0 Is Positive, 1 Is Negative]]>
 <![CDATA[Waiting For Part Present]]>
 </Comment>
 <Text>
-<![CDATA[XIC(Status.State[4])MOVE(10000,Control.FaultTime)XIC(Status.TimeoutFlt)[OTE(Alarm[5].Active) ,ONS(ONS.14) MOVE(1,Alarm[5].Severity) CONCAT(g_StationList[StaNum],AlarmList[5],Alarm[5].Message) ];]]>
+<![CDATA[XIC(Status.State[4])MOVE(10000,Control.FaultTime)XIC(Status.TimeoutFlt)[OTE(Alarm[5].Active) ,ONS(ONS.25) MOVE(1,Alarm[5].Severity) CONCAT(g_StationList[StaNum],AlarmList[5],Alarm[5].Message) ];]]>
 </Text>
 </Rung>
 <Rung Number="11" Type="N">
@@ -5892,6 +6378,8 @@ Home Direction = 0 Is Positive, 1 Is Negative]]>
 </Program>
 <Program Use="Context" Name="Supervisor" Class="Standard">
 <Tags Use="Context">
+<Tag Use="Reference" Name="q_AutoIdle">
+</Tag>
 <Tag Use="Reference" Name="q_CycleStartLatch">
 </Tag>
 <Tag Use="Reference" Name="q_CycleStopped">

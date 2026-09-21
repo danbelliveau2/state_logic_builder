@@ -392,8 +392,8 @@ function loadStudyMaterial(item, budgetUSD) {
   const abs = path.join(ROOT, item.path);
   const raw = fs.readFileSync(abs, 'utf8');
   // input-token budget: leave room for concepts + doctrine (~15k tokens) and
-  // worst-case output (16k tokens * $25/M = $0.40)
-  const inBudgetTokens = Math.max(20_000, Math.floor(((budgetUSD - 0.40) / price.in) * 1_000_000) - 15_000);
+  // worst-case output (32k tokens * $25/M = $0.80)
+  const inBudgetTokens = Math.max(20_000, Math.floor(((budgetUSD - 0.80) / price.in) * 1_000_000) - 15_000);
   // RLL rung text is punctuation-dense: ~2.5 chars/token (measured 2026-08-23:
   // 1.3M chars → 528k tokens). Prose runs ~4 chars/token.
   if (/\.l5x$/i.test(item.path)) return extractL5XEssence(raw, Math.floor(inBudgetTokens * 2.5));
@@ -402,6 +402,31 @@ function loadStudyMaterial(item, budgetUSD) {
 }
 
 // ── the study pass ───────────────────────────────────────────────────────────
+// Walks JSON text tracking whether we're inside a string literal (respecting
+// backslash escapes), and escapes any raw newline/CR/tab found there. Leaves
+// structural whitespace (outside strings) untouched.
+function repairJsonControlChars(raw) {
+  let out = '';
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (!inString) {
+      out += ch;
+      if (ch === '"') inString = true;
+      continue;
+    }
+    if (escaped) { out += ch; escaped = false; continue; }
+    if (ch === '\\') { out += ch; escaped = true; continue; }
+    if (ch === '"') { out += ch; inString = false; continue; }
+    if (ch === '\n') { out += '\\n'; continue; }
+    if (ch === '\r') { continue; }
+    if (ch === '\t') { out += '\\t'; continue; }
+    out += ch;
+  }
+  return out;
+}
+
 async function studyItem(item, manifest, { budgetUSD = 2, resolveQuestionId = null } = {}) {
   if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY missing (.env) — cannot study');
   const Anthropic = require('@anthropic-ai/sdk');
@@ -444,18 +469,65 @@ Study it deeply through the concept lens: for each domain present, does it confi
   const estIn = Math.ceil((system.length + user.length) / 4);
   console.log(`  model: ${MODEL}   est input ~${estIn.toLocaleString()} tokens (~$${(estIn * price.in / 1e6).toFixed(2)})`);
 
-  const resp = await client.messages.create({
-    model: MODEL,
-    max_tokens: 16_000,
-    system,
-    messages: [{ role: 'user', content: user }],
-  });
-  const usage = resp.usage || { input_tokens: 0, output_tokens: 0 };
+  // max_tokens: 32_000 can exceed the SDK's 10-minute non-streaming cap, so
+  // this must go through .stream() rather than .create() (2026-09-03).
+  // Multi-concept-file items (e.g. 3 full file rewrites) can still truncate
+  // at 32K — retry once at double the budget on stop_reason=max_tokens rather
+  // than trusting whatever partial text came back (2026-09-08: a truncated
+  // response happened to contain a stray '}' inside prose, so the old
+  // "greedy regex to last brace" check produced a bogus-but-parseable-looking
+  // fragment instead of failing loudly — same class of bug this codebase
+  // already guards against elsewhere via explicit stop_reason checks, see
+  // specAuthor.js / coordinationAuthor.js).
+  let maxTokens = 32_000;
+  let resp, usage, text;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    resp = await client.messages.stream({
+      model: MODEL,
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: 'user', content: user }],
+    }).finalMessage();
+    usage = resp.usage || { input_tokens: 0, output_tokens: 0 };
+    text = (resp.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+    if (resp.stop_reason === 'max_tokens' && attempt === 1) {
+      console.warn(`  response truncated at ${maxTokens} output tokens — retrying at ${maxTokens * 2}`);
+      maxTokens *= 2;
+      continue;
+    }
+    break;
+  }
   const costUSD = usage.input_tokens * price.in / 1e6 + usage.output_tokens * price.out / 1e6;
-  const text = (resp.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+  if (resp.stop_reason === 'max_tokens') {
+    try { fs.writeFileSync(path.join(ROOT, '_debug_study_response.txt'), text, 'utf8'); } catch (_) {}
+    throw new Error(`Study response truncated at ${maxTokens} output tokens even after retry (output_tokens=${usage.output_tokens}, textLen=${text.length}). Raw response dumped to _debug_study_response.txt`);
+  }
   const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('No JSON in study response');
-  const result = JSON.parse(jsonMatch[0]);
+  if (!jsonMatch) {
+    const reason = resp.stop_reason || 'unknown';
+    const tail = text.slice(-300);
+    throw new Error(`No JSON in study response (stop_reason=${reason}, output_tokens=${usage.output_tokens}, textLen=${text.length}). Tail: ${JSON.stringify(tail)}`);
+  }
+  let result;
+  try {
+    result = JSON.parse(jsonMatch[0]);
+  } catch (err) {
+    // The model reproduces full file content as JSON string values
+    // (conceptEdits[].updatedContent); it sometimes forgets to escape a raw
+    // newline/tab inside one of those strings, which breaks JSON.parse with
+    // "Unterminated string" mid-object (2026-09-08). Repair by walking the
+    // text with a string-aware scanner and escaping stray control chars that
+    // appear *inside* a string literal, then retry once.
+    try {
+      result = JSON.parse(repairJsonControlChars(jsonMatch[0]));
+      console.warn(`  JSON had unescaped control chars inside a string — repaired and parsed (${err.message})`);
+    } catch (err2) {
+      try {
+        fs.writeFileSync(path.join(ROOT, '_debug_study_response.txt'), text, 'utf8');
+      } catch (_) {}
+      throw new Error(`Study response JSON did not parse, even after repair: ${err2.message}. Original error: ${err.message}. Raw response dumped to _debug_study_response.txt`);
+    }
+  }
 
   // apply concept edits (allowed files only, sanity-checked)
   const applied = [];

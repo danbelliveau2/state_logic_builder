@@ -1,25 +1,25 @@
 {
-  "updatedAt": "2026-08-26T10:45:06.013Z",
+  "updatedAt": "2026-09-21T11:32:30.819Z",
   "doctrine": "concepts-not-rules: each study pass DEEPENS concept files (integrated understanding, cited sources); anti-pattern items land in anti-patterns.md only",
   "counts": {
-    "total": 44,
+    "total": 46,
     "byStatus": {
-      "unstudied": 25,
-      "studied": 19
+      "studied": 33,
+      "unstudied": 13
     },
     "byTopic": {
-      "naming-structure": 8,
-      "chassis-cam": 8,
+      "servo": 20,
+      "indexer": 22,
+      "alarms": 25,
+      "part-tracking": 15,
+      "pneumatics": 17,
+      "chassis-cam": 9,
       "laser-marker": 4,
       "vision": 11,
-      "indexer": 19,
-      "servo": 19,
-      "alarms": 24,
-      "production-oee": 15,
-      "pneumatics": 15,
+      "production-oee": 16,
       "anti-pattern": 4,
-      "part-tracking": 14,
       "process": 2,
+      "naming-structure": 8,
       "sensors": 1,
       "robot": 1,
       "recipe": 1,
@@ -35,44 +35,28 @@
   ],
   "items": [
     {
-      "id": "ci_v7_verified_jason",
-      "path": "plc-reference/verified/SDCServoPNP_JARVIS_v7__verified_by_Jason.L5X",
-      "kind": "engineer-verified-correct",
+      "id": "ci_c6f2a728e092",
+      "path": "plc-reference/standard/S05_ServoPNP.L5X",
+      "kind": "template",
       "topics": [
         "servo",
+        "indexer",
         "alarms",
-        "part-tracking"
+        "part-tracking",
+        "pneumatics"
       ],
       "antiPattern": false,
       "conceptFiles": [
-        "servo-motion.md",
-        "motion-model-pnp.md",
+        "coordination.md",
+        "station-archetypes.md",
         "alarms.md"
       ],
       "status": "studied",
-      "studiedAt": "2026-08-26",
-      "studiedNote": "SDCServoPNP_JARVIS_v7.L5X confirmed CORRECT by Jason Perry (2026-08-26, via Dan). Gold exemplar - new top rank in preWriteStudy exemplar ordering (engineer-verified > engineer-corrected > delivered). Verified answers folded into motion-model-pnp.md (cross-axis corner blend wide band) and alarms.md (MCD 3-state stroke alarm partitioning).",
-      "sizeBytes": 294745,
-      "hash": null,
-      "priority": 0
-    },
-    {
-      "id": "ci_3074de1965f5",
-      "path": "plc-reference/training-queue/test-ref.L5X",
-      "kind": "intake",
-      "topics": [
-        "naming-structure"
-      ],
-      "antiPattern": false,
-      "conceptFiles": [
-        "naming-and-structure.md"
-      ],
-      "status": "unstudied",
-      "studiedAt": null,
-      "studiedNote": null,
-      "sizeBytes": 26,
-      "hash": "374f45dc41f9",
-      "priority": 1000
+      "studiedAt": "2026-09-21T11:32:30.819Z",
+      "studiedNote": "S05_ServoPNP is the canonical two-axis servo PNP station: it taught that single-step, dry run and blending are configuration terms woven into existing rungs (never separate sequences), that the part-in-hand memory is PartStarted plus gripper state doing two different jobs, and that servo timeout alarms are indexed per taught position rather than per state.",
+      "sizeBytes": 302343,
+      "hash": "47fd3ebdebcf",
+      "priority": 100
     },
     {
       "id": "ci_9ebe82dfe17f",
@@ -117,9 +101,9 @@
       "conceptFiles": [
         "anti-patterns.md"
       ],
-      "status": "unstudied",
-      "studiedAt": null,
-      "studiedNote": null,
+      "status": "studied",
+      "studiedAt": "2026-09-01T19:36:20.487Z",
+      "studiedNote": "1086 Steris Cable taught that standard AOIs/UDTs in a project do not make it standard-shaped: it added new anti-pattern evidence on motion-in-state-logic with hollow/orphan states, hand-mirrored colliding alarm indices, cross-program handshaking via controller-scope bits, AlwaysOff/AFI gates that disable comm monitoring and safety bypass words, duplicated HMI/production data with dead OEE fields, plus legacy device evidence for the IPG YLR laser, ifm IO-Link master and reel VFD.",
       "sizeBytes": 1942032,
       "hash": "29ae7bb02b2e",
       "priority": 110
@@ -141,9 +125,9 @@
       "conceptFiles": [
         "anti-patterns.md"
       ],
-      "status": "unstudied",
-      "studiedAt": null,
-      "studiedNote": null,
+      "status": "studied",
+      "studiedAt": "2026-09-02T11:23:08.208Z",
+      "studiedNote": "990 Beckett taught that a project can use every standard AOI and still be an anti-pattern: the failures are structural — many state machines per program, hand-indexed alarms instead of the alarm handler, AlwaysOff-driven state selection, cross-machine Control writes, index-as-meaning HMI arrays, and triplicated production counters — plus new legacy device evidence (Telesis mark/verify protocol, controller CF recipe file engine, Kinetix 5100 non-group axis).",
       "sizeBytes": 7345338,
       "hash": "250f5f91715e",
       "priority": 110
@@ -166,9 +150,9 @@
         "station-archetypes.md",
         "alarms.md"
       ],
-      "status": "unstudied",
-      "studiedAt": null,
-      "studiedNote": null,
+      "status": "studied",
+      "studiedAt": "2026-09-03T11:30:00.142Z",
+      "studiedNote": "The V4.2 standard template taught the full dial-machine coordination contract (four handshake signals plus the CycleStationA/B part-tracking gate), the indexer as its own station archetype with the 31/34/37 recovery excursion and 40/42 pause, and the alarm spine — per-milestone fault times, composed culprit-naming messages, warning-then-fault escalation, non-timeout alarm sources, and the machine-level roll-up that blames the first latched Severity-0 alarm.",
       "sizeBytes": 2134814,
       "hash": "b14888ed1712",
       "priority": 105
@@ -219,6 +203,30 @@
       "studiedNote": "covered by the Aug-2026 broad ingestion (sources.json)",
       "sizeBytes": 12082,
       "hash": "86793488afd3",
+      "priority": 100
+    },
+    {
+      "id": "ci_eae1f7409b45",
+      "path": "plc-reference/standard/_superseded/S05_ServoPNP__2026-08-18_export.L5X",
+      "kind": "template",
+      "topics": [
+        "servo",
+        "indexer",
+        "alarms",
+        "part-tracking",
+        "pneumatics"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "coordination.md",
+        "station-archetypes.md",
+        "alarms.md"
+      ],
+      "status": "studied",
+      "studiedAt": "2026-08-21",
+      "studiedNote": "covered by the Aug-2026 broad ingestion (sources.json)",
+      "sizeBytes": 280082,
+      "hash": "038ac43a5bb0",
       "priority": 100
     },
     {
@@ -291,30 +299,6 @@
       "priority": 100
     },
     {
-      "id": "ci_c6f2a728e092",
-      "path": "plc-reference/standard/S05_ServoPNP.L5X",
-      "kind": "template",
-      "topics": [
-        "servo",
-        "indexer",
-        "alarms",
-        "part-tracking",
-        "pneumatics"
-      ],
-      "antiPattern": false,
-      "conceptFiles": [
-        "coordination.md",
-        "station-archetypes.md",
-        "alarms.md"
-      ],
-      "status": "studied",
-      "studiedAt": "2026-08-21",
-      "studiedNote": "covered by the Aug-2026 broad ingestion (sources.json)",
-      "sizeBytes": 280082,
-      "hash": "038ac43a5bb0",
-      "priority": 100
-    },
-    {
       "id": "ci_50391342d03b",
       "path": "plc-reference/standards-docs/EE Process and Standards Documents/EE Hardware Specification Regulations.extracted.md",
       "kind": "standards-doc",
@@ -327,9 +311,9 @@
         "vision-systems.md",
         "naming-and-structure.md"
       ],
-      "status": "unstudied",
-      "studiedAt": null,
-      "studiedNote": null,
+      "status": "studied",
+      "studiedAt": "2026-09-04T11:23:50.248Z",
+      "studiedNote": "The EE hardware spec fixes the physical palette behind SDC's device-naming prefixes — AB GuardLogix, 5300/5500 drives, SMC EX600 (not IO-Link) on-machine IO, Keyence sensing/vision, Banner bipolar safety expansion — with a grandfather clause that explains non-standard devices on repeat builds.",
       "sizeBytes": 1369,
       "hash": "b30a38b0fc2e",
       "priority": 100
@@ -423,9 +407,9 @@
         "station-archetypes.md",
         "coordination.md"
       ],
-      "status": "unstudied",
-      "studiedAt": null,
-      "studiedNote": null,
+      "status": "studied",
+      "studiedAt": "2026-09-07T11:26:09.268Z",
+      "studiedNote": "ShowRoomFlexFeeder gave the PLC-side Fanuc dialogue (register command/echo/clear, pulsed UI signals, pause-vs-stop at the robot's cycle boundary, collision-guard excursion classified by a PLC-computed pick window, recipe handshake), the run/stop conveyor-group archetype with disabled-but-retained servo boilerplate, feeder/lighting ownership on the conveyor SM, and supervisor-level round-robin EtherNet/IP watchdogs with stop-reason attribution for OEE.",
       "sizeBytes": 929482,
       "hash": "93bd0e7211ea",
       "priority": 100
@@ -519,9 +503,9 @@
         "station-archetypes.md",
         "servo-motion.md"
       ],
-      "status": "unstudied",
-      "studiedAt": null,
-      "studiedNote": null,
+      "status": "studied",
+      "studiedAt": "2026-09-08T18:17:37.397Z",
+      "studiedNote": "ChassisStandard.L5X taught the cam-driven chassis as a full archetype — mechanism program (runtime MCCP profile, MAPC camming, resync-as-init, three distinct stop classes, brake/hand-crank mode) plus stateless angle-window stations with speed-compensated triggers, incoming-vs-current nest tracking, station-coded FailureType attribution, cleanout mode, and early-checked index permissives with per-device alarm attribution; it also exposed an asymmetric wide band in the standard AOI_RangeCheck.",
       "sizeBytes": 1356478,
       "hash": "9c9f60394dbe",
       "priority": 85
@@ -567,11 +551,56 @@
         "station-archetypes.md",
         "servo-motion.md"
       ],
-      "status": "unstudied",
-      "studiedAt": null,
-      "studiedNote": null,
+      "status": "studied",
+      "studiedAt": "2026-09-09T11:36:38.864Z",
+      "studiedNote": "ShowRoomChassis.L5X taught the machine-services layer around the cam chassis — two-bit alarm aggregation with severity-blocked arrays and a scanned severity-0 stop snapshot, HMI screen/popup arbitration, combined good/reject unload counting, and the park-angle entry guard on a controlled stop.",
       "sizeBytes": 1284282,
       "hash": "d5fbbd11de85",
+      "priority": 85
+    },
+    {
+      "id": "ci_4f0b18fb51c5",
+      "path": "plc-reference/training-material/MagnetDial_description_by_Dan.txt",
+      "kind": "training-material",
+      "topics": [
+        "indexer"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "coordination.md",
+        "station-archetypes.md"
+      ],
+      "status": "studied",
+      "studiedAt": "2026-09-10T11:25:56.049Z",
+      "studiedNote": "Dan's magnet-dial dictation taught that a stack-fed dial is a demand/search-index MODE of the known indexer archetype — with degenerate part tracking, look-ahead qualification, retract-only sensing proved by process sensors, verify-sensor part memory, and retry escalation to material recovery instead of fault.",
+      "sizeBytes": 11892,
+      "hash": "95190e760a82",
+      "priority": 85
+    },
+    {
+      "id": "ci_cd9647161126",
+      "path": "plc-reference/training-material/SDC Standard Templates/ChassisStandard_2UP_2026-09-17.L5X",
+      "kind": "training-material",
+      "topics": [
+        "chassis-cam",
+        "indexer",
+        "servo",
+        "alarms",
+        "production-oee",
+        "part-tracking",
+        "pneumatics"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "coordination.md",
+        "station-archetypes.md",
+        "servo-motion.md"
+      ],
+      "status": "studied",
+      "studiedAt": null,
+      "studiedNote": "duplicate of the standards-docs/standard copy",
+      "sizeBytes": 1846074,
+      "hash": "ad083de12342",
       "priority": 85
     },
     {
@@ -630,9 +659,9 @@
       "conceptFiles": [
         "alarms.md"
       ],
-      "status": "unstudied",
-      "studiedAt": null,
-      "studiedNote": null,
+      "status": "studied",
+      "studiedAt": "2026-09-14T11:22:22.936Z",
+      "studiedNote": "The standard Alarms program taught the machine-side contract behind station alarm rungs: hand-maintained per-program roll-up rungs, a self-clearing 16-slot p_Active whose index order is blame order, fault-only HMI popup with a clean-machine auto-close, SIZE-driven history paging, and the AlarmData UDT fields (STRING100 message budget, ProgramID/Group, DoNotSaveToHistory, Count/Duration feeding TopAlarms).",
       "sizeBytes": 230133,
       "hash": "4d1fd06b121a",
       "priority": 75
@@ -648,9 +677,9 @@
       "conceptFiles": [
         "alarms.md"
       ],
-      "status": "unstudied",
-      "studiedAt": null,
-      "studiedNote": null,
+      "status": "studied",
+      "studiedAt": "2026-09-15T11:22:50.841Z",
+      "studiedNote": "The ProgramAlarmHandler AOI interface taught the exact division of labor between a station alarm rung (Active/Severity/Message) and the handler (ProgramID, DT timestamp from the CPU clock UDT, Count/Duration, publishing to p_Active and history, HMI_ResetCount), plus that AlarmData's flag bits are packed in a hidden SINT so entries move atomically under COP.",
       "sizeBytes": 25711,
       "hash": "f2fd446d477e",
       "priority": 75
@@ -666,9 +695,9 @@
       "conceptFiles": [
         "alarms.md"
       ],
-      "status": "unstudied",
-      "studiedAt": null,
-      "studiedNote": null,
+      "status": "studied",
+      "studiedAt": "2026-09-16T11:22:12.492Z",
+      "studiedNote": "The alarm handler AOI's own parameter list names the fault output AlarmActiveTag (not FaultActiveTag) and stamps TimeStamp as a LINT of UTC microseconds from the CPU_TimeDate UDT, with STRING100 capping composed messages at 100 characters.",
       "sizeBytes": 23715,
       "hash": "38e1ffc99eb7",
       "priority": 75
@@ -684,9 +713,9 @@
       "conceptFiles": [
         "alarms.md"
       ],
-      "status": "unstudied",
-      "studiedAt": null,
-      "studiedNote": null,
+      "status": "studied",
+      "studiedAt": "2026-09-17T11:23:02.119Z",
+      "studiedNote": "TopAlarms taught that the downtime scoreboard is fed only by the blamed first-cause fault record and is keyed on message text in a plain 82-char STRING, making severity selection and message composition part of the data layer.",
       "sizeBytes": 70104,
       "hash": "53f145055d4c",
       "priority": 75
@@ -702,9 +731,9 @@
       "conceptFiles": [
         "production-and-operator.md"
       ],
-      "status": "unstudied",
-      "studiedAt": null,
-      "studiedNote": null,
+      "status": "studied",
+      "studiedAt": "2026-09-18T11:21:54.156Z",
+      "studiedNote": "OEE.L5X taught that SDC's OEE is a three-factor decomposition (Availability/Performance/Quality) whose meaning depends entirely on fault-only downtime, a commissioning-proven IdealCycleTime, and consistent time units — so the concept file now explains the mechanism and its judgment calls instead of just listing OEE among reported numbers.",
       "sizeBytes": 7830,
       "hash": "36278cf73584",
       "priority": 70
@@ -948,6 +977,24 @@
       "studiedNote": null,
       "sizeBytes": 18802,
       "hash": "8a5b4a9d8361",
+      "priority": 35
+    },
+    {
+      "id": "ci_676c19e17026",
+      "path": "plc-reference/training-material/JASON_REVIEW_v5_2026-08-24.md",
+      "kind": "training-material",
+      "topics": [
+        "naming-structure"
+      ],
+      "antiPattern": false,
+      "conceptFiles": [
+        "naming-and-structure.md"
+      ],
+      "status": "unstudied",
+      "studiedAt": null,
+      "studiedNote": null,
+      "sizeBytes": 4651,
+      "hash": "1aa55c9b4af5",
       "priority": 35
     },
     {

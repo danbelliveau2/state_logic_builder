@@ -34,3 +34,10 @@ A reusable SDC-standard Recipe program/UDT/HMI package for Studio 5000 projects 
 When a station's spec calls for recipes/product changeover, use this standard package (UDT + array sizing rule + three input parameters) rather than inventing bespoke recipe storage — the array-size-minimum-10/equal-indexes rule and the three input-parameter wiring are compile-time setup steps to get right, not per-station judgment calls.
 
 _Source: EE Recipe Handler Instructions.docx (network: EE Process and Standards Documents), ingested 2026-08-31 by the inbox librarian._
+
+## Standard Recipe program and PanelView recipe HMI (2026-09-01)
+
+- SDC has a standard Recipe program and a companion example Recipe HMI project built on a PanelView 5310 panel — recipe handling is a first-class template offering, not a one-off.
+- New-part string fields should default to a human-readable placeholder (e.g. "New Part") rather than being left blank, so an unconfigured recipe doesn't display as empty.
+
+_Source: Revision History.md (network: Standards - Software), ingested 2026-09-01 by the inbox librarian._

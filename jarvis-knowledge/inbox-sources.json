@@ -11,7 +11,11 @@
     "node_modules",
     "_archive",
     "_archive from N",
-    "_learned"
+    "_learned",
+    "Playbook",
+    ".claude",
+    "Deliveries",
+    "Sessions"
   ],
   "watch": [
     "SDC Engineer",

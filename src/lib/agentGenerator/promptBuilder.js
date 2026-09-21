@@ -195,6 +195,15 @@ function buildTemplateExtracts(templateXml) {
 // ── Template notes (condensed pattern summaries) ─────────────────────────────
 
 const COMMON_NOTES = `
+- READABILITY IS PART OF THE STANDARD (confirmed by Jason on the 1160 build,
+  2026-09-18: "much easier to read"): every rung comment is ONE concise
+  sentence about the machine; every tag description is at most 30
+  characters; comments never carry build history, sources, dates, names,
+  question numbers or "STUB"/"DECLARED EXTENSION" — a placeholder is the
+  AlwaysOff form on a real rung. A program stays the size of its closest
+  example (tags, rungs, latches); no feature, timer, interlock, bypass
+  constant or HMI setpoint the examples do not have. Same look and feel on
+  every station.
 - States 0-3 (E-stop / Manual / Idle-NotReady / Idle-Ready), 99 (lockout),
   100-124 (init block), 127 (faulted) are template law: keep their rungs,
   only retarget the position/sensor conditions inside them where the
@@ -254,60 +263,124 @@ const COMMON_NOTES = `
 
 const TEMPLATE_NOTES = {
   'S05_ServoPNP.L5X': `
-Two servo axes (X horizontal, Z vertical) + a 2-solenoid gripper.
-- AOI_RangeCheck backing tags (XAxisExtend/XAxisRetract/ZAxisPick/ZAxisPlace/
-  ZAxisRetract) define named positions. renameTag them to the flowchart's
-  position names (e.g. XAxisExtend -> XAxisPlace); the RangeCheck call rung in
-  each servo routine maps HMI_*.Parameters.Positions[i] indices to them.
-- Servo routines (R04_XAxisServo / R05_ZAxisServo): the auto-move staging rung
-  (MOVE(...Positions[i], ...MotionParameters.Position) selected by state) and
-  the MAM trigger rung (list of XIC(Status.State[n])) are the two rungs that
-  bind states to axis moves — retarget their state lists with updateRung.
-- SPEED STAGING (the MCD architecture — Jason's corrected file, 2026-08-25):
-  AutoSpeed/Accel/Decel are arrays. A multi-speed stroke is ONE MAM to the
-  FINAL Positions[i], staged with the stroke's STARTING profile; the staging
-  rung selects position AND starting profile per MAM-commanding state as
-  parallel branches keyed on Status.State[n] (state-keyed profile branches —
-  no unconditioned speed default when every move state stages its own), e.g.:
-  [ [XIC(Status.State[7]) ,XIC(Status.State[31]) ] [MOVE(HMI_ZAxis.Parameters.AutoSpeed[0],ZAxisMotionParameters.Speed) ,MOVE(HMI_ZAxis.Parameters.Accel[0],ZAxisMotionParameters.Accel) ,MOVE(HMI_ZAxis.Parameters.Decel[0],ZAxisMotionParameters.Decel) ] ,[XIC(Status.State[19]) ,XIC(Status.State[43]) ] [MOVE(HMI_ZAxis.Parameters.AutoSpeed[1],ZAxisMotionParameters.Speed) ,MOVE(HMI_ZAxis.Parameters.Accel[1],ZAxisMotionParameters.Accel) ,MOVE(HMI_ZAxis.Parameters.Decel[1],ZAxisMotionParameters.Decel) ] ]
-  The mid-stroke speed change is the axis's ONE "Use MCD For Speed Changes"
-  rung, keyed on the speed-change segment states (NOT in the MAM list), with
-  its OWN control tag ({Axis}_MCD) and OWN staging tags
-  ({Axis}MCDSpeed/{Axis}MCDAccel/{Axis}MCDDecel — stage the new profile's
-  speed into {Axis}MCDSpeed, never into {Axis}MotionParameters.Speed), e.g.:
-  [[XIC(Status.State[13]) ,XIC(Status.State[37]) ] [MOVE(HMI_ZAxis.Parameters.AutoSpeed[1],ZAxisMCDSpeed) ,MOVE(HMI_ZAxis.Parameters.Accel[1],ZAxisMCDAccel) ,MOVE(HMI_ZAxis.Parameters.Decel[1],ZAxisMCDDecel) ] ,[XIC(Status.State[25]) ,XIC(Status.State[49]) ] [MOVE(HMI_ZAxis.Parameters.AutoSpeed[0],ZAxisMCDSpeed) ,MOVE(HMI_ZAxis.Parameters.Accel[0],ZAxisMCDAccel) ,MOVE(HMI_ZAxis.Parameters.Decel[0],ZAxisMCDDecel) ] ]MCD(iq_ZAxis,ZAxis_MCD,Move,Yes,ZAxisMCDSpeed,Yes,ZAxisMCDAccel,Yes,ZAxisMCDDecel,No,0,No,0,Units per sec,Units per sec2,Units per sec2,Units per sec3);
-  R02 shape per stroke: command state exits on bare {Axis}_MAM.IP; the wait
-  state exits on the transition position's bare {Pos}.InPosWide (mid-flight);
-  the MCD segment state exits strict {Axis}_MAM.PC + {Target}.InPos (or the
-  wideband corner OR where a blend is sanctioned). Transition points remain
-  named Positions[i] slots with their own AOI_RangeCheck instances — they are
-  MCD anchors, never MAM targets. Never compile a speed change as a second
-  MAM segment.
-- BLENDING (rounded corners): the R02 transition out of a travel move uses the
-  wideband OR so the next state (the other axis) starts before the move
-  finishes:
-  [XIC(ZAxis_MAM.PC) XIC(ZAxisRetract.InPos) ,XIC(ZAxis_MAM.IP) XIC(ZAxisRetract.InPosWide) ]
-  InPosWide comes from AOI_RangeCheck's wide deadband (last argument — the
-  clearance threshold, e.g. 5-15mm). Use the wideband OR ONLY on
-  travel-to-travel corners the spec blends; grips/releases/process actions
-  require strict XIC(Axis_MAM.PC) XIC({Pos}.InPos).
-  PER-CORNER BLEND VALUES (Dan, 2026-08-24): when the axis table carries
-  PickRetractBlend / PlaceRetractBlend named values, the two corners of the
-  pick-place U are independent — use PickRetractBlend as the wide deadband on
-  the pick-side corner (exit from pick) and PlaceRetractBlend on the
-  place-side corner (approach to place); a lone legacy {Level}WideBand value
-  applies to both. These corner blends are the ONLY named windows besides the
-  transition positions' own wide deadbands — {Pos}TransitionWideBand rows are
-  dead (Dan 2026-08-24). The speed change at a transition point fires
-  MID-FLIGHT on bare XIC({Pos}TransitionRangeCheck.InPosWide) entering the MCD
-  segment state (Jason 2026-08-25); strict XIC(Axis_MAM.PC) XIC({Pos}.InPos)
-  is reserved for final targets and grips/releases. The horizontal PNP axis
-  never has transition points at all (it decelerates on its accel/decel
-  settings).
-- Gripper command rungs in R03 use the latch/seal idiom keyed to the close
-  and open state numbers.
-- q_ActuatorsSafe must be true only in dial-safe posture (axes homed, Z at
-  clear/retract, X stationary).${COMMON_NOTES}`,
+Two servo axes (X horizontal, Z vertical) + a 2-solenoid gripper, one
+pick-place U per cycle on a dial: pick at X-retract, place at X-extend.
+Every state number, tag name and rung shape below is READ FROM THE TEMPLATE —
+retarget them, do not invent a different shape.
+
+- TEMPLATE SEQUENCE (R02_StateTransitions, as shipped):
+    4  wait for part present        22  extend X (travel to place)
+    7  Z down to pick (fast)        25  wait for index complete
+   10  Z slow-down anchor           28  Z down to place (fast)
+   13  close gripper                31  Z slow-down anchor
+   16  Z up off pick (slow)         34  open gripper
+   19  Z speed-up anchor            37  Z up off place (slow)
+                                    40  Z speed-up anchor
+                                    43  retract X (travel to pick) -> 3 / 4
+  Init: 100 (Z to retract) splits on the gripper — GripperOpened -> 103
+  (empty return, X retract), GripperClosed -> 106 (carrying, X extend) —
+  both -> 124 -> 127. Keep the split; a station that can hold a part through
+  a fault needs both postures.
+
+- NAMED POSITIONS — one AOI_RangeCheck instance per position, all five in the
+  axis routines' RangeCheck call rung:
+  AOI_RangeCheck(XAxisExtend,HMI_XAxis.Parameters.Positions[0],0.5,HMI_XAxis.Status.ActualPosition,5)
+  AOI_RangeCheck(XAxisRetract,HMI_XAxis.Parameters.Positions[1],0.5,HMI_XAxis.Status.ActualPosition,5)
+  AOI_RangeCheck(ZAxisPick,HMI_ZAxis.Parameters.Positions[0],0.5,HMI_ZAxis.Status.ActualPosition,10)
+  AOI_RangeCheck(ZAxisPlace,HMI_ZAxis.Parameters.Positions[1],0.5,HMI_ZAxis.Status.ActualPosition,10)
+  AOI_RangeCheck(ZAxisRetract,HMI_ZAxis.Parameters.Positions[2],0.5,HMI_ZAxis.Status.ActualPosition,10)
+  Signature: (backing tag, commanded position, tight deadband, actual
+  position, WIDE deadband) -> .InPos (tight) and .InPosWide (wide).
+  renameTag the backing tags to the flowchart's position names (e.g.
+  ZAxisPick -> ZAxisLoad); the Positions[i] index in this rung is what binds a
+  name to an HMI position slot — keep indices stable, never reshuffle.
+  The wide deadband is a LITERAL ARGUMENT here (5 on X, 10 on Z in the
+  template) — it is the ONLY blend window this template has. A blend distance
+  carried on the spec sheet for a position lands in THIS argument.
+
+- ONE MAM PER AXIS. The "Axis Motion Command" rung holds a plain
+  XIC(Status.State[n]) list of the auto move states:
+    X (R04): 22, 43, 103, 106      Z (R05): 7, 16, 28, 37, 100
+  The anchor states (10/19/31/40) are NOT in the list and never will be — they
+  are speed changes inside a move that is already running. Retarget the lists
+  with updateRung; never add a second MAM, never add a per-state trigger rung.
+
+- AUTO STAGING RUNG (one per axis) stages position AND profile as parallel
+  branches keyed on the MAM states. Z stages the fast profile (AutoSpeed[0])
+  for the approach states 7/28/100 and the slow profile (AutoSpeed[1]) for the
+  retreat states 16/37, with the DisableZSpeedTransition override folded into
+  the same branch:
+  XIC(SafetyOK)XIO(Status.State[1])[MOVE(0,ZAxisMotionParameters.MoveType) ,[[XIC(Status.State[7]) ,XIC(Status.State[28]) ,XIC(Status.State[100]) ] ,[XIC(Status.State[16]) ,XIC(Status.State[37]) ] XIC(DisableZSpeedTransition) ] [MOVE(HMI_ZAxis.Parameters.AutoSpeed[0],ZAxisMotionParameters.Speed) ,MOVE(HMI_ZAxis.Parameters.Accel[0],ZAxisMotionParameters.Accel) ,MOVE(HMI_ZAxis.Parameters.Decel[0],ZAxisMotionParameters.Decel) ] ,[XIC(Status.State[16]) ,XIC(Status.State[37]) ] XIO(DisableZSpeedTransition) [MOVE(HMI_ZAxis.Parameters.AutoSpeed[1],ZAxisMotionParameters.Speed) ,MOVE(HMI_ZAxis.Parameters.Accel[1],ZAxisMotionParameters.Accel) ,MOVE(HMI_ZAxis.Parameters.Decel[1],ZAxisMotionParameters.Decel) ] ,XIC(Status.State[7]) MOVE(HMI_ZAxis.Parameters.Positions[0],ZAxisMotionParameters.Position) ,XIC(Status.State[28]) MOVE(HMI_ZAxis.Parameters.Positions[1],ZAxisMotionParameters.Position) ,[XIC(Status.State[16]) ,XIC(Status.State[37]) ,XIC(Status.State[100]) ] MOVE(HMI_ZAxis.Parameters.Positions[2],ZAxisMotionParameters.Position) ];
+  X stages one profile for all its states — the horizontal axis has no speed
+  transition (no XAxisMCD* tags exist in the template).
+
+- SPEED CHANGE = MCD, NEVER A SECOND MAM. The Z axis has ONE "Use MCD For
+  Speed Changes" rung, keyed on the anchor states, with its own control tag
+  (ZAxis_MCD) and its own staging tags (ZAxisMCDSpeed / ZAxisMCDAccel /
+  ZAxisMCDDecel — never stage a speed change into
+  {Axis}MotionParameters.Speed, that one belongs to the MAM):
+  [[XIC(Status.State[10]) ,XIC(Status.State[31]) ] [MOVE(HMI_ZAxis.Parameters.AutoSpeed[1],ZAxisMCDSpeed) ,MOVE(HMI_ZAxis.Parameters.Accel[1],ZAxisMCDAccel) ,MOVE(HMI_ZAxis.Parameters.Decel[1],ZAxisMCDDecel) ] ,[XIC(Status.State[19]) ,XIC(Status.State[40]) ] [MOVE(HMI_ZAxis.Parameters.AutoSpeed[0],ZAxisMCDSpeed) ,MOVE(HMI_ZAxis.Parameters.Accel[0],ZAxisMCDAccel) ,MOVE(HMI_ZAxis.Parameters.Decel[0],ZAxisMCDDecel) ] ]MCD(iq_ZAxis,ZAxis_MCD,Move,Yes,ZAxisMCDSpeed,Yes,ZAxisMCDAccel,Yes,ZAxisMCDDecel,No,0,No,0,Units per sec,Units per sec2,Units per sec2,Units per sec3);
+  10/31 slow the move down on approach; 19/40 speed it back up on retreat.
+
+- THE ANCHOR PAIR — this is the whole R02 pattern for a speed-changing move.
+  Command state -> anchor state, mid-flight, on the wide window of the
+  position the move is working around:
+    XIC(Status.State[7])XIO(DisableZSpeedTransition)XIC(ZAxis_MAM.IP)XIC(ZAxisPick.InPosWide)XIC(SS_OK)MOVE(10,Control.StateReg);
+  and the NEXT state accepts EITHER the command state or the anchor state, on
+  the strict in-position:
+    [XIC(Status.State[7]) ,XIC(Status.State[10]) ]XIC(ZAxis_MAM.PC)XIC(ZAxisPick.InPos)XIC(SS_OK)MOVE(13,Control.StateReg);
+  That OR is what makes the anchor OPTIONAL — it is how the disable constant
+  works without deleting rungs. Every rung downstream of an anchor must carry
+  it.
+
+- CORNER ROUNDING (travel-to-travel only). The transition out of a travel move
+  ORs the strict test with a wideband test so the other axis starts before the
+  move finishes:
+    [XIC(ZAxis_MAM.PC) XIC(ZAxisRetract.InPos) ,XIO(DisableCornerRounding) XIC(ZAxis_MAM.IP) XIC(ZAxisRetract.InPosWide) ]
+  In the template this appears on exactly four corners: 43->4 and 22->25 (X),
+  16/19->22 and 37/40->43 (Z). Grips, releases and process actions are ALWAYS
+  strict XIC({Axis}_MAM.PC) XIC({Pos}.InPos) — see states 13 and 34.
+
+- THE TWO CONSTANTS — DIFFERENT JOBS, NOT A PAIR. Both are declared
+  Usage="Input" Constant="true", DataType DINT, default 0, decoded in R01
+  rungs 1-2:
+    EQ(i_DisableCornerRounding,1)OTE(DisableCornerRounding);
+    EQ(i_DisableZSpeedTransition,1)OTE(DisableZSpeedTransition);
+  i_ plus Constant="true" is the SDC device for "the engineer must decide
+  this" — it stands out as an unwired input parameter so it cannot be
+  overlooked. Carry both into every generated servo PNP, defaulted 0.
+    * DisableCornerRounding gates ONLY the wideband branch of the four corner
+      rungs, both axes. Set to 1 and every corner waits for strict
+      in-position. Changes no state numbers.
+    * DisableZSpeedTransition gates the four anchor-entry rungs (10/19/31/40
+      are then never entered) AND flips the retreat states 16/37 to the fast
+      profile in the R05 staging rung. Z only.
+  Never delete the anchor states or the wideband branches to "simplify" —
+  these constants are the supported off switch.
+
+- NEVER EMIT: PickRetractBlend, PlaceRetractBlend, {Level}WideBand,
+  {Pos}TransitionWideBand, {Pos}TransitionRangeCheck. Those are spec-sheet row
+  names from an older scheme, not PLC tags, and none of them appear in this
+  template. The blend window is the AOI_RangeCheck wide-deadband argument; the
+  transition point is an anchor state, not a position.
+
+- Gripper command rungs in R03 use the latch/seal idiom keyed to the close and
+  open state numbers (13 / 34), with the manual branch OR'd in on
+  Status.State[1] + HMI_Momentary.0/.1. R01 derives GripperOpened /
+  GripperClosed from the commanded solenoid plus its delay timer — a
+  sensorless gripper tracks by commanded state.
+- q_ActuatorsSafe (R03 "Actuators Safe For Index") is built from CLEARANCE,
+  not motion state (Jason 2026-09-17): one PARALLEL branch per axis that can
+  by itself take the head out of the dial's path, OR'd together, each branch
+  proving that axis homed, at its clearing position and not at any working
+  position:
+    [XIC(iq_XAxis.AxisHomedStatus) XIC(XAxisRetract.InPos) XIO(XAxisExtend.InPos) ,XIC(iq_ZAxis.AxisHomedStatus) XIC(ZAxisRetract.InPos) XIO(ZAxisPick.InPos) XIO(ZAxisPlace.InPos) ]OTE(q_ActuatorsSafe)
+  X retracted is away from the indexer, so Z may sit anywhere. Never AND every
+  axis's home/retract bit — that is stricter than the standard and stalls a
+  dial that is free to turn. Retarget the position tags; keep the OR shape.
+- Part tracking: Attempt latches with the move into place (state 28), Success
+  with the retreat after release (state 37), both gated
+  XIO(SingleDisableTracking). Lockout latches in R03 on state 99.${COMMON_NOTES}`,
   'S01_PartLoad.L5X': `
 Pneumatic-only PNP: X axis cylinder (2 sensors), Z axis cylinder (retract
 sensor only + ZAxisExtendedDelay timer), sensorless gripper (Open/Close delay

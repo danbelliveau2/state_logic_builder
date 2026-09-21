@@ -65,7 +65,10 @@ for (const dir of L5X_DIRS) {
   for (const file of listFiles(dir, /\.l5x$/i)) {
     let xml = '';
     try { xml = fs.readFileSync(file, 'utf8'); } catch { continue; }
-    for (const m of xml.matchAll(/<Program\s[^>]*Name="([^"]+)"/g)) bump(programNames, m[1]);
+    // Lazy + not-preceded-by-a-letter: a greedy [^>]* backtracks to the LAST Name= in the tag, which for a target
+    // program is MainRoutineName — so every export previously harvested its main routine instead of its own program
+    // name (Jason's clone, 2026-09-14 finding #8).
+    for (const m of xml.matchAll(/<Program\s[^>]*?(?<![A-Za-z])Name="([^"]+)"/g)) bump(programNames, m[1]);
     for (const m of xml.matchAll(/<Routine\s[^>]*Name="([^"]+)"/g)) bump(routineNames, m[1]);
     for (const m of xml.matchAll(/<Tag\s[^>]*Name="([^"]+)"/g)) {
       const t = m[1];

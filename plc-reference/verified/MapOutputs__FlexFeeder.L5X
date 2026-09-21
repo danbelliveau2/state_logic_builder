@@ -1,0 +1,838 @@
+﻿<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<RSLogix5000Content SchemaRevision="1.0" SoftwareRevision="37.00" TargetName="MapOutputs" TargetType="Program" TargetClass="Standard" ContainsContext="true" ExportDate="Fri Sep 04 07:46:50 2026" ExportOptions="References NoRawData L5KData DecoratedData Context Dependencies ForceProtectedEncoding AllProjDocTrans">
+<Controller Use="Context" Name="SoftwareStandardization">
+<DataTypes Use="Context">
+<DataType Name="Fanuc_Robot_Control" Family="NoFamily" Class="User">
+<Members>
+<Member Name="ZZZZZZZZZZFanuc_Robo0" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="IMSTP" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZFanuc_Robo0" BitNumber="0" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[UI[1] Immediate Stop Signal]]>
+</Description>
+</Member>
+<Member Name="Hold" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZFanuc_Robo0" BitNumber="1" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[UI[2] Hold Signal (Off Pauses Program)]]>
+</Description>
+</Member>
+<Member Name="SFSPD" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZFanuc_Robo0" BitNumber="2" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[UI[3] Safety Speed Signal]]>
+</Description>
+</Member>
+<Member Name="CycleStop" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZFanuc_Robo0" BitNumber="3" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[UI[4] Cycle Stop Signal]]>
+</Description>
+</Member>
+<Member Name="FaultReset" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZFanuc_Robo0" BitNumber="4" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[UI[5] Fault Reset Signal]]>
+</Description>
+</Member>
+<Member Name="RemoteStart" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZFanuc_Robo0" BitNumber="5" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[UI[6] Resume Signal (Starts On Falling Edge)]]>
+</Description>
+</Member>
+<Member Name="Home" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZFanuc_Robo0" BitNumber="6" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[UI[7] Home Input Signal]]>
+</Description>
+</Member>
+<Member Name="Enable" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZFanuc_Robo0" BitNumber="7" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[UI[8] Enable (Signal must be on ON to have control ability)]]>
+</Description>
+</Member>
+<Member Name="ZZZZZZZZZZFanuc_Robo9" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="RSR1" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZFanuc_Robo9" BitNumber="0" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[UI[9] RSR1/PNS1]]>
+</Description>
+</Member>
+<Member Name="RSR2" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZFanuc_Robo9" BitNumber="1" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[UI[10] RSR2/PNS2]]>
+</Description>
+</Member>
+<Member Name="RSR3" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZFanuc_Robo9" BitNumber="2" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[UI[11] RSR3/PNS3]]>
+</Description>
+</Member>
+<Member Name="RSR4" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZFanuc_Robo9" BitNumber="3" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[UI[12] RSR4/PNS4]]>
+</Description>
+</Member>
+<Member Name="RSR5" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZFanuc_Robo9" BitNumber="4" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[UI[13] RSR5/PNS5]]>
+</Description>
+</Member>
+<Member Name="RSR6" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZFanuc_Robo9" BitNumber="5" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[UI[14] RSR6/PNS6]]>
+</Description>
+</Member>
+<Member Name="RSR7" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZFanuc_Robo9" BitNumber="6" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[UI[15] RSR7/PNS7]]>
+</Description>
+</Member>
+<Member Name="RSR8" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZFanuc_Robo9" BitNumber="7" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[UI[16] RSR8/PNS8]]>
+</Description>
+</Member>
+<Member Name="ZZZZZZZZZZFanuc_Robo18" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="PNSStrobe" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZFanuc_Robo18" BitNumber="0" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[UI[17] PNS Strobe]]>
+</Description>
+</Member>
+<Member Name="Start" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZFanuc_Robo18" BitNumber="1" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[UI[18] Production Start]]>
+</Description>
+</Member>
+<Member Name="UserOut1" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[DI1 - DI8]]>
+</Description>
+</Member>
+<Member Name="UserOut2" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[DI9 - DI16]]>
+</Description>
+</Member>
+<Member Name="UserOut3" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[DI17 - DI24]]>
+</Description>
+</Member>
+<Member Name="UserOut4" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[DI25 - DI32]]>
+</Description>
+</Member>
+<Member Name="UserOut5" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[DI33 - DI40]]>
+</Description>
+</Member>
+<Member Name="UserWord1" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[GI1]]>
+</Description>
+</Member>
+<Member Name="UserWord2" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[GI2]]>
+</Description>
+</Member>
+<Member Name="UserWord3" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[GI3]]>
+</Description>
+</Member>
+<Member Name="UserWord4" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[GI4]]>
+</Description>
+</Member>
+<Member Name="UserWord5" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[GI5]]>
+</Description>
+</Member>
+<Member Name="UserWord6" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[GI6]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+<DataType Name="LenzeOutput" Family="NoFamily" Class="User">
+<Members>
+<Member Name="ZZZZZZZZZZLenzeOutpu0" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="RunForward" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZLenzeOutpu0" BitNumber="0" ExternalAccess="Read/Write"/>
+<Member Name="RunReverse" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZLenzeOutpu0" BitNumber="1" ExternalAccess="Read/Write"/>
+<Member Name="Reset" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZLenzeOutpu0" BitNumber="2" ExternalAccess="Read/Write"/>
+<Member Name="Bit3" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZLenzeOutpu0" BitNumber="3" ExternalAccess="Read/Write"/>
+<Member Name="Bit4" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZLenzeOutpu0" BitNumber="4" ExternalAccess="Read/Write"/>
+<Member Name="NetControl" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZLenzeOutpu0" BitNumber="5" ExternalAccess="Read/Write"/>
+<Member Name="NetSetpoint" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZLenzeOutpu0" BitNumber="6" ExternalAccess="Read/Write"/>
+<Member Name="Bit7" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZLenzeOutpu0" BitNumber="7" ExternalAccess="Read/Write"/>
+<Member Name="ZZZZZZZZZZLenzeOutpu9" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="Bit8" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZLenzeOutpu9" BitNumber="0" ExternalAccess="Read/Write"/>
+<Member Name="Bit9" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZLenzeOutpu9" BitNumber="1" ExternalAccess="Read/Write"/>
+<Member Name="Bit10" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZLenzeOutpu9" BitNumber="2" ExternalAccess="Read/Write"/>
+<Member Name="Bit11" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZLenzeOutpu9" BitNumber="3" ExternalAccess="Read/Write"/>
+<Member Name="Disable" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZLenzeOutpu9" BitNumber="4" ExternalAccess="Read/Write"/>
+<Member Name="QuickStop" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZLenzeOutpu9" BitNumber="5" ExternalAccess="Read/Write"/>
+<Member Name="DeactivatePID" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZLenzeOutpu9" BitNumber="6" ExternalAccess="Read/Write"/>
+<Member Name="DCBrake" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZLenzeOutpu9" BitNumber="7" ExternalAccess="Read/Write"/>
+<Member Name="Speed" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+</DataType>
+<DataType Name="POSREG_T" Family="NoFamily" Class="User">
+<Description>
+<![CDATA[FANUC Position Register (Cartesian Mode)]]>
+</Description>
+<Members>
+<Member Name="uframe" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="utool" DataType="INT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="X" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Y" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="Z" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="W" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="P" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="R" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="turn1" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="turn2" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="turn3" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="ZZZZZZZZZZPOSREG8" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="reserved1" DataType="BIT" Dimension="0" Radix="Binary" Hidden="true" Target="ZZZZZZZZZZPOSREG8" BitNumber="0" ExternalAccess="Read/Write"/>
+<Member Name="reserved2" DataType="BIT" Dimension="0" Radix="Binary" Hidden="true" Target="ZZZZZZZZZZPOSREG8" BitNumber="1" ExternalAccess="Read/Write"/>
+<Member Name="reserved3" DataType="BIT" Dimension="0" Radix="Binary" Hidden="true" Target="ZZZZZZZZZZPOSREG8" BitNumber="2" ExternalAccess="Read/Write"/>
+<Member Name="reserved4" DataType="BIT" Dimension="0" Radix="Binary" Hidden="true" Target="ZZZZZZZZZZPOSREG8" BitNumber="3" ExternalAccess="Read/Write"/>
+<Member Name="front" DataType="BIT" Dimension="0" Radix="Binary" Hidden="false" Target="ZZZZZZZZZZPOSREG8" BitNumber="4" ExternalAccess="Read/Write"/>
+<Member Name="up" DataType="BIT" Dimension="0" Radix="Binary" Hidden="false" Target="ZZZZZZZZZZPOSREG8" BitNumber="5" ExternalAccess="Read/Write"/>
+<Member Name="left" DataType="BIT" Dimension="0" Radix="Binary" Hidden="false" Target="ZZZZZZZZZZPOSREG8" BitNumber="6" ExternalAccess="Read/Write"/>
+<Member Name="flip" DataType="BIT" Dimension="0" Radix="Binary" Hidden="false" Target="ZZZZZZZZZZPOSREG8" BitNumber="7" ExternalAccess="Read/Write"/>
+<Member Name="ext" DataType="REAL" Dimension="3" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+</DataType>
+<DataType Name="ROBOT_INPUT2_T" Family="NoFamily" Class="User">
+<Members>
+<Member Name="R50" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="R51" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="R52" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="R53" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="R54" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="R55" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="R56" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="R57" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="R58" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="R59" DataType="REAL" Dimension="0" Radix="Float" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="PR101_G1" DataType="POSREG_T" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="PR102_G1" DataType="POSREG_T" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="PR103_G1" DataType="POSREG_T" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="PR104_G1" DataType="POSREG_T" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="PR105_G1" DataType="POSREG_T" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="PR106_G1" DataType="POSREG_T" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="PR107_G1" DataType="POSREG_T" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write"/>
+<Member Name="PR108_G1" DataType="POSREG_T" Dimension="0" Radix="NullType" Hidden="false" ExternalAccess="Read/Write"/>
+</Members>
+<Dependencies>
+<Dependency Type="DataType" Name="POSREG_T"/>
+<Dependency Type="DataType" Name="POSREG_T"/>
+<Dependency Type="DataType" Name="POSREG_T"/>
+<Dependency Type="DataType" Name="POSREG_T"/>
+<Dependency Type="DataType" Name="POSREG_T"/>
+<Dependency Type="DataType" Name="POSREG_T"/>
+<Dependency Type="DataType" Name="POSREG_T"/>
+<Dependency Type="DataType" Name="POSREG_T"/>
+</Dependencies>
+</DataType>
+</DataTypes>
+<Modules Use="Context">
+<Module Use="Reference" Name="cam01_Inspection">
+</Module>
+<Module Use="Reference" Name="fd01_InclineConveyor">
+</Module>
+<Module Use="Reference" Name="fd02_ReturnConveyor">
+</Module>
+<Module Use="Reference" Name="rob01_FlexFeeder">
+</Module>
+<Module Use="Reference" Name="vb01_MainMachine">
+</Module>
+</Modules>
+<AddOnInstructionDefinitions Use="Context">
+<AddOnInstructionDefinition Name="AOI_Fanuc_OUT" Class="Standard" Revision="1.0" ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" CreatedDate="2024-04-09T17:14:09.538Z" CreatedBy="STEVENDOUGLAS\jperry" EditedDate="2026-05-06T17:45:05.787Z" EditedBy="STEVENDOUGLAS\igalvez" SoftwareRevision="v37.00"
+>
+<Parameters>
+<Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Input - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
+<Description>
+<![CDATA[Enable Output - System Defined Parameter]]>
+</Description>
+</Parameter>
+<Parameter Name="ModuleTagA" TagType="Base" DataType="FR:Standard_RobotPlus_24Bytes:O1:0" Usage="InOut" Required="true" Visible="true" Constant="false"/>
+<Parameter Name="ModuleTagB" TagType="Base" DataType="FR:Standard_RobotPlus_392Bytes:O2:0" Usage="InOut" Required="true" Visible="true" Constant="false"/>
+<Parameter Name="OutputTagA" TagType="Base" DataType="Fanuc_Robot_Control" Usage="InOut" Required="true" Visible="true" Constant="false"/>
+<Parameter Name="OutputTagB" TagType="Base" DataType="ROBOT_INPUT2_T" Usage="InOut" Required="true" Visible="true" Constant="false"/>
+</Parameters>
+<LocalTags>
+<LocalTag Name="Temp" DataType="SINT" Dimensions="24" Radix="Decimal" ExternalAccess="None">
+<DefaultData Format="L5K">
+<![CDATA[[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]]]>
+</DefaultData>
+<DefaultData Format="Decorated">
+<Array DataType="SINT" Dimensions="24" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+<Element Index="[3]" Value="0"/>
+<Element Index="[4]" Value="0"/>
+<Element Index="[5]" Value="0"/>
+<Element Index="[6]" Value="0"/>
+<Element Index="[7]" Value="0"/>
+<Element Index="[8]" Value="0"/>
+<Element Index="[9]" Value="0"/>
+<Element Index="[10]" Value="0"/>
+<Element Index="[11]" Value="0"/>
+<Element Index="[12]" Value="0"/>
+<Element Index="[13]" Value="0"/>
+<Element Index="[14]" Value="0"/>
+<Element Index="[15]" Value="0"/>
+<Element Index="[16]" Value="0"/>
+<Element Index="[17]" Value="0"/>
+<Element Index="[18]" Value="0"/>
+<Element Index="[19]" Value="0"/>
+<Element Index="[20]" Value="0"/>
+<Element Index="[21]" Value="0"/>
+<Element Index="[22]" Value="0"/>
+<Element Index="[23]" Value="0"/>
+</Array>
+</DefaultData>
+</LocalTag>
+</LocalTags>
+<Routines>
+<Routine Name="Logic" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Robot User Inputs]]>
+</Comment>
+<Text>
+<![CDATA[XIC(OutputTagA.IMSTP)OTE(Temp[0].0);]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Text>
+<![CDATA[XIC(OutputTagA.Hold)OTE(Temp[0].1);]]>
+</Text>
+</Rung>
+<Rung Number="2" Type="N">
+<Text>
+<![CDATA[XIC(OutputTagA.SFSPD)OTE(Temp[0].2);]]>
+</Text>
+</Rung>
+<Rung Number="3" Type="N">
+<Text>
+<![CDATA[XIC(OutputTagA.CycleStop)OTE(Temp[0].3);]]>
+</Text>
+</Rung>
+<Rung Number="4" Type="N">
+<Text>
+<![CDATA[XIC(OutputTagA.FaultReset)OTE(Temp[0].4);]]>
+</Text>
+</Rung>
+<Rung Number="5" Type="N">
+<Text>
+<![CDATA[XIC(OutputTagA.RemoteStart)OTE(Temp[0].5);]]>
+</Text>
+</Rung>
+<Rung Number="6" Type="N">
+<Text>
+<![CDATA[XIC(OutputTagA.Home)OTE(Temp[0].6);]]>
+</Text>
+</Rung>
+<Rung Number="7" Type="N">
+<Text>
+<![CDATA[XIC(OutputTagA.Enable)OTE(Temp[0].7);]]>
+</Text>
+</Rung>
+<Rung Number="8" Type="N">
+<Text>
+<![CDATA[XIC(OutputTagA.RSR1)OTE(Temp[1].0);]]>
+</Text>
+</Rung>
+<Rung Number="9" Type="N">
+<Text>
+<![CDATA[XIC(OutputTagA.RSR2)OTE(Temp[1].1);]]>
+</Text>
+</Rung>
+<Rung Number="10" Type="N">
+<Text>
+<![CDATA[XIC(OutputTagA.RSR3)OTE(Temp[1].2);]]>
+</Text>
+</Rung>
+<Rung Number="11" Type="N">
+<Text>
+<![CDATA[XIC(OutputTagA.RSR4)OTE(Temp[1].3);]]>
+</Text>
+</Rung>
+<Rung Number="12" Type="N">
+<Text>
+<![CDATA[XIC(OutputTagA.RSR5)OTE(Temp[1].4);]]>
+</Text>
+</Rung>
+<Rung Number="13" Type="N">
+<Text>
+<![CDATA[XIC(OutputTagA.RSR6)OTE(Temp[1].5);]]>
+</Text>
+</Rung>
+<Rung Number="14" Type="N">
+<Text>
+<![CDATA[XIC(OutputTagA.RSR7)OTE(Temp[1].6);]]>
+</Text>
+</Rung>
+<Rung Number="15" Type="N">
+<Text>
+<![CDATA[XIC(OutputTagA.RSR8)OTE(Temp[1].7);]]>
+</Text>
+</Rung>
+<Rung Number="16" Type="N">
+<Text>
+<![CDATA[XIC(OutputTagA.PNSStrobe)OTE(Temp[2].0);]]>
+</Text>
+</Rung>
+<Rung Number="17" Type="N">
+<Text>
+<![CDATA[XIC(OutputTagA.Start)OTE(Temp[2].1);]]>
+</Text>
+</Rung>
+<Rung Number="18" Type="N">
+<Comment>
+<![CDATA[Robot Digital Inputs]]>
+</Comment>
+<Text>
+<![CDATA[[MOVE(OutputTagA.UserOut1,Temp[4]) ,MOVE(OutputTagA.UserOut2,Temp[5]) ,MOVE(OutputTagA.UserOut3,Temp[6]) ,MOVE(OutputTagA.UserOut4,Temp[7]) ,MOVE(OutputTagA.UserOut5,Temp[8]) ];]]>
+</Text>
+</Rung>
+<Rung Number="19" Type="N">
+<Comment>
+<![CDATA[Robot Group Inputs]]>
+</Comment>
+<Text>
+<![CDATA[[MOVE(OutputTagA.UserWord1,Temp[12]) ,MOVE(OutputTagA.UserWord2,Temp[14]) ,MOVE(OutputTagA.UserWord3,Temp[16]) ,MOVE(OutputTagA.UserWord4,Temp[18]) ,MOVE(OutputTagA.UserWord5,Temp[20]) ,MOVE(OutputTagA.UserWord6,Temp[22]) ];]]>
+</Text>
+</Rung>
+<Rung Number="20" Type="N">
+<Text>
+<![CDATA[CPS(Temp[0],ModuleTagA.Output[0],24);]]>
+</Text>
+</Rung>
+<Rung Number="21" Type="N">
+<Comment>
+<![CDATA[Robot EDA Inputs]]>
+</Comment>
+<Text>
+<![CDATA[CPS(OutputTagB,ModuleTagB.Output[0],392);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+<Dependencies>
+<Dependency Type="DataType" Name="Fanuc_Robot_Control"/>
+<Dependency Type="DataType" Name="ROBOT_INPUT2_T"/>
+</Dependencies>
+</AddOnInstructionDefinition>
+</AddOnInstructionDefinitions>
+<Tags Use="Context">
+<Tag Name="cam01_Inspection_OUT" Class="Standard" TagType="Base" DataType="CC:InSight11_NODATA:O:0" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[[0,0,0]]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="CC:InSight11_NODATA:O:0">
+<StructureMember Name="Control" DataType="CC:InSight11_Control:O:0">
+<DataValueMember Name="TriggerEnable" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Trigger" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ResultsBufferEnable" DataType="BOOL" Value="0"/>
+<DataValueMember Name="InspectionResultsAck" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ExecuteCommand" DataType="BOOL" Value="0"/>
+<DataValueMember Name="SetOffline" DataType="BOOL" Value="0"/>
+<DataValueMember Name="SetUserData" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ClearError" DataType="BOOL" Value="0"/>
+<DataValueMember Name="ClearExposureComplete" DataType="BOOL" Value="0"/>
+<DataValueMember Name="SoftEvent0" DataType="BOOL" Value="0"/>
+<DataValueMember Name="SoftEvent1" DataType="BOOL" Value="0"/>
+<DataValueMember Name="SoftEvent2" DataType="BOOL" Value="0"/>
+<DataValueMember Name="SoftEvent3" DataType="BOOL" Value="0"/>
+<DataValueMember Name="SoftEvent4" DataType="BOOL" Value="0"/>
+<DataValueMember Name="SoftEvent5" DataType="BOOL" Value="0"/>
+<DataValueMember Name="SoftEvent6" DataType="BOOL" Value="0"/>
+<DataValueMember Name="SoftEvent7" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Command" DataType="INT" Radix="Decimal" Value="0"/>
+</StructureMember>
+</Structure>
+</Data>
+</Tag>
+<Tag Name="fd01_InclineConveyor_OUT" Class="Standard" TagType="Base" DataType="LenzeOutput" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[96,0,500]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="LenzeOutput">
+<DataValueMember Name="RunForward" DataType="BOOL" Value="0"/>
+<DataValueMember Name="RunReverse" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Reset" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Bit3" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Bit4" DataType="BOOL" Value="0"/>
+<DataValueMember Name="NetControl" DataType="BOOL" Value="1"/>
+<DataValueMember Name="NetSetpoint" DataType="BOOL" Value="1"/>
+<DataValueMember Name="Bit7" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Bit8" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Bit9" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Bit10" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Bit11" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Disable" DataType="BOOL" Value="0"/>
+<DataValueMember Name="QuickStop" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DeactivatePID" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DCBrake" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Speed" DataType="INT" Radix="Decimal" Value="500"/>
+</Structure>
+</Data>
+</Tag>
+<Tag Name="fd02_ReturnConveyor_OUT" Class="Standard" TagType="Base" DataType="LenzeOutput" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[96,0,1000]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="LenzeOutput">
+<DataValueMember Name="RunForward" DataType="BOOL" Value="0"/>
+<DataValueMember Name="RunReverse" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Reset" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Bit3" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Bit4" DataType="BOOL" Value="0"/>
+<DataValueMember Name="NetControl" DataType="BOOL" Value="1"/>
+<DataValueMember Name="NetSetpoint" DataType="BOOL" Value="1"/>
+<DataValueMember Name="Bit7" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Bit8" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Bit9" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Bit10" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Bit11" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Disable" DataType="BOOL" Value="0"/>
+<DataValueMember Name="QuickStop" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DeactivatePID" DataType="BOOL" Value="0"/>
+<DataValueMember Name="DCBrake" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Speed" DataType="INT" Radix="Decimal" Value="1000"/>
+</Structure>
+</Data>
+</Tag>
+<Tag Name="rob01_FlexFeederControl" Class="Standard" TagType="Base" DataType="Fanuc_Robot_Control" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[-121,0,0,16,0,0,0,0,2,0,0,0,0,0]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="Fanuc_Robot_Control">
+<DataValueMember Name="IMSTP" DataType="BOOL" Value="1"/>
+<DataValueMember Name="Hold" DataType="BOOL" Value="1"/>
+<DataValueMember Name="SFSPD" DataType="BOOL" Value="1"/>
+<DataValueMember Name="CycleStop" DataType="BOOL" Value="0"/>
+<DataValueMember Name="FaultReset" DataType="BOOL" Value="0"/>
+<DataValueMember Name="RemoteStart" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Home" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Enable" DataType="BOOL" Value="1"/>
+<DataValueMember Name="RSR1" DataType="BOOL" Value="0"/>
+<DataValueMember Name="RSR2" DataType="BOOL" Value="0"/>
+<DataValueMember Name="RSR3" DataType="BOOL" Value="0"/>
+<DataValueMember Name="RSR4" DataType="BOOL" Value="0"/>
+<DataValueMember Name="RSR5" DataType="BOOL" Value="0"/>
+<DataValueMember Name="RSR6" DataType="BOOL" Value="0"/>
+<DataValueMember Name="RSR7" DataType="BOOL" Value="0"/>
+<DataValueMember Name="RSR8" DataType="BOOL" Value="0"/>
+<DataValueMember Name="PNSStrobe" DataType="BOOL" Value="0"/>
+<DataValueMember Name="Start" DataType="BOOL" Value="0"/>
+<DataValueMember Name="UserOut1" DataType="SINT" Radix="Decimal" Value="16"/>
+<DataValueMember Name="UserOut2" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="UserOut3" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="UserOut4" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="UserOut5" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="UserWord1" DataType="SINT" Radix="Decimal" Value="2"/>
+<DataValueMember Name="UserWord2" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="UserWord3" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="UserWord4" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="UserWord5" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="UserWord6" DataType="SINT" Radix="Decimal" Value="0"/>
+</Structure>
+</Data>
+</Tag>
+<Tag Name="rob01_FlexFeederEDAOut" Class="Standard" TagType="Base" DataType="ROBOT_INPUT2_T" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000
+		,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000,[0,0,0.00000000e+000,0.00000000e+000
+		,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000,0,0,0,0,[0.00000000e+000,0.00000000e+000
+		,0.00000000e+000]],[0,0,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000
+		,0.00000000e+000,0,0,0,0,[0.00000000e+000,0.00000000e+000,0.00000000e+000]],[0,0,0.00000000e+000
+		,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000,0,0,0,0,[0.00000000e+000
+		,0.00000000e+000,0.00000000e+000]],[0,0,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000
+		,0.00000000e+000,0.00000000e+000,0,0,0,0,[0.00000000e+000,0.00000000e+000,0.00000000e+000]],[0,0
+		,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000
+		,0,0,0,0,[0.00000000e+000,0.00000000e+000,0.00000000e+000]],[0,0,0.00000000e+000,0.00000000e+000
+		,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000,0,0,0,0,[0.00000000e+000,0.00000000e+000
+		,0.00000000e+000]],[0,0,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000
+		,0.00000000e+000,0,0,0,0,[0.00000000e+000,0.00000000e+000,0.00000000e+000]],[0,0,0.00000000e+000
+		,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000,0.00000000e+000,0,0,0,0,[0.00000000e+000
+		,0.00000000e+000,0.00000000e+000]]]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="ROBOT_INPUT2_T">
+<DataValueMember Name="R50" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="R51" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="R52" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="R53" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="R54" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="R55" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="R56" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="R57" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="R58" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="R59" DataType="REAL" Radix="Float" Value="0.0"/>
+<StructureMember Name="PR101_G1" DataType="POSREG_T">
+<DataValueMember Name="uframe" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="utool" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="X" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="Y" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="Z" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="W" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="P" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="R" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="turn1" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="turn2" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="turn3" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="front" DataType="BOOL" Value="0"/>
+<DataValueMember Name="up" DataType="BOOL" Value="0"/>
+<DataValueMember Name="left" DataType="BOOL" Value="0"/>
+<DataValueMember Name="flip" DataType="BOOL" Value="0"/>
+<ArrayMember Name="ext" DataType="REAL" Dimensions="3" Radix="Float">
+<Element Index="[0]" Value="0.0"/>
+<Element Index="[1]" Value="0.0"/>
+<Element Index="[2]" Value="0.0"/>
+</ArrayMember>
+</StructureMember>
+<StructureMember Name="PR102_G1" DataType="POSREG_T">
+<DataValueMember Name="uframe" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="utool" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="X" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="Y" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="Z" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="W" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="P" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="R" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="turn1" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="turn2" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="turn3" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="front" DataType="BOOL" Value="0"/>
+<DataValueMember Name="up" DataType="BOOL" Value="0"/>
+<DataValueMember Name="left" DataType="BOOL" Value="0"/>
+<DataValueMember Name="flip" DataType="BOOL" Value="0"/>
+<ArrayMember Name="ext" DataType="REAL" Dimensions="3" Radix="Float">
+<Element Index="[0]" Value="0.0"/>
+<Element Index="[1]" Value="0.0"/>
+<Element Index="[2]" Value="0.0"/>
+</ArrayMember>
+</StructureMember>
+<StructureMember Name="PR103_G1" DataType="POSREG_T">
+<DataValueMember Name="uframe" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="utool" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="X" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="Y" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="Z" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="W" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="P" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="R" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="turn1" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="turn2" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="turn3" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="front" DataType="BOOL" Value="0"/>
+<DataValueMember Name="up" DataType="BOOL" Value="0"/>
+<DataValueMember Name="left" DataType="BOOL" Value="0"/>
+<DataValueMember Name="flip" DataType="BOOL" Value="0"/>
+<ArrayMember Name="ext" DataType="REAL" Dimensions="3" Radix="Float">
+<Element Index="[0]" Value="0.0"/>
+<Element Index="[1]" Value="0.0"/>
+<Element Index="[2]" Value="0.0"/>
+</ArrayMember>
+</StructureMember>
+<StructureMember Name="PR104_G1" DataType="POSREG_T">
+<DataValueMember Name="uframe" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="utool" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="X" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="Y" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="Z" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="W" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="P" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="R" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="turn1" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="turn2" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="turn3" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="front" DataType="BOOL" Value="0"/>
+<DataValueMember Name="up" DataType="BOOL" Value="0"/>
+<DataValueMember Name="left" DataType="BOOL" Value="0"/>
+<DataValueMember Name="flip" DataType="BOOL" Value="0"/>
+<ArrayMember Name="ext" DataType="REAL" Dimensions="3" Radix="Float">
+<Element Index="[0]" Value="0.0"/>
+<Element Index="[1]" Value="0.0"/>
+<Element Index="[2]" Value="0.0"/>
+</ArrayMember>
+</StructureMember>
+<StructureMember Name="PR105_G1" DataType="POSREG_T">
+<DataValueMember Name="uframe" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="utool" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="X" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="Y" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="Z" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="W" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="P" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="R" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="turn1" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="turn2" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="turn3" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="front" DataType="BOOL" Value="0"/>
+<DataValueMember Name="up" DataType="BOOL" Value="0"/>
+<DataValueMember Name="left" DataType="BOOL" Value="0"/>
+<DataValueMember Name="flip" DataType="BOOL" Value="0"/>
+<ArrayMember Name="ext" DataType="REAL" Dimensions="3" Radix="Float">
+<Element Index="[0]" Value="0.0"/>
+<Element Index="[1]" Value="0.0"/>
+<Element Index="[2]" Value="0.0"/>
+</ArrayMember>
+</StructureMember>
+<StructureMember Name="PR106_G1" DataType="POSREG_T">
+<DataValueMember Name="uframe" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="utool" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="X" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="Y" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="Z" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="W" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="P" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="R" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="turn1" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="turn2" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="turn3" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="front" DataType="BOOL" Value="0"/>
+<DataValueMember Name="up" DataType="BOOL" Value="0"/>
+<DataValueMember Name="left" DataType="BOOL" Value="0"/>
+<DataValueMember Name="flip" DataType="BOOL" Value="0"/>
+<ArrayMember Name="ext" DataType="REAL" Dimensions="3" Radix="Float">
+<Element Index="[0]" Value="0.0"/>
+<Element Index="[1]" Value="0.0"/>
+<Element Index="[2]" Value="0.0"/>
+</ArrayMember>
+</StructureMember>
+<StructureMember Name="PR107_G1" DataType="POSREG_T">
+<DataValueMember Name="uframe" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="utool" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="X" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="Y" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="Z" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="W" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="P" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="R" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="turn1" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="turn2" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="turn3" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="front" DataType="BOOL" Value="0"/>
+<DataValueMember Name="up" DataType="BOOL" Value="0"/>
+<DataValueMember Name="left" DataType="BOOL" Value="0"/>
+<DataValueMember Name="flip" DataType="BOOL" Value="0"/>
+<ArrayMember Name="ext" DataType="REAL" Dimensions="3" Radix="Float">
+<Element Index="[0]" Value="0.0"/>
+<Element Index="[1]" Value="0.0"/>
+<Element Index="[2]" Value="0.0"/>
+</ArrayMember>
+</StructureMember>
+<StructureMember Name="PR108_G1" DataType="POSREG_T">
+<DataValueMember Name="uframe" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="utool" DataType="INT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="X" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="Y" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="Z" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="W" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="P" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="R" DataType="REAL" Radix="Float" Value="0.0"/>
+<DataValueMember Name="turn1" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="turn2" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="turn3" DataType="SINT" Radix="Decimal" Value="0"/>
+<DataValueMember Name="front" DataType="BOOL" Value="0"/>
+<DataValueMember Name="up" DataType="BOOL" Value="0"/>
+<DataValueMember Name="left" DataType="BOOL" Value="0"/>
+<DataValueMember Name="flip" DataType="BOOL" Value="0"/>
+<ArrayMember Name="ext" DataType="REAL" Dimensions="3" Radix="Float">
+<Element Index="[0]" Value="0.0"/>
+<Element Index="[1]" Value="0.0"/>
+<Element Index="[2]" Value="0.0"/>
+</ArrayMember>
+</StructureMember>
+</Structure>
+</Data>
+</Tag>
+<Tag Name="vb01_MainMachine_OUT" Class="Standard" TagType="Base" DataType="AB:ETHERNET_MODULE_SINT_4Bytes:O:0" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[[0,0,0,0]]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="AB:ETHERNET_MODULE_SINT_4Bytes:O:0">
+<ArrayMember Name="Data" DataType="SINT" Dimensions="4" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+<Element Index="[3]" Value="0"/>
+</ArrayMember>
+</Structure>
+</Data>
+</Tag>
+</Tags>
+<Programs Use="Context">
+<Program Use="Target" Name="MapOutputs" TestEdits="false" MainRoutineName="R00_Main" Disabled="false" Class="Standard" UseAsFolder="false">
+<Tags>
+<Tag Name="FlexFeederOutputs" TagType="Base" DataType="AOI_Fanuc_OUT" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Data Format="L5K">
+<![CDATA[[1,[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]]]]>
+</Data>
+<Data Format="Decorated">
+<Structure DataType="AOI_Fanuc_OUT">
+<DataValueMember Name="EnableIn" DataType="BOOL" Value="1"/>
+<DataValueMember Name="EnableOut" DataType="BOOL" Value="0"/>
+</Structure>
+</Data>
+</Tag>
+</Tags>
+<Routines>
+<Routine Name="R00_Main" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Subroutine Calls]]>
+</Comment>
+<Text>
+<![CDATA[JSR(R01_Logic,0);]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+<Routine Name="R01_Logic" Type="RLL">
+<RLLContent>
+<Rung Number="0" Type="N">
+<Comment>
+<![CDATA[Map Ethernet IP Outputs Using CPS Instruction - General Devices]]>
+</Comment>
+<Text>
+<![CDATA[[CPS(vb01_MainMachine_OUT,vb01_MainMachine:O,1) ,CPS(cam01_Inspection_OUT,cam01_Inspection:O,1) ];]]>
+</Text>
+</Rung>
+<Rung Number="1" Type="N">
+<Comment>
+<![CDATA[Map Ethernet IP Outputs Using CPS Instruction - S10 Flex Feeder]]>
+</Comment>
+<Text>
+<![CDATA[[CPS(fd01_InclineConveyor_OUT,fd01_InclineConveyor:O1.Data[0],2) ,CPS(fd02_ReturnConveyor_OUT,fd02_ReturnConveyor:O1.Data[0],2) ,AOI_Fanuc_OUT(FlexFeederOutputs,rob01_FlexFeeder:O1,rob01_FlexFeeder:O2,rob01_FlexFeederControl,rob01_FlexFeederEDAOut) ];]]>
+</Text>
+</Rung>
+</RLLContent>
+</Routine>
+</Routines>
+</Program>
+</Programs>
+</Controller>
+</RSLogix5000Content>

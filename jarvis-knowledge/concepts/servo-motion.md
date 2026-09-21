@@ -14,17 +14,19 @@
 > (`generated/Test_Project_v2/ServoPNP__jarvis_v1.3.0__2026-08-24_v6_SHIP__corrected_by_Jason.L5X`
 > — the freshest CE authority, and the source of the MCD architecture below);
 > (2) his questionnaire answers (plc-reference/training-material/); (3) the
-> V4.2 standard templates; (4) Dan's geometry rulings (corner blends, canonical
-> points — these stand, they are compatible with MCD); (5) the derived template
-> inventory. Where an older statement in this file's history conflicted with a
-> newer authority, the newer one won — see SUPERSESSION NOTES at the bottom.
+> V4.2 standard templates and the SDC Chassis Template; (4) Dan's geometry
+> rulings (corner blends, canonical points — these stand, they are compatible
+> with MCD); (5) the derived template inventory. Where an older statement in
+> this file's history conflicted with a newer authority, the newer one won —
+> see SUPERSESSION NOTES at the bottom.
 
-Distilled from the four V4.2 standard templates (S05_ServoPNP two-axis PNP,
-S00_IndexerSP / S00_IndexerNoSP dial indexers, the shot pin axis), Jason
-Perry's CE reviews (v5 review 2026-08-24, corrected file 2026-08-25), and
-Dan's geometry rulings. Rungs quoted below are the concept made concrete —
-the concept generalizes to stations no template covers, because SDC uses
-"similar concepts and standards" across ALL servo use, not just PNPs.
+Distilled from the V4.2 standard templates (S05_ServoPNP two-axis PNP,
+S00_IndexerSP / S00_IndexerNoSP dial indexers, the shot pin axis), the SDC
+Chassis Template's cam/dial pair, Jason Perry's CE reviews (v5 review
+2026-08-24, corrected file 2026-08-25), and Dan's geometry rulings. Rungs
+quoted below are the concept made concrete — the concept generalizes to
+stations no template covers, because SDC uses "similar concepts and standards"
+across ALL servo use, not just PNPs.
 
 ## The core architecture: stage, command, speed-change, quickstop
 
@@ -93,7 +95,17 @@ the new dynamics. The mechanics that matter:
   `q_mcd_speed_staging`; until answered, stage speed into the MCD's own tag
   like accel/decel, and note the divergence from the corrected file.)
 - **MCD is edge-fired by state entry** exactly like MAM — each speed-change
-  state gives it a fresh false→true edge.
+  state gives it a fresh false→true edge. On a CONTINUOUS motion (a jog) there
+  is no state edge to use, so the chassis template guards it with a value
+  compare instead — `NE(newSpeed, previousSpeed)` around the MCD, then latch
+  the new value (Chassis R06 rung 14, `MCD(...,Jog,...)`). On a two-speed
+  chassis that compare is fed by an HMI standard/fast toggle
+  (`ChassisControl.Run.Vel` vs `ChassisControlFast.Vel`) and the SAME toggle
+  is published as `StandardSpeed_Active`/`FastSpeed_Active` so Production can
+  pick the matching OEE ideal cycle time (seen in ShowRoomChassis.L5X:
+  Chassis R06 rungs 12/14/15/16) — a machine speed MODE is a machine-wide
+  fact, not a servo-local one. MCD is therefore not a PNP-only instruction and
+  not Move-only: it is *the* way SDC changes dynamics of anything in motion.
 - **A down-stroke starts FAST and MCDs to slow at the transition point; an
   up-stroke starts SLOW (leaving the nest) and MCDs to fast at the transition
   point.** The staging rung stages the STARTING profile for the stroke's
@@ -215,7 +227,9 @@ Two shapes are on the table, both CE-evidenced:
 
 Either way: position AND speed staging live in this ONE rung (plus the MCD
 rung's own staging for mid-stroke changes) — never spread across separate
-per-state "speed profile" rungs.
+per-state "speed profile" rungs. On a rotary axis the same rung also stages
+`MoveType` per branch (`RotaryPositive` / `RotaryNegative` / `RotaryShortest`)
+— direction is part of the move definition, not a separate mechanism.
 
 ## Per-position RangeCheck instancing: a position is a fact, not a target
 
@@ -240,6 +254,13 @@ whatever was staged last," which is residue, not intent. R02 transitions must
 name the position instance they confirm (`XIC(ZAxisPick.InPos)`) so the rung
 reads as the engineering statement it is: "Z is at Pick."
 
+A COMPUTED position is still a position: the chassis template instances a
+RangeCheck on each of its four derived cam angles (`DialStartIndexMinusOne`,
+`DialEndIndexPlusOne`, `DialUnlockPos`, `SetupCamStartupPosDeg`) with the same
+tight 0.2 / wide 5.0 pair. Where a window WRAPS 360°, though, RangeCheck can't
+express it and SDC uses a reversed-limit `LIMIT(high, actual, low)` compare
+instead (`CamInDialDwell`) — a rotary idiom worth recognising on sight.
+
 ## InPosWide vs InPos — mid-flight facts vs arrival facts
 
 `AOI_RangeCheck({Pos}, Positions[i], tight, ActualPosition, wide)` produces
@@ -262,10 +283,23 @@ TWO bits, and they answer two different questions:
      arrived, OR while still moving but already inside the blend band. Here
      the wide value IS the ME's blend distance (motion-model-pnp.md).
 
-Never blend into a state whose action requires the position to be truly
-reached: releasing a part 5 mm above the nest is a defect, not smoothness.
-Waits, grips, releases, and process operations take strict arrival;
-travel-to-travel corners take the wideband OR.
+**CONFLICT — needs Dan/leads ruling: the standard `AOI_RangeCheck`'s wide band
+is ASYMMETRIC.** Its logic (seen in ChassisStandard.L5X and confirmed in
+ShowRoomChassis.L5X: AOI_RangeCheck rungs 2–3) is `MaxWide = Value +
+DeadbandWide` but `MinWide = Value − Deadband` — the LOW side of the "wide"
+window uses the TIGHT deadband. So `.InPosWide` only widens on approach from
+BELOW the target (rising position); an axis approaching from above sees
+nothing but the tight band. Every blend and transition band we author assumes
+a symmetric window, so on decreasing-position strokes (a Z whose Retract is
+numerically below Pick, a reverse index) the early-advance simply won't fire
+early and the corner silently stops dead. Until ruled on: check the DIRECTION
+of every stroke whose band matters, and if it approaches from above, either
+place the anchor value below the point of interest or flag the axis for a
+leads decision — do not assume the wide band is centred. Never blend into a
+state whose action requires the position to be truly reached: releasing a part
+5 mm above the nest is a defect, not smoothness. Waits, grips, releases, and
+process operations take strict arrival; travel-to-travel corners take the
+wideband OR.
 
 ## Transition-condition minimalism — test only what is new
 *(Jason's correction, 2026-08-25)*
@@ -297,8 +331,9 @@ devices." A permissive is a statement about GEOMETRY — what must be
 physically true for this axis to move without hitting something — and each
 template derives it from its own geometry: S05's X permissive is "Z homed
 and parked in the Retract band"; the indexer dial's is `ActuatorsSafe`; the
-shot pin's is "dial on-station and not moving." None of these is "the"
-permissive shape — the physics is.
+shot pin's is "dial on-station and not moving"; the chassis cam's is simply
+"dial axis homed" (the cam cannot move meaningfully unless its slave has a
+reference). None of these is "the" permissive shape — the physics is.
 
 The permissive is not a soft gate: the quickstop rung fires `MAS` at max
 decel the instant the permissive drops mid-motion. So a permissive that is
@@ -369,6 +404,10 @@ Shapes that never change:
   The auto branch is a plain OR list of the states in which the axis STARTS
   a stroke — never a latch bit, never per-state ONS trigger rungs, never
   OTL/OTU "AutoMoveTrig" machinery, never StateChanged one-scan droppers.
+  (A mechanism axis may carry a SECOND, purpose-named MAM instance for a
+  different job — the chassis cam has `CamAxisResync_MAM` for resync moves and
+  `CamAxisCS_MAM` for the controlled stop. Separate JOB, separate control tag,
+  each still one rung with its own state list.)
 - **One MCD rung per multi-speed axis**, in Jason's exact shape above, with
   its own control tag and staging tags. No MCD rung on single-profile axes.
 - **One Auto Mode staging rung per axis** (two sanctioned internal shapes —
@@ -413,10 +452,12 @@ alarm — "no home position" means no named PARK target, not no reference.
 - Homing is operator-driven in Manual (state 1): request → confirm →
   `MAH` (machine home) or `AOI_TorqueHome` (torque-to-hardstop homing for
   axes without home switches — HomeSelect 1, the PNP's standard; MAH for
-  axes with no hard stop, e.g. the indexing dial — Jason #19/#21).
-  `AxisHomedStatus` then gates every auto MAM — an unhomed axis never
-  auto-moves. Homing lives in R04/R05 rungs 9–11 and is DISTINCT from
-  initialization (states 100–124).
+  axes with no hard stop, e.g. the indexing dial — Jason #19/#21). The
+  request/confirm pair is a real two-step interlock (request latches and arms
+  a confirm timer; only `HomeConfirm` fires the MAH) because homing moves an
+  axis with no reference. `AxisHomedStatus` then gates every auto MAM — an
+  unhomed axis never auto-moves. Homing lives in R04/R05 rungs 9–11 and is
+  DISTINCT from initialization (states 100–124).
 - Init/recovery (states 100–127) always sequences the vulnerable axis to
   safety FIRST — for a PNP: Z up to retract before any horizontal motion —
   then branches on what the machine is holding (part held → toward place;
@@ -426,19 +467,77 @@ alarm — "no home position" means no named PARK target, not no reference.
   (velocity/0.85 over the axis's characteristic time); the quickstop MAS
   uses those maxima, not the tuned profile values.
 
-## Rotary / index axes (dials, MAPC)
+## Rotary / index axes, and camming a dial to a cam axis (MAPC)
+*(seen in ChassisStandard.L5X: Chassis R02_PositionCalcs, R04, R06_CamServo,
+R07_DialServo — the SDC chassis template's own cam/dial pair)*
 
 The same concepts wear rotary units: positions are DEGREES, index increment
-= 360° / fixture count; the dial is a single-profile axis (no MCD) whose
-consecutive index strokes use the trigger/wait split. On the SDC chassis,
-MAPC electronic camming replicates a mechanical cam — cam servo turns 360°,
-dial servo indexes one nest per cam revolution, MAPC drives the dial inside
-a defined cam angle range. MAG gearing = slave follows a master position
-(tracking parts down a conveyor); ratios are FIXED, computed from mechanics,
-never tuned empirically. MAG/MAPC are triggered from the state sequence like
-any motion. MAR is not standard (as-needed high-speed registration only).
-SDC has existing servo dial indexer logic — copy it and update to current
-standards rather than writing new.
+= 360° / fixture count; the dial is a single-profile axis whose consecutive
+index strokes use the trigger/wait split. MAG gearing = slave follows a master
+position (tracking parts down a conveyor); ratios are FIXED, computed from
+mechanics, never tuned empirically. MAR is not standard. SDC has existing
+servo dial indexer logic — copy it and update to current standards rather
+than writing new.
+
+On a chassis, the dial does not index on command at all — it **follows a
+cam**, and that changes the whole recovery story:
+
+- **The profile is BUILT AT RUNTIME and it encodes the timing diagram.**
+  `MCCP` compiles a 4-point CAM array into `CamProfile`, then `MAPC` slaves
+  the dial to the cam (Continuous, master = cam ActualPosition,
+  Bi-Directional): [0] master 0 / slave 0, [1] master = `SetupDialIndexStart`
+  / slave 0 / SegmentType 1 (cubic), [2] master = `SetupDialIndexEnd` /
+  slave = `NestSpacing` (= 360 / NestQty), [3] master 360 / slave NestSpacing.
+  The DWELL is the flat linear segments either side; the INDEX is the single
+  cubic segment between the two setup angles. The whole machine's timing is
+  therefore two numbers plus nest count — change nest quantity and the profile
+  regenerates.
+- **Camming may only be ENGAGED from a lawful posture, and that is why resync
+  exists.** MAPC positions the slave RELATIVE to where it is, so engaging with
+  the dial off-nest or the cam inside the index window leaves the dial
+  permanently off-station. Hence `ChassisStatus.ResyncRequired` (state 7 sees
+  not-on-station or not-in-dwell) and the resync excursion, which IS this
+  machine's init: 10/13 move the CAM (MoveType `RotaryNegative` or
+  `RotaryPositive`, chosen by which side of a forward/reverse boundary set 10%
+  into the index window the cam sits — nearest direction, fewest degrees
+  through the danger zone) to `DialUnlockPos`, the midpoint of the index window
+  where the shot pin has released the dial; 16 moves the DIAL
+  (`RotaryShortest`) to the nearest nest, with `TRUNC(DialPosNests)` + a
+  0.1-nest bias deciding whether "nearest" is this nest or the next; 19/22 walk
+  the cam back OUT of the index window to index-start − 1° or index-end + 1°;
+  25 then MCCPs and MAPCs. Two states per direction, not one state with a
+  computed sign, because the MoveType differs — direction is part of the move.
+- **Position facts are wrap-aware compares, and on-station is a MOD.**
+  `DialOnStation` = `MOD(DialPosNests, 1.0)` inside a tolerance that was itself
+  converted from degrees to nests — the same fractional-remainder idiom as the
+  V4.2 indexer. `CamInDialDwell` is a reversed-limit LIMIT (see the RangeCheck
+  section). Both feed a standing "Cam & Dial NOT In Sync" fault that fires if
+  the pair ever drifts while running.
+- **Stop taxonomy is per-state, and it is three different stops.** Immediate
+  stop and fault (37/73/76) MAS at `ChassisControl.FastStopDec`; a manual-jog
+  stop (55) MAS at the jog decel; a CONTROLLED stop (40) is not a MAS at all —
+  it is a MAM to `SetupCamStartupPosDeg` so the machine parks at a known cam
+  angle with every actuator in a known posture, then 43 paused. Choose by what
+  the mechanism must be true afterwards, not by urgency alone. A park-angle
+  stop also has an ENTRY window: the state-40 rung wraps a compare that
+  refuses the transition while the cam already sits in the short approach
+  window just before the park angle (`SetupStartupStopChkSub` degrees wide),
+  because a MAM to a target you are already braking into either overshoots or
+  stops the mechanism mid-window — the chassis simply runs one more revolution,
+  and `ChassisStatus.MovingStartStopPos` tells the operator that is what is
+  happening (seen in ShowRoomChassis.L5X: Chassis R04 rung 14, with a 30 s
+  "waiting for controlled stop" window to cover the extra revolution).
+- **Brake and hand crank**: the cam axis's holding brake is driven by
+  `SSV(Axis, iq_CamAxis, MechanicalBrakeControl, …)` — releasing it is a
+  deliberate sequence (58 MSF → 61 release → 64 ready to hand crank → 67
+  re-engage → 70 MSO), each step with its own 1000 ms timeout alarm, plus a
+  fault if the crank is inserted while running. Never drive a brake from a
+  bare output bit when the axis object owns it.
+- **Every one of those states carries a "Waiting For …" timeout alarm** staged
+  by MOVEing into `Control.FaultTime` inside the state's own rung (1000 ms for
+  enables/brakes, 2000 for a jog stop, 10000 for resync moves, and as long as
+  the park approach needs for the controlled stop) — the fault window is a
+  property of the STEP, written where the step is.
 
 ## What varies per application vs. what never varies
 
@@ -452,38 +551,100 @@ many speed profiles per axis and where the transition points are; which
 corners blend and the blend distances; which axis is the "safety-first"
 recovery axis; whether an axis needs a permissive derived from another
 axis's position; whether homing is MAH or torque-home; linear mm vs rotary
-degrees. Dan (2026-08-25): "we use a ton of servos with similar concepts
-everywhere" — the PNP is the worked example, not the boundary. Any station's
-precision-approach axis gets transition points + MCD; any inter-axis path
-corner may blend; any simple traverse or dial stays single-profile.
+degrees; whether the axis is commanded (MAM) or cammed (MAPC). Dan
+(2026-08-25): "we use a ton of servos with similar concepts everywhere" — the
+PNP is the worked example, not the boundary.
 
-## The hardware the code rides on (SDC_Motors_Cables_Drives_Guidelines Rev2)
+## The hardware the code rides on
+*(SDC_Motors_Cables_Drives_Guidelines Rev2; EE Debug and Testing Process;
+TN-02172026-Job1125)*
 
 Standard SDC axes are Rockwell: **TLP motors + Kinetix 5300** for standard
 PNPs, ball-screw/belt axes, simple rotary, and the indexing-ring shot pin;
 **VPL motors + Kinetix 5500** for camming/gearing, chassis CAM & dial axes,
-indexing-ring main drives, servo presses, and high-speed coordinated motion.
-Codegen-relevant consequences:
+indexing-ring main drives, servo presses, and high-speed coordinated motion
+(5500 also gives CIP Safety / software STO, which is what the chassis
+template's SafetyProgram writes to). High-flex cable wherever the motor moves
+continuously; single hybrid cable on 5500, separate power+feedback on 5300;
+Motion Analyzer for sizing with load:motor inertia ≤ 10:1; CIP-Motion
+CompactLogix to 16 axes, ControlLogix beyond. Minimize drive-type variation on
+a machine. Codegen-relevant consequences:
 
 - **Multiturn absolute encoders are the standard** — axes normally keep
   position through a power cycle, which is why the homing story is
   "confirm/rehome on loss of reference" rather than "home every start". The
   TLP caveat: battery-backed encoder — a dead battery + power cycle loses
-  position, so the Loss-Of-Absolute-Position-Reference alarm is a real
-  event, not paranoia.
+  position, so the Loss-Of-Absolute-Position-Reference alarm is a real event,
+  not paranoia (and it is gated on the drive's EIP ComOK so a comms drop
+  doesn't impersonate it).
 - **Holding brake is required for vertical loads** — EXCEPT the standard SDC
   PNP vertical axis, which runs brakeless in standard applications.
-- **Torque limits are a debug instrument** (EE Debug and Testing Process):
-  start at 50%, finish ~20% over observed max — keep the template's torque
-  monitoring/setting and quickstop blocks; commissioning depends on them.
-- Motion parameters are HMI-entered during debug — everything motion-numeric
-  is operator-adjustable, never hardcoded.
+- **Torque limits are a commissioning instrument**: monitoring/limiting is
+  standard in the servo datatype (`TorqueLimitPositive/Negative` set from HMI
+  parameters on demand); start at 50% of max, investigate torque faults during
+  debug rather than just raising it, and set the production limit ~20% over the
+  max actually observed in full auto. Debug also runs two named speed
+  profiles — a slow speed for dry-run and the running speed — easy to toggle so
+  a tech can re-verify a sequence at slow speed without retyping parameters.
+- Manual/inch moves load the same accel/decel and must be edge-triggered (one
+  move per button press); quick-stop on permissive/safety loss and
+  `AOI_RangeCheck`'s wideband deadband are template-standard, never asks for
+  the ME.
+- Replication caution: don't copy manually-entered Commutation
+  Alignment/Offset values from an older Studio 5000 project — a newer version
+  may have a native motor profile, and stale manual values give
+  `FLT S04 commutation not configured`. Delete and re-add the drive under the
+  same name so it auto-detects.
+
+## Non-Rockwell motion platforms (reference, not SDC standard)
+
+When a job specifies hardware that is not a Logix motion axis, the MAM/
+RangeCheck standard does not apply directly — it is a different command
+architecture, not a deviation from ours. Recognise these and treat them as
+vendor plumbing:
+
+- **Parker IPA drives** (`EthernetIP_IPA_B.pdf`, `Change Log Ver5.txt`): a
+  generic CIP adapter driven by Parker AOIs, not MAM. `IPA_AxisManager` must
+  run every scan or nothing works. Move FBs are **non-blocking** — a new move
+  request supersedes one in progress, so sequence on the axis's own
+  moving/in-position status, never on rung order. `KAMR` is a latched
+  kill-all-motion needing explicit `IPA_FaultReset` (some faults need a power
+  cycle). Homing is mode-coded (0–30); switching to/from EOT modes
+  (16,17,19,22,27,30) requires an ACR-View re-download. Hard-stop homing =
+  lower torque limit, raise position-error limit above max travel, command
+  past the stop, watch position stop changing, `IPA_MoveStop`. `PROG2`/`PROG3`
+  are custom-program escape hatches triggered by `IPA_Run_Prog2/3`. AOI and IPA
+  project versions must match. Commissioning gotcha: the PLC writes 0 to the
+  JOG register cyclically, so ACR-View jogging needs the connection dropped or
+  the PLC halted.
+- **ACR motion controllers over EtherNet/IP** (`EIP_parameters.pdf`): Class 1
+  mapping can live on the ACR side — `P37434` = group count (≤16), then a fixed
+  4-parameter block per group starting `P37440` (start param, count ≤8,
+  direction 0=ACR→PLC/1=PLC→ACR, type 1=DINT/2=REAL), ≤100 parameters total,
+  committed BEFORE the PLC opens the Class 1 connection.
+- **SICK AFS60/AFM60 absolute encoders** (`AFX60_AOI_*.pdf`, vendor ladder
+  routine): cyclic I/O carries position; PARAMETERS (preset, position/velocity
+  limits, diagnostics) go through the vendor `SICK_AFX60` AOI over acyclic CIP
+  Generic — two MSG instances (Get/Set Attribute Single, Class 1/Inst 1/Attr 1),
+  a Selection bitfield, rising-edge `bRead`/`bWrite`, poll
+  `bReadDone`/`bWriteDone`, 5000 ms default timeout; multi-scan, so call it
+  every scan. Alternatively SICK ships an importable ladder routine per encoder
+  (unique Final Name and renamed tags per instance). Writing a PRESET is
+  safety-relevant — treat it like a homing/position override.
+- **Lenze i550 VFDs** (`i550_ActuatorSpeed` AOI): speed-only actuators, no
+  position loop — enable/run/velocity/direction/quickstop and
+  ready/enabled/warning/error/actual-velocity. Do NOT model them as
+  `HMI_{name}` ServoOverall position axes. Network control needs P201:1=5,
+  P400:1=1, P400:2=1, P400:37=1 set once (MSG at startup or EasyStarter).
+  Explicit parameter writes must be SEQUENCED (`i550ExplicitMSGHandler`) —
+  limited concurrent CIP connections. Stale EDS-to-AOI revision dates produce a
+  "false data type" error that looks like a real fault.
 
 ## Answers from the controls leads (Jason Perry, 2026-08-20, questionnaires in plc-reference/training-material/)
 
 - **Motion mode decision tree (#1–#3)**: MAM point-to-point = move A→B with a
   defined profile. Blending = rounding corners when two or more axes control
-  one mechanism. MAG/MAPC/MAR — see the rotary section above.
+  one mechanism. MAG/MAPC/MAR — see the rotary/camming section above.
 - **Axis-module boilerplate (#4)**: rungs 0, 1, 3–12, 16–20 NEVER change
   (only the axis name). The other rungs keep their shape but their
   manual/auto MOTION TRIGGERS are the application-dependent part.
@@ -496,8 +657,10 @@ Codegen-relevant consequences:
   for rounding moves. R03 contains NO servo control; R04/R05 own all motion
   instructions. A mixed servo+pneumatic state completes when BOTH the servo
   (.PC + InPos) and the pneumatic action are done.
-- **Mandatory servo faults (CONTROLS #16)**: axis fault, loss of absolute
-  position reference, and waiting-to-reach-commanded-position timeouts.
+- **Mandatory servo faults (CONTROLS #16)**: axis fault (message built by
+  DTOS/CONCAT of `AxisFault` into a servo alarm array with its own handler),
+  loss of absolute position reference, and waiting-to-reach-commanded-position
+  timeouts.
 
 ## Learned from corrections
 - (2026-08-20, from Dan's correction of build b_mt1p0xfg_gu145g — synthetic test correction) The [PC + InPos , IP + InPosWide] blended-branch pattern is a clearance permissive, not a universal transition template. Use it only for an axis that merely has to be out of the way (e.g., a vertical retract clearing an interference zone) so the next motion can overlap; the axis that actually establishes the working position for the next state must show a real .PC with the tight .InPos window before you transition.
@@ -509,6 +672,8 @@ Codegen-relevant consequences:
 - (2026-08-25, from Jason's correction of build b_mt7qbdtl_7i0izo) Use a wide in-position window (.InPosWide) to detect that an axis has reached a blend/handoff point while still moving; reserve .PC with the tight .InPos window for confirming a move has actually completed at its final target.
 - (2026-08-25, Jason Perry, Teams ruling on the v7 X-permissive question) THE X-traverse permissive is "Z Axis Homed AND Z Actual Position <= a safe position set at startup" — one ordered compare against a startup-set safe-height tag (ZAxisSafePosition, seeded at S:FS from Retract + the larger corner blend), replacing parked-band/blend-bit branch enumerations and the corrected file's own place-arrival LE branch. Mind axis polarity (LE where Z increases downward, GE otherwise); R20's quickstop reason is the exact complement of the same compare.
 - (2026-08-25, Jason Perry, Teams — "your proposed fix will work") A transition-band wait exit MUST carry a parallel strict final-arrival branch — `[XIC({Pos}Transition.InPosWide) ,XIC({Axis}_MAM.PC) XIC({FinalPos}.InPos)]` — because a resume/recovery stroke can START beyond the band (Z aborted between Retract and the transition, then commanded to Retract) and a band-only exit then never fires: an unsatisfiable wait and a fault loop. Normal full strokes exit on the band first, so behavior is unchanged; only short resume strokes take the strict branch. Applies to every wait state whose exit condition is a mid-stroke band.
+- (2026-08-25, from diagram review of ServoPNP) A PNP diagram whose Z strokes are flat single-speed moves with no PickTransition/PlaceTransition rows and no corner-blend edges violates the mandatory 2-axis PNP motion model at the DIAGRAM level — the transition/blend structure must be visible in the drawn states/edges, not first appear at codegen.
+- (2026-08-31, from study of ChassisStandard.L5X) MCD is not Move-only and not PNP-only: a continuous jog's speed is changed live with `MCD(...,Jog,...)` guarded by a `NE(new,previous)` value compare instead of a state edge. And a mechanism axis may hold more than one MAM instance when the JOBS differ (resync move vs controlled stop) — one rung and one control tag per job.
 
 ## SUPERSESSION NOTES — what changed and when (history kept honest)
 
@@ -542,213 +707,6 @@ Codegen-relevant consequences:
    superseded 2026-08-24 by Dan's leg-limit rule** (Z-leg: blend ≤ transition
    − Retract, equal allowed; X-leg: ≤ pick↔place travel; bigger is better).
    `geometrySanity.js` implements the leg-limit rule.
-- (2026-08-25, from diagram review of ServoPNP) A PNP diagram whose Z strokes are flat single-speed moves with no PickTransition/PlaceTransition rows and no corner-blend edges violates the mandatory 2-axis PNP motion model at the DIAGRAM level — the transition/blend structure must be visible in the drawn states/edges, not first appear at codegen.
-
-## Quickstop-on-safety-drop, torque monitoring, manual-mode accel/decel, wideband deadband location (2026-08-30)
-
-- Servo axes carry standard quick-stop logic: if the axis is in motion and its permissive or safety condition drops out, it issues a quick stop rather than an uncontrolled fault-stop — this is baseline servo safety behavior for every axis, not something to ask about per station.
-- Torque monitoring/setting logic is a standard part of the servo datatype/logic — servo axes are expected to monitor and set torque limits, not just position/speed.
-- Accel and decel values are loaded into the drive during MANUAL mode moves too (inch/jog), not just auto sequence moves — a fix history entry ('servo inch move was inching more than once when button pushed') also confirms inch/jog moves must be edge-triggered, one move per button press.
-- The wideband deadband used for the InPosWide/wideband blending pattern lives as a parameter on AOI_RangeCheck itself — confirms the wideband pattern is implemented at the RangeCheck-instance level, consistent with the per-corner AOI_RangeCheck instancing already established for PNP blend corners.
-
-_Source: Revision History.md (network: Standards - Software), ingested 2026-08-30 by the inbox librarian._
-
-## SICK AFX60 absolute encoder integration (EtherNet/IP) (2026-08-30)
-
-If a station uses a SICK AFS60/AFM60 EtherNet/IP absolute encoder (e.g. for external position feedback separate from a servo drive's own encoder), device parameters are NOT read over cyclic I/O — they're accessed via the vendor's `SICK_AFX60` AOI using asynchronous CIP Generic messaging (MSG instructions wrapped inside the AOI).
-
-- Call is asynchronous/multi-scan: the AOI must be called every scan until `bReadDone`/`bWriteDone` completes.
-- Reads and writes are triggered independently by rising edges on `bRead`/`bWrite`; both can run concurrently.
-- Which parameters to read/write is selected via bit flags in `stData.GetData.Selection` / `stData.SetData.Selection` (a `ReadAll` bit selects everything).
-- Writable params: PresetValue, PositionLowLimit/HighLimit, MinVelocitySetpoint/MaxVelocitySetpoint, TemperatureValueFormat — each with a valid-range error code if written out of bounds.
-- Readable params include serial number, resolution, preset, position/velocity limits, warnings, temperature, encoder runtime/uptime, max velocity since commissioning.
-- Vendor's recommended timeout is 5000ms (their own default, not derived from an SDC standard — coincidentally matches SDC's Control.FaultTime default).
-- Requires one-time manual configuration of the GetMessage (Get Attribute Single) and SetMessage (Set Attribute Single) MSG parameters (Class 1, Instance 1, Attribute 1) pointing at the encoder's EtherNet/IP path — this is vendor plumbing, not something to templatize into the SDC device model.
-
-_Source: AFX60_AOI_DE.pdf (network: Standards - Software), ingested 2026-08-30 by the inbox librarian._
-
-## SICK AFS60/AFM60 absolute encoder integration (vendor ladder routine) (2026-08-30)
-
-When a station uses a SICK AFS60/AFM60 absolute rotary encoder over EtherNet/IP (e.g. dial/indexer position feedback), position/parameter access to the encoder is NOT built from scratch — SICK ships a ready-made L5X ladder routine (`SickAFx_A101WS_A103WS_FB_Enc1_GetSet.L5X` or `..._A102WS_...` depending on the assembly instance selected in the module config) that is imported into the project and called as a JSR SubRoutine from MainRoutine.
-
-- Each encoder instance needs its own import pass with a unique **Final Name** for the routine and unique renamed **Tag References** (e.g. `Enc1` → `Enc2`) — multiple encoders in one project are not auto-deduplicated by the import tool.
-- Runtime interface is two Controller Tag nodes: `SickAFxWS_EncN_GetData` (read encoder parameters) and `SickAFxWS_EncN_SetData` (write them) — same tags the web server reads/writes, so PLC-side and web-server-side edits are mutually visible (with a browser refresh needed on the web side).
-- A Toggle Bit on `SickAFxWS_EncN_Init_GetSet` closes the connection to allow configuration from either the PLC or the web server.
-- Changing a preset/position value on this encoder is a safety-relevant act (warning in the vendor doc to check for machine hazard before changing preset) — treat any preset-write logic for this encoder type with the same caution as a homing/position-override operation.
-
-This is a vendor mechanism, not an SDC-authored pattern — file it as "how this specific hardware is wired in," useful if a station spec calls for a SICK absolute encoder.
-
-_Source: 8014213_Installation_LadderRoutine_AFxEtherNetIP_en.pdf (network: Standards - Software), ingested 2026-08-30 by the inbox librarian._
-
-## IPA Move Function Blocks Are Non-Blocking (2026-08-30)
-
-IPA move-related function blocks (jog/move/position commands) do not block — issuing a new move request while one is in progress simply supersedes it rather than queuing or erroring. PLC sequence logic must be written with this in mind: never assume a prior move command has completed just because the rung fired; gate the next move on the axis's actual in-position/motion status bits, not on rung execution order.
-
-_Source: Change Log Ver5.txt (network: Standards - Software), ingested 2026-08-30 by the inbox librarian._
-
-## Homing to a Hard Stop (Torque + Position-Error Limit Technique) (2026-08-30)
-
-To home an IPA-driven axis against a mechanical hard stop without damaging it: (1) lower the torque limit via IPA_SetTorqueLimit so the motor can't force through the stop, (2) set the position error limit via IPA_SetPositionErrorLimit higher than the longest possible travel so the drive doesn't fault on the expected stall, (3) command a move slightly beyond the longest possible travel in the direction of the hard stop, (4) in PLC logic, monitor the actual position feedback and detect when it stops changing, then issue IPA_MoveStop to halt motion at that hard limit. This is the standard SDC pattern for hard-stop homing on IPA axes, distinct from EOT (end-of-travel) homing modes (16,17,19,22,27,30) — switching an axis from an EOT homing mode back to a non-EOT mode requires a full IPA project re-download via ACR-View, not a live parameter change.
-
-_Source: Change Log Ver5.txt (network: Standards - Software), ingested 2026-08-30 by the inbox librarian._
-
-## PROG2 / PROG3 Special Operations Hook (2026-08-30)
-
-The IPA reserves PROG2 and PROG3 as user-authored program slots for special/custom axis operations that don't fit the standard move FBs. They're written and downloaded to the IPA via ACR-View, then triggered from PLC code with IPA_Run_Prog2 / IPA_Run_Prog3. Use this when a station needs axis behavior outside the standard move/home/jog FB set.
-
-_Source: Change Log Ver5.txt (network: Standards - Software), ingested 2026-08-30 by the inbox librarian._
-
-## SICK AFS60/AFM60 absolute encoder — non-cyclic parameter access via SICK_AFX60 AOI (2026-08-30)
-
-When a station uses a SICK AFS60/AFM60 absolute encoder over EtherNet/IP (rather than as feedback on a native servo axis), device parameters (position limits, preset value, speed limits, temperature format, etc.) are NOT part of the normal cyclic I/O — they're read/written through the vendor's SICK_AFX60 Add-On Instruction using non-cyclic CIP Generic messaging.
-
-- The AOI needs one GetMessage (Get Attribute Single) and one SetMessage (Set Attribute Single) MSG instance configured once (Class 1/Instance 1/Attribute 1, pointed at the encoder's arrReadRecord/arrWriteRecord).
-- Usage pattern: set a Selection bitfield (or ReadAll) for which parameters you want, rising-edge bRead/bWrite, poll bReadDone/bWriteDone, check bReadError/bWriteError + error code on failure.
-- This is an async, multi-scan operation (spans several PLC cycles) — call it every scan until done, same as any long-running MSG-based routine.
-- Relevant if a build uses a SICK absolute encoder needing runtime reconfiguration of preset/position limits/speed limits rather than a factory-set config — otherwise this AOI is irrelevant to normal servo axis motion (handled by the drive's own AXIS/MAM structure, not this).
-
-_Source: AFX60_AOI_EN.pdf (network: Standards - Software), ingested 2026-08-30 by the inbox librarian._
-
-## SICK AFX60 Absolute Encoder — AOI Integration Pattern (reference) (2026-08-30)
-
-When a station uses a SICK AFS60/AFM60 EtherNet/IP absolute encoder, device parameters (preset value, position low/high limits, velocity min/max setpoints, temperature format, plus read-only diagnostics like serial number, resolution, warnings, temperature, running/motion time) are accessed through the vendor `SICK_AFX60` AOI, not through standard cyclic I/O tags.
-
-- **Mechanism**: acyclic CIP-Generic messaging. Two MESSAGE instances are wired to the AOI's `GetMessage` (Get Attribute Single) and `SetMessage` (Set Attribute Single) InOut parameters, both configured Class 1 / Instance 1 / Attribute 1, pathed to the encoder's EtherNet/IP node.
-- **Call shape**: this AOI is asynchronous — its Logic routine spans multiple PLC scans. It must be called every scan until it finishes; it is never a fire-and-forget single-rung call.
-- **Trigger pattern**: rising edge on `bRead` reads every device parameter flagged `1` in `stData.GetData.Selection` (or all of them via `ReadAll`); rising edge on `bWrite` writes every parameter flagged in `stData.SetData.Selection` using the values staged in `stData.SetData`. Completion is signaled by `bReadDone`/`bWriteDone`; read and write operations are independent and may run concurrently.
-- **Timeout & errors**: `iTimeout` defaults to 5000ms — exceeding it sets `bReadError`/`bWriteError` and a diagnostic error code (`iReadErrorcode`/`iWriteErrorcode`). Error codes stack block-internal codes (invalid parameter selection, out-of-range write value) with passthrough Studio 5000 MSG-instruction error/extended-error codes.
-- **When this applies**: only relevant for stations with SICK absolute encoders read over EtherNet/IP for parameter configuration (not standard cyclic position feedback, which comes through normal I/O mapping) — file as a reference pattern, not a new servo standard.
-
-_Source: AFX60_AOI_DE.pdf (network: Standards - Software), ingested 2026-08-30 by the inbox librarian._
-
-## IPA Motion Controller: Non-Blocking Moves & Hard-Stop Homing (2026-08-30)
-
-- **Non-blocking move FBs**: IPA move-related function blocks (e.g. move commands) are NOT blocking — issuing a new move request interrupts/supersedes one already in progress. PLC sequencing logic must be written expecting this; never assume a prior move fully completes before a subsequent request can take over.
-- **Hard-stop homing technique**: to home against a mechanical hard stop without damage — (1) lower the torque limit via IPA_SetTorqueLimit to a safe value, (2) raise the position error limit via IPA_SetPositionErrorLimit above the longest possible travel, (3) command a move in the homing direction for a distance just beyond max travel, (4) monitor actual position in the PLC; when it stops changing (motor stalled against the stop), issue IPA_MoveStop to halt and establish that as the home reference.
-- **EOT homing mode switch caveat**: if using an End-of-Travel homing mode (modes 16, 17, 19, 22, 27, 30) and later switching back to a non-EOT homing mode, the IPA project must be re-downloaded via ACR-View — the mode change alone won't take effect otherwise.
-- **PROG2/PROG3 custom slots**: the IPA firmware reserves PROG2 and PROG3 for special/custom operations. These are authored and downloaded via ACR-View, then invoked from PLC logic via IPA_Run_Prog2 / IPA_Run_Prog3.
-- **Version lockstep**: the AOI version and the IPA project version must always match — mismatches cause functional problems, not just cosmetic ones.
-
-_Source: Change Log Ver5.txt (network: Standards - Software), ingested 2026-08-30 by the inbox librarian._
-
-## IPA Servo Drive: Non-Blocking Moves, Hard-Stop Homing, Custom Progs (2026-08-30)
-
-- **IPA move FBs are non-blocking.** Issuing a new move request while one is in progress does not queue — it supersedes/interrupts the current move. PLC sequencing logic must account for this: don't assume a move command is 'safe' to fire mid-motion without meaning to abort the prior one.
-- **Homing to a mechanical hard stop** (no home sensor) is a supported pattern: (1) lower the torque limit via `IPA_SetTorqueLimit` to a safe value that won't damage the mechanism on contact, (2) raise the position-error limit via `IPA_SetPositionErrorLimit` above the longest possible travel so the drive doesn't fault on the stall, (3) command a move in the homing direction for a distance beyond the longest possible travel, (4) in PLC logic, monitor actual position and when it stops changing (stalled against the stop), issue `IPA_MoveStop` to halt motion there and treat that as the home reference.
-- **EOT homing mode switch-back requires a re-download.** If a station uses home-to-EOT modes (16,17,19,22,27,30) and later needs to revert to a non-EOT homing mode, the IPA project must be re-downloaded via ACR-View — a mode-only parameter change is not sufficient.
-- **PROG2/PROG3** are IPA-side custom motion programs written and downloaded through ACR-View for special operations the standard FB set doesn't cover; the PLC triggers them with `IPA_Run_Prog2` / `IPA_Run_Prog3`. Useful escape hatch for non-standard axis behavior without inventing new PLC-side motion logic.
-
-_Source: Change Log Ver5.txt (network: Standards - Software), ingested 2026-08-30 by the inbox librarian._
-
-## Quick-stop and torque monitoring on permissive/safety drop (2026-08-30)
-
-- When a servo axis is actively in motion and its permissive or a safety input drops out, the standard is a **quick stop** (controlled deceleration) rather than an abrupt kill or waiting for a fault timeout — protects mechanics and avoids slam-stops mid-move.
-- Servo axes also carry **torque monitoring and torque-limit setting logic** as a standard part of the servo datatype/parameters — not just position/speed.
-- Accel/decel values are loaded even in manual/inch mode (not just auto), so jogging respects the same motion profile limits as auto sequencing.
-
-_Source: Revision History.md (network: Standards - Software), ingested 2026-08-30 by the inbox librarian._
-
-## ACR Controller — EtherNet/IP Class 1 Parameter Mapping (OS x.30+) (2026-08-30)
-
-Some ACR-family motion controllers (OS x.30 update 3 and higher) can host their own Class 1 EIP connection mapping instead of relying on the PLC scanner's Forward Open to supply configuration data. Before the PLC establishes the Class 1 connection, set on the ACR:
-
-- `P37434` — number of parameter groups in use (max 16).
-- Per group, 4 sequential parameters define the mapping: **start parameter**, **number of parameters**, **direction**, **data type** (Group 0 = P37440–P37443, Group 1 = P37444–P37447, ... Group 15 = P37500–P37503 — each group is a fixed 4-parameter block).
-
-Rules/limits:
-- Max 16 groups, max 8 parameters per group, max 100 total parameters across all groups.
-- Data type: 1 = DINT, 2 = Real.
-- Direction: 0 = ACR→PLC, 1 = PLC→ACR.
-
-Useful when integrating an ACR controller's Class 1 I/O directly against a PLC scanner where the PLC-side EDS/config doesn't carry explicit Class 1 data — the mapping lives on the ACR side instead.
-
-_Source: EIP_parameters.pdf (network: Standards - Software), ingested 2026-08-30 by the inbox librarian._
-
-## ACR Controller EtherNet/IP Class 1 Setup (parameter-based, no PLC-side config) (2026-08-30)
-
-When integrating an ACR-brand motion controller over EtherNet/IP (ACR OS x.30 update 3+), the Class 1 I/O connection data mapping can be defined entirely on the ACR side instead of relying on configuration data in the PLC's Forward Open request.
-
-- Set `P37434` = number of parameter groups (0–16 max).
-- For each group N, four parameters define the mapping: start parameter, number of parameters (max 8/group), direction, data type. Groups are laid out at fixed offsets starting `P37440` (Group 0: P37440–P37443, Group 1: P37444–P37447, ... Group 15: P37500–P37503 — each group is a 4-parameter block, +4 per group index).
-- Direction: `0` = ACR→PLC, `1` = PLC→ACR.
-- Data type: `1` = DINT, `2` = Real.
-- Hard ceiling: 100 total parameters across all groups combined, even though 16 groups × 8 params/group would allow 128 — don't assume the per-group max multiplies out freely.
-- This configuration must be committed on the ACR controller BEFORE the PLC establishes its Class 1 connection — it's a one-time controller-side setup step, not something toggled at runtime from ladder logic.
-
-_Source: EIP_parameters.pdf (network: Standards - Software), ingested 2026-08-30 by the inbox librarian._
-
-## IPA Drive Commissioning: EtherNet/IP JOG Conflict (2026-08-30)
-
-When an IPA drive/controller is connected to the PLC over EtherNet/IP, the PLC continuously writes 0 to the drive's JOG register as part of normal cyclic I/O. This holds JOG at zero and prevents manual jogging from ACR-View (the drive's native commissioning tool) while the connection is live.
-
-**Practical rule:** to jog an IPA axis manually during commissioning or troubleshooting, either disconnect the PLC's EtherNet/IP connection or halt the PLC program first — otherwise the PLC's zero-write overrides any jog command sent from ACR-View.
-
-_Source: Config_EIP.txt (network: Standards - Software), ingested 2026-08-30 by the inbox librarian._
-
-## Parker IPA drives — a separate EtherNet/IP AOI platform (not native MAM) (2026-08-30)
-
-Some servo hardware SDC may encounter (Parker IPA drive controllers) is **not** a native Logix motion axis. It connects over EtherNet/IP as a generic CIP adapter, and motion is commanded through Parker's own Add-On Instruction set rather than the standard MAM (Motion Axis Move) rung. If a station specifies Parker IPA drives, the SDC MAM/wideband servo standard does not directly apply — this is a different command architecture, not a deviation from it.
-
-Key architecture:
-- **Two connection types**: Class 1 (cyclic, UDP-based, periodic parameter exchange configured as up to 16 groups of parameters, each group up to 8 consecutive P-parameters, DINT or REAL, one direction each) and Class 3 (on-demand TCP request/response — reads, writes, AND/OR mask ops on individual parameters).
-- **IPA_AxisManager is mandatory** and must be wired to run every scan for any IPA axis — it does the underlying data exchange; other IPA AOIs won't work without it. It exposes Enabled, Faulted, AxisKill (KAMR), Moving, Ready, Homing, TorqueDisabled, and a Clock heartbeat bit for connection health.
-- **Motion AOIs are direct-parameter, not table-referenced**: IPA_Move takes Absolute flag, Position, Velocity, Accel, Decel, Jerk as call inputs — there's no equivalent of SDC's HMI ServoOverall position-table indexing baked into the AOI; if SDC wants HMI-driven positions on an IPA axis, that indirection has to be built in the calling rung, not assumed from the platform.
-- **Fault/kill model differs from native axis faults**: KAMR (Kill All Motion Request) is a LATCHED emergency-stop-style condition — once set (via IPA_SetKAMR or certain faults), no new motion is possible until IPA_FaultReset explicitly clears it. Some IPA faults are themselves latched at the drive and need a power cycle, not just FaultReset.
-- **Homing is mode-coded, not point-to-point**: IPA_Home takes a HomeMode (0–30) encoding direction, backup-and-final-approach direction, and which switch edge is used, plus separate hard-EOT (end-of-travel) modes that require an IPA reconfiguration download if switched to/from.
-- **AOI completion pattern is EN/DN/ER** (execute/done/error) per call, which is the general Studio 5000 AOI convention — but note this is fundamentally a request/response messaging pattern over the network, not a motion-planner MAM, so timing and retry behavior around these calls needs its own state-machine handling distinct from the InPos/InPosWide wideband pattern used for native axes.
-
-_Source: EthernetIP_IPA_B.pdf (network: Standards - Software), ingested 2026-08-30 by the inbox librarian._
-
-## Quick-stop, torque monitoring, and manual-mode accel/decel loading (2026-08-30)
-
-Template v3.0 added standard servo safety/quality behaviors that should be assumed present on any SDC servo axis going forward:
-- Quick-stop logic fires when the axis is in motion and its permissive or safety condition drops out mid-move — the axis doesn't just lose its move command, it actively decelerates/stops rather than coasting or faulting hard.
-- Torque monitoring and setting logic was added to servo logic — axes report/limit torque, not just position and speed.
-- (v3.0, 05/04/26) Accel/decel parameters are loaded even in manual/inch mode, not just auto sequence mode — a separate defect class from auto-mode motion (inch moves were also fixed for double-firing on a single button push, v4.1 07/08/26).
-
-These are template-standard behaviors now, not station-specific asks — never ask an ME whether a servo axis needs quick-stop-on-permissive-drop or torque limiting; it's baseline.
-
-_Source: Revision History.md (network: Standards - Software), ingested 2026-08-30 by the inbox librarian._
-
-## VFD speed-only actuators (Lenze i550) vs. true servo axes (2026-08-30)
-
-Not every motor-driven actuator in an SDC machine is a positioned servo axis — some are VFD-driven, speed-only actuators (e.g. Lenze i550 over EtherNet/IP via the `i550_ActuatorSpeed` AOI). These have no position loop: control is enable/run/velocity(RPM)/direction/quickstop, and status is ready/enabled/warning/error/actual-velocity/speed-zero. Don't model these as `HMI_{name}` ServoOverall position axes — they're a different device class (fixed or HMI-adjustable RPM setpoint, no Positions[N] table).
-
-Network-control commissioning requires four drive parameters set TRUE/network before the AOI will take control: P201:1=5 (setpoint source = network), P400:1=1 (enable), P400:2=1 (run), P400:37=1 (activate network control). These are one-time drive parameterization, done either via explicit MSG at startup or hand-set in EasyStarter — not per-cycle logic.
-
-Known integration gotcha: Lenze's EDS files embed a revision date in the AOI's linked PDU data type. Updating to a newer EDS without also updating that embedded date on the AOI produces a 'false data type' error that looks like a real fault but is just a stale EDS-to-AOI date mismatch — check/sync the date before assuming a real problem.
-
-When multiple i550 parameters must be written by explicit messaging, don't fire them all at once — the drive/PLC have a limited number of concurrent CIP connections. Use a sequencing pattern (SDC's `i550ExplicitMSGHandler` AOI): one edge-triggered `xSend` input steps through each parameter (Instance/Attribute/Source Length/Value_Out) one at a time via a shared external MESSAGE instruction, raising `xDone` only after all writes complete. Re-arm requires a fresh false→true edge on xSend.
-
-_Source: i550i5Protec_ActuatorSpeed_AOI_documentation_3.0.pdf (network: Standards - Software), ingested 2026-08-30 by the inbox librarian._
-
-## Commissioning torque limits and slow/running speed setpoints (2026-08-31)
-
-During machine debug, servo torque limits are staged, not set once: start torque limit at 50% of max as an initial safe value. If torque faults occur during debug, investigate root cause and raise the limit as necessary. Once the machine is running in full auto and meeting cycle time, set the final torque limit to approximately 20% over the max value actually observed in operation — this becomes the production limit.
-
-Automatic-mode speed commissioning also uses two distinct named setpoints, not just one live-tuned value: a 'slow speed' profile used throughout debug/dry-run testing, and the 'running speed' profile used once the sequence is proven. Both should be easy to toggle between (e.g. via HMI or mode select) so a tech can drop back to slow speed to re-verify a sequence without re-entering every parameter by hand. This is in addition to the standard HMI-adjustable per-axis speed/accel/decel — it's a commissioning workflow convention layered on top of that standard, not a replacement for it.
-
-_Source: EE Debug and Testing Process.docx (network: EE Process and Standards Documents), ingested 2026-08-31 by the inbox librarian._
-
-## Motor/Drive Hardware Selection Standards (2026-08-31)
-
-- **TLP motors + Kinetix 5300 drives**: SDC default for simple point-to-point motion — standard PNP axes, ball screw/belt drives, simple rotary axes (e.g. gripper 0–180°), indexing ring shot-pin axis. Cost-effective, lower performance, no CIP Safety. Requires SEPARATE power and feedback cables (AB 2090-CTPW-.../2090-CTFB-...).
-- **VPL motors + Kinetix 5500 drives**: for complex/coordinated motion beyond point-to-point — dial/CAM axes, indexing ring main drive, servo press, high-speed coordinated motion. Higher cost, supports CIP Safety/software STO, uses a SINGLE hybrid cable (AB or Lutze, Lutze preferred), power-sharing across multi-axis configs.
-- **High-flex cable required** wherever the motor is in continuous motion (e.g. vertical PNP axis).
-- **Encoder standard: multiturn absolute**, always — position is retained across power cycles (no incremental-style re-home-to-datum needed). TLP's absolute encoder is battery-backed — if the battery dies and power cycles, position IS lost (a real failure mode worth knowing when diagnosing a 'lost position' fault, distinct from a wiring/feedback fault).
-- **Holding brake rule**: required for any vertical-load axis EXCEPT SDC's standard PNP vertical axis, which does not require one for standard payloads (heavy payloads still need a case-by-case calc). This is the one standing exception to 'vertical load → brake.'
-- **Motion Analyzer** is the standard sizing tool; keep load:motor inertia ratio ≤10:1.
-- **PLC/axis-count selection**: CIP Motion-enabled CompactLogix (5069-L310/320/330ERM) covers 4/8/16 axes; beyond 16 axes, move to ControlLogix (1756-L81/82/83E). Relevant when scoping a machine's total axis count against controller choice.
-- **Design discipline**: minimize motor/drive type variation on a machine; reuse an already-used drive size for new axes where possible; consult electrical engineering before deviating from these defaults.
-
-_Source: SDC_Motors_Cables_Drives_Guildelines_Rev 2.docx (network: Standards - Elect Design), ingested 2026-08-31 by the inbox librarian._
-
-## Commutation config mismatch across Studio 5000 versions (Kinetix 5500) (2026-08-31)
-
-- If a legacy project (e.g. Studio 5000 V33) has manually-entered Commutation Alignment/Offset values, it's usually because Rockwell had no profile for that motor at the time — the values were entered by hand.
-- Newer projects (Studio 5000 V37+) may already include a library/profile for that same motor, making manual commutation entry unnecessary and unsafe to copy over.
-- Symptom of copying stale manual commutation values into a project with a native motor profile: Kinetix 5500 throws `FLT S04 commutation not configured`. Before that fix attempt, the drive may simply refuse to jog at all with a different fault.
-- Fix: delete the drive from both the IO tree and the motion axis, re-add the same module with the original name so it auto-detects/uses the motor's built-in profile for commutation, then redownload. Do not manually re-enter the legacy commutation values.
-- Lesson for machine replication: when copying a servo setup from an older sibling machine into a newer project, check whether the motor now has a native Studio 5000 profile before copying commutation parameters — don't assume identical setup across Studio 5000 versions.
-
-_Source: TN-02172026-Job1125-MotorCommutation-IG.docx (network: SDC Knowledgebase), ingested 2026-08-31 by the inbox librarian._
+6. **Symmetric wide band assumed everywhere → OPEN CONFLICT 2026-08-31.**
+   `AOI_RangeCheck` widens only the HIGH side (`MinWide` uses the tight
+   deadband). See the InPosWide section; awaiting a leads ruling.

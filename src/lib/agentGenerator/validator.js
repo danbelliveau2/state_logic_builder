@@ -363,6 +363,33 @@ const WAIT_EXEMPT_IDENTS = new Set([
   'PartStarted', 'AutoMode', 'ManualMode',
 ]);
 
+// ── Readability (Jason, 1160 v1.4 review 2026-09-18: "much easier to read"; Dan 2026-09-19: make it how we build) ──
+// One concise sentence per rung comment, tag descriptions <= 30 chars, no build history / sources / placeholders-as-prose
+// in the ladder. Reported as one READABILITY warning per program so the reviewer sees the shape of the problem at a glance.
+const READABLE_DESCRIPTION_CHARS = 30;
+const READABLE_COMMENT_CHARS = 160;
+const PROVENANCE_TOKENS = /\bSTUB\b|DECLARED EXTENSION|\[CTX\]|\[CALL\]|\[BOM\]|\[ELEC\]|question #|NAMES.CONTRACT|\b20\d\d-\d\d-\d\d\b|\bv\d\.\d\b/i;
+function checkReadability(xml, warnings) {
+  for (const p of xml.matchAll(/<Program\b[^>]*?\sName="([^"]+)"[^>]*>([\s\S]*?)<\/Program>/g)) {
+    const [, name, body] = p;
+    let multi = 0, longDesc = 0, prov = 0;
+    for (const m of body.matchAll(/<Comment>\s*<!\[CDATA\[([\s\S]*?)\]\]>/g)) {
+      const c = m[1].replace(/\s+/g, ' ').trim();
+      if (c.length > READABLE_COMMENT_CHARS || /[.!?]\s+[A-Z(\\]/.test(c)) multi++;
+      if (PROVENANCE_TOKENS.test(c)) prov++;
+    }
+    const tagsSec = (body.match(/<Tags>([\s\S]*?)<\/Tags>/) || [])[1] || '';
+    for (const m of tagsSec.matchAll(/<Tag\s+Name="[^"]+"[^>]*>[\s\S]*?<Description>\s*<!\[CDATA\[([\s\S]*?)\]\]>/g)) {
+      const d = m[1].trim();
+      if (d.length > READABLE_DESCRIPTION_CHARS) longDesc++;
+      if (PROVENANCE_TOKENS.test(d)) prov++;
+    }
+    if (multi || longDesc || prov) {
+      warnings.push(`READABILITY ${name}: ${multi} rung comment(s) longer than one sentence, ${longDesc} tag description(s) over ${READABLE_DESCRIPTION_CHARS} chars, ${prov} build-history/placeholder token(s) — the CE standard is one sentence per rung, 30-char descriptions, nothing about the build in the ladder`);
+    }
+  }
+}
+
 function checkExitlessWaits(rungs, warnings) {
   const r02Rungs = rungs.filter(r => /R02/i.test(r.routine));
   const alarmBlob = rungs.filter(r => /R20|Alarm/i.test(r.routine)).map(r => r.text).join('\n');
@@ -433,17 +460,53 @@ function checkExitlessWaits(rungs, warnings) {
 //      (InOut AXIS_CIP_DRIVE ↔ controller AXIS_CIP_DRIVE etc.).
 
 function parseTagDecls(sectionXml) {
-  const out = new Map(); // name → { dataType, usage }
-  for (const m of sectionXml.matchAll(/<Tag\s+([^>]*)\/?>/g)) {
+  const out = new Map(); // name → { dataType, usage, dims, block }
+  for (const m of sectionXml.matchAll(/<Tag\s+([^>]*?)(\/?)>/g)) {
     const attrs = m[1];
     const name = (attrs.match(/\bName="([^"]+)"/) || [])[1];
     if (!name) continue;
+    let block = m[0];
+    if (m[2] !== '/') { const close = sectionXml.indexOf('</Tag>', m.index); if (close > 0) block = sectionXml.slice(m.index, close + 6); }
     out.set(name, {
       dataType: (attrs.match(/\bDataType="([^"]+)"/) || [])[1] ?? null,
       usage: (attrs.match(/\bUsage="([^"]+)"/) || [])[1] ?? null,
+      dims: (attrs.match(/\bDimensions="([^"]+)"/) || [])[1] ?? null,
+      block,
     });
   }
   return out;
+}
+
+// ── Member-path leaf type (2026-09-17, job 1160 IV4 cameras) ────────────────
+// Studio connects a parameter to a MEMBER of a controller-scope tag, down to a bit of an integer array element
+// (Jason's IV4 example: cam02_IV4:I1.Data[1].0 <-> BOOL i_CameraResultsAvailable), so the type check must follow
+// the member path to its leaf instead of comparing the root tag's structure type. Walks `.Member`, `[n]` and a
+// trailing `.bit` on an integer. UDT members come from <DataTypes> (BIT → BOOL); members of module-defined or
+// predefined structures (AB:ETHERNET_MODULE_INT_394Bytes:I:0, TIMER) come from the tag's own Decorated data.
+// Returns the leaf data type, or null when the path cannot be followed (the caller then compares root types).
+const INTEGER_TYPES = new Set(['SINT', 'INT', 'DINT', 'LINT', 'USINT', 'UINT', 'UDINT', 'ULINT']);
+function leafTypeOfPath(rootDataType, rootDims, restPath, { tagBlock = '', dataTypesXml = '' } = {}) {
+  if (!rootDataType) return null;
+  let type = rootDataType;
+  let dims = rootDims ? String(rootDims) : null;
+  let consumed = 0;
+  for (const s of restPath.matchAll(/\.([A-Za-z_][A-Za-z0-9_]*|\d+)|\[(\d+(?:,\d+){0,2})\]/g)) {
+    consumed += s[0].length;
+    if (s[2] !== undefined) { if (!dims) return null; dims = null; continue; }
+    const name = s[1];
+    if (/^\d+$/.test(name)) { if (INTEGER_TYPES.has(type) && !dims) { type = 'BOOL'; continue; } return null; }
+    if (dims) return null;
+    const dt = dataTypesXml && dataTypesXml.match(new RegExp(`<DataType\\s+Name="${type.replace(/[.*+?^${}()|[\]\\:]/g, '\\$&')}"[^>]*>([\\s\\S]*?)<\\/DataType>`));
+    if (dt) {
+      const mem = dt[1].match(new RegExp(`<Member\\s+Name="${name}"\\s+DataType="([^"]+)"\\s+Dimension="(\\d+)"`));
+      if (!mem) return null;
+      type = mem[1] === 'BIT' ? 'BOOL' : mem[1]; dims = Number(mem[2]) ? mem[2] : null; continue;
+    }
+    const dm = tagBlock && tagBlock.match(new RegExp(`<(?:ArrayMember|DataValueMember|StructureMember)\\s+Name="${name}"\\s+DataType="([^"]+)"(?:\\s+Dimensions="(\\d+)")?`));
+    if (!dm) return null;
+    type = dm[1]; dims = dm[2] || null;
+  }
+  return consumed === restPath.length ? type : null;
 }
 
 function checkParameterConnections(xml, errors) {
@@ -466,22 +529,30 @@ function checkParameterConnections(xml, errors) {
     progTags.set(name, tagsM ? parseTagDecls(tagsM[0]) : new Map());
   }
 
+  const dtM = xml.match(/<DataTypes(?:\s[^>]*)?>[\s\S]*?<\/DataTypes>/);
+  const dataTypesXml = dtM ? dtM[0] : '';
+  // A member path (X.Data[1].0, \Prog.param.Member) resolves to its leaf type; a bare root keeps the root type.
+  const withLeaf = (decl, rest) => {
+    if (!rest) return { decl };
+    const leaf = leafTypeOfPath(decl.dataType, decl.dims, rest, { tagBlock: decl.block, dataTypesXml });
+    return { decl: leaf ? { ...decl, dataType: leaf } : decl };
+  };
   const resolve = (ep) => {
     if (ep.startsWith('\\')) {
       const dot = ep.indexOf('.');
       const prog = dot > 0 ? ep.slice(1, dot) : ep.slice(1);
-      const tag = dot > 0 ? ep.slice(dot + 1).split('.')[0] : null;
+      const tag = dot > 0 ? ep.slice(dot + 1).split(/[.[]/)[0] : null;
       if (!progTags.has(prog)) return { err: `program "${prog}" is not declared in the file` };
       if (!tag) return { err: 'endpoint names a program but no parameter' };
       const decl = progTags.get(prog).get(tag);
       if (!decl) return { err: `program "${prog}" has no tag/parameter "${tag}" — the connection references a deleted or absent parameter` };
       if (!decl.usage) return { err: `"${prog}.${tag}" is a local tag, not a program parameter (no Usage) — Studio rejects the connection` };
-      return { decl };
+      return withLeaf(decl, ep.slice(dot + 1 + tag.length));
     }
-    const root = ep.split('.')[0];
+    const root = ep.split(/[.[]/)[0];
     const decl = ctrlTags.get(root);
     if (!decl) return { err: `controller tag "${root}" is not declared in the file` };
-    return { decl };
+    return withLeaf(decl, ep.slice(root.length));
   };
 
   for (const [, ep1, ep2] of conns) {
@@ -1047,6 +1118,7 @@ function validateL5X(xml, opts = {}) {
   // 5b. Studio 5000 import limits (Rule 12): description/comment lengths,
   //     name lengths, identifier legality — hard import gates.
   checkImportLimits(xml, errors, warnings);
+  checkReadability(xml, warnings);
 
   // 6. No exitless waits (Rule 11): every wait-style R02 transition — one
   //    that holds a flowchart state until an external condition comes true —
@@ -1684,5 +1756,5 @@ function formatReport(report) {
 
 module.exports = {
   validateL5X, validateAgainstDiagram, validateAgainstCompiledIR, formatReport,
-  isLegalState, detectCompareFamily, checkOneMovePerState, sidePathStatesOf,
+  isLegalState, detectCompareFamily, checkOneMovePerState, sidePathStatesOf, leafTypeOfPath,
 };
