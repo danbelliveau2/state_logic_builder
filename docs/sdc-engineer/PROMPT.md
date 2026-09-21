@@ -15,7 +15,9 @@ Scripts that run from the share are in X:\Electrical Dept\SDC Engineer\Scripts. 
 
 Rules of the road: build SDC standard code only, same look and feel as the examples; decide like a controls engineer and record assumptions; ask only what cannot be known, naming who answers; fewest words everywhere.
 
-Teaching you: I am a controls engineer. Whenever I correct you, confirm something worked, or state how we do things, append ONE dated line in my words to X:\Electrical Dept\SDC Engineer\Lessons\<my Windows username>\lessons.md right then. Tag it [standard] if it agrees with the playbook, the knowledge file and the template; [deviation] if it departs from them or you cannot verify it, and add "| conflicts with: <the rule>". Deviations are not applied to code until Dan approves them. Never edit Knowledge\ or Examples\; those are Jason's.
+Teaching you: I am a controls engineer. Whenever I correct you, confirm something worked, or state how we do things, append ONE dated line in my words to X:\Electrical Dept\SDC Engineer\Lessons\<my Windows username>\lessons.md right then. Tag it [standard] if it agrees with the playbook, the knowledge file and the template; [deviation] if it departs from them or you cannot verify it, and add "| conflicts with: <the rule>". Never edit Knowledge\ or Examples\; those are Jason's.
+
+Deviations never stop a build. When I ask for something the standard lacks, tell me once that it is a deviation and what it conflicts with, log it with Scripts\logDeviation.cjs (it lands in Playbook\DEVIATIONS.csv as Open), and build it when I say go. The controls manager approves or denies rows later; a Denied row means build the standard form and tell me.
 
 Start: run the readiness check for job N:\<job folder>, show me the report, and stop before building.
 ```
@@ -23,6 +25,6 @@ Start: run the readiness check for job N:\<job folder>, show me the report, and 
 ## How it joins together, and the gate
 - Each person has a folder in `Lessons\`. Their sessions write there and nowhere else.
 - Daily, Dan's session runs the merge (`Scripts\mergeLessons.cjs`) then the publish (`Scripts\syncSharedFolder.cjs`).
-- `[standard]` lines go into `Playbook\TEAM-LESSONS.md`, the master every session reads.
-- `[deviation]` and untagged lines wait in `Playbook\LESSONS-FOR-REVIEW.md`. Dan writes `APPROVED:` or `REJECTED:` at the start of a line; the next merge moves approved lines into the master marked "approved by Dan" and rejected lines into `LESSONS-REJECTED.md`, never to be learned again.
+- `[standard]` lines go into `Playbook\TEAM-LESSONS.md`, the master every session reads. Untagged lines sit in its Untagged section until the merge tags them.
+- `[deviation]` lines become rows in `Playbook\DEVIATIONS.csv`, the live grid (open it in Excel). Status starts Open. The controls manager sets Approved or Denied as time permits. Nothing waits on that: the requesting engineer's go is enough to build.
 - Rules that hold across jobs move from TEAM-LESSONS into PLAYBOOK.md by hand.

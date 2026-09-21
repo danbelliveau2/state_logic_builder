@@ -21,7 +21,8 @@ Shared brain for every SDC session. Read before any build. Rules here beat habit
 | CE rules in his words | `X:\Electrical Dept\SDC Engineer\Knowledge\SDC-Engineer-Knowledge.md` → `## Engineer additions` | yes — read at every build start |
 | Example programs | `X:\Electrical Dept\SDC Engineer\Examples\` | yes |
 | CE session exports | `X:\Electrical Dept\SDC Engineer\Sessions\*.zip` → `node "X:\Electrical Dept\SDC Engineer\Scripts\extractSession.cjs"` | yes |
-| Share-runnable scripts | `X:\Electrical Dept\SDC Engineer\Scripts\` (readiness, lessons merge, session extract, L5X split, HTML→Word) | yes |
+| Share-runnable scripts | `X:\Electrical Dept\SDC Engineer\Scripts\` (readiness, deviation log, lessons merge, session extract, L5X split, HTML→Word) | yes |
+| Deviation grid (live, Excel) | `X:\Electrical Dept\SDC Engineer\Playbook\DEVIATIONS.csv` — one row per deviation, Status Open / Approved / Denied | yes — mastered on the share |
 | Job working set | `X:\Electrical Dept\SDC Engineer\Deliveries\<job>\build-inputs\` (plan, contract, build programs, outputs) | yes |
 | Templates | `plc-reference/training-material/SDC Standard Templates/` | yes |
 | Job inputs | `N:\<job>\` (Mechanical, Electrical, Pneumatic, Documents) | yes, local PC only |
@@ -45,7 +46,7 @@ Once per machine: counts and side letters, index window, feeders on/off, safety 
 6. **Return** — CE fixes the code, one line why per change, returns the whole file. Diff against the stamp; every change becomes a rule (knowledge file if the CE's, playbook if the process's). Nobody edits the cover note.
 
 ## 6. Cover note (one document)
-Title · **Revision history** (version, date, what, why) · **What I was given** (nine inputs: have/partial/no, gap) · one line defining Logic · **Machine block** · **Station blocks**: Programs · Devices (name – part number – purpose) · Sequence (numbered) · Deviation (only if any, who asked) · Logic 1–10 + reasons · Referenced · ▲ Ask inline · last line: fix the code, not this sheet. Portrait, a block never splits a page.
+Title · **Revision history** (version, date, what, why) · **What I was given** (nine inputs: have/partial/no, gap) · one line defining Logic · **Machine block** · **Station blocks**: Programs · Devices (name – part number – purpose) · Sequence (numbered) · Deviation (only if any: grid ID, status, who asked) · Logic 1–10 + reasons · Referenced · ▲ Ask inline · last line: fix the code, not this sheet. Portrait, a block never splits a page.
 
 ## 7. Chassis-specific rulings (Jason, Sep 2026)
 - 2-UP template is the law. A = left, B = right. Escapements: no tracking, no CycleStation.
@@ -54,10 +55,16 @@ Title · **Revision history** (version, date, what, why) · **What I was given**
 - Heat: one `HeatControl` program in a 1 s periodic task (setpoints + UPD, one PID rung per loop); station heat logic in MainTask. IY4 read direct, no scaling. Limit instruction is `LIMIT(` in v37.
 - Feeders digital on/off. Cameras per S06_IV4Vision. Index permissive = clearance per axis, OR'd. Failure code = station × 10 + reason. Full-text failure messages.
 
-## 9. Teaching it (every engineer, every session)
-- When the engineer corrects you, confirms something worked, or states how SDC does things: append ONE dated line in their words to `X:\Electrical Dept\SDC Engineer\Lessons\<username>\lessons.md` immediately, tagged `[standard]` (agrees with playbook, knowledge file, template) or `[deviation] … | conflicts with: <rule>`. Own folder per person; never edit Knowledge\ or Examples\ (Jason's). A deviation is not applied to code until Dan approves it.
-- Daily: `node scripts/mergeLessons.cjs` — `[standard]` lines → `Playbook\TEAM-LESSONS.md`; deviations and untagged lines → `LESSONS-FOR-REVIEW.md` until Dan marks `APPROVED:` / `REJECTED:`; rejected → `LESSONS-REJECTED.md`. Then `node scripts/syncSharedFolder.cjs`. Rules that hold across jobs move into this playbook by hand.
-- Every session reads PLAYBOOK, TEAM-LESSONS and Engineer additions first. The paste-in prompt is `Playbook\PROMPT.md`.
+## 8. Deviations never stop a build (Dan, 2026-09-21)
+- A deviation = anything the engineer asks for that the template, the examples or this playbook lack.
+- Say it once: `Deviation from the standard: <what>. Conflicts with: <rule>. Logging it as D0nn. Say go and I build it that way.` Log it: `node "X:\Electrical Dept\SDC Engineer\Scripts\logDeviation.cjs" --job <n> --station <Snn> --what "…" --conflicts "…" --asked-by "<who>"`. Build it on go. Name it in the cover note with its ID and status.
+- The grid `Playbook\DEVIATIONS.csv` is the record. Anyone reads it (`logDeviation.cjs --list --job <n>`). The controls manager sets Status to Approved or Denied as time permits, with Decided by and a Note. Nobody deletes a row.
+- At build start read the job's rows. Approved = build it, no go needed. Denied = build the standard form and say which ID was denied. Open = ask for go again.
 
-## 8. Gates
+## 9. Teaching it (every engineer, every session)
+- When the engineer corrects you, confirms something worked, or states how SDC does things: append ONE dated line in their words to `X:\Electrical Dept\SDC Engineer\Lessons\<username>\lessons.md` immediately, tagged `[standard]` (agrees with playbook, knowledge file, template) or `[deviation] … | conflicts with: <rule>`. Own folder per person; never edit Knowledge\ or Examples\ (Jason's).
+- Daily: `node scripts/mergeLessons.cjs` — `[standard]` lines → `Playbook\TEAM-LESSONS.md`; `[deviation]` lines → rows in `DEVIATIONS.csv` (Status Open); untagged lines → the Untagged section of TEAM-LESSONS, tagged by hand at the merge. Then `node scripts/syncSharedFolder.cjs`. Rules that hold across jobs move into this playbook by hand.
+- Every session reads PLAYBOOK, TEAM-LESSONS, the job's deviation rows and Engineer additions first. The paste-in prompt is `Playbook\PROMPT.md`.
+
+## 10. Gates
 In the repo clone (they import the repo's validator): `node scripts/shapeLint1160.cjs` (per program, 0 findings) · `node scripts/assemble1160.cjs` · `node scripts/validate1160.cjs <out> --baseline <template>` (import sim 0 errors) · `node scripts/parseCheckChanged.cjs` for any script change. Copy the 1160 scripts for the next job and change the paths at the top.

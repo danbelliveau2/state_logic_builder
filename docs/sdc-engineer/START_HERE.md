@@ -21,5 +21,7 @@ One common folder: `X:\Electrical Dept\SDC Engineer\`. Everything the code build
 - `Knowledge\` is Jason's. Append under `## Engineer additions` only when he asks.
 - `Examples\` is Jason's. Add nothing without him.
 - `Playbook\` and `.claude\skills\` are synced from the repo (`node scripts/syncSharedFolder.cjs`). Edit them in the repo, not here.
+- `Playbook\DEVIATIONS.csv` — the live deviation grid (Excel). Every deviation an engineer builds is a row, Status Open. The controls manager sets Approved / Denied. A deviation never blocks a build.
+- `Lessons\<your username>\lessons.md` — your sessions write what you teach them here, one dated line each. Merged daily.
 - `Sessions\` — export your Claude session zip here when a session settled rules worth learning.
 - `Deliveries\<job>\` — delivered L5X and cover note per job, so the team finds the latest in one place.

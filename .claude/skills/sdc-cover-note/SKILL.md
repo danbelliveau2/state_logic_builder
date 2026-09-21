@@ -8,7 +8,7 @@ Format is `X:\Electrical Dept\SDC Engineer\Playbook\PLAYBOOK.md` §6. Write it y
 - Title: job, machine, program version, date.
 - Revision history: every version — what changed, why, who asked.
 - What I was given: the nine inputs, have / partial / no, the gap.
-- One line: Logic = confidence the sequence is right, 1–10, with reasons. Deviation rows appear only where a station departs from the SDC standard, with who asked for it.
+- One line: Logic = confidence the sequence is right, 1–10, with reasons. Deviation rows appear only where a station departs from the SDC standard: grid ID from `Playbook\DEVIATIONS.csv`, its status (Open / Approved / Denied), who asked for it.
 - Machine block, then one block per station: Programs · Devices (name – part number – purpose, full words) · Sequence (numbered steps, exceptions as a trailing bullet) · Deviation (if any) · Logic n + reasons · Referenced · ▲ Ask inline with who answers.
 - Last line: if a device or step is wrong, fix the code, not this sheet.
 - Ratings change only when code changes.

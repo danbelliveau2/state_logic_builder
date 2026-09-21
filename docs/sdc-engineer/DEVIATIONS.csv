@@ -1,0 +1,3 @@
+﻿ID,Date,Job,Station,Deviation,Conflicts with,Asked by,Logged by,Built in,Status,Decided by,Decided on,Note
+D001,2026-09-18,1160,S00 Safety,Guard-door relay and heater contactor use monitored outputs (CROUT) because the schematic wires their feedback,2-UP template's plain-output safety form,SDC Engineer (from the schematic),dbelliveau,1160 v1.5,Open,,,Named in the v1.5 cover note
+D002,2026-09-19,1160,S15,S15 reject unload stops the machine after three rejects in a row on a side,template S18_RejectUnload has no consecutive-reject stop,Mark Ruane (site requirement),dbelliveau,1160 v1.5,Open,,,Named in the v1.5 cover note
