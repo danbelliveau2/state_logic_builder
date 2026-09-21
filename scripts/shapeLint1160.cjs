@@ -31,7 +31,7 @@ const CORPUS = [
   'plc-reference/training-material/SDC Standard Templates/ChassisStandard_2UP_2026-09-17.L5X',
   'generated/1160/ref/X_FlexFeedConveyor', 'generated/1160/ref/X_GoodUnload', 'generated/1160/ref/X_RejectUnload',
   'generated/1160/ref/X_PartVerify', 'generated/1160/ref/X_ServoPNP', 'generated/1160/ref/X_MapInputs', 'generated/1160/ref/X_MapOutputs',
-  'generated/1160/ref/MidBaseLoad_v1_4_1', 'generated/1160/ref/Jason_IV4', 'generated/1160/ref/Jason_return_0918',
+  'generated/1160/ref/MidBaseLoad_v1_4_1', 'generated/1160/ref/Jason_IV4',
   // SoftwareStandardization SafetyProgram ONLY (one file, not the 18-program project): the NAMES CONTRACT SafetyProgram
   // row asks for its "V4.2 CROUT NEGATIVE/200 shape" for SO1 guard-door relay / SO2 heater contactor, and
   // jason-engineer-additions 2026-09-01: "SoftwareStandardization.L5X should be generating code, not only informing it".
@@ -61,6 +61,7 @@ const FORBIDDEN = [
   [/\bAIN1:[IOC]\b|\bAOUT1:[IOC]\b/, 'module-name-address', 'local modules are addressed Local:<slot>:I - the 5069-IY4 is Local:5:I.Ch0X.Data (Jason 2026-09-18); the 5069-OF8 is gone (feeders are digital on/off)'],
   [/\bSTUB\b|DECLARED EXTENSION|\[CTX\]|\[CALL\]|\[BOM\]|\[ELEC\]|question #|NAMES.CONTRACT|X_ServoPNP|X_FlexFeed|MidBaseLoad|ChassisStandard|S06_IV4Vision|\bJason\b|\bDan\b|\bMark\b|\bMarks\b|\bHailey\b|doctrine|2026-0\d-\d\d|\bv0\.\d\b|\bv1\.\d\b/i, 'provenance-narrative', 'comments and descriptions describe the machine, never the build history or its sources'],
   [/i_Disable[A-Za-z]*Check|Bypass[A-Za-z]*Constant|ApplicationConstant|DebugLatch\b(?![\s\S]*Chassis)/, 'bypass-constant', 'no bypass / application constants - the examples have none'],
+  [/(?:^|[\[\s,;)\]])(EQU|NEQ|LES|GRT|LEQ|GEQ|LIM|MOV)\(/, 'legacy-mnemonic', 'PLC-5 / SLC form - Studio v37 uses EQ NE LT GT LE GE LIMIT MEQ CMP and MOVE (Jason 2026-09-21); LIM( is what failed the v1.4 import'],
 ];
 
 function readText(f) { return fs.readFileSync(f, 'utf8'); }
@@ -78,6 +79,15 @@ function calls(text) { return [...text.matchAll(/(?:^|[\[\s,;)\]])([A-Za-z_][A-Z
 const vocab = new Set();
 for (const f of CORPUS.flatMap((p) => walk(p))) for (const t of rungTexts(readText(f))) for (const c of calls(t)) vocab.add(c);
 vocab.add('NOP'); vocab.add('JSR');
+// Jason_return_0918 (OV_PID / HeaterControl_SUB) is deliberately NOT in the corpus: his note ships it as
+// "a previous SDC project NOT done using our new standards ... Generated code must use our standard".
+// Admitting those files wholesale legalises their old mnemonics (LIM, MOV, EQU, NEQ, GRT, LES); LIM( is what
+// failed the v1.4 import. Take the one instruction the heat form needs; the files stay on disk as the
+// rung-form reference the NAMES CONTRACT ruling 10 points at.
+vocab.add('PID');
+// The Compare set, from the Studio v37 instruction tree (Jason, 2026-09-21). Admitted whole so a legitimate
+// comparison is never flagged for being absent from the examples - MEQ appears in no example program.
+for (const c of ['CMP', 'LIMIT', 'MEQ', 'EQ', 'NE', 'LT', 'GT', 'LE', 'GE']) vocab.add(c);
 
 // ── per-program checks ───────────────────────────────────────────────────────
 function programsIn(xml) {
