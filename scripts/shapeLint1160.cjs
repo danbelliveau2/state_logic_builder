@@ -88,6 +88,46 @@ vocab.add('PID');
 // The Compare set, from the Studio v37 instruction tree (Jason, 2026-09-21). Admitted whole so a legitimate
 // comparison is never flagged for being absent from the examples - MEQ appears in no example program.
 for (const c of ['CMP', 'LIMIT', 'MEQ', 'EQ', 'NE', 'LT', 'GT', 'LE', 'GE']) vocab.add(c);
+// AOI_HeatControl: the time-proportional heater output AOI, supplied by Jason as a standalone
+// definition (2026-09-22) and declared in the project. Its own body is ST and never reaches a rung.
+vocab.add('AOI_HeatControl');
+
+// ── AOI backing-tag shapes, learned from the corpus ──────────────────────────
+// An AOI instance's L5K block is a packed MEMORY IMAGE (BOOLs in leading words, then
+// the numeric members, locals included, with alignment) - it is not derivable from the
+// definition. 1160 v1.6 shipped a hand-written one and Studio rejected it with
+// "Data type mismatch". So: a Data block may only be emitted in a shape an example
+// already shows for that same AOI. No example instance -> declare the tag alone.
+const AOI_NAMES = new Set();
+const AOI_L5K_ARITY = new Map();   // AOI type -> Set of top-level L5K counts seen in the corpus
+function topLevelCount(l5k) {
+  const b = l5k.trim().replace(/^\[/, "").replace(/\]$/, "");
+  let d = 0, q = false, n = 1;
+  for (const ch of b) {
+    if (q) { if (ch === "'") q = false; continue; }
+    if (ch === "'") { q = true; continue; }
+    if (ch === "[") d++; else if (ch === "]") d--; else if (ch === "," && d === 0) n++;
+  }
+  return n;
+}
+function learnAoiShapes(xml) {
+  for (const m of xml.matchAll(/<AddOnInstructionDefinition[^>]*\sName="([^"]+)"/g)) AOI_NAMES.add(m[1]);
+  for (const m of xml.matchAll(/<Tag\s+Name="[^"]+"[^>]*DataType="([^"]+)"[^>]*>/g)) {
+    if (!AOI_NAMES.has(m[1])) continue;
+    const i = m.index, j = xml.indexOf("</Tag>", i);
+    if (j < 0) continue;
+    const l = /<Data Format="L5K">\s*<!\[CDATA\[([\s\S]*?)\]\]>/.exec(xml.slice(i, j));
+    if (!l) continue;
+    if (!AOI_L5K_ARITY.has(m[1])) AOI_L5K_ARITY.set(m[1], new Set());
+    AOI_L5K_ARITY.get(m[1]).add(topLevelCount(l[1]));
+  }
+}
+for (const f of CORPUS.flatMap((p) => walk(p))) learnAoiShapes(readText(f));
+// the job's own AOI definitions name types the corpus may not carry
+for (const f of process.argv.slice(2).filter((a) => !a.startsWith("--"))) {
+  const defs = path.join(path.dirname(f), "..", "controller", "AddOnInstructionDefinitions.xml");
+  if (fs.existsSync(defs)) { for (const m of readText(defs).matchAll(/<AddOnInstructionDefinition[^>]*\sName="([^"]+)"/g)) AOI_NAMES.add(m[1]); break; }
+}
 
 // ── per-program checks ───────────────────────────────────────────────────────
 function programsIn(xml) {
@@ -130,6 +170,18 @@ function lintProgram(p, file) {
       const d = m[2].trim();
       if (d.length > 30) fail('description-30', m[1], `tag description is ${d.length} characters, limit 30 (Jason 2026-09-18): "${d.slice(0, 60)}${d.length > 60 ? '…' : ''}"`);
     }
+  }
+  // 4b. AOI backing-tag data
+  for (const m of body.matchAll(/<Tag\s+Name="([^"]+)"[^>]*DataType="([^"]+)"[^>]*>/g)) {
+    if (!AOI_NAMES.has(m[2])) continue;
+    const i = m.index, j = body.indexOf('</Tag>', i);
+    if (j < 0) continue;
+    const l = /<Data Format="L5K">\s*<!\[CDATA\[([\s\S]*?)\]\]>/.exec(body.slice(i, j));
+    if (!l) continue;   // declaration only - always safe, Studio initialises from the definition
+    const seen = AOI_L5K_ARITY.get(m[2]);
+    const n = topLevelCount(l[1]);
+    if (!seen) fail('aoi-backing-data', m[1], `AOI backing tag "${m[1]}" (${m[2]}) carries a data block but no example instance of ${m[2]} exists to copy its shape from - the L5K image is a packed memory layout, not derivable; declare the tag with no <Data> block`);
+    else if (!seen.has(n)) fail('aoi-backing-data', m[1], `AOI backing tag "${m[1]}" (${m[2]}) has an L5K block of ${n} top-level values; the example instances have ${[...seen].join(' or ')} - copy the example shape or declare the tag with no <Data> block`);
   }
   // 5. routine set
   if (isStation) {
