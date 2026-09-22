@@ -52,7 +52,7 @@ Title · **Revision history** (version, date, what, why) · **What I was given**
 - 2-UP template is the law. A = left, B = right. Escapements: no tracking, no CycleStation.
 - MapInputs first. Tracking arrays = count + 1, sized with SIZE. Local modules addressed `Local:<slot>:I`.
 - No Single Step / Single Cycle / AutoIdle on chassis stations. R01 = template block.
-- Heat: one `HeatControl` program in a 1 s periodic task (setpoints + UPD, one PID rung per loop); station heat logic in MainTask. IY4 read direct, no scaling. Limit instruction is `LIMIT(` in v37.
+- Heat: one `HeatControl` program in a 1 s periodic task (setpoints + UPD, one PID rung per loop); station heat logic in MainTask. IY4 read direct, no scaling. v37 compare set: `EQ NE LT GT LE GE LIMIT MEQ CMP`, move is `MOVE`; never `EQU NEQ LES GRT LEQ GEQ LIM MOV` (Jason, 2026-09-21; shapeLint rule legacy-mnemonic).
 - Feeders digital on/off. Cameras per S06_IV4Vision. Index permissive = clearance per axis, OR'd. Failure code = station × 10 + reason. Full-text failure messages.
 
 ## 8. Deviations never stop a build (Dan, 2026-09-21)
