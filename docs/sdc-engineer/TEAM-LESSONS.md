@@ -31,3 +31,21 @@ One line per lesson, dated, in the engineer's words, with who said it. Merged da
 - 2026-09-21 [standard] The correct vocabulary for Comparison instructions is CMP, LIMIT, MEQ, EQ, NE, LT, GT, LE, GE. — Jason
 - 2026-09-21 [standard] MOVE is correct. — Jason
 - 2026-09-21 [standard] The heater exports are from a previous SDC project NOT done using our new standards — included as an example; generated code must use our standard. — Jason
+
+
+- 2026-09-22 [standard] All programs containing state machines in a SDC Chassis project must have output parameters q_StartOK, q_AutoMode and q_AutoStopped in R03_StateLogic as defined in SoftwareStandardization.L5X, referenced in Supervisor R01_Inputs. — Jason
+- 2026-09-22 [standard] In Supervisor R20_Alarms the backing tags for AOI_EIPStatus should be local tags, not public parameters. — Jason
+- 2026-09-22 [standard] Heater SSR outputs use AOI_HeatControl for time proportional output; the PID output feeds it as PowerIn scaled in percent. — Jason
+- 2026-09-22 [standard] The master is a template — different applications use the same base servo code, but motor catalog numbers and conversion constants are set per application. — Jason
+- 2026-09-22 [standard] Conversion constant is 5000.0 for a servo application direct coupled to a 5 mm ball screw, scaled in mm. — Jason
+- 2026-09-22 [standard] AOI_HeatControl defaults are CycleTime 1.0 and MaxPowerPercent 100.0; the engineer changes them if needed per application. — Jason
+- 2026-09-22 [standard] Job 1160 Z-axis motor is TLP-A046-010-Dxxx4x — the database form; the orderable number TLP-A046-010-DJA14S and uppercase DXXX4X both import as "motor invalid". — Jason
+- 2026-09-22 [standard] AOI backing tags may carry a data block — 82 in the template do. Copy the shape from an example instance of that AOI, or declare the tag alone; never synthesise the L5K image. — Jason (measured on the 1160 build)
+- 2026-09-22 [standard] Motor catalog numbers in an axis tag are the Studio database form, not the orderable part number — VPL drops the option suffix (VPL-A1003E-P, not VPL-A1003E-PJ12AA) and TLP carries lowercase option wildcards (TLP-A070-040-Dxxx2x). — Jason's template, confirmed against the 1160 BOM
+- 2026-09-22 [standard] Ball screw pitch is set by ActuatorLead on the axis, not by ConversionConstant — with ScalingSource "From Calculator" Studio derives the conversion constant from the lead and overwrites whatever the file carries. — Jason (1160 v1.6.2 import)
+- 2026-09-22 [standard] Scaling confirmed on v1.6.3 — actuator lead 5 mm/rev gives the right conversion constant on both Z axes. — Jason
+- 2026-09-22 [standard] IY4 analog channel types set to RTD is correct. — Jason
+- 2026-09-22 [standard] Mark ordered the exhaust centre valves, so the S05 gripper vent step stands as built. — Jason
+- 2026-09-22 [standard] No spindle running after a stop. — Jason
+
+## Merged 2026-09-22
