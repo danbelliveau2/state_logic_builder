@@ -22,7 +22,7 @@ for (const f of fs.readdirSync(path.join(ROOT, 'docs/sdc-engineer'))) {
   if (LIVE.includes(f) && fs.existsSync(path.join(SHARE, 'Playbook', f))) { done.push(`Playbook/${f} (live on the share, kept)`); continue; }
   done.push(copy(path.join(ROOT, 'docs/sdc-engineer', f), path.join(SHARE, 'Playbook', f)));
 }
-for (const f of ['SDC_Engineer_Station_Walkthrough_Checklist_v1.docx', 'SDC_Engineer_Build_Inputs_v1.docx', 'SDC_Engineer_For_The_Team_v1.docx']) {
+for (const f of ['SDC_Engineer_Station_Walkthrough_Checklist_v2.docx', 'SDC_Engineer_Build_Inputs_v1.docx', 'SDC_Engineer_For_The_Team_v1.docx']) {
   const src = path.join(ROOT, 'SDC Engineer Deliveries', f); if (fs.existsSync(src)) done.push(copy(src, path.join(SHARE, 'Playbook', f)));
 }
 // Standalone scripts (no repo dependencies) so readiness, lessons merge and session extraction run from the share alone

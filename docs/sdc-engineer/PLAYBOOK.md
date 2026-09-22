@@ -33,9 +33,9 @@ Shared brain for every SDC session. Read before any build. Rules here beat habit
 1 walkthrough transcript · 2 assembly drawings, ballooned · 3 station description sheet · 4 controls BOM · 5 I/O list · 6 pneumatic drawings · 7 timing diagram · 8 example program per station kind · 9 Ethernet device list.
 Not needed: screenshots, a flowchart, a device list (build it from 2, 4, 5, 6). Values not in the documents are seeded and listed as assumptions.
 
-## 4. Walkthrough checklist (say per station)
-1 one sentence · 2 sides and sharing · 3 devices, which positions sensed · 4 numbered steps with angle or wait · 5 good/bad, one reason each · 6 stop/fault/restart · 7 dial and neighbours · 8 values · 9 operator/HMI · 10 most-like example · 11 special devices (camera tools, servo positions, RTD roles, robot document) · 12 customer rules.
-Once per machine: counts and side letters, index window, feeders on/off, safety outputs and STO, HMI writes, template version.
+## 4. Walkthrough checklist (five things to say per station — Dan, 2026-09-22)
+1 what it does: one sentence, sides and sharing, most-like example or "new" · 2 devices: actuators and sensors with part numbers, which positions sensed; vision tools, pass/fail rule, trigger, result time; servo brand and family, positions, blended or point-to-point; RTD roles · 3 sequence: numbered steps with confirmation and angle or wait; good/bad, one reason each, where the bad part goes · 4 stop, fault, restart, clear-to-index; operator and HMI · 5 numbers and rules: station cycle time, values or "CE sets", customer rules.
+Once per machine: cycle time target and index window, counts and side letters, servo brand and family, feeders on/off, safety outputs and STO, HMI writes, template version. Document: `Playbook\SDC_Engineer_Station_Walkthrough_Checklist_v2.docx`.
 
 ## 5. Process
 1. **Readiness** — `node "X:\Electrical Dept\SDC Engineer\Scripts\buildReadiness.cjs" --job <N:\job> --plan <Deliveries\job\build-inputs\plan> --examples <X Examples> --template <X Templates\...L5X> --station-examples <plan\station-examples.json>` → report: have/missing, per-station example named, verdict BUILD / BUILD ON ASSUMPTIONS / WAIT. Show it. No code before this.

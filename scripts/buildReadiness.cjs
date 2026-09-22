@@ -35,7 +35,7 @@ const rel = (f) => f.replace(JOB, '<job>');
 // ── master input list (who supplies · how I look for it · blocks the build?) ──
 // The nine STANDARD SDC documents (Dan, 2026-09-19) — nothing else is asked for.
 const INPUTS = [
-  { id: '1', who: 'ME', item: 'Walkthrough transcript (12-item checklist per station)', blocks: true, hits: (args.transcript && fs.existsSync(args.transcript) ? [args.transcript] : []).concat(PLAN ? walk(PLAN, 2).filter((f) => /transcri/i.test(path.basename(f))) : []).concat(find(/transcri|walkthrough|walk-through/i).concat(find(/\.(vtt|srt)$/i))) },
+  { id: '1', who: 'ME', item: 'Walkthrough transcript (five things per station, checklist v2)', blocks: true, hits: (args.transcript && fs.existsSync(args.transcript) ? [args.transcript] : []).concat(PLAN ? walk(PLAN, 2).filter((f) => /transcri/i.test(path.basename(f))) : []).concat(find(/transcri|walkthrough|walk-through/i).concat(find(/\.(vtt|srt)$/i))) },
   { id: '2', who: 'ME', item: 'Assembly drawings, ballooned part numbers', blocks: true, hits: find(/assy|assembly|rtm/i, /Mechanical/i).filter((f) => /\.pdf$/i.test(f)) },
   { id: '3', who: 'ME', item: 'Station description sheet (Excel, per station, part numbers)', blocks: false, hits: find(/station|description|overview/i, /Mechanical|Documents|AI/i).filter((f) => /\.(xlsx|xlsm)$/i.test(f)) },
   { id: '4', who: 'EE', item: 'Controls bill of material', blocks: true, hits: find(/bom/i, /Electrical/i).filter((f) => /\.(xlsx|xlsm|csv)$/i.test(f)) },
