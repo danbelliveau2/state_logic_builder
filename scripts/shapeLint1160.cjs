@@ -38,7 +38,15 @@ const CORPUS = [
   // the SafetyProgram slice that supplied CROUT. Do not re-add an Examples copy of a program that is
   // in here: the two drift and the Examples one is the stale side.
   'plc-reference/training-material/SDC Standard Templates/SoftwareStandardizationNew.L5X',
-  // Not in the project file, so still read from their own exports.
+  // MidBaseLoad is our own generated output (sdce v1.4.1), not an SDC example, and it is the file
+  // Jason reviewed on 2026-09-01 and found defects in. It stays for ONE reason: its escapement and
+  // pick-and-place are the current basis for a self-actuated station, which neither platform standard
+  // has, and Jason ruled 2026-09-23 that the architecture is not to change. It is the SIZE reference
+  // for the S05_PortLoad / S14_BinDiverter / S01_YSiteEscapement family budget below - nothing else:
+  // it contributes zero unique vocabulary (measured), so its defects cannot reach a generated program
+  // through this corpus. The FORM comes from Jason's corrected rulings in the knowledge file, never
+  // from this file: no part-tracking writes, no CycleStation, no q_StationComplete, no StaNumPre /
+  // NestNumIncoming / NestNumCurrent, no AOI_Debounce on a pneumatic position sensor.
   'generated/1160/ref/MidBaseLoad_v1_4_1',
 ].map((p) => path.join(ROOT, p));
 
