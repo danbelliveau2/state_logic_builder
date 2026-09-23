@@ -4,7 +4,7 @@
  * validate1160.cjs — JOB 1160 IMPORT GATE (2026-09-16)
  *
  * Runs the shipped validators on an assembled controller file and reports
- * only what is NEW against the pristine ChassisStandard.L5X baseline:
+ * only what is NEW against the pristine ChassisStandard_1UP.L5X baseline:
  *   - simulateImport (importSimValidator.js ~395): L5K/Decorated tag data, ASCII
  *   - validateL5X  (validator.js ~903): rung resolution, states, Rule 13/15/16/17, ParameterConnections,
  *     import limits, and the device audit (deviceNames/devices DERIVED from the assembled i_/q_/iq_ tags —
@@ -34,7 +34,7 @@ const positional = argv.filter((a) => !a.startsWith('--'));
 const argOf = (k, d) => { const i = argv.findIndex((a) => a === `--${k}` || a.startsWith(`--${k}=`)); if (i < 0) return d; const a = argv[i]; if (a.includes('=')) return a.slice(a.indexOf('=') + 1); const n = argv[i + 1]; return n && !n.startsWith('--') ? n : true; };
 const FILE = positional[0] ? path.resolve(ROOT, positional[0]) : null;
 if (!FILE) { console.error('usage: node scripts/validate1160.cjs <assembled.L5X> [--baseline <pristine.L5X>] [--json <out.json>] [--no-slices]'); process.exit(2); }
-const BASELINE = path.resolve(ROOT, String(argOf('baseline', 'plc-reference/training-material/SDC Standard Templates/ChassisStandard.L5X')));
+const BASELINE = path.resolve(ROOT, String(argOf('baseline', 'plc-reference/training-material/SDC Standard Templates/ChassisStandard_1UP.L5X')));
 const JSON_OUT = argOf('json', null) ? path.resolve(ROOT, String(argOf('json'))) : FILE.replace(/\.l5x$/i, '') + '.validate.json';
 const SLICES = !(argOf('no-slices', false) === true);
 const relRoot = (p) => path.relative(ROOT, p).replace(/\\/g, '/');

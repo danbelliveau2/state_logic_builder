@@ -22,7 +22,7 @@
  *   generated/1160/build/controller/{00_header,DataTypes,Modules,AddOnInstructionDefinitions,ControllerTags,Tasks,ParameterConnections}.xml
  *   generated/1160/build/controller/EXTRA_TAGS.xml   (optional; bare <Tag> elements merged into ControllerTags)
  *   generated/1160/build/programs/*.xml              (one <Program> element per file; name read from the element, not the file)
- *   plc-reference/training-material/SDC Standard Templates/ChassisStandard.L5X  (trailing sections after </ParameterConnections>)
+ *   plc-reference/training-material/SDC Standard Templates/ChassisStandard_1UP.L5X  (trailing sections after </ParameterConnections>)
  *
  * OUTPUT
  *   generated/1160/out/<name>.L5X          (BOM + CRLF, Studio export shape)
@@ -59,7 +59,7 @@ const NAME = String(argOf('name', '1160_v0.0'));
 const BUILD_DIR = path.resolve(ROOT, String(argOf('build-dir', 'generated/1160/build')));
 const OUT_DIR = path.resolve(ROOT, String(argOf('out-dir', 'generated/1160/out')));
 const REF_DIR = path.resolve(ROOT, String(argOf('ref-dir', 'generated/1160/ref/ChassisStandard')));
-const TEMPLATE = path.resolve(ROOT, String(argOf('template', 'plc-reference/training-material/SDC Standard Templates/ChassisStandard.L5X')));
+const TEMPLATE = path.resolve(ROOT, String(argOf('template', 'plc-reference/training-material/SDC Standard Templates/ChassisStandard_1UP.L5X')));
 const FALLBACK_REF = argOf('fallback-ref', false) === true || argOf('fallback-ref', false) === 'true';
 const QUIET = argOf('quiet', false) === true;
 

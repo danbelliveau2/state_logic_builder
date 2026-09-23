@@ -5,7 +5,7 @@
  *
  * QUESTION: can an existing generated station program (MidBaseLoad v1.4.1,
  * Jason-reviewed, two programs) be folded into the SDC chassis CONTROLLER
- * template (ChassisStandard.L5X) with the shipped mergePrograms() as-is, and
+ * template (ChassisStandard_1UP.L5X) with the shipped mergePrograms() as-is, and
  * does the result pass simulateImport + validateL5X?  Groundwork for the
  * job-1160 whole-machine build (16 stations on the chassis).
  *
@@ -37,7 +37,7 @@ const { XMLValidator } = require('fast-xml-parser');
 // ── args ────────────────────────────────────────────────────────────────────
 const argv = process.argv.slice(2);
 const argOf = (k, d) => { const a = argv.find((x) => x.startsWith(`--${k}=`)); return a ? a.slice(k.length + 3) : d; };
-const BASE_PATH = path.resolve(ROOT, argOf('base', 'plc-reference/training-material/SDC Standard Templates/ChassisStandard.L5X'));
+const BASE_PATH = path.resolve(ROOT, argOf('base', 'plc-reference/training-material/SDC Standard Templates/ChassisStandard_1UP.L5X'));
 const STATION_PATH = path.resolve(ROOT, argOf('station', 'SDC Engineer Deliveries/MidBaseLoad__sdce_v1.4.1__2026-08-31_1845.L5X'));
 const OUT_DIR = path.resolve(ROOT, argOf('out', 'generated/_experiments'));
 const RENUMBER = argOf('renumber', null);

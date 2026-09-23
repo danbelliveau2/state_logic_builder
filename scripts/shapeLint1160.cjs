@@ -50,12 +50,16 @@ const CORPUS = [
   'generated/1160/ref/MidBaseLoad_v1_4_1',
 ].map((p) => path.join(ROOT, p));
 
-// PLATFORM. 'chassis' = cam chassis (this job). 'dial' = indexing dial / ring.
-// Single Step / Single Cycle / AutoIdle are a DIAL feature (Jason, 2026-09-23): the dial platform
-// carries the block in every station's R01_Inputs (SoftwareStandardizationNew.L5X), the cam chassis
-// carries none of it (ChassisStandard_2UP). Copying this script for a dial job means setting
-// PLATFORM = 'dial', or the gate flags the standard block as a finding.
-const PLATFORM = 'chassis';
+// PLATFORM — three SDC platforms (Jason, 2026-09-23):
+//   'chassis-1up'  cam chassis, one nest        ChassisStandard_1UP.L5X          (13 programs, single-sided)
+//   'chassis-2up'  cam chassis, two-up          ChassisStandard_2UP_*.L5X        (19 programs, A/B twins)  <- job 1160
+//   'dial'         indexing dial / ring         SoftwareStandardizationNew.L5X   (22 programs)
+// Single Step / Single Cycle / AutoIdle are a DIAL feature: the dial carries the block in every
+// station's R01_Inputs, BOTH chassis variants carry none of it. Chassis_CamPos_Check is the mirror -
+// both chassis variants use it, the dial does not. The two chassis variants differ in TWINNING, not
+// in these rules, so the gate keys on the family below. Set this when copying the script for a job.
+const PLATFORM = 'chassis-2up';
+const IS_CHASSIS = PLATFORM.startsWith('chassis');
 
 // closest example per program family: [maxTags, maxRungs, maxNonTrackingLatches, note]
 const FAMILIES = [
@@ -74,13 +78,13 @@ const ROUTINE_SETS = [
 ];
 const FORBIDDEN = [
   // chassis only — the dial platform requires this block, see PLATFORM above
-  ...(PLATFORM === 'chassis' ? [
+  ...(IS_CHASSIS ? [
     [/\bSS_OK\b|\bSS\b(?=[",)\s])|SingleStep|SingleCycle|SingleTrigger|SingleClearTracking|SingleDisableTracking|LocalSSONS/, 'single-step', 'Single Step / Single Cycle is not used on SDC chassis stations (Jason 2026-09-18); the dial platform does use it'],
     [/\bAutoIdle\b/, 'auto-idle', 'AutoIdle is not required in any inputs routine on the chassis (Jason 2026-09-18); the dial platform does mirror it'],
   ] : []),
   // dial only — Chassis_CamPos_Check is a chassis AOI and sits in SoftwareStandardizationNew.L5X
   // by mistake (Jason, 2026-09-23); a dial station leaves state 4 on the indexer handshake
-  ...(PLATFORM === 'dial' ? [
+  ...(!IS_CHASSIS ? [
     [/\bChassis_CamPos_Check\b/, 'chassis-aoi-on-dial', 'Chassis_CamPos_Check is a chassis AOI (Jason 2026-09-23); a dial station leaves state 4 on \\S00_Indexer*.p_OnStation and CycleStation, not a cam-position window'],
   ] : []),
   [/\bAIN1:[IOC]\b|\bAOUT1:[IOC]\b/, 'module-name-address', 'local modules are addressed Local:<slot>:I - the 5069-IY4 is Local:5:I.Ch0X.Data (Jason 2026-09-18); the 5069-OF8 is gone (feeders are digital on/off)'],
