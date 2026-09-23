@@ -82,8 +82,10 @@ const FORBIDDEN = [
     [/\bSS_OK\b|\bSS\b(?=[",)\s])|SingleStep|SingleCycle|SingleTrigger|SingleClearTracking|SingleDisableTracking|LocalSSONS/, 'single-step', 'Single Step / Single Cycle is not used on SDC chassis stations (Jason 2026-09-18); the dial platform does use it'],
     [/\bAutoIdle\b/, 'auto-idle', 'AutoIdle is not required in any inputs routine on the chassis (Jason 2026-09-18); the dial platform does mirror it'],
   ] : []),
-  // dial only — Chassis_CamPos_Check is a chassis AOI and sits in SoftwareStandardizationNew.L5X
-  // by mistake (Jason, 2026-09-23); a dial station leaves state 4 on the indexer handshake
+  // dial only — Chassis_CamPos_Check is a chassis AOI. Jason's first SoftwareStandardizationNew export
+  // carried it by mistake and he re-exported without it the same day (2026-09-23), so the dial template
+  // no longer even defines it; this rule stays as the guard, because a dial station that reached for a
+  // cam-position window would be wrong whether or not the template happened to declare the AOI.
   ...(!IS_CHASSIS ? [
     [/\bChassis_CamPos_Check\b/, 'chassis-aoi-on-dial', 'Chassis_CamPos_Check is a chassis AOI (Jason 2026-09-23); a dial station leaves state 4 on \\S00_Indexer*.p_OnStation and CycleStation, not a cam-position window'],
   ] : []),
