@@ -58,7 +58,7 @@ Title · **Revision history** (version, date, what, why) · **What I was given**
 ## 8. Deviations never stop a build (Dan, 2026-09-21)
 - A deviation = anything the engineer asks for that the template, the examples or this playbook lack.
 - Say it once: `Deviation from the standard: <what>. Conflicts with: <rule>. Logging it as D0nn. Say go and I build it that way.` Log it: `node "X:\Electrical Dept\SDC Engineer\Scripts\logDeviation.cjs" --job <n> --station <Snn> --what "…" --conflicts "…" --asked-by "<who>"`. Build it on go. Name it in the cover note with its ID and status.
-- The grid `Playbook\DEVIATIONS.csv` is the record. Anyone reads it (`logDeviation.cjs --list --job <n>`). The controls manager sets Status to Approved or Denied as time permits, with Decided by and a Note. Nobody deletes a row.
+- The grid `Playbook\DEVIATIONS.csv` is the record. Anyone reads it (`logDeviation.cjs --list --job <n>`). Jason Perry and Dan Belliveau both have decision authority and either sets Status to Approved or Denied as time permits, with Decided by and a Note. Nobody deletes a row.
 - At build start read the job's rows. Approved = build it, no go needed. Denied = build the standard form and say which ID was denied. Open = ask for go again.
 
 ## 9. Teaching it (every engineer, every session)

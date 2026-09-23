@@ -59,3 +59,10 @@ One line per lesson, dated, in the engineer's words, with who said it. Merged da
 - 2026-09-23 [standard] If MidBaseLoad's logic is the current basis for escapements, I do not want to change that architecture. — Jason
 - 2026-09-23 [standard] There are 3 main SDC platforms: Chassis 1UP, Chassis 2UP (job 1160) and the indexing dial platform in SoftwareStandardizationNew. — Jason
 - 2026-09-23 [standard] Re-saved SoftwareStandardizationNew.L5X without the Chassis_CamPos AOI, so it is correct now. — Jason
+
+## Merged 2026-09-23
+- 2026-09-23 [standard] The two S14 drop sensors connect to 1700MOD channels 2 and 3. — Jason
+- 2026-09-23 [standard] SafetyProgram R03_Outputs rungs 1-8 are correct; rungs 9 and 10 are not needed, points 3 and 4 are not used in this control system. — Jason
+- 2026-09-23 [standard] Our standard is 3 consecutive failures at a station stops the machine (fault), not 3 consecutive rejects unloaded; S15's three-reject stop was a customer request for this machine. — Jason
+- 2026-09-23 [standard] Dan and I both have the authority to make decisions — either of us can set deviation Status in the grid. — Jason
+- 2026-09-23 [standard] D001 (CROUT monitored safety outputs) and D002 (S15 three consecutive unload rejects) are both Approved. — Jason
