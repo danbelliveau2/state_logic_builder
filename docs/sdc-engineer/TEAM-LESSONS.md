@@ -72,5 +72,6 @@ One line per lesson, dated, in the engineer's words, with who said it. Merged da
 - 2026-09-23 [standard] Skip the upfront full-plan workflow before any code exists — on 1160 it cost ~$228 across two attempts and neither survived into the real build. Go straight to incremental per-station-family builds. — Dan (confirmed on job 1158, matches BUDGET.md's own lesson)
 - 2026-09-23 [standard] When a job already has a hand-built PLC project (e.g. job 1158's Studio 5000 .ACD under Electrical\Software), don't build onto it and don't ignore it: generate the station code independently from the template/examples, then use the existing file as a standards/correctness check and a learning reference for how that device type is normally set up. — Dan (job 1158)
 
-## Untagged (not yet checked against the standard; the daily merge tags them)
-- 2026-09-23 [untagged] [note] A .ACD file is Rockwell's proprietary binary Studio 5000 project format — cannot be opened or parsed outside Studio 5000. Only .L5X (plain XML export) is readable directly. When a job's only PLC artifact is a .ACD, ask the CE/EE to export it to L5X (File → Save As / Export, type L5X, all content) before it can be used as a reference.
+## Merged 2026-09-23
+- 2026-09-23 [standard] A .ACD file is Rockwell's proprietary binary Studio 5000 project format — cannot be opened or parsed outside Studio 5000. Only .L5X (plain XML export) is readable directly. When a job's only PLC artifact is a .ACD, ask the CE/EE to export it to L5X (File → Save As / Export, type L5X, all content) before it can be used as a reference.
+- 2026-09-23 [standard] Rename the shape checker to shapeLint.cjs with a job config block instead of forking a per-job copy. — Jason
