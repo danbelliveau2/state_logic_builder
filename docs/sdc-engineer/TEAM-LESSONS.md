@@ -49,3 +49,13 @@ One line per lesson, dated, in the engineer's words, with who said it. Merged da
 - 2026-09-22 [standard] No spindle running after a stop. — Jason
 
 ## Merged 2026-09-22
+
+## Merged 2026-09-23
+- 2026-09-23 [standard] Single step is used on the dial platform only, not on the cam chassis. — Jason
+- 2026-09-23 [standard] The Chassis_CamPos_Check AOI is only used on Chassis jobs; it was left in the SoftwareStandardization project by mistake. — Jason
+- 2026-09-23 [standard] The project file wins; Examples is for programs not in it. — Jason
+- 2026-09-23 [standard] The chassis template stays separate, it is its own platform standard. — Jason
+- 2026-09-23 [standard] The old SoftwareStandardization.L5X is retired; SoftwareStandardizationNew.L5X replaces it. — Jason
+- 2026-09-23 [standard] If MidBaseLoad's logic is the current basis for escapements, I do not want to change that architecture. — Jason
+- 2026-09-23 [standard] There are 3 main SDC platforms: Chassis 1UP, Chassis 2UP (job 1160) and the indexing dial platform in SoftwareStandardizationNew. — Jason
+- 2026-09-23 [standard] Re-saved SoftwareStandardizationNew.L5X without the Chassis_CamPos AOI, so it is correct now. — Jason

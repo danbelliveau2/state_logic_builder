@@ -24,7 +24,7 @@ Shared brain for every SDC session. Read before any build. Rules here beat habit
 | Share-runnable scripts | `X:\Electrical Dept\SDC Engineer\Scripts\` (readiness, deviation log, lessons merge, session extract, L5X split, HTML→Word) | yes |
 | Deviation grid (live, Excel) | `X:\Electrical Dept\SDC Engineer\Playbook\DEVIATIONS.csv` — one row per deviation, Status Open / Approved / Denied | yes — mastered on the share |
 | Job working set | `X:\Electrical Dept\SDC Engineer\Deliveries\<job>\build-inputs\` (plan, contract, build programs, outputs) | yes |
-| Templates | `plc-reference/training-material/SDC Standard Templates/` | yes |
+| Templates | `plc-reference/training-material/SDC Standard Templates/` — **three platforms, pick one first**: `ChassisStandard_1UP.L5X` (cam chassis, one nest) · `ChassisStandard_2UP_*.L5X` (cam chassis, two-up, A/B twins) · `SoftwareStandardizationNew.L5X` (indexing dial). Single step is dial-only; `Chassis_CamPos_Check` is chassis-only (Jason, 2026-09-23) | yes |
 | Job inputs | `N:\<job>\` (Mechanical, Electrical, Pneumatic, Documents) | yes, local PC only |
 | Deliveries | `SDC Engineer Deliveries\<job>_<Machine>.L5X` + `_history\` stamps | per PC; send the file |
 | Personal memory | `~/.claude/projects/...` | no — anything reusable goes here instead |
