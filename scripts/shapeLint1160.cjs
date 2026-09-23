@@ -7,10 +7,12 @@
  * the examples you do have … same theory and approach on every station." This script makes that a gate:
  *
  *   1. VOCABULARY   every instruction / AOI call in a program must appear somewhere in the example corpus
- *                   (2-UP chassis template, Jason's X-drive examples, MidBaseLoad, his IV4 package, his heater PID,
- *                   plus the SoftwareStandardization SafetyProgram alone for the contract's CROUT safety-output shape).
+ *                   (the job's platform template + SoftwareStandardizationNew.L5X + MidBaseLoad). The project
+ *                   file wins over Examples\ (Jason 2026-09-23), so it supplies S04/S05/S06/S08/S10/S18/S19,
+ *                   MapInputs, MapOutputs and the SafetyProgram's CROUT shape.
  *   2. SHAPE BUDGET tags, rungs and non-tracking OTL/OTU per program may not exceed the closest example (+25 %).
- *   3. FORBIDDEN    Single Step / Single Cycle / AutoIdle (Jason 2026-09-18: not used on chassis stations),
+ *   3. FORBIDDEN    platform-scoped, see PLATFORM: Single Step / Single Cycle / AutoIdle are forbidden on the
+ *                   cam chassis and REQUIRED on the dial (Jason 2026-09-18, 2026-09-23); plus
  *                   AIN1:/AOUT1: module-name addressing (local modules are Local:<slot>:I), bypass constants,
  *                   provenance narrative in comments (STUB, DECLARED EXTENSION, [CTX], names, dates).
  *   4. WORDING      rung comments = one sentence (Jason); tag descriptions <= 30 characters (Jason).
@@ -28,25 +30,32 @@ const ROOT = path.resolve(__dirname, '..');
 const PROG_DIR = path.join(ROOT, 'generated/1160/build/programs');
 const TASKS = path.join(ROOT, 'generated/1160/build/controller/Tasks.xml');
 const CORPUS = [
+  // The platform template for THIS job (cam chassis).
   'plc-reference/training-material/SDC Standard Templates/ChassisStandard_2UP_2026-09-17.L5X',
-  'generated/1160/ref/X_FlexFeedConveyor', 'generated/1160/ref/X_GoodUnload', 'generated/1160/ref/X_RejectUnload',
-  'generated/1160/ref/X_PartVerify', 'generated/1160/ref/X_ServoPNP', 'generated/1160/ref/X_MapInputs', 'generated/1160/ref/X_MapOutputs',
-  'generated/1160/ref/MidBaseLoad_v1_4_1', 'generated/1160/ref/Jason_IV4',
-  // SoftwareStandardization SafetyProgram ONLY (one file, not the 18-program project): the NAMES CONTRACT SafetyProgram
-  // row asks for its "V4.2 CROUT NEGATIVE/200 shape" for SO1 guard-door relay / SO2 heater contactor, and
-  // jason-engineer-additions 2026-09-01: "SoftwareStandardization.L5X should be generating code, not only informing it".
-  // The 2-UP template has no such output rung. Adds exactly one name (CROUT) to the vocabulary; ratification is the
-  // SafetyProgram cover-note question (v1.3) - narrow back if Jason says the Air Dump Valve plain OTE form instead.
-  'generated/1160/ref/SoftwareStandardization/Program_SafetyProgram.xml',
+  // THE PROJECT FILE WINS; Examples is for programs not in it (Jason, 2026-09-23). Every standard
+  // example program - S04, S05, S06, S08, S10 pair, S18, S19, MapInputs, MapOutputs, SafetyProgram -
+  // now lives in this one export, so it replaces the per-program X_* copies taken from Examples\ and
+  // the SafetyProgram slice that supplied CROUT. Do not re-add an Examples copy of a program that is
+  // in here: the two drift and the Examples one is the stale side.
+  'plc-reference/training-material/SDC Standard Templates/SoftwareStandardizationNew.L5X',
+  // Not in the project file, so still read from their own exports.
+  'generated/1160/ref/MidBaseLoad_v1_4_1',
 ].map((p) => path.join(ROOT, p));
+
+// PLATFORM. 'chassis' = cam chassis (this job). 'dial' = indexing dial / ring.
+// Single Step / Single Cycle / AutoIdle are a DIAL feature (Jason, 2026-09-23): the dial platform
+// carries the block in every station's R01_Inputs (SoftwareStandardizationNew.L5X), the cam chassis
+// carries none of it (ChassisStandard_2UP). Copying this script for a dial job means setting
+// PLATFORM = 'dial', or the gate flags the standard block as a finding.
+const PLATFORM = 'chassis';
 
 // closest example per program family: [maxTags, maxRungs, maxNonTrackingLatches, note]
 const FAMILIES = [
   [/^S(01_YSiteLoad|02_YVerify|06_PortVerify|13_PhysicalCheck|14_GoodUnload|16_EmptyNest)[AB]$|^S15_RejectUnload$/, [49, 38, 4, 'template cam-listener stations S01/S02/S03/S18/S19/S20 (27-39 tags, 22-30 rungs, 0-3 latches)']],
-  [/^S03_YSiteInspect[AB]$|^S12_OpticalCheck$/, [69, 64, 4, "Jason's S06_IV4Vision x2 cameras (55 tags, 51 rungs, 2 latches per camera)"]],
-  [/^S07_PortCut[AB]$/, [80, 80, 4, "Jason's S06_IV4Vision + a template pneumatic listener"]],
-  [/^S05_PortLoad$|^S14_BinDiverter$|^S01_YSiteEscapement[AB]$/, [105, 110, 2, "Jason's MidBaseLoad escapement / pick-and-place, X_GoodUnload (72-97 tags, 74-103 rungs, 0 latches)"]],
-  [/^S(09_PortCloseB|11_PortCloseA)$/, [140, 135, 3, "Jason's X_ServoPNP (137 tags, 133 rungs, 2 latches)"]],
+  [/^S03_YSiteInspect[AB]$|^S12_OpticalCheck$/, [69, 64, 4, "S06_IV4Vision in the project file x2 cameras (55 tags, 51 rungs, 2 latches per camera)"]],
+  [/^S07_PortCut[AB]$/, [80, 80, 4, "S06_IV4Vision in the project file + a template pneumatic listener"]],
+  [/^S05_PortLoad$|^S14_BinDiverter$|^S01_YSiteEscapement[AB]$/, [105, 110, 2, "MidBaseLoad escapement / pick-and-place, S19_GoodUnload in the project file (72-97 tags, 74-103 rungs, 0 latches)"]],
+  [/^S(09_PortCloseB|11_PortCloseA)$/, [140, 135, 3, "S05_ServoPNP in the project file (137 tags, 133 rungs, 2 latches)"]],
   [/^S(08_YHeatB|10_YHeatA)$/, [40, 40, 0, "Jason's OV_PID + HeaterControl_SUB one-zone form (17 heat rungs) + template station R00/R01/R20 block (15) = 32, +25 %; no state machine"]],
 ];
 const ROUTINE_SETS = [
@@ -56,8 +65,16 @@ const ROUTINE_SETS = [
   'R00_Main,R01_Inputs,R02_Logic,R20_Alarms', // heat programs use the listener routine set (no state machine)
 ];
 const FORBIDDEN = [
-  [/\bSS_OK\b|\bSS\b(?=[",)\s])|SingleStep|SingleCycle|SingleTrigger|SingleClearTracking|SingleDisableTracking|LocalSSONS/, 'single-step', 'Single Step / Single Cycle is not used on SDC chassis stations (Jason 2026-09-18)'],
-  [/\bAutoIdle\b/, 'auto-idle', 'AutoIdle is not required in any inputs routine (Jason 2026-09-18)'],
+  // chassis only — the dial platform requires this block, see PLATFORM above
+  ...(PLATFORM === 'chassis' ? [
+    [/\bSS_OK\b|\bSS\b(?=[",)\s])|SingleStep|SingleCycle|SingleTrigger|SingleClearTracking|SingleDisableTracking|LocalSSONS/, 'single-step', 'Single Step / Single Cycle is not used on SDC chassis stations (Jason 2026-09-18); the dial platform does use it'],
+    [/\bAutoIdle\b/, 'auto-idle', 'AutoIdle is not required in any inputs routine on the chassis (Jason 2026-09-18); the dial platform does mirror it'],
+  ] : []),
+  // dial only — Chassis_CamPos_Check is a chassis AOI and sits in SoftwareStandardizationNew.L5X
+  // by mistake (Jason, 2026-09-23); a dial station leaves state 4 on the indexer handshake
+  ...(PLATFORM === 'dial' ? [
+    [/\bChassis_CamPos_Check\b/, 'chassis-aoi-on-dial', 'Chassis_CamPos_Check is a chassis AOI (Jason 2026-09-23); a dial station leaves state 4 on \\S00_Indexer*.p_OnStation and CycleStation, not a cam-position window'],
+  ] : []),
   [/\bAIN1:[IOC]\b|\bAOUT1:[IOC]\b/, 'module-name-address', 'local modules are addressed Local:<slot>:I - the 5069-IY4 is Local:5:I.Ch0X.Data (Jason 2026-09-18); the 5069-OF8 is gone (feeders are digital on/off)'],
   [/\bSTUB\b|DECLARED EXTENSION|\[CTX\]|\[CALL\]|\[BOM\]|\[ELEC\]|question #|NAMES.CONTRACT|X_ServoPNP|X_FlexFeed|MidBaseLoad|ChassisStandard|S06_IV4Vision|\bJason\b|\bDan\b|\bMark\b|\bMarks\b|\bHailey\b|doctrine|2026-0\d-\d\d|\bv0\.\d\b|\bv1\.\d\b/i, 'provenance-narrative', 'comments and descriptions describe the machine, never the build history or its sources'],
   [/i_Disable[A-Za-z]*Check|Bypass[A-Za-z]*Constant|ApplicationConstant|DebugLatch\b(?![\s\S]*Chassis)/, 'bypass-constant', 'no bypass / application constants - the examples have none'],
