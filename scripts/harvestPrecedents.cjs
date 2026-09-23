@@ -35,10 +35,17 @@ const L5X_DIRS = [
   'plc-reference/training-material/SDC Standard Templates',
 ];
 
+// Retired exports: superseded by another file in the same corpus, so harvesting them
+// double-counts the old shape and lets a stale form win a precedent vote.
+// SoftwareStandardization.L5X -> SoftwareStandardizationNew.L5X (Jason, 2026-09-23).
+const RETIRED = [/^SoftwareStandardization\.L5X$/i];
+
 function listFiles(dir, re) {
   const abs = path.join(ROOT, dir);
   try {
-    return fs.readdirSync(abs).filter((f) => re.test(f)).map((f) => path.join(abs, f));
+    return fs.readdirSync(abs)
+      .filter((f) => re.test(f) && !RETIRED.some((r) => r.test(f)))
+      .map((f) => path.join(abs, f));
   } catch { return []; }
 }
 

@@ -30,7 +30,8 @@ for (const f of ['buildReadiness.cjs', 'logDeviation.cjs', 'mergeLessons.cjs', '
   const src = path.join(ROOT, 'scripts', f); if (fs.existsSync(src)) done.push(copy(src, path.join(SHARE, 'Scripts', path.basename(f))));
 }
 // Templates the readiness check and the build reference
-for (const f of ['ChassisStandard_2UP_2026-09-17.L5X', 'ChassisStandard.L5X', 'SoftwareStandardization.L5X']) {
+// SoftwareStandardization.L5X is RETIRED (Jason, 2026-09-23) — SoftwareStandardizationNew.L5X replaces it.
+for (const f of ['ChassisStandard_2UP_2026-09-17.L5X', 'ChassisStandard.L5X', 'SoftwareStandardizationNew.L5X']) {
   const src = path.join(ROOT, 'plc-reference/training-material/SDC Standard Templates', f); if (fs.existsSync(src)) done.push(copy(src, path.join(SHARE, 'Templates', f)));
 }
 // Skills
