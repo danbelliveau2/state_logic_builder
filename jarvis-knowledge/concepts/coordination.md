@@ -1,5 +1,7 @@
 # Coordination & handshakes — how SDC thinks about it
 
+> **Naming note (2026-09-23):** the chassis template cited below as `ChassisStandard.L5X` is now `ChassisStandard_1UP.L5X`; the two-up variant is `ChassisStandard_2UP_*.L5X`. Citations keep the name used on the date they were written.
+
 > CONCEPTS, NOT RULES — when Jarvis gets something wrong, deepen the
 > understanding here; do not append a rule. (Dan, Aug 2026)
 
