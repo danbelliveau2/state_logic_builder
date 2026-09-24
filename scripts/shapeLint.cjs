@@ -1,83 +1,113 @@
 #!/usr/bin/env node
 'use strict';
 /**
- * shapeLint1160.cjs — "SAME LOOK AND FEEL AS THE EXAMPLES" checker (2026-09-18, Dan + Jason v1.1 review)
+ * shapeLint.cjs — "SAME LOOK AND FEEL AS THE EXAMPLES" checker (2026-09-18, Dan + Jason v1.1 review)
  *
  * Dan: "even if you don't have an example, you can't ever create something that doesn't look and feel like
  * the examples you do have … same theory and approach on every station." This script makes that a gate:
  *
- *   1. VOCABULARY   every instruction / AOI call in a program must appear somewhere in the example corpus
- *                   (the job's platform template + SoftwareStandardizationNew.L5X + MidBaseLoad). The project
- *                   file wins over Examples\ (Jason 2026-09-23), so it supplies S04/S05/S06/S08/S10/S18/S19,
- *                   MapInputs, MapOutputs and the SafetyProgram's CROUT shape.
+ *   1. VOCABULARY   every instruction / AOI call in a program must appear somewhere in the example corpus.
+ *                   The project file wins over Examples\ (Jason 2026-09-23).
  *   2. SHAPE BUDGET tags, rungs and non-tracking OTL/OTU per program may not exceed the closest example (+25 %).
- *   3. FORBIDDEN    platform-scoped, see PLATFORM: Single Step / Single Cycle / AutoIdle are forbidden on the
- *                   cam chassis and REQUIRED on the dial (Jason 2026-09-18, 2026-09-23); plus
- *                   AIN1:/AOUT1: module-name addressing (local modules are Local:<slot>:I), bypass constants,
- *                   provenance narrative in comments (STUB, DECLARED EXTENSION, [CTX], names, dates).
+ *   3. FORBIDDEN    platform-scoped (see JOB.platform): Single Step / Single Cycle / AutoIdle are forbidden on
+ *                   the cam chassis and REQUIRED on the dial (Jason 2026-09-18, 2026-09-23); Chassis_CamPos_Check
+ *                   is the mirror. Plus AIN1:/AOUT1: module-name addressing, bypass constants, PLC-5 mnemonics,
+ *                   provenance narrative in comments.
  *   4. WORDING      rung comments = one sentence (Jason); tag descriptions <= 30 characters (Jason).
  *   5. ROUTINES     routine set must be one the examples use.
- *   6. SCHEDULE     MapInputs first in MainTask (Jason); heat programs in a 1 s periodic task (Jason).
+ *   6. AOI DATA     an AOI backing tag may carry a <Data> block only in a shape an example instance shows.
+ *   7. SCHEDULE     MapInputs first in MainTask (Jason); heat programs in the 1 s periodic task (Jason).
  *
- * Run:  node scripts/shapeLint1160.cjs [file.xml ...]      (default: every program in generated/1160/build/programs)
- *       node scripts/shapeLint1160.cjs --json               (machine-readable)
+ * FOR A NEW JOB: edit the JOB block below and nothing else. Everything under it is platform- and
+ * job-independent (Jason, 2026-09-23 — this replaces forking a per-job copy of the script).
+ *
+ * Run:  node scripts/shapeLint.cjs [file.xml ...]      (default: every program in JOB.progDir)
+ *       node scripts/shapeLint.cjs --json               (machine-readable)
  * Exit: 0 clean, 1 findings.
  */
 const fs = require('fs');
 const path = require('path');
-
 const ROOT = path.resolve(__dirname, '..');
-const PROG_DIR = path.join(ROOT, 'generated/1160/build/programs');
-const TASKS = path.join(ROOT, 'generated/1160/build/controller/Tasks.xml');
-const CORPUS = [
-  // The platform template for THIS job (cam chassis).
-  'plc-reference/training-material/SDC Standard Templates/ChassisStandard_2UP_2026-09-17.L5X',
-  // THE PROJECT FILE WINS; Examples is for programs not in it (Jason, 2026-09-23). Every standard
-  // example program - S04, S05, S06, S08, S10 pair, S18, S19, MapInputs, MapOutputs, SafetyProgram -
-  // now lives in this one export, so it replaces the per-program X_* copies taken from Examples\ and
-  // the SafetyProgram slice that supplied CROUT. Do not re-add an Examples copy of a program that is
-  // in here: the two drift and the Examples one is the stale side.
-  'plc-reference/training-material/SDC Standard Templates/SoftwareStandardizationNew.L5X',
-  // MidBaseLoad is our own generated output (sdce v1.4.1), not an SDC example, and it is the file
-  // Jason reviewed on 2026-09-01 and found defects in. It stays for ONE reason: its escapement and
-  // pick-and-place are the current basis for a self-actuated station, which neither platform standard
-  // has, and Jason ruled 2026-09-23 that the architecture is not to change. It is the SIZE reference
-  // for the S05_PortLoad / S14_BinDiverter / S01_YSiteEscapement family budget below - nothing else:
-  // it contributes zero unique vocabulary (measured), so its defects cannot reach a generated program
-  // through this corpus. The FORM comes from Jason's corrected rulings in the knowledge file, never
-  // from this file: no part-tracking writes, no CycleStation, no q_StationComplete, no StaNumPre /
-  // NestNumIncoming / NestNumCurrent, no AOI_Debounce on a pneumatic position sensor.
-  'generated/1160/ref/MidBaseLoad_v1_4_1',
-].map((p) => path.join(ROOT, p));
 
-// PLATFORM — three SDC platforms (Jason, 2026-09-23):
-//   'chassis-1up'  cam chassis, one nest        ChassisStandard_1UP.L5X          (13 programs, single-sided)
-//   'chassis-2up'  cam chassis, two-up          ChassisStandard_2UP_*.L5X        (19 programs, A/B twins)  <- job 1160
-//   'dial'         indexing dial / ring         SoftwareStandardizationNew.L5X   (22 programs)
-// Single Step / Single Cycle / AutoIdle are a DIAL feature: the dial carries the block in every
-// station's R01_Inputs, BOTH chassis variants carry none of it. Chassis_CamPos_Check is the mirror -
-// both chassis variants use it, the dial does not. The two chassis variants differ in TWINNING, not
-// in these rules, so the gate keys on the family below. Set this when copying the script for a job.
-const PLATFORM = 'chassis-2up';
-const IS_CHASSIS = PLATFORM.startsWith('chassis');
+// ═══════════════════════════════════════════════════════════════════════════════
+// JOB CONFIG — the only part that changes per job
+// ═══════════════════════════════════════════════════════════════════════════════
+const JOB = {
+  id: '1160',
 
-// closest example per program family: [maxTags, maxRungs, maxNonTrackingLatches, note]
-const FAMILIES = [
-  [/^S(01_YSiteLoad|02_YVerify|06_PortVerify|13_PhysicalCheck|14_GoodUnload|16_EmptyNest)[AB]$|^S15_RejectUnload$/, [49, 38, 4, 'template cam-listener stations S01/S02/S03/S18/S19/S20 (27-39 tags, 22-30 rungs, 0-3 latches)']],
-  [/^S03_YSiteInspect[AB]$|^S12_OpticalCheck$/, [69, 64, 4, "S06_IV4Vision in the project file x2 cameras (55 tags, 51 rungs, 2 latches per camera)"]],
-  [/^S07_PortCut[AB]$/, [80, 80, 4, "S06_IV4Vision in the project file + a template pneumatic listener"]],
-  [/^S05_PortLoad$|^S14_BinDiverter$|^S01_YSiteEscapement[AB]$/, [105, 110, 2, "MidBaseLoad escapement / pick-and-place, S19_GoodUnload in the project file (72-97 tags, 74-103 rungs, 0 latches)"]],
-  [/^S(09_PortCloseB|11_PortCloseA)$/, [140, 135, 3, "S05_ServoPNP in the project file (137 tags, 133 rungs, 2 latches)"]],
-  [/^S(08_YHeatB|10_YHeatA)$/, [40, 40, 0, "Jason's OV_PID + HeaterControl_SUB one-zone form (17 heat rungs) + template station R00/R01/R20 block (15) = 32, +25 %; no state machine"]],
-];
+  // 'chassis-1up' cam chassis, one nest      ChassisStandard_1UP.L5X        (13 programs, single-sided)
+  // 'chassis-2up' cam chassis, two-up        ChassisStandard_2UP_*.L5X      (19 programs, A/B twins)
+  // 'dial'        indexing dial / ring       SoftwareStandardizationNew.L5X (22 programs)
+  platform: 'chassis-2up',
+
+  progDir: 'generated/1160/build/programs',
+  tasks: 'generated/1160/build/controller/Tasks.xml',
+
+  corpus: [
+    // The platform template for THIS job.
+    'plc-reference/training-material/SDC Standard Templates/ChassisStandard_2UP_2026-09-17.L5X',
+    // THE PROJECT FILE WINS; Examples is for programs not in it (Jason, 2026-09-23). Every standard
+    // example program - S04, S05, S06, S08, S10 pair, S18, S19, MapInputs, MapOutputs, SafetyProgram -
+    // lives in this one export, so it replaces per-program copies taken from Examples\. Do not re-add
+    // an Examples copy of a program that is in here: the two drift and the Examples one is the stale side.
+    'plc-reference/training-material/SDC Standard Templates/SoftwareStandardizationNew.L5X',
+    // MidBaseLoad is our own generated output (sdce v1.4.1), not an SDC example, and it is the file
+    // Jason reviewed on 2026-09-01 and found defects in. It stays for ONE reason: its escapement and
+    // pick-and-place are the current basis for a self-actuated station, which no platform standard has,
+    // and Jason ruled 2026-09-23 that the architecture is not to change. It is the SIZE reference for the
+    // escapement family below - nothing else: it contributes zero unique vocabulary (measured), so its
+    // defects cannot reach a generated program through this corpus. The FORM comes from Jason's corrected
+    // rulings in the knowledge file: no part-tracking writes, no CycleStation, no q_StationComplete,
+    // no StaNumPre / NestNumIncoming / NestNumCurrent, no AOI_Debounce on a pneumatic position sensor.
+    'generated/1160/ref/MidBaseLoad_v1_4_1',
+  ],
+
+  // Instructions this job legitimately uses that the corpus cannot supply.
+  vocabularyExtras: {
+    // Jason_return_0918 (OV_PID / HeaterControl_SUB) is deliberately NOT in the corpus: his note ships it
+    // as "a previous SDC project NOT done using our new standards ... Generated code must use our standard".
+    // Admitting those files wholesale legalises their old mnemonics (LIM, MOV, EQU, NEQ, GRT, LES); LIM( is
+    // what failed the v1.4 import. Take the one instruction the heat form needs.
+    PID: 'heat loops; the source file is excluded from the corpus as non-standard',
+    // Supplied by Jason as a standalone AOI definition (2026-09-22) and declared in the project.
+    // Its own body is ST and never reaches a rung.
+    AOI_HeatControl: 'time-proportional heater output AOI',
+  },
+
+  // closest example per program family: [maxTags, maxRungs, maxNonTrackingLatches, note]
+  families: [
+    [/^S(01_YSiteLoad|02_YVerify|06_PortVerify|13_PhysicalCheck|14_GoodUnload|16_EmptyNest)[AB]$|^S15_RejectUnload$/, [49, 38, 4, 'template cam-listener stations S01/S02/S03/S18/S19/S20 (27-39 tags, 22-30 rungs, 0-3 latches)']],
+    [/^S03_YSiteInspect[AB]$|^S12_OpticalCheck$/, [69, 64, 4, 'S06_IV4Vision in the project file x2 cameras (55 tags, 51 rungs, 2 latches per camera)']],
+    [/^S07_PortCut[AB]$/, [80, 80, 4, 'S06_IV4Vision in the project file + a template pneumatic listener']],
+    [/^S05_PortLoad$|^S14_BinDiverter$|^S01_YSiteEscapement[AB]$/, [105, 110, 2, 'MidBaseLoad escapement / pick-and-place, S19_GoodUnload in the project file (72-97 tags, 74-103 rungs, 0 latches)']],
+    [/^S(09_PortCloseB|11_PortCloseA)$/, [140, 135, 3, 'S05_ServoPNP in the project file (137 tags, 133 rungs, 2 latches)']],
+    [/^S(08_YHeatB|10_YHeatA)$/, [40, 40, 0, "Jason's OV_PID + HeaterControl_SUB one-zone form (17 heat rungs) + template station R00/R01/R20 block (15) = 32, +25 %; no state machine"]],
+  ],
+
+  // Task schedule this job must satisfy. heatStationPrograms: [] when a job has no heaters.
+  schedule: {
+    heatTaskRateMs: 1000,
+    heatTaskProgram: 'HeatControl',
+    heatStationPrograms: ['S08_YHeatB', 'S10_YHeatA'],
+  },
+};
+// ═══════════════════════════════════════════════════════════════════════════════
+// END JOB CONFIG — everything below is general
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const PROG_DIR = path.join(ROOT, JOB.progDir);
+const TASKS = path.join(ROOT, JOB.tasks);
+const CORPUS = JOB.corpus.map((p) => path.join(ROOT, p));
+const FAMILIES = JOB.families;
+const IS_CHASSIS = JOB.platform.startsWith('chassis');
+
 const ROUTINE_SETS = [
   'R00_Main,R01_Inputs,R02_Logic,R20_Alarms',
   'R00_Main,R01_Inputs,R02_StateTransitions,R03_StateLogic,R20_Alarms',
   'R00_Main,R01_Inputs,R02_StateTransitions,R03_StateLogic,R04_ZAxisServo,R20_Alarms',
-  'R00_Main,R01_Inputs,R02_Logic,R20_Alarms', // heat programs use the listener routine set (no state machine)
 ];
 const FORBIDDEN = [
-  // chassis only — the dial platform requires this block, see PLATFORM above
+  // chassis only — the dial platform requires this block
   ...(IS_CHASSIS ? [
     [/\bSS_OK\b|\bSS\b(?=[",)\s])|SingleStep|SingleCycle|SingleTrigger|SingleClearTracking|SingleDisableTracking|LocalSSONS/, 'single-step', 'Single Step / Single Cycle is not used on SDC chassis stations (Jason 2026-09-18); the dial platform does use it'],
     [/\bAutoIdle\b/, 'auto-idle', 'AutoIdle is not required in any inputs routine on the chassis (Jason 2026-09-18); the dial platform does mirror it'],
@@ -110,34 +140,26 @@ function calls(text) { return [...text.matchAll(/(?:^|[\[\s,;)\]])([A-Za-z_][A-Z
 const vocab = new Set();
 for (const f of CORPUS.flatMap((p) => walk(p))) for (const t of rungTexts(readText(f))) for (const c of calls(t)) vocab.add(c);
 vocab.add('NOP'); vocab.add('JSR');
-// Jason_return_0918 (OV_PID / HeaterControl_SUB) is deliberately NOT in the corpus: his note ships it as
-// "a previous SDC project NOT done using our new standards ... Generated code must use our standard".
-// Admitting those files wholesale legalises their old mnemonics (LIM, MOV, EQU, NEQ, GRT, LES); LIM( is what
-// failed the v1.4 import. Take the one instruction the heat form needs; the files stay on disk as the
-// rung-form reference the NAMES CONTRACT ruling 10 points at.
-vocab.add('PID');
 // The Compare set, from the Studio v37 instruction tree (Jason, 2026-09-21). Admitted whole so a legitimate
 // comparison is never flagged for being absent from the examples - MEQ appears in no example program.
 for (const c of ['CMP', 'LIMIT', 'MEQ', 'EQ', 'NE', 'LT', 'GT', 'LE', 'GE']) vocab.add(c);
-// AOI_HeatControl: the time-proportional heater output AOI, supplied by Jason as a standalone
-// definition (2026-09-22) and declared in the project. Its own body is ST and never reaches a rung.
-vocab.add('AOI_HeatControl');
+for (const c of Object.keys(JOB.vocabularyExtras)) vocab.add(c);
 
 // ── AOI backing-tag shapes, learned from the corpus ──────────────────────────
-// An AOI instance's L5K block is a packed MEMORY IMAGE (BOOLs in leading words, then
-// the numeric members, locals included, with alignment) - it is not derivable from the
-// definition. 1160 v1.6 shipped a hand-written one and Studio rejected it with
-// "Data type mismatch". So: a Data block may only be emitted in a shape an example
-// already shows for that same AOI. No example instance -> declare the tag alone.
+// An AOI instance's L5K block is a packed MEMORY IMAGE (BOOLs in leading words, then the numeric
+// members, locals included, with alignment) - it is not derivable from the definition. 1160 v1.6
+// shipped a hand-written one and Studio rejected it with "Data type mismatch". So: a Data block may
+// only be emitted in a shape an example already shows for that same AOI. No example instance ->
+// declare the tag alone and let Studio initialise it.
 const AOI_NAMES = new Set();
 const AOI_L5K_ARITY = new Map();   // AOI type -> Set of top-level L5K counts seen in the corpus
 function topLevelCount(l5k) {
-  const b = l5k.trim().replace(/^\[/, "").replace(/\]$/, "");
+  const b = l5k.trim().replace(/^\[/, '').replace(/\]$/, '');
   let d = 0, q = false, n = 1;
   for (const ch of b) {
     if (q) { if (ch === "'") q = false; continue; }
     if (ch === "'") { q = true; continue; }
-    if (ch === "[") d++; else if (ch === "]") d--; else if (ch === "," && d === 0) n++;
+    if (ch === '[') d++; else if (ch === ']') d--; else if (ch === ',' && d === 0) n++;
   }
   return n;
 }
@@ -145,7 +167,7 @@ function learnAoiShapes(xml) {
   for (const m of xml.matchAll(/<AddOnInstructionDefinition[^>]*\sName="([^"]+)"/g)) AOI_NAMES.add(m[1]);
   for (const m of xml.matchAll(/<Tag\s+Name="[^"]+"[^>]*DataType="([^"]+)"[^>]*>/g)) {
     if (!AOI_NAMES.has(m[1])) continue;
-    const i = m.index, j = xml.indexOf("</Tag>", i);
+    const i = m.index, j = xml.indexOf('</Tag>', i);
     if (j < 0) continue;
     const l = /<Data Format="L5K">\s*<!\[CDATA\[([\s\S]*?)\]\]>/.exec(xml.slice(i, j));
     if (!l) continue;
@@ -155,8 +177,8 @@ function learnAoiShapes(xml) {
 }
 for (const f of CORPUS.flatMap((p) => walk(p))) learnAoiShapes(readText(f));
 // the job's own AOI definitions name types the corpus may not carry
-for (const f of process.argv.slice(2).filter((a) => !a.startsWith("--"))) {
-  const defs = path.join(path.dirname(f), "..", "controller", "AddOnInstructionDefinitions.xml");
+for (const f of process.argv.slice(2).filter((a) => !a.startsWith('--'))) {
+  const defs = path.join(path.dirname(f), '..', 'controller', 'AddOnInstructionDefinitions.xml');
   if (fs.existsSync(defs)) { for (const m of readText(defs).matchAll(/<AddOnInstructionDefinition[^>]*\sName="([^"]+)"/g)) AOI_NAMES.add(m[1]); break; }
 }
 
@@ -226,14 +248,18 @@ function lintProgram(p, file) {
 function lintTasks() {
   const F = [];
   if (!fs.existsSync(TASKS)) return F;
+  const rel = JOB.tasks;
   const t = readText(TASKS);
   const main = t.match(/<Task\s+Name="MainTask"[^>]*>([\s\S]*?)<\/Task>/);
   const first = main && (main[1].match(/<ScheduledProgram\s+Name="([^"]+)"/) || [])[1];
-  if (first !== 'MapInputs') F.push({ program: 'Tasks', file: 'generated/1160/build/controller/Tasks.xml', rule: 'mapinputs-first', where: first || 'none', msg: 'MapInputs must be the first program executed in MainTask (Jason 2026-09-18)' });
-  const heat = t.match(/<Task\s+Name="[^"]+"\s+Type="PERIODIC"\s+Rate="1000"[^>]*>([\s\S]*?)<\/Task>/);
-  const heatProgs = heat ? [...heat[1].matchAll(/<ScheduledProgram\s+Name="([^"]+)"/g)].map((m) => m[1]) : [];
-  if (heatProgs.join() !== 'HeatControl') F.push({ program: 'HeatControl', file: 'generated/1160/build/controller/Tasks.xml', rule: 'heat-periodic-task', where: heatProgs.join(',') || 'none', msg: 'exactly ONE program (HeatControl: R00_Main + R02_Logic with the PID loops) runs in the 1 s periodic task; the rest of the heat logic is S08_YHeatB / S10_YHeatA in MainTask (Jason 2026-09-18 15:21)' });
-  for (const p of ['S08_YHeatB', 'S10_YHeatA']) if (!main || !main[1].includes(`Name="${p}"`)) F.push({ program: p, file: 'generated/1160/build/controller/Tasks.xml', rule: 'heat-station-maintask', where: p, msg: 'the station heat program belongs in MainTask in standard SDC format (Jason 2026-09-18 15:21)' });
+  if (first !== 'MapInputs') F.push({ program: 'Tasks', file: rel, rule: 'mapinputs-first', where: first || 'none', msg: 'MapInputs must be the first program executed in MainTask (Jason 2026-09-18)' });
+  const S = JOB.schedule;
+  if (S.heatStationPrograms.length) {
+    const heat = t.match(new RegExp('<Task\\s+Name="[^"]+"\\s+Type="PERIODIC"\\s+Rate="' + S.heatTaskRateMs + '"[^>]*>([\\s\\S]*?)</Task>'));
+    const heatProgs = heat ? [...heat[1].matchAll(/<ScheduledProgram\s+Name="([^"]+)"/g)].map((m) => m[1]) : [];
+    if (heatProgs.join() !== S.heatTaskProgram) F.push({ program: S.heatTaskProgram, file: rel, rule: 'heat-periodic-task', where: heatProgs.join(',') || 'none', msg: `exactly ONE program (${S.heatTaskProgram}: R00_Main + R02_Logic with the PID loops) runs in the ${S.heatTaskRateMs / 1000} s periodic task; the rest of the heat logic is ${S.heatStationPrograms.join(' / ')} in MainTask (Jason 2026-09-18 15:21)` });
+    for (const p of S.heatStationPrograms) if (!main || !main[1].includes(`Name="${p}"`)) F.push({ program: p, file: rel, rule: 'heat-station-maintask', where: p, msg: 'the station heat program belongs in MainTask in standard SDC format (Jason 2026-09-18 15:21)' });
+  }
   return F;
 }
 
@@ -246,7 +272,7 @@ let findings = [];
 for (const f of targets) for (const p of programsIn(readText(f))) findings.push(...lintProgram(p, f));
 if (!files.length) findings.push(...lintTasks());
 
-if (json) console.log(JSON.stringify({ vocabulary: [...vocab].sort(), findings }, null, 2));
+if (json) console.log(JSON.stringify({ job: JOB.id, platform: JOB.platform, vocabulary: [...vocab].sort(), findings }, null, 2));
 else {
   const by = new Map();
   for (const f of findings) { if (!by.has(f.program)) by.set(f.program, []); by.get(f.program).push(f); }
@@ -260,6 +286,6 @@ else {
       if (fs2.length > 6 && (rule.startsWith('description') || rule.startsWith('comment'))) console.log(`     … ${fs2.length - 6} more`);
     }
   }
-  console.log(`\nshapeLint1160: ${findings.length} finding(s) in ${by.size} program(s); corpus vocabulary ${vocab.size} instruction/AOI names`);
+  console.log(`\nshapeLint [job ${JOB.id}, ${JOB.platform}]: ${findings.length} finding(s) in ${by.size} program(s); corpus vocabulary ${vocab.size} instruction/AOI names`);
 }
 process.exit(findings.length ? 1 : 0);

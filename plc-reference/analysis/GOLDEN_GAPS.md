@@ -1,5 +1,7 @@
 # Golden Gaps — recurring station types/variations lacking template coverage
 
+> **Naming note (2026-09-23):** the chassis template cited below as `ChassisStandard.L5X` is now `ChassisStandard_1UP.L5X`; the two-up variant is `ChassisStandard_2UP_*.L5X`. Citations keep the name used on the date they were written.
+
 - (2026-08-23, from _1028_Diamond_041024.L5X) N-identical parallel process cells (10 aging/test positions with per-cell probes, Z-axis, timers and pass/fail) served by shared load/unload robots — no template for one parameterized station shape driving N instances
 - (2026-08-23, from _1028_Diamond_041024.L5X) Shared part-tracking array shifted head-by-head across a large indexing dial (40 heads) with per-station attempt/success/failure-code stamping — no golden example of who owns and who shifts that array
 - (2026-09-01, from _1086_Steris_Cable.L5X) Continuous material-feed station: geared master/slave puller pair with dancer/tensioner-regulated reel payout (VFD + IO-Link distance sensors) — no template covers gearing setup, slip detection or dancer regulation

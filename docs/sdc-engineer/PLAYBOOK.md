@@ -67,4 +67,4 @@ Title · **Revision history** (version, date, what, why) · **What I was given**
 - Every session reads PLAYBOOK, TEAM-LESSONS, the job's deviation rows and Engineer additions first. The paste-in prompt is `Playbook\PROMPT.md`.
 
 ## 10. Gates
-In the repo clone (they import the repo's validator): `node scripts/shapeLint1160.cjs` (per program, 0 findings) · `node scripts/assemble1160.cjs` · `node scripts/validate1160.cjs <out> --baseline <template>` (import sim 0 errors) · `node scripts/parseCheckChanged.cjs` for any script change. Copy the 1160 scripts for the next job and change the paths at the top.
+In the repo clone (they import the repo's validator): `node scripts/shapeLint.cjs` (per program, 0 findings) · `node scripts/assemble1160.cjs` · `node scripts/validate1160.cjs <out> --baseline <template>` (import sim 0 errors) · `node scripts/parseCheckChanged.cjs` for any script change. `shapeLint.cjs` is general: for a new job edit only its JOB block at the top (id, platform 1UP/2UP/dial, paths, corpus, family budgets, heat schedule) — do not fork a per-job copy. The assemble/validate scripts still take their paths as arguments.

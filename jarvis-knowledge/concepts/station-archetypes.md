@@ -181,10 +181,15 @@ expects it. Alarms split into a servo handler (drive-fault text built by
 DTOS/CONCAT of `AxisFault`) and a station handler, ORed into `q_AlarmActive`.
 
 ## The cam-driven chassis machine — one mechanism program, N listener stations
-*(THE authority is now the template itself: ChassisStandard.L5X — Chassis,
-S01_PartLoad, S02_ProbeCheck, S03_PartLoad, S18_RejectUnload, S19_GoodUnload,
-S20_EmptyNest, HMI, Production, Alarms, SafetyProgram; ShowRoomChassis is the
-same shape as a shipped example)*
+*(THE authority is the platform template itself. Cam chassis comes in two:
+**ChassisStandard_1UP.L5X** — one nest, single-sided: Chassis, S01_PartLoad,
+S02_ProbeCheck, S03_PartLoad, S18_RejectUnload, S19_GoodUnload, S20_EmptyNest,
+HMI, Production, Alarms, Supervisor, Tracking, SafetyProgram — and
+**ChassisStandard_2UP_\*.L5X**, the same shape with A/B twins per station.
+Both were named ChassisStandard.L5X before 2026-09-23, which is the name older
+citations in these notes use. The third SDC platform, the indexing dial, is
+SoftwareStandardizationNew.L5X and is NOT this archetype. ShowRoomChassis is
+the same shape as a shipped example)*
 
 Control splits in two and the split is the archetype:
 

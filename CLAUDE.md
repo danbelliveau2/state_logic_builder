@@ -99,7 +99,7 @@ Documents, code comments, tag descriptions, chat: portray the information with a
 - Rung comment = ONE concise sentence about the machine. Tag description ≤ 30 characters.
 - Comments never carry build history, sources, dates, names, question numbers, "STUB" or "DECLARED EXTENSION"; a placeholder is `XIC(g_MachineBasic.AlwaysOff)` on a real rung.
 - A program stays the size of its closest example (tags, rungs, latches). No feature, timer, interlock, bypass constant or HMI setpoint the examples do not have. Same look and feel on every station (Dan, 2026-09-18).
-- Gate: `node scripts/shapeLint1160.cjs` for 1160; `validator.js` emits READABILITY warnings on every generated L5X.
+- Gate: `node scripts/shapeLint.cjs` (job config block at the top); `validator.js` emits READABILITY warnings on every generated L5X.
 
 Full L5X generator rules, layered output architecture, servo details → [@docs/architecture.md](docs/architecture.md)
 
