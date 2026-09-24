@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Job 1158 Panduit T-066 - PLC program v0.5</title>
+<style>
+@page { size: 8.5in 11in; margin: 0.5in 0.55in; }
+body { font-family: Calibri, sans-serif; font-size: 9pt; color: #000; }
+h1 { font-size: 13pt; margin: 0 0 8pt 0; }
+h2 { font-size: 10pt; margin: 10pt 0 3pt 0; }
+table { border-collapse: collapse; width: 100%; margin-bottom: 7pt; }
+td, th { border: 0.5pt solid #999; padding: 2pt 4pt; vertical-align: top; font-size: 9pt; text-align: left; }
+th { background: #E8E8E8; font-weight: bold; }
+td.k { background: #E8E8E8; font-weight: bold; width: 82pt; }
+.block { page-break-inside: avoid; }
+.lead { margin: 6pt 0; }
+.ask { font-weight: bold; }
+ul { margin: 0; padding-left: 12pt; }
+li { margin: 0; }
+.foot { margin-top: 10pt; font-style: italic; }
+</style></head><body>
+
+<h1>Job 1158 Panduit T-066 Assembly Machine &ndash; PLC program v0.5 &ndash; Sep 24 2026</h1>
+
+<h2>Revision history</h2>
+<table>
+<tr><th style="width:34pt">Ver</th><th style="width:44pt">Date</th><th>What changed</th><th style="width:150pt">Why</th></tr>
+<tr><td>&mdash;</td><td>Sep 9</td><td>Matt Armand's original build (Studio 5000 .ACD): dial architecture (D01/D02 twin Indexer+Tracking under one Supervisor), 24 of 30 programs real and working</td><td>First-pass build on this job</td></tr>
+<tr><td>0.1</td><td>Sep 23</td><td>Built the 5 programs that were placeholders or incomplete: D01_FlexFeeder, D01S01_PartLoad, D02S01_PlasticLoad, D02S13_MetalLoad; extended D01S11_SleevePress's force logic to a two-sided envelope. Fixed 3 stations sharing a copy-paste StaNum=19 bug (D01S12, D02S01, D02S13 &rarr; 12/1/13, using the transcript's Dial 1 = 20 / Dial 2 = 24 position counts). Fixed a tracking-write race between D01_FlexFeeder and D01S01_PartLoad.</td><td>Dan: build out the complete machine, taking Matt's work into account</td></tr>
+<tr><td>0.2</td><td>Sep 23</td><td>Removed `S05_ServoPNP` &ndash; a dead copy of the generic template's example program, scheduled and running but wired to two axis tags (`a03_S01PNPXAxis`/`a04_S01PNPZAxis`) that don't exist anywhere in the controller. Found while writing this note, not caught by the import-simulation gate.</td><td>Found by hand; would have faulted the controller on power-up</td></tr>
+<tr><td>0.3</td><td>Sep 23</td><td>Full standards-and-devices review, every program, not just the 5 above. Found and fixed: D01S12_PressInspect was a 6th hidden placeholder (unconditional success, no sensor read at all) &ndash; rebuilt as a real one-sensor verify station. D01S04_CameraInspect and D02S02_PartVerify_DONE had leftover wrong-device vocabulary and no failure-code write on a fail. D01_Indexer and D02_Indexer each had a station missing from their completion/actuators-safe polling; D02_Indexer's pause rung pointed at Dial 1's programs. D02_Tracking's nest array was sized off Dial 1's UDT, undersized by 4 &ndash; a real out-of-bounds write risk once Dial 2 reached station 22. D01_FlexFeeder's Fanuc AOI/UDT definitions did not exist anywhere in the controller (would not have imported) and its MapInputs/MapOutputs rungs were never added; also DryRun was read but never used. D02S13 had a needless timer on an already-sensed position; D02S08 had an extra manual-override term its three sibling stations don't have. Alarms never aggregated D02S02's faults to the HMI.</td><td>Dan: make sure this is complete and correct before it goes to Matt and Jason</td></tr>
+<tr><td>0.4</td><td>Sep 24</td><td><b>D01_FlexFeeder rebuilt again &ndash; v0.3's device model was wrong.</b> It used the generic template's Fanuc-cell archetype (Kinetix process-conveyor axis, Lenze-VFD incline and return conveyors) instead of this machine's actual hardware. Confirmed against this job's own electrical BOM: the pick conveyor is a Fanuc-brand servo owned and driven by the robot controller itself, not the PLC; the return conveyor is a plain on/off AC gearmotor with no drive at all; there is no incline conveyor. Removed the Kinetix axis and both Lenze VFD interfaces entirely. Added the robot conveyor-tracking handshake (request-on/run-OK/moving-feedback bits, mirrored from job 1116's proven form) and a plain discrete return-conveyor output, which turned out to reuse a tag (`q_RunReturnConv`) Matt had already wired into SafetyProgram's guard-door output rung but never connected &ndash; independent confirmation the simpler model is the right one. &#9650; MapOutputs now writes a Safety-class tag from a Standard-class program with no Safety Tag Mapping in this file &ndash; confirm this compiles clean in the real Safety task partition. &#9650; the conveyor-tracking handshake bit assignments mirror 1116's, not yet checked against 1158's own robot TP configuration.</td><td>Matt and Jason's review caught it: wrong reference weighted over the one Dan named specifically, because a general rule ("a reference supplies form, not vocabulary") was applied to a case where Dan had already named the correct primary reference</td></tr>
+<tr><td>0.5</td><td>Sep 24</td><td>Jason imported v0.4 into real Studio 5000 and got 25 errors. Asked to find and fix them without a list, not just re-run the same checker. Found by direct reasoning, not by re-running the import-simulation tool (which has now been shown to have real gaps of its own): (1) v0.4's `MapOutputs` wrote a Safety-class tag (`q_RunReturnConv`) directly from a Standard-class program &ndash; GuardLogix (this is a real SIL2/PLd-rated safety controller) does not allow that. Fixed the right direction: `SafetyProgram`'s existing guard-door output rung now reads `D01_FlexFeeder.q_ReturnConveyorRun` directly (Safety reading Standard is unrestricted), and the write into the Safety tag was removed. (2) The `AOI_Fanuc_IN`/`AOI_Fanuc_OUT` added in v0.4 have parameters hard-typed to a specific Fanuc module connection size (24 and 476 bytes) that does not match this job's actual robot module (confirmed against the controller's own `&lt;Modules&gt;` config: 20 and 300 bytes) &ndash; would have been a real parameter type-mismatch error. Removed both AOIs; replaced with direct `CPS` copies between the module's raw connection data and the status/control tags, matching the exact pattern job 1116 (Molex) already uses in production with the identical robot module and identical connection sizes. &#9650; the precise byte offset within the connection is mirrored from 1116, not verified against 1158's own robot's I/O configuration sheet &ndash; that is a real hardware register question, not something derivable from any document on hand. Also found and confirmed (not a defect, verified by reading the checker's own source): a bug in the import-simulation tool itself &ndash; its tag parser mishandles self-closing `&lt;Tag .../&gt;` elements, silently skipping validation on the tag immediately following one (47 instances across this file). Manually re-checked every tag this affected; none carried a real defect, but it means "the checker found nothing" was weaker evidence than it should have been, and is why this correction was done by direct reasoning against the real hardware and the real GuardLogix/Fanuc rules, not by trusting the tool's clean report again.</td><td>Jason's real Studio 5000 import (25 errors) — found and fixed by reasoning from GuardLogix safety-partition rules, the controller's own module configuration, and 1116's proven production pattern, not from a supplied error list</td></tr>
+</table>
+
+<h2>What I was given</h2>
+<table>
+<tr><th style="width:190pt">Standard input</th><th style="width:44pt">Have</th><th>Gap</th></tr>
+<tr><td>1. Walkthrough transcript</td><td>yes</td><td>2026-09-23 Controls Review meeting transcript, station-by-station for both dials</td></tr>
+<tr><td>2. Assembly drawings with ballooned part numbers</td><td>yes</td><td>62 PDFs, added mid-session</td></tr>
+<tr><td>3. Station description sheet</td><td>partial</td><td>no dedicated sheet; the transcript covers every active station in prose</td></tr>
+<tr><td>4. Controls bill of material</td><td>yes</td><td>Master Electrical.xlsm, BOM tab</td></tr>
+<tr><td>5. I/O list</td><td>yes</td><td>same workbook, IO tab; two known corrections named live in the transcript (station-19 nest-empty sensor, a servo motor part number) not yet confirmed fixed on Rob's end</td></tr>
+<tr><td>6. Pneumatic drawings</td><td>yes</td><td>&mdash;</td></tr>
+<tr><td>7. Timing diagram (cam angles)</td><td>n/a</td><td>dial platform has no cams; index window/dwell seeded from template defaults and the 75-80 ppm target</td></tr>
+<tr><td>8. Example program per station</td><td>yes</td><td>SoftwareStandardizationNew.L5X (dial template) + Examples\; MidBaseLoad (1160) for escapement-family device form; no example anywhere for a load-cell/LVDT press or a Keyence-contact depth check &ndash; both built as new, noted below</td></tr>
+<tr><td>9. Ethernet device list</td><td>no</td><td>IP addressing left at template defaults</td></tr>
+</table>
+
+<p class="lead">Logic = confidence the sequence and logic are right, 1&ndash;10, with the reasons. Every station is built to the SDC standard; no deviation rows &ndash; nothing on this job departs from the standard in a way that needed logging (`DEVIATIONS.csv` has no 1158 rows). &#9650; = needs an answer.</p>
+
+<div class="block">
+<h2>Machine &ndash; shared programs and both dial twins</h2>
+<table>
+<tr><td class="k">Programs</td><td>Supervisor, SafetyProgram, Alarms, HMI, MapInputs, MapOutputs, Production, Recipe, D01_Indexer, D01_Tracking, D02_Indexer, D02_Tracking</td></tr>
+<tr><td class="k">Devices</td><td><ul>
+<li>Dial 1 (horizontal) and Dial 2 (vertical) servo indexers &ndash; Kinetix 2198-H008-ERS2 &times;2</li>
+<li>Fanuc M-1iA delta robot (Flex Feeder) &ndash; R30iB Plus controller, terminal pick with Keyence vision</li>
+<li>Sleeve press servo &ndash; Kinetix 2198-H008-ERS2, shared merge point between both dials</li>
+<li>Escapement-ring servos &times;2 (2198-C1004-ERS) &ndash; local sub-indexers inside D02S01 and D02S13, not the main dial indexers</li>
+<li>Allen-Bradley CompactLogix, Ignition 17" HMI</li></ul></td></tr>
+<tr><td class="k">Does</td><td>1. Twin architecture, Matt's: two independent dials (D01/D02), each with its own Indexer + Tracking pair, sharing one Supervisor/Alarms/HMI/MapInputs/MapOutputs/Production/Recipe/SafetyProgram &ndash; correct, kept as-is<br/>
+2. Each Indexer polls every real station on its own dial for q_StationComplete/q_ActuatorsSafe/q_AlarmActive/q_WarningActive/q_AutoMode/q_StartOK &ndash; two gaps found and fixed (D01S04 missing from D01_Indexer's actuators-safe/alarm rungs and q_StationComplete gate for D01_FlexFeeder; D02S02 missing from D02_Indexer's completion/actuators-safe gates and from Alarms' machine-wide fault aggregation)<br/>
+3. Dial 2's own Pause rung pointed at Dial 1's programs (`D01S01_PartLoad`/`D01_FlexFeeder`) &ndash; a straight copy-paste from D01_Indexer, fixed to Dial 2's own load station</td></tr>
+<tr><td class="k">Logic</td><td>9 &middot; one item open: the flex feeder's incline/return conveyor servo axis and Lenze VFD I/O have no hardware configuration anywhere in the controller &ndash; not a logic gap, a missing Module/Axis declaration. Needs real electrical drawings to add correctly; flagged below, not invented.</td></tr>
+<tr><td class="k">Assumed</td><td>Ethernet IPs at template defaults (no device list supplied) &middot; index window/dwell seeded from template defaults and the 75-80 ppm target</td></tr>
+</table>
+</div>
+
+<div class="block">
+<h2>Dial 1, Station 1 &ndash; Flex Feeder (Fanuc robot, conveyor-tracking pick)</h2>
+<table>
+<tr><td class="k">Programs</td><td>D01_FlexFeeder</td></tr>
+<tr><td class="k">Devices</td><td><ul>
+<li>Fanuc M-1iA/0.5SL delta robot, Zimmer MGP804N(01) pneumatic gripper &ndash; picks ring terminals, places into the Dial 1 Station 1 gripper</li>
+<li>Fanuc-brand pick-conveyor servo (A06B-0116-B704) &ndash; owned and driven by the robot controller itself; the PLC only exchanges request-on / run-OK / moving-feedback handshake bits with the robot, it does not drive this axis</li>
+<li>Return conveyor &ndash; Oriental Motor AC gearmotor, plain on/off PLC output, no drive of any kind</li>
+<li>Keyence XG-X2702 vision package &ndash; interfaces with the robot's own vision system, not the PLC; the PLC only passes a job/recipe number</li>
+<li>Terminal bowl feeder &ndash; no PLC-driven motor; IO-Link sensors only, for monitoring</li></ul></td></tr>
+<tr><td class="k">Sequence</td><td>1. bowl feeds terminals to the pick conveyor<br/>2. robot's own vision confirms orientation, robot tracks and picks off the moving conveyor<br/>3. robot places into the Station 1 gripper<br/>4. return conveyor runs continuously while the machine runs</td></tr>
+<tr><td class="k">Logic</td><td>8 &middot; corrected twice: v0.4 fixed the conveyor architecture (no Kinetix axis, no Lenze VFDs, confirmed against the job's own electrical BOM); v0.5 fixed the I/O mapping itself after a real Studio 5000 import came back with errors. The `SafetyProgram` guard-door rung now reads `D01_FlexFeeder.q_ReturnConveyorRun` directly instead of the reverse (Safety reading Standard is fine; Standard writing Safety is not, and this is a real SIL2/PLd safety controller). The robot's status/control/EDA data is now mapped with plain `CPS` copies straight off the module's own connection data, matching 1116's proven, working pattern for the identical robot module and identical 20/300-byte connection sizes &ndash; the generic template's `AOI_Fanuc_IN/_OUT` assumed a 24/476-byte connection this job doesn't have, confirmed against the controller's own module configuration. The robot-place handshake, part tracking, and StaNum/StaNumPre were correct throughout and untouched. &#9650; the exact byte offset within each connection is mirrored from 1116's working form, not independently verified against 1158's own robot I/O configuration sheet &ndash; a real hardware register question for whoever has that document.</td></tr>
+<tr><td class="k">Referenced</td><td>1116 Molex export (conveyor-tracking handshake form AND the direct-CPS I/O mapping pattern, both primary references) &middot; this job's own electrical BOM and controller module configuration (hardware confirmation)</td></tr>
+</table>
+</div>
+
+<div class="block">
+<h2>Dial 1, Station 1 &ndash; Part Load (gripper release)</h2>
+<table>
+<tr><td class="k">Programs</td><td>D01S01_PartLoad</td></tr>
+<tr><td class="k">Devices</td><td><ul><li>SMC gripper-release slide &ndash; opens the dial's spring-loaded gripper for the robot to place a terminal, retracts to let it close &ndash; one cylinder switch, retract only</li></ul></td></tr>
+<tr><td class="k">Sequence</td><td>1. wait index complete<br/>2. open nest (release slide)<br/>3. wait for robot to load the part (timed, `g_PartLoadTimer`, 750 ms)<br/>4. close nest<br/>5. mark part loaded</td></tr>
+<tr><td class="k">Logic</td><td>8 &middot; was a generic two-axis shell; rebuilt as a single-actuator nest-opener, same shape as D01S18. Originates this dial's part-tracking record for every station downstream &ndash; keeps full tracking (StaNum/Attempt/Success), confirmed correct against what D01_Indexer actually polls.</td></tr>
+<tr><td class="k">Referenced</td><td>D01S18_RejectUnload_DONE (same device family, this job)</td></tr>
+</table>
+</div>
+
+<div class="block">
+<h2>Dial 1, Station 3 &ndash; Part Locate / Straighten</h2>
+<table>
+<tr><td class="k">Programs</td><td>D01S03_PartLocate_DONE</td></tr>
+<tr><td class="k">Devices</td><td>Not part of this review's spot-check scope &ndash; Matt's build, not touched.</td></tr>
+<tr><td class="k">Logic</td><td>7 &middot; carried over unchanged; no defect found in adjacent review passes that touched its neighbors' polling rungs</td></tr>
+</table>
+</div>
+
+<div class="block">
+<h2>Dial 1, Station 4 &ndash; Camera Inspect</h2>
+<table>
+<tr><td class="k">Programs</td><td>D01S04_CameraInspect</td></tr>
+<tr><td class="k">Devices</td><td><ul><li>Keyence VS camera &ndash; inspects terminal barrel skew, pass/fail, no actuator</li></ul></td></tr>
+<tr><td class="k">Sequence</td><td>1. trigger camera at the qualifying state<br/>2. wait for result<br/>3. pass = success; fail = reject, count consecutive rejects</td></tr>
+<tr><td class="k">Logic</td><td>7 &middot; core trigger/wait/store state machine was already correct (matches S06_IV4Vision). Cleaned up leftover S05_ServoPNP cloning artifacts (HMI_Momentary axis/gripper bit comments, 7 orphaned Status.STATE comments for states that don't exist, 6 dead axis-fault alarm entries) and added the missing FailureType/FailureMessage write on a fail, which the program never did.</td></tr>
+<tr><td class="k">Referenced</td><td>Template S06_IV4Vision</td></tr>
+</table>
+</div>
+
+<div class="block">
+<h2>Dial 1, Station 5 &ndash; Reject Unload</h2>
+<table>
+<tr><td class="k">Programs</td><td>D01S05_RejectUnload_DONE</td></tr>
+<tr><td class="k">Devices</td><td>Single gripper-release actuator, gravity drop &ndash; spot-checked, matches D01S18's family exactly.</td></tr>
+<tr><td class="k">Logic</td><td>9 &middot; nothing open</td></tr>
+</table>
+</div>
+
+<div class="block">
+<h2>Dial 1, Station 11 &ndash; Sleeve Press</h2>
+<table>
+<tr><td class="k">Programs</td><td>D01S11_SleevePress (shared merge point &ndash; physically the same press Dial 2 calls Station 19)</td></tr>
+<tr><td class="k">Devices</td><td><ul>
+<li>Servo-driven press &ndash; Kinetix 2198-H008-ERS2, advances a tool onto the ring terminal's barrel</li>
+<li>Kistler 5074A load-cell channel &ndash; monitors push force as a quality check</li></ul></td></tr>
+<tr><td class="k">Sequence</td><td>1. funnel gripper closes around the barrel<br/>2. servo advances, samples peak force<br/>3. envelope check (200 lbf target &plusmn;15%: 170.0/230.0) &ndash; pass or fail, both dials' tracking records written<br/>4. servo retracts, both dials free to index</td></tr>
+<tr><td class="k">Logic</td><td>8 &middot; the load-cell peak-capture and a one-sided (floor only) pass/fail check were already real and working &ndash; not missing, as first thought. Extended to a two-sided envelope with position-at-peak capture, and the pass/fail branches now clear the opposite tracking bit and write FailureType/FailureMessage for both dials, none of which existed before. &#9650; confirm the load-cell channel's engineering units are lbf, not N (&times;4.45 if so) &middot; no example anywhere covers a load-cell/distance press &ndash; this is new, seeded values are mine, CE tunes after import.</td></tr>
+<tr><td class="k">Referenced</td><td>S05_ServoPNP (axis form) &middot; no example for the force/distance logic itself</td></tr>
+</table>
+</div>
+
+<div class="block">
+<h2>Dial 1, Station 12 &ndash; Press Inspect</h2>
+<table>
+<tr><td class="k">Programs</td><td>D01S12_PressInspect</td></tr>
+<tr><td class="k">Devices</td><td><ul><li>Keyence digital contact sensor &ndash; touches off on the plastic sleeve to confirm press depth, no actuator</li></ul></td></tr>
+<tr><td class="k">Sequence</td><td>1. debounce the depth sensor<br/>2. pass = success; fail = reject, write FailureType 121</td></tr>
+<tr><td class="k">Logic</td><td>6 &middot; this was the hidden 6th gap &ndash; a leftover two-axis-plus-gripper unload shell wearing the press-inspect name, latching Success unconditionally with zero sensor read, no fail path at all. Rebuilt as a stateless one-sensor verify station (same shape as D02S02). &#9650; confirm the Keyence part number and whether its output is a discrete switch or an analog displacement reading &ndash; built as discrete per the transcript's "digital contact sensor," but if it's analog the fail logic needs a numeric window instead.</td></tr>
+<tr><td class="k">Referenced</td><td>D02S02_PartVerify_DONE (this job) &middot; template S04_PartVerify</td></tr>
+</table>
+</div>
+
+<div class="block">
+<h2>Dial 1, Station 15 &ndash; Good Unload</h2>
+<table>
+<tr><td class="k">Programs</td><td>D01S15_GoodUnload_DONE</td></tr>
+<tr><td class="k">Devices</td><td>Single gripper-release actuator &ndash; spot-checked, clean.</td></tr>
+<tr><td class="k">Logic</td><td>9 &middot; nothing open</td></tr>
+</table>
+</div>
+
+<div class="block">
+<h2>Dial 1, Station 18 &ndash; Reject Unload</h2>
+<table>
+<tr><td class="k">Programs</td><td>D01S18_RejectUnload_DONE</td></tr>
+<tr><td class="k">Devices</td><td>Single gripper-release actuator, timed gravity drop &ndash; read in full, used as the reference form for D01S01/D01S05/D01S15.</td></tr>
+<tr><td class="k">Logic</td><td>10 &middot; nothing open &middot; right-sized off the template correctly rather than copying its fuller X/Z-axis shape</td></tr>
+</table>
+</div>
+
+<div class="block">
+<h2>Dial 2, Station 1 &ndash; Plastic Sleeve Load (escapement)</h2>
+<table>
+<tr><td class="k">Programs</td><td>D02S01_PlasticLoad</td></tr>
+<tr><td class="k">Devices</td><td><ul>
+<li>Parallel-gripper escapement &ndash; holds/releases plastic sleeves from the feeder track</li>
+<li>Keyence FU-66TZ part-present sensor &ndash; feeder track end</li>
+<li>Local servo-driven escapement ring &ndash; indexes the sleeve to Load Position A</li>
+<li>Backup tool + advance tool (SMC cylinders) &ndash; jointly seat the sleeve into the dial's 24-position gripper array</li></ul></td></tr>
+<tr><td class="k">Sequence</td><td>1. escapement gripper releases one sleeve to the local ring<br/>2. ring indexes to Load Position A<br/>3. backup and advance tools extend together, seat the sleeve into the dial gripper<br/>4. tools retract, ring returns, dial free to index</td></tr>
+<tr><td class="k">Logic</td><td>7 &middot; was a generic two-axis shell with a copy-paste StaNum=19 bug (fixed to 1/24). Rebuilt on MidBaseLoad's escapement device form, full station tracking wrapper confirmed required (D02_Indexer polls it directly) and correctly wired. Missing Single-Step/AutoIdle block (required on every dial station) added afterward, mirrored from its sibling D02S13. Comment wording trimmed to name the action, not the reasoning, per CE style.</td></tr>
+<tr><td class="k">Referenced</td><td>MidBaseLoad (1160) &middot; D02S13_MetalLoad (this job, sibling)</td></tr>
+</table>
+</div>
+
+<div class="block">
+<h2>Dial 2, Station 2 &ndash; Part Verify</h2>
+<table>
+<tr><td class="k">Programs</td><td>D02S02_PartVerify_DONE</td></tr>
+<tr><td class="k">Devices</td><td><ul><li>Keyence FU-66TZ &ndash; confirms the gripper holds a plastic sleeve, one sensor</li></ul></td></tr>
+<tr><td class="k">Sequence</td><td>1. debounce sensor<br/>2. pass = success; fail = reject, write FailureType 21</td></tr>
+<tr><td class="k">Logic</td><td>8 &middot; correct one-sensor shape, but declared a second sensor (`i_PartClear`) that doesn't physically exist per the transcript and never wired the failure-code write &ndash; removed the dead declarations, added the write. Also newly added to D02_Indexer's polling and Alarms' machine-wide fault aggregation, neither of which included it before.</td></tr>
+<tr><td class="k">Referenced</td><td>Template S04_PartVerify</td></tr>
+</table>
+</div>
+
+<div class="block">
+<h2>Dial 2, Stations 6 &amp; 14 &ndash; Sub-Flare (plastic / metal)</h2>
+<table>
+<tr><td class="k">Programs</td><td>D02S06_SubFlare_DONE, D02S14_SubFlare_DONE</td></tr>
+<tr><td class="k">Devices</td><td>Backing + flaring tool pair, pneumatic &ndash; identical between the two, confirmed byte-for-byte.</td></tr>
+<tr><td class="k">Logic</td><td>8 &middot; both clean and mutually consistent. Minor cosmetic items not fixed (documented, not functional): a dead unused "Nest Opener" alarm/timer set left over from cloning, in all four flare/sub-flare stations; two tag descriptions a few characters over the 30-char guideline; HMI_Momentary tag comments describing axes/gripper this device doesn't have. None of this affects operation &ndash; flagging rather than touching every one of these four files further.</td></tr>
+</table>
+</div>
+
+<div class="block">
+<h2>Dial 2, Stations 8 &amp; 16 &ndash; Flare (plastic / metal)</h2>
+<table>
+<tr><td class="k">Programs</td><td>D02S08_Flare_DONE, D02S16_Flare_DONE</td></tr>
+<tr><td class="k">Devices</td><td>Same tool pair as the sub-flare stations, full flare instead of pre-flare.</td></tr>
+<tr><td class="k">Logic</td><td>8 &middot; S08 had an extra `HMI_LocalManualOverride` dependency in its Cycle Running/Stopping logic that S16 (and every other station in the file) doesn't have &ndash; removed to match the dominant, standard form.</td></tr>
+</table>
+</div>
+
+<div class="block">
+<h2>Dial 2, Station 13 &ndash; Metal Sleeve Load (escapement + shooter)</h2>
+<table>
+<tr><td class="k">Programs</td><td>D02S13_MetalLoad</td></tr>
+<tr><td class="k">Devices</td><td><ul>
+<li>Escapement gripper &ndash; holds a metal sleeve fed vertically</li>
+<li>Spring-loaded vertical shooter &ndash; drives the sleeve down through the gripper into a local ring</li>
+<li>Local servo-driven escapement ring &ndash; part-present sensor confirms seated, indexes 90&deg; to load</li>
+<li>Insertion tool + backup tool (SMC cylinders) &ndash; insertion pushes the metal sleeve into the waiting plastic sleeve, backup holds it steady</li></ul></td></tr>
+<tr><td class="k">Sequence</td><td>1. shooter extends, drives sleeve down<br/>2. escapement gripper opens, confirms sleeve seated in ring<br/>3. shooter retracts, gripper recloses<br/>4. ring indexes to load position<br/>5. insertion + backup tools extend, insert the sleeve, then retract<br/>6. ring returns to pick, dial free to index</td></tr>
+<tr><td class="k">Logic</td><td>7 &middot; was a generic two-axis shell with the same StaNum=19 bug (fixed to 13/8). Rebuilt on MidBaseLoad's form, sequence order verified against the transcript rung-for-rung, wrapper confirmed correctly polled by D02_Indexer. Removed a needless timer on an already-sensed gripper position and 8 orphaned unused alarm-timer tags left from the build; trimmed two multi-sentence rung comments.</td></tr>
+<tr><td class="k">Referenced</td><td>MidBaseLoad (1160) &middot; D02S01_PlasticLoad (this job, sibling)</td></tr>
+</table>
+</div>
+
+<div class="block">
+<h2>Dial 2, Station 19 &ndash; Sleeve Press</h2>
+<table>
+<tr><td class="k">Programs</td><td>D01S11_SleevePress (shared with Dial 1 Station 11 &ndash; see that block)</td></tr>
+</table>
+</div>
+
+<div class="block">
+<h2>Dial 2, Station 22 &ndash; Reject Unload</h2>
+<table>
+<tr><td class="k">Programs</td><td>D02S22_RejectUnload_DONE</td></tr>
+<tr><td class="k">Devices</td><td>Gripper-release actuator + a real `i_PartPresent` sensor and its own alarm ("Part Detected in Nest After Attempt") that its Dial 1 siblings don't carry.</td></tr>
+<tr><td class="k">Logic</td><td>8 &middot; spot-checked, internally consistent. &#9650; this station isn't described in the 09-23 transcript at all &ndash; the code plausibly means Dial 2 also rejects bad sleeve subassemblies before the press, but confirm with Rob or Jason rather than take my read on it.</td></tr>
+</table>
+</div>
+
+<p class="foot">If a device or a step here is wrong: do not edit this sheet. Fix the code, one line why per change, return the whole file under the same name.</p>
+
+</body></html>

@@ -23,6 +23,16 @@ const REPLACEMENTS = {
   D02S01_PlasticLoad: 'D02S01_PlasticLoad.xml',
   D02S13_MetalLoad: 'D02S13_MetalLoad.xml',
   D01S11_SleevePress: 'D01S11_SleevePress.xml', // baseline already renamed (fix script), name matches now
+  D01S12_PressInspect: 'D01S12_PressInspect.xml',
+  D01S04_CameraInspect: 'D01S04_CameraInspect.xml',
+  D02S02_PartVerify_DONE: 'D02S02_PartVerify_DONE.xml',
+  D01_Indexer: 'D01_Indexer.xml',
+  D02_Indexer: 'D02_Indexer.xml',
+  D02_Tracking: 'D02_Tracking.xml',
+  Alarms: 'Alarms.xml',
+  D02S08_Flare_DONE: 'D02S08_Flare_DONE.xml',
+  MapInputs: 'MapInputs.xml',
+  MapOutputs: 'MapOutputs.xml',
 };
 
 let xml = fs.readFileSync(BASELINE, 'utf8');

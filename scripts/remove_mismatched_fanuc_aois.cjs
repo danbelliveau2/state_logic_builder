@@ -1,0 +1,10 @@
+const fs = require('fs');
+const B = "X:\\Electrical Dept\\SDC Engineer\\Deliveries\\1158\\build-inputs\\build\\1158_baseline_from_Matt.L5X";
+let xml = fs.readFileSync(B, 'utf8');
+const before = xml.length;
+const start = xml.indexOf('<AddOnInstructionDefinition Name="AOI_Fanuc_IN"');
+const end = xml.indexOf('</AddOnInstructionDefinitions>');
+if (start < 0 || end < 0 || end <= start) throw new Error('boundaries not found');
+xml = xml.slice(0, start) + xml.slice(end);
+fs.writeFileSync(B, xml);
+console.log('removed AOI_Fanuc_IN + AOI_Fanuc_OUT:', before - xml.length, 'chars');
