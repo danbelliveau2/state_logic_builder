@@ -363,6 +363,135 @@ const WAIT_EXEMPT_IDENTS = new Set([
   'PartStarted', 'AutoMode', 'ManualMode',
 ]);
 
+
+// ── Structure member references (Jason, 1158 v0.6.5 review 2026-09-25) ──
+// A rung that reaches for a member the UDT does not have fails Studio's verify.
+// It reached a delivery because the member existed in the program this logic was
+// ported from, not in this controller's copy of the type: Tracking_Station_Op_Status
+// here has Lockout/Bypass/SingleStep/DryRun and nothing else.
+const MEMBER_ATOMIC = new Set(['BOOL', 'BIT', 'SINT', 'INT', 'DINT', 'LINT', 'REAL', 'LREAL', 'USINT', 'UINT', 'UDINT', 'BYTE', 'WORD', 'DWORD']);
+const MEMBER_BUILTIN = {
+  TIMER: { PRE: 'DINT', ACC: 'DINT', EN: 'BOOL', TT: 'BOOL', DN: 'BOOL' },
+  COUNTER: { PRE: 'DINT', ACC: 'DINT', CU: 'BOOL', CD: 'BOOL', DN: 'BOOL', OV: 'BOOL', UN: 'BOOL' },
+  CONTROL: { LEN: 'DINT', POS: 'DINT', EN: 'BOOL', EU: 'BOOL', DN: 'BOOL', EM: 'BOOL', ER: 'BOOL', UL: 'BOOL', IN: 'BOOL', FD: 'BOOL' },
+};
+
+/** replace every [...] span with same-length filler so offsets and dots survive */
+function maskMemberSubscripts(s) {
+  let out = '', depth = 0;
+  for (const ch of s) {
+    if (ch === '[') depth++;
+    out += depth ? (ch === '[' || ch === ']' ? ch : ' ') : ch;
+    if (ch === ']') depth--;
+  }
+  return out;
+}
+
+function findBadMemberRefs(xml) {
+  const types = {};
+  for (const m of xml.matchAll(/<DataType Name="([A-Za-z0-9_]+)"[^>]*>([\s\S]*?)<\/DataType>/g)) {
+    const t = {};
+    for (const v of m[2].matchAll(/<Member Name="([A-Za-z0-9_]+)" DataType="([A-Za-z0-9_:]+)"/g)) t[v[1]] = v[2];
+    types[m[1]] = t;
+  }
+  for (const m of xml.matchAll(/<AddOnInstructionDefinition Name="([A-Za-z0-9_]+)"[\s\S]*?<\/AddOnInstructionDefinition>/g)) {
+    const t = { EnableIn: 'BOOL', EnableOut: 'BOOL' };
+    for (const v of m[0].matchAll(/<(?:Parameter|LocalTag) Name="([A-Za-z0-9_]+)"[^>]*DataType="([A-Za-z0-9_:]+)"/g)) t[v[1]] = v[2];
+    types[m[1]] = t;
+  }
+  Object.assign(types, MEMBER_BUILTIN);
+
+  const ctlEnd = xml.indexOf('<Programs>');
+  const ctlTags = {};
+  for (const m of xml.slice(0, ctlEnd).matchAll(/<Tag Name="([A-Za-z0-9_]+)"[^>]*DataType="([A-Za-z0-9_:]+)"/g)) ctlTags[m[1]] = m[2];
+
+  const progs = [...xml.matchAll(/<Program Name="([A-Za-z0-9_]+)"/g)];
+  const progTags = {}, bodies = {};
+  for (let p = 0; p < progs.length; p++) {
+    const i = progs[p].index;
+    const j = p + 1 < progs.length ? progs[p + 1].index : xml.indexOf('</Programs>', i);
+    bodies[progs[p][1]] = xml.slice(i, j);
+    const t = {};
+    for (const m of xml.slice(i, j).matchAll(/<Tag Name="([A-Za-z0-9_]+)"[^>]*DataType="([A-Za-z0-9_:]+)"/g)) t[m[1]] = m[2];
+    progTags[progs[p][1]] = t;
+  }
+
+  const findings = [];
+  for (const [prog, body] of Object.entries(bodies)) {
+    const seen = new Set();
+    for (const t of body.matchAll(/<Text>\s*<!\[CDATA\[([\s\S]*?)\]\]>/g)) {
+      const masked = maskMemberSubscripts(t[1]);
+      for (const m of masked.matchAll(/(\\([A-Za-z0-9_]+)\.)?([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?)*)/g)) {
+        const scope = m[2] || null;
+        const parts = m[3].split('.').map(s => s.replace(/\[.*/, ''));
+        if (!scope && parts.length < 2) continue;                 // a bare name is not a member path
+        let type = scope ? (progTags[scope] || {})[parts[0]] : (progTags[prog][parts[0]] || ctlTags[parts[0]]);
+        if (!type) continue;                                      // unknown base; other checks cover it
+        let path = parts[0];
+        for (let k = 1; k < parts.length; k++) {
+          if (MEMBER_ATOMIC.has(type)) break;                            // bit access on an atom
+          const def = types[type];
+          if (!def) break;                                        // module-defined type, not described here
+          path += '.' + parts[k];
+          if (!(parts[k] in def)) {
+            const ref = (scope ? '\\' + scope + '.' : '') + path;
+            if (!seen.has(ref)) {
+              seen.add(ref);
+              findings.push({ prog, ref, type, member: parts[k], have: Object.keys(def).filter(n => !n.startsWith('ZZZZ')) });
+            }
+            break;
+          }
+          type = def[parts[k]];
+        }
+      }
+    }
+  }
+  return findings;
+}
+
+function checkStructureMembers(xml, errors) {
+  for (const f of findBadMemberRefs(xml)) {
+    errors.push(`Structure member "${f.prog} - ${f.ref}": "${f.member}" is not a member of ${f.type} ` +
+      `(it has: ${f.have.join(', ')}) — Studio's verify rejects this rung`);
+  }
+}
+
+// ── Duplicate destructive bit references (Jason, 1158 v0.6.4 import 2026-09-25) ──
+// Studio's verify reports every bit written by more than one destructive instruction.
+// OTL+OTU across rungs is the latch idiom and is correct, so only the real conflicts
+// are reported: a second OTE coil, an OTE fighting a latch, and a one-shot storage
+// bit used twice (ONS/OSR/OSF share state, so the second use silently breaks both).
+const DESTRUCTIVE_BIT = /\b(OTE|OTL|OTU|ONS|OSR|OSF)\(([^),]+)\)/g;
+function checkDuplicateDestructiveBits(xml, errors) {
+  for (const p of xml.matchAll(/<Program\b[^>]*?\sName="([^"]+)"[^>]*>([\s\S]*?)<\/Program>/g)) {
+    const [, name, body] = p;
+    const writers = new Map();
+    for (const r of body.matchAll(/<Routine Name="([A-Za-z0-9_]+)"[\s\S]*?<\/Routine>/g)) {
+      let rung = 0;
+      for (const t of r[0].matchAll(/<Text>\s*<!\[CDATA\[([\s\S]*?)\]\]>/g)) {
+        for (const m of t[1].matchAll(DESTRUCTIVE_BIT)) {
+          const bit = m[2].trim();
+          if (!writers.has(bit)) writers.set(bit, []);
+          writers.get(bit).push({ where: `${r[1]} rung ${rung}`, instr: m[1] });
+        }
+        rung++;
+      }
+    }
+    for (const [bit, uses] of writers) {
+      if (uses.length < 2) continue;
+      const kinds = new Set(uses.map((u) => u.instr));
+      const oneShots = uses.filter((u) => u.instr === 'ONS' || u.instr === 'OSR' || u.instr === 'OSF');
+      const coils = uses.filter((u) => u.instr === 'OTE');
+      let why = null;
+      if (oneShots.length > 1) why = 'a one-shot storage bit used by more than one instruction — they share state and both misfire';
+      else if (coils.length > 1) why = 'two OTE coils on one bit — the last rung scanned wins';
+      else if (coils.length === 1 && kinds.size > 1) why = 'an OTE coil on a bit that is also latched — the coil overwrites the latch every scan';
+      if (!why) continue;   // OTL/OTU only: the latch idiom
+      errors.push(`Duplicate destructive bit "${name} - ${bit}": ${why} (${uses.map((u) => `${u.where} ${u.instr}`).join(', ')})`);
+    }
+  }
+}
+
 // ── Readability (Jason, 1160 v1.4 review 2026-09-18: "much easier to read"; Dan 2026-09-19: make it how we build) ──
 // One concise sentence per rung comment, tag descriptions <= 30 chars, no build history / sources / placeholders-as-prose
 // in the ladder. Reported as one READABILITY warning per program so the reviewer sees the shape of the problem at a glance.
@@ -1118,6 +1247,8 @@ function validateL5X(xml, opts = {}) {
   // 5b. Studio 5000 import limits (Rule 12): description/comment lengths,
   //     name lengths, identifier legality — hard import gates.
   checkImportLimits(xml, errors, warnings);
+  checkDuplicateDestructiveBits(xml, errors);
+  checkStructureMembers(xml, errors);
   checkReadability(xml, warnings);
 
   // 6. No exitless waits (Rule 11): every wait-style R02 transition — one

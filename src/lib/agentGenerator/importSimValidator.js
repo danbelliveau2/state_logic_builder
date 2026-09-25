@@ -395,6 +395,64 @@ function checkCdataAscii(xml, errors, warnings) {
   }
 }
 
+// ── Ladder branch structure ──────────────────────────────────────────────────
+
+/**
+ * Studio scans a rung's Text before it builds the rung, and rejects a branch
+ * with one leg or an empty leg ("Syntax error found while scanning import
+ * file"), then fails every later rung in that routine with "Rung number is 0 or
+ * greater than number of rungs in routine". One malformed rung takes a whole
+ * routine with it, so this is an error, not a warning.
+ * A '[' that follows an identifier char, ']' or '.' is a subscript or a bit
+ * index (Status.State[4], TorqueHome_SW.[TorqueHome_CS]), never a branch.
+ * (2026-09-25, job 1158: a debug-term strip left `[XIC(a) ]OTE(b)` and an empty
+ * third leg; an authored rung wrapped one leg in an outer branch.)
+ */
+function checkBranchStructure(xml, errors) {
+  const RE_ROUTINE = /<Routine Name="([A-Za-z0-9_]+)"[\s\S]*?<\/Routine>/g;
+  const RE_TEXT = /<Text>\s*<!\[CDATA\[([\s\S]*?)\]\]>/g;
+  for (const routine of xml.matchAll(RE_ROUTINE)) {
+    let rung = 0;
+    for (const m of routine[0].matchAll(RE_TEXT)) {
+      for (const fault of scanBranches(m[1])) {
+        errors.push(`Routine ${routine[1]} rung ${rung}: ${fault} — Studio will refuse this rung and every rung after it`);
+      }
+      rung++;
+    }
+  }
+}
+
+function scanBranches(text) {
+  const faults = [];
+  const open = [];
+  const closeLeg = (frame, end) => {
+    if (text.slice(frame.legStart, end).trim() === '') frame.empty.push(frame.legs);
+  };
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '[') {
+      const prev = text[i - 1] || '';
+      open.push(/[A-Za-z0-9_\].]/.test(prev)
+        ? { subscript: true }
+        : { subscript: false, at: i, legs: 1, empty: [], legStart: i + 1 });
+    } else if (ch === ']') {
+      const frame = open.pop();
+      if (!frame || frame.subscript) continue;
+      closeLeg(frame, i);
+      if (frame.legs === 1) faults.push(`single-leg branch at character ${frame.at}`);
+      if (frame.empty.length) faults.push(`empty leg ${frame.empty.join(', ')} in the branch at character ${frame.at}`);
+    } else if (ch === ',') {
+      const frame = open[open.length - 1];
+      if (!frame || frame.subscript) continue;
+      closeLeg(frame, i);
+      frame.legs++;
+      frame.legStart = i + 1;
+    }
+  }
+  if (open.length) faults.push('unbalanced branch brackets');
+  return faults;
+}
+
 // ── Entry point ──────────────────────────────────────────────────────────────
 
 /**
@@ -414,6 +472,7 @@ function simulateImport(xml) {
     catch (e) { errors.push(`Tag ${tag.name}: import simulation crashed — ${e.message}`); }
   }
   checkCdataAscii(xml, errors, warnings);
+  checkBranchStructure(xml, errors);
   return { ok: errors.length === 0, errors, warnings };
 }
 
