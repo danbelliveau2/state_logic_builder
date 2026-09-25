@@ -336,11 +336,21 @@ function extractTags(xml) {
   doc = doc.replace(/<AddOnInstructionDefinition\b[\s\S]*?<\/AddOnInstructionDefinition>/g, s => { aoiBlocks.push(s); return ''; });
 
   const tags = [];
-  const tagRe = /<Tag\s+([^>]*)>([\s\S]*?)<\/Tag>/g;
+  // A tag is either <Tag .../> (declaration only, no body) or <Tag ...> … </Tag>.
+  // Matching only the second form makes a self-closing tag swallow the NEXT tag's body and
+  // report that tag's members as its own: the 1158 delivery showed 12 phantom "member does not
+  // exist on AOI_TorqueHome" errors that were really the following MOTION_INSTRUCTION's members.
+  const tagRe = /<Tag\s+([^>]*?)(\/?)>/g;
   let m;
   while ((m = tagRe.exec(doc)) !== null) {
     const attrs = m[1];
-    const body = m[2];
+    let body = '';
+    if (m[2] !== '/') {
+      const close = doc.indexOf('</Tag>', tagRe.lastIndex);
+      if (close < 0) continue;
+      body = doc.slice(tagRe.lastIndex, close);
+      tagRe.lastIndex = close + '</Tag>'.length;
+    }
     const name = (attrs.match(/\bName="([^"]+)"/) || [])[1];
     if (!name) continue;
     const dataType = (attrs.match(/\bDataType="([^"]+)"/) || [])[1] || '';

@@ -167,6 +167,7 @@ function learnAoiShapes(xml) {
   for (const m of xml.matchAll(/<AddOnInstructionDefinition[^>]*\sName="([^"]+)"/g)) AOI_NAMES.add(m[1]);
   for (const m of xml.matchAll(/<Tag\s+Name="[^"]+"[^>]*DataType="([^"]+)"[^>]*>/g)) {
     if (!AOI_NAMES.has(m[1])) continue;
+    if (m[0].trimEnd().endsWith('/>')) continue;   // declaration-only; no body to learn from
     const i = m.index, j = xml.indexOf('</Tag>', i);
     if (j < 0) continue;
     const l = /<Data Format="L5K">\s*<!\[CDATA\[([\s\S]*?)\]\]>/.exec(xml.slice(i, j));
@@ -227,6 +228,11 @@ function lintProgram(p, file) {
   // 4b. AOI backing-tag data
   for (const m of body.matchAll(/<Tag\s+Name="([^"]+)"[^>]*DataType="([^"]+)"[^>]*>/g)) {
     if (!AOI_NAMES.has(m[2])) continue;
+    // A self-closing <Tag .../> is declaration-only and has no body. Without this guard the
+    // slice below runs past it to the NEXT tag's </Tag> and reads that tag's <Data> as if it
+    // belonged to the AOI - which is how the 1158 delivery showed 12 phantom errors against a
+    // correctly declared AOI_TorqueHome (the members were the following MOTION_INSTRUCTION's).
+    if (m[0].trimEnd().endsWith('/>')) continue;
     const i = m.index, j = body.indexOf('</Tag>', i);
     if (j < 0) continue;
     const l = /<Data Format="L5K">\s*<!\[CDATA\[([\s\S]*?)\]\]>/.exec(body.slice(i, j));
