@@ -62,7 +62,10 @@ const moduleNamesOf = (xml) => { const s = xml.indexOf('<Modules>'), e = xml.ind
 // ParentModule is the parent and whose upstream Port Address is the slot, whose I|O|C connection tag carries the PtNN
 // member, whose .Data leaf is BOOL — then the data-type check the shipped validator skipped is finished against the
 // program-side parameter. Only a genuinely unresolvable endpoint stays an error.
-const MODULE_IO_EP = /^([A-Za-z_][A-Za-z0-9_]*):(\d+):([IOC])((?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[\d+\])?)*)$/;
+// Adapter-slot form: parent:slot:I|O|C followed by .Member paths OR a bare .bit (Point I/O bytes: io01_InfeedPointIO:5:I.0,
+// John Stanko's import-proven 1131 wiring). Direct form: module:I|O[n] whole connection or member (fd01_InfeedBelt:I).
+const MODULE_IO_EP = /^([A-Za-z_][A-Za-z0-9_]*):(\d+):([IOC])((?:\.(?:[A-Za-z_][A-Za-z0-9_]*|\d+)(?:\[\d+\])?)*)$/;
+const MODULE_DIRECT_EP = /^([A-Za-z_][A-Za-z0-9_]*):([IOC])\d*((?:\.(?:[A-Za-z_][A-Za-z0-9_]*|\d+)(?:\[\d+\])?)*)$/;
 const MODULE_IO_UNDECLARED = /^ParameterConnection "([^"]+)" <-> "([^"]+)": controller tag "([^"]+)" is not declared/;
 function moduleIoIndexOf(xml) {
   const s = xml.indexOf('<Modules>'), e = xml.indexOf('</Modules>');
@@ -89,10 +92,18 @@ function programTagIndexOf(xml) {
 /** null = not a module I/O endpoint; { err } = unresolvable; { decl: { dataType, module } } = resolved. */
 function resolveModuleIoEndpoint(ep, mods) {
   const m = ep.match(MODULE_IO_EP);
-  if (!m) return null;
+  if (!m) {
+    // Direct module connection endpoint (1131: fd01_InfeedBelt:I <-> \S04_InfeedConveyor.i_Belt, John's import-proven form).
+    const d = ep.match(MODULE_DIRECT_EP);
+    if (!d) return null;
+    const dm = mods.find((x) => x.name === d[1]);
+    if (!dm) return { err: `module I/O endpoint ${ep} — no <Module Name="${d[1]}">` };
+    return { decl: { dataType: /\.\d+$/.test(d[3]) ? 'BOOL' : null, module: dm.name } };
+  }
   const [, parent, slot, conn, rest] = m;
   const mod = mods.find((x) => x.parent === parent && x.address === slot && x.name !== parent);
   if (!mod) return { err: `module I/O endpoint ${parent}:${slot}:${conn} — no <Module> with ParentModule="${parent}" whose upstream Port Address is ${slot}` };
+  if (/^\.\d+$/.test(rest)) return { decl: { dataType: 'BOOL', module: mod.name } }; // bit of a rack-optimized Point I/O byte
   const member = (rest.match(/^\.([A-Za-z_][A-Za-z0-9_]*)/) || [])[1] || null;
   if (!member) return { err: `module I/O endpoint ${ep} names the whole connection — connect one member (e.g. .Pt00.Data)` };
   const sec = mod[conn];

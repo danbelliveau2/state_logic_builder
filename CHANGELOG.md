@@ -1,4 +1,9 @@
 # Changelog — SDC State Logic Builder
+## 2026-09-28 — Job 1131 Tarkett tile grinder: first SDC-standard build (v0.2)
+- New job pipeline: `scripts/build1131Controller.cjs` (controller pieces from John Stanko's import-proven export + the standard project, contract renames, `programs/*.connections.xml` merge), `scripts/assemble1131.cjs` (contract tables from `CONTRACT.json`, Ethernet/Point I/O connection endpoints, non-ASCII downgraded to a warning, case-insensitive mnemonics), `scripts/coverNote1131.cjs`.
+- `scripts/shapeLint.cjs` JOB block → 1131, platform `standalone`; per-axis servo routine sets accepted.
+- `scripts/validate1160.cjs` resolves adapter-slot bit endpoints (`io01:5:I.0`) and direct module connections (`fd01:I`); `validator.js` STRING L5K check accepts stale bytes past LEN (Studio reads only LEN chars).
+
 
 All notable changes to this project. Most recent first.
 

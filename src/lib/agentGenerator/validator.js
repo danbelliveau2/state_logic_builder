@@ -279,8 +279,10 @@ function checkL5kStrings(xml, errors) {
     const len = parseInt(m[1], 10);
     const { count, chars } = l5kDecodedInfo(m[2]);
     if (count === len) continue;
-    // Allow zero padding past LEN (exports pad STRING buffers with $00)
-    if (count > len && chars.slice(len).every(c => c === '00')) continue;
+    // Content past LEN is ignored by Studio: exports pad with $00, and re-used STRING slots keep stale bytes there
+    // (SoftwareStandardizationNew.L5X Recipe saved STRING30 [1,'#ew part...'] imports fine, 2026-09-28). Only a LEN
+    // longer than the content is a real defect.
+    if (count > len) continue;
     errors.push(
       `L5K string LEN mismatch: declared LEN=${len} but content decodes to ` +
       `${count} chars — [${m[1]},'${m[2].length > 60 ? m[2].slice(0, 60) + '…' : m[2]}']`);

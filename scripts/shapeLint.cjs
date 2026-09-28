@@ -33,65 +33,56 @@ const ROOT = path.resolve(__dirname, '..');
 // JOB CONFIG — the only part that changes per job
 // ═══════════════════════════════════════════════════════════════════════════════
 const JOB = {
-  id: '1160',
+  id: '1131',
 
   // 'chassis-1up' cam chassis, one nest      ChassisStandard_1UP.L5X        (13 programs, single-sided)
   // 'chassis-2up' cam chassis, two-up        ChassisStandard_2UP_*.L5X      (19 programs, A/B twins)
   // 'dial'        indexing dial / ring       SoftwareStandardizationNew.L5X (22 programs)
-  platform: 'chassis-2up',
+  // 'standalone'  no indexer, no cams        1131 Tarkett (Dan 2026-09-28, D006): services from the standard project,
+  //               stations self-actuated with p_ handshakes; single step is the StateMachine-skeleton HMI_Toggle form
+  platform: 'standalone',
 
-  progDir: 'generated/1160/build/programs',
-  tasks: 'generated/1160/build/controller/Tasks.xml',
+  progDir: 'generated/1131/build/programs',
+  tasks: 'generated/1131/build/controller/Tasks.xml',
 
   corpus: [
-    // The platform template for THIS job.
-    'plc-reference/training-material/SDC Standard Templates/ChassisStandard_2UP_2026-09-17.L5X',
-    // THE PROJECT FILE WINS; Examples is for programs not in it (Jason, 2026-09-23). Every standard
-    // example program - S04, S05, S06, S08, S10 pair, S18, S19, MapInputs, MapOutputs, SafetyProgram -
-    // lives in this one export, so it replaces per-program copies taken from Examples\. Do not re-add
-    // an Examples copy of a program that is in here: the two drift and the Examples one is the stale side.
+    // THE PROJECT FILE WINS (Jason 2026-09-23): every standard program - S05_ServoPNP, S06_IV4Vision, S10_FlexFeedConveyor,
+    // Supervisor, Alarms, HMI, Production, Recipe, MapInputs/MapOutputs, StateMachine, SafetyProgram - is in this export.
     'plc-reference/training-material/SDC Standard Templates/SoftwareStandardizationNew.L5X',
-    // MidBaseLoad is our own generated output (sdce v1.4.1), not an SDC example, and it is the file
-    // Jason reviewed on 2026-09-01 and found defects in. It stays for ONE reason: its escapement and
-    // pick-and-place are the current basis for a self-actuated station, which no platform standard has,
-    // and Jason ruled 2026-09-23 that the architecture is not to change. It is the SIZE reference for the
-    // escapement family below - nothing else: it contributes zero unique vocabulary (measured), so its
-    // defects cannot reach a generated program through this corpus. The FORM comes from Jason's corrected
-    // rulings in the knowledge file: no part-tracking writes, no CycleStation, no q_StationComplete,
-    // no StaNumPre / NestNumIncoming / NestNumCurrent, no AOI_Debounce on a pneumatic position sensor.
-    'generated/1160/ref/MidBaseLoad_v1_4_1',
   ],
 
   // Instructions this job legitimately uses that the corpus cannot supply.
   vocabularyExtras: {
-    // Jason_return_0918 (OV_PID / HeaterControl_SUB) is deliberately NOT in the corpus: his note ships it
-    // as "a previous SDC project NOT done using our new standards ... Generated code must use our standard".
-    // Admitting those files wholesale legalises their old mnemonics (LIM, MOV, EQU, NEQ, GRT, LES); LIM( is
-    // what failed the v1.4 import. Take the one instruction the heat form needs.
-    PID: 'heat loops; the source file is excluded from the corpus as non-standard',
-    // Supplied by Jason as a standalone AOI definition (2026-09-22) and declared in the project.
-    // Its own body is ST and never reaches a rung.
-    AOI_HeatControl: 'time-proportional heater output AOI',
+    // Outfeed gantry picks on the fly: X is geared to the belt axis while the pick happens (John Stanko P06 R04 rung 27,
+    // commissioned). No template carries gearing - PROPOSED NON-STANDARD PATTERN named in the cover note.
+    MAG: 'outfeed gantry X geared to the outfeed belt axis for the pick on the fly',
+    // Vendor IO-Link AOI on the 1734-4IOL (ifm O1D100 stack-height laser), called from MapInputs.
+    O1D100_Decode: 'ifm O1D100 IO-Link laser decode (John Stanko, commissioned)',
+    // GuardLogix safety instructions in the two carried-verbatim safety programs.
+    LC: 'light curtain (SafetyProgramLoader/Unloader, verbatim)',
+    TSSM: 'two-sensor muting (SafetyProgramLoader/Unloader, verbatim)',
+    CROUT: 'monitored safety output (SafetyProgramLoader/Unloader, verbatim)',
+    MSG: 'Timesavers peer PLC stubs (Communications, verbatim)',
+    OSR: 'one-shot rising in the two carried-verbatim safety programs (SafetyProgramLoader/Unloader)',
   },
 
   // closest example per program family: [maxTags, maxRungs, maxNonTrackingLatches, note]
   families: [
-    [/^S(01_YSiteLoad|02_YVerify|06_PortVerify|13_PhysicalCheck|14_GoodUnload|16_EmptyNest)[AB]$|^S15_RejectUnload$/, [49, 38, 4, 'template cam-listener stations S01/S02/S03/S18/S19/S20 (27-39 tags, 22-30 rungs, 0-3 latches)']],
-    [/^S03_YSiteInspect[AB]$|^S12_OpticalCheck$/, [69, 64, 4, 'S06_IV4Vision in the project file x2 cameras (55 tags, 51 rungs, 2 latches per camera)']],
-    [/^S07_PortCut[AB]$/, [80, 80, 4, 'S06_IV4Vision in the project file + a template pneumatic listener']],
-    [/^S05_PortLoad$|^S14_BinDiverter$|^S01_YSiteEscapement[AB]$/, [105, 110, 2, 'MidBaseLoad escapement / pick-and-place, S19_GoodUnload in the project file (72-97 tags, 74-103 rungs, 0 latches)']],
-    [/^S(09_PortCloseB|11_PortCloseA)$/, [140, 135, 3, 'S05_ServoPNP in the project file (137 tags, 133 rungs, 2 latches)']],
-    [/^S(08_YHeatB|10_YHeatA)$/, [40, 40, 0, "Jason's OV_PID + HeaterControl_SUB one-zone form (17 heat rungs) + template station R00/R01/R20 block (15) = 32, +25 %; no state machine"]],
+    [/^S03_InfeedGantry$/, [175, 167, 4, 'S05_ServoPNP in the project file (137 tags, 133 rungs, 2 latches) +25 %; +3 tags for the master Restart Logic rung (UseRestartLogic) and the two safety axis-stop reads the review required']],
+    [/^S07_OutfeedGantry$/, [205, 195, 6, 'S05_ServoPNP (137/133) + gearing rungs + gauge place/retrieve branch (PROPOSED NON-STANDARD PATTERN)']],
+    [/^S0(1_InfeedCart|9_OutfeedCart)$/, [160, 150, 4, 'S05_ServoPNP one-axis half (~95/90) + 12 pneumatic devices with derived states (~50/45) +25 %']],
+    [/^S0(2_InfeedVision|6_OutfeedVision)$/, [120, 110, 4, 'S06_IV4Vision (55 tags, 51 rungs) + S05 single-axis block (~40/35) +25 %']],
+    [/^S0(4_InfeedConveyor|5_OutfeedConveyor)$/, [110, 100, 2, 'S10_FlexFeedConveyor in the project file (~95 tags, 93 rungs) +25 %']],
+    [/^S08_ThicknessGauge$/, [120, 115, 4, 'StateMachine skeleton (35 rungs) + 6 pneumatic devices + 4 analog probes + ConsecFails (S04_PartVerify form) +25 %']],
   ],
 
   // Task schedule this job must satisfy. heatStationPrograms: [] when a job has no heaters.
   schedule: {
     heatTaskRateMs: 1000,
     heatTaskProgram: 'HeatControl',
-    heatStationPrograms: ['S08_YHeatB', 'S10_YHeatA'],
+    heatStationPrograms: [],
   },
 };
-// ═══════════════════════════════════════════════════════════════════════════════
 // END JOB CONFIG — everything below is general
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -102,10 +93,12 @@ const FAMILIES = JOB.families;
 const IS_CHASSIS = JOB.platform.startsWith('chassis');
 
 const ROUTINE_SETS = [
-  'R00_Main,R01_Inputs,R02_Logic,R20_Alarms',
-  'R00_Main,R01_Inputs,R02_StateTransitions,R03_StateLogic,R20_Alarms',
-  'R00_Main,R01_Inputs,R02_StateTransitions,R03_StateLogic,R04_ZAxisServo,R20_Alarms',
+  "R00_Main,R01_Inputs,R02_Logic,R20_Alarms",
+  "R00_Main,R01_Inputs,R02_StateTransitions,R03_StateLogic,R20_Alarms",
+  "R00_Main,R01_Inputs,R02_StateTransitions,R03_StateLogic,R04_ZAxisServo,R20_Alarms",
 ];
+// A station may carry one or two per-axis servo routines, R04_{Axis}Servo[,R05_{Axis}Servo] (S05_ServoPNP form: R04_XAxisServo,R05_ZAxisServo).
+const ROUTINE_SET_RE = /^R00_Main,R01_Inputs,R02_StateTransitions,R03_StateLogic(,R04_[A-Z][A-Za-z]*AxisServo(,R05_[A-Z][A-Za-z]*AxisServo)?)?,R20_Alarms$/;
 const FORBIDDEN = [
   // chassis only — the dial platform requires this block
   ...(IS_CHASSIS ? [
@@ -239,7 +232,7 @@ function lintProgram(p, file) {
   // 5. routine set
   if (isStation) {
     const set = [...body.matchAll(/<Routine\s+Name="([^"]+)"/g)].map((m) => m[1]).join(',');
-    if (!ROUTINE_SETS.includes(set)) fail('routine-set', set, `routine set is not one the examples use (${ROUTINE_SETS.slice(0, 3).join(' | ')})`);
+    if (!ROUTINE_SETS.includes(set) && !ROUTINE_SET_RE.test(set)) fail('routine-set', set, `routine set is not one the examples use (${ROUTINE_SETS.slice(0, 3).join(' | ')})`);
   }
   return F;
 }
