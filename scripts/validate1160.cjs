@@ -206,6 +206,17 @@ const report = {
 if (base === null) console.warn(`warning: baseline ${relRoot(BASELINE)} unreadable — reporting ALL findings (nothing subtracted)`);
 
 const compareFamily = base ? detectCompareFamily(base) : 'short';
+
+// Projects whose own state numbering IS the convention, keyed on the controller
+// name so the gate applies it without anyone passing a flag. Job 1158 runs
+// 4/6/7/10/13/16/50 with a 100/105/110/115/124 camera init block — Matt's, and
+// Jason's ruling 2026-09-28: "leave Matt's numbering alone, it's the project
+// convention". Illegal state numbers are still errors. --state-grid forces it on.
+const OWN_STATE_NUMBERING = new Set(['_1158_Panduit']);
+const controllerName = (/<Controller[^>]*\sName="([^"]+)"/.exec(target) || [])[1] || '';
+const stateGrid = argOf('state-grid', false) === true || !OWN_STATE_NUMBERING.has(controllerName);
+if (!stateGrid) console.log(`state-grid warnings off for controller ${controllerName} — its own numbering is the project convention`);
+
 const devT = deriveDevices(target);
 const devB = base ? deriveDevices(base) : { deviceNames: [], devices: [] };
 report.devices = { derived: devT.devices.length, byType: devT.devices.reduce((o, d) => { o[d.type] = (o[d.type] || 0) + 1; return o; }, {}), sample: cap(devT.deviceNames, 30) };
@@ -215,11 +226,11 @@ const moduleIo = { resolved: [], unresolved: [] }; // ParameterConnection endpoi
 // ── run ─────────────────────────────────────────────────────────────────────
 const t0 = Date.now();
 const simT = simulateImport(target);
-const plainT = validateResolved(target, { compareFamily }, moduleIo);
-const devsT = validateResolved(target, { compareFamily, deviceNames: devT.deviceNames, devices: devT.devices });
+const plainT = validateResolved(target, { compareFamily, stateGrid }, moduleIo);
+const devsT = validateResolved(target, { compareFamily, stateGrid, deviceNames: devT.deviceNames, devices: devT.devices });
 const simB = base ? simulateImport(base) : { ok: true, errors: [], warnings: [] };
-const plainB = base ? validateResolved(base, { compareFamily }) : { ok: true, errors: [], warnings: [] };
-const devsB = base ? validateResolved(base, { compareFamily, deviceNames: devB.deviceNames, devices: devB.devices }) : { ok: true, errors: [], warnings: [] };
+const plainB = base ? validateResolved(base, { compareFamily, stateGrid }) : { ok: true, errors: [], warnings: [] };
+const devsB = base ? validateResolved(base, { compareFamily, stateGrid, deviceNames: devB.deviceNames, devices: devB.devices }) : { ok: true, errors: [], warnings: [] };
 
 report.simulateImport = { ok: simT.ok, errors: simT.errors, warnings: cap(simT.warnings, 40), newErrors: multisetDiff(simT.errors, simB.errors), newWarnings: multisetDiff(simT.warnings, simB.warnings) };
 report.parameterConnections = { moduleIoResolved: moduleIo.resolved, moduleIoUnresolved: moduleIo.unresolved };
@@ -253,13 +264,13 @@ if (SLICES) {
     for (const p of progsT) if (p.name !== name) out = out.replace(p.block, p.block.replace(/<Routines>[\s\S]*?<\/Routines>/, '<Routines/>'));
     return out;
   };
-  const empty = validateResolved(sliceFor(null), { compareFamily, deviceNames: devT.deviceNames, devices: devT.devices });
+  const empty = validateResolved(sliceFor(null), { compareFamily, stateGrid, deviceNames: devT.deviceNames, devices: devT.devices });
   const noise = (s) => /^No MOVE\(n, Control\.StateReg\)|^No rung logic/.test(s);
   report.perProgram.push({ program: '(whole-file, no routines)', status: 'file-level', errors: classed(multisetDiffNorm(empty.errors, devsB.errors).filter((e) => !noise(e))), warnings: cap(multisetDiffNorm(empty.warnings, devsB.warnings).filter((w) => !noise(w)), 40) });
   for (const p of progsT) {
     const status = !baseByName.has(p.name) ? 'new' : baseByName.get(p.name) === norm(p.block) ? 'unchanged' : 'changed';
     if (status === 'unchanged') { report.perProgram.push({ program: p.name, status }); continue; }
-    const v = validateResolved(sliceFor(p.name), { compareFamily, deviceNames: devT.deviceNames, devices: devT.devices });
+    const v = validateResolved(sliceFor(p.name), { compareFamily, stateGrid, deviceNames: devT.deviceNames, devices: devT.devices });
     const errs = multisetDiffNorm(multisetDiffNorm(v.errors, empty.errors), devsB.errors).filter((e) => !noise(e));
     const warns = multisetDiffNorm(multisetDiffNorm(v.warnings, empty.warnings), devsB.warnings).filter((w) => !noise(w));
     report.perProgram.push({ program: p.name, status, errors: classed(errs), warnings: cap(warns, 25) });

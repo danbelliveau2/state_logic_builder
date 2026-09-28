@@ -1164,10 +1164,16 @@ function checkOneMovePerState(ir) {
  * @param {'short'|'long'|null} [opts.compareFamily] compare-mnemonic family the
  *   template uses ('short' = EQ/NE/LT/GT/GE/LE — the SDC V4.2 standard and the
  *   default; pass detectCompareFamily(templateXml) to derive; null disables).
+ * @param {boolean} [opts.stateGrid] warn on sequence states off the 4/7/10 grid.
+ *   Default true. Pass false for a project whose own numbering is the convention
+ *   — job 1158 runs 4/6/7/10/13/16/50 with a 100/105/110/115/124 camera init
+ *   block (Jason, 2026-09-28: "leave Matt's numbering alone, it's the project
+ *   convention"). Illegal state numbers are still errors either way.
  * @returns {{ ok: boolean, errors: string[], warnings: string[] }}
  */
 function validateL5X(xml, opts = {}) {
   const compareFamily = 'compareFamily' in opts ? opts.compareFamily : 'short';
+  const stateGrid = 'stateGrid' in opts ? opts.stateGrid !== false : true;
   const errors = [];
   const warnings = [];
 
@@ -1267,7 +1273,7 @@ function validateL5X(xml, opts = {}) {
               errors.push(
                 `Illegal state number ${n} in ${rung.routine}: MOVE(${n},${dest}) — ` +
                 'legal states are 0-3, 4/7/10...97, 99, 100-127');
-            } else if (cls === 'offgrid') {
+            } else if (cls === 'offgrid' && stateGrid) {
               warnings.push(
                 `State ${n} in ${rung.routine} is off the 4/7/10... grid (MOVE(${n},${dest}))`);
             }
