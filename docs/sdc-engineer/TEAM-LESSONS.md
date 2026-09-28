@@ -132,3 +132,10 @@ One line per lesson, dated, in the engineer's words, with who said it. Merged da
 - 2026-09-28 [standard] Interlocks go in series with the trigger, not in a parallel branch leg - the R70 maintenance-position rung had the two AtRefPosn interlocks in one leg and the trigger in the other, so they gated nothing. — Jason's corrected export
 - 2026-09-28 [standard] R03_StateLogic rung order: status to supervisor, actuators safe, part tracking and lockout, station complete, sample the measurement, judge it pass/fail, device control, station performance last. The judgement goes BEFORE the device control rungs - I appended mine after station performance. — Jason's corrected export
 - 2026-09-28 [standard] A read-only device gets no output buffer tag at all, not just no CPS - io3_KeyenceProbe_OUT deleted. — Jason's corrected export
+
+## Merged 2026-09-28
+- 2026-09-28 [standard] The camera CPS length was wrong too - CPS(cam02_S04InspectLocation:I.Data[0],cam02_S04InspectLocation_IN,1), not 496. The destination is one VS_I. — Jason's corrected export
+- 2026-09-28 [standard] On 1158 StationPerformance is the last rung of R03_StateLogic - moved to last in D01S11 and D02S13. Job 1160 puts it two or three rungs from the end, so this is the project's convention, not a universal rule. — Jason's corrected export
+
+## Merged 2026-09-28
+- 2026-09-28 [standard] D004 and D005 are Approved as RULES, not machine deviations - a lesson about choosing or reusing a reference belongs in the knowledge, and tagging a rule as a deviation puts it in the grid as Open where it reads like a blocker. — Jason
