@@ -461,6 +461,101 @@ function checkStructureMembers(xml, errors) {
   }
 }
 
+// ── From Jason's corrected export of 1158 v0.7.2 (2026-09-28) ──
+// Three of the thirteen things he fixed are mechanically checkable.
+//   A CPS length counts DESTINATION elements, so copying a module's input into
+//   one UDT buffer is length 1, not the number of source words.
+//   On GuardLogix a Safety program reads only Safety-class tags; a Standard
+//   program writes a Standard "Req" tag and the safety tag mapping carries it.
+//   R03_StateLogic runs status, tracking, station complete, sample the
+//   measurement, judge it, device control, station performance LAST.
+// A fourth — that every station drives Lockout/Bypass/DryRun/SingleStep in
+// R01_Inputs — is deliberately NOT checked: Bypass appears only on the verify
+// stations, so asserting it everywhere would be wrong.
+const ACTUATOR_COIL = /OTE\(q_(Extend|Retract|Open|Close|Advance|Raise|Lower|Clamp|Unclamp)[A-Z]/;
+
+function checkCopyLengths(xml, errors) {
+  const progsStart = xml.indexOf('<Programs>');
+  const dimOf = new Map();
+  const note = (m) => ({ dim: (/Dimensions="(\d+)"/.exec(m[2]) || [])[1], dt: (/DataType="([A-Za-z0-9_:]+)"/.exec(m[2]) || [])[1] });
+  for (const m of xml.slice(0, progsStart).matchAll(/<Tag Name="([A-Za-z0-9_]+)"([^>]*)>/g)) dimOf.set(m[1], note(m));
+
+  for (const p of xml.matchAll(/<Program\s[^>]*?\bName="([A-Za-z0-9_]+)"[^>]*>([\s\S]*?)<\/Program>/g)) {
+    const local = new Map();
+    for (const m of p[2].matchAll(/<Tag Name="([A-Za-z0-9_]+)"([^>]*)>/g)) local.set(m[1], note(m));
+    for (const r of p[2].matchAll(/<Routine Name="([A-Za-z0-9_]+)"[\s\S]*?<\/Routine>/g)) {
+      let rung = 0;
+      for (const t of r[0].matchAll(/<Text>\s*<!\[CDATA\[([\s\S]*?)\]\]>/g)) {
+        for (const c of t[1].matchAll(/\b(CPS|COP)\(([^,]+),([^,]+),(\d+)\)/g)) {
+          const dest = c[3].trim(), len = Number(c[4]);
+          if (/[.:[]/.test(dest)) continue;               // a member or module path, not a bare tag
+          const d = local.get(dest) || dimOf.get(dest);
+          if (!d) continue;
+          const elements = d.dim ? Number(d.dim) : 1;
+          if (len > elements) {
+            errors.push(`Copy length "${p[1]} ${r[1]} rung ${rung}": ${c[1]}(...,${dest},${len}) — ` +
+              `the length counts destination elements and ${dest} is ${d.dt}` +
+              `${d.dim ? `[${d.dim}]` : ' (not an array), so the length is 1'}`);
+          }
+        }
+        rung++;
+      }
+    }
+  }
+}
+
+function checkSafetyClass(xml, errors) {
+  const progsStart = xml.indexOf('<Programs>');
+  const cls = new Map();
+  for (const m of xml.slice(0, progsStart).matchAll(/<Tag Name="([A-Za-z0-9_]+)"([^>]*)>/g))
+    cls.set(m[1], (/Class="(\w+)"/.exec(m[2]) || ['', 'Standard'])[1]);
+
+  for (const p of xml.matchAll(/<Program\s[^>]*?\bName="([A-Za-z0-9_]+)"[^>]*>([\s\S]*?)<\/Program>/g)) {
+    if (!/Class="Safety"/.test(p[0].slice(0, p[0].indexOf('>')))) continue;
+    const seen = new Set();
+    for (const r of p[2].matchAll(/<Routine Name="([A-Za-z0-9_]+)"[\s\S]*?<\/Routine>/g)) {
+      let rung = 0;
+      for (const t of r[0].matchAll(/<Text>\s*<!\[CDATA\[([\s\S]*?)\]\]>/g)) {
+        const at = `${p[1]} ${r[1]} rung ${rung}`;
+        for (const m of t[1].matchAll(/\\([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)/g)) {
+          const key = 'p' + m[1] + m[2];
+          if (seen.has(key)) continue;
+          seen.add(key);
+          errors.push(`Safety scope "${at}": reaches into program ${m[1]} for "${m[2]}" — a Safety ` +
+            `program reads only Safety-class tags. Have the Standard program write a Standard "Req" tag ` +
+            `and map it across.`);
+        }
+        for (const m of t[1].matchAll(/(?:^|[^A-Za-z0-9_.\\])([A-Za-z_][A-Za-z0-9_]*)/g)) {
+          const c = cls.get(m[1]);
+          if (!c || c === 'Safety' || seen.has(m[1])) continue;
+          seen.add(m[1]);
+          errors.push(`Safety scope "${at}": "${m[1]}" is a ${c}-class controller tag — a Safety program ` +
+            `reads only Safety-class tags`);
+        }
+        rung++;
+      }
+    }
+  }
+}
+
+function checkStateLogicOrder(xml, warnings) {
+  for (const p of xml.matchAll(/<Program\s[^>]*?\bName="([A-Za-z0-9_]+)"[^>]*>([\s\S]*?)<\/Program>/g)) {
+    const r = /<Routine Name="R03_StateLogic"[\s\S]*?<\/Routine>/.exec(p[2]);
+    if (!r) continue;
+    const texts = [...r[0].matchAll(/<Text>\s*<!\[CDATA\[([\s\S]*?)\]\]>/g)].map((m) => m[1]);
+    const judge = texts.findIndex((t) =>
+      /OTL\([^)]*Station\[[A-Za-z0-9_]+\]\.(Success|Failure)\)/.test(t) && /\b(GE|LE|LT|GT)\(/.test(t));
+    const device = texts.findIndex((t) => ACTUATOR_COIL.test(t));
+    // Only the judgement/device relation is asserted. "StationPerformance is the
+    // last rung" is how 1158's stations happen to read; job 1160 puts it two or
+    // three rungs from the end throughout a delivered file, so it is not a rule.
+    if (judge >= 0 && device >= 0 && judge > device) {
+      warnings.push(`R03 order ${p[1]}: the pass/fail judgement is at rung ${judge}, after device control ` +
+        `at rung ${device} — judge the measurement before driving the actuators`);
+    }
+  }
+}
+
 // ── Axis load and motor (Jason's 1160 imports 2026-09-22, built 2026-09-28) ──
 // Two defects reached his Studio import log and neither had a rule.
 //   SET THE LOAD, NOT THE ANSWER. An axis with ScalingSource="From Calculator"
@@ -1372,6 +1467,9 @@ function validateL5X(xml, opts = {}) {
   checkStructureMembers(xml, errors);
   checkProgramShape(xml, errors);
   checkAxisLoadAndMotor(xml, errors);
+  checkCopyLengths(xml, errors);
+  checkSafetyClass(xml, errors);
+  checkStateLogicOrder(xml, warnings);
   checkReadability(xml, warnings);
 
   // 6. No exitless waits (Rule 11): every wait-style R02 transition — one
