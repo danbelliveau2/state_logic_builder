@@ -26,6 +26,12 @@ Each has a **TABLE OF CONTENTS at the top** (lines 1-80) mapping every section t
 
 ---
 
+## 0a. SDC ENGINEER — BUILDING A MACHINE'S PLC CODE
+
+Read [docs/sdc-engineer/PLAYBOOK.md](docs/sdc-engineer/PLAYBOOK.md) before any code build, review or cover note. Skills: `/sdc-readiness` → `/sdc-build` → `/sdc-review` → `/sdc-cover-note`; `/sdc-learn-return` for anything the CE sends back. The CE's own rules: `X:\Electrical Dept\SDC Engineer\Knowledge\SDC-Engineer-Knowledge.md` → `## Engineer additions`, read at every build start.
+
+---
+
 ## 1. PROJECT OVERVIEW
 
 A React web app that converts ME flowchart state machine diagrams into Allen Bradley L5X PLC code.
