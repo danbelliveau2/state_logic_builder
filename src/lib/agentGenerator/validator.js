@@ -461,6 +461,50 @@ function checkStructureMembers(xml, errors) {
   }
 }
 
+// ── Axis load and motor (Jason's 1160 imports 2026-09-22, built 2026-09-28) ──
+// Two defects reached his Studio import log and neither had a rule.
+//   SET THE LOAD, NOT THE ANSWER. An axis with ScalingSource="From Calculator"
+//   DERIVES ConversionConstant from the load, so writing the constant alone does
+//   nothing — Studio recomputes it on import and the file's value is discarded.
+//   For a screw actuator in mm/rev the constant is the lead x 1000. Only a screw
+//   uses ActuatorLead: a rotary axis carries a lead of 1.0 that means nothing,
+//   so the relation is asserted for Linear Actuator + Screw and nowhere else.
+//   THE CATALOG IS THE STUDIO DATABASE FORM, not the BOM's orderable number. A
+//   VPL stops at the -P; a TLP carries lowercase option wildcards. The BOM number
+//   imports as "Selected motor is invalid" and drags FeedbackCommutationAligned
+//   into a second bogus warning with it.
+function checkAxisLoadAndMotor(xml, errors) {
+  for (const m of xml.matchAll(/<Tag Name="([A-Za-z0-9_]+)"[^>]*DataType="AXIS_CIP_DRIVE"[\s\S]*?<\/Tag>/g)) {
+    const axis = m[1], blk = m[0];
+    const get = (k) => (new RegExp('\\b' + k + '="([^"]*)"').exec(blk) || [])[1];
+    if (!get('ConversionConstant')) continue;          // an InOut parameter, not a drive
+
+    const lead = parseFloat(get('ActuatorLead'));
+    const konst = parseFloat(get('ConversionConstant'));
+    if (get('ScalingSource') === 'From Calculator' && get('LoadType') === 'Linear Actuator' &&
+        get('ActuatorType') === 'Screw' && get('ActuatorLeadUnit') === 'Millimeter/Rev' &&
+        Number.isFinite(lead) && Number.isFinite(konst) && Math.abs(konst - lead * 1000) > 0.001) {
+      errors.push(`Axis scaling "${axis}": ActuatorLead ${lead} mm/rev derives ConversionConstant ` +
+        `${lead * 1000}, but the file says ${konst} — Studio recomputes from the lead on import, so ` +
+        `the axis will not move what the logic thinks. Set the load, not the answer.`);
+    }
+
+    const cat = get('MotorCatalogNumber');
+    if (!cat) continue;
+    const option = cat.split('-').pop();
+    if (/X{2,}/.test(cat)) {
+      errors.push(`Motor catalog "${axis}": "${cat}" has uppercase X placeholders — the Studio ` +
+        `database wildcards options in lowercase (TLP-A046-010-Dxxx4x)`);
+    } else if (/^TLP-/i.test(cat) && !/x/.test(option)) {
+      errors.push(`Motor catalog "${axis}": "${cat}" looks like the BOM's orderable number — a TLP in ` +
+        `the database carries lowercase option wildcards, and the full number imports as "Selected motor is invalid"`);
+    } else if (/^VPL-/i.test(cat) && !/-P$/.test(cat)) {
+      errors.push(`Motor catalog "${axis}": "${cat}" looks like the BOM's orderable number — a VPL in ` +
+        `the database stops at the -P (VPL-A1003E-P, not VPL-A1003E-PJ12AA)`);
+    }
+  }
+}
+
 // ── Program shape (Jason, 1158 review 2026-09-28) ──
 // Three rules from one review, each checked where it can be checked mechanically:
 //   1. A reference into another program must resolve to a tag that program declares.
@@ -1327,6 +1371,7 @@ function validateL5X(xml, opts = {}) {
   checkDuplicateDestructiveBits(xml, errors);
   checkStructureMembers(xml, errors);
   checkProgramShape(xml, errors);
+  checkAxisLoadAndMotor(xml, errors);
   checkReadability(xml, warnings);
 
   // 6. No exitless waits (Rule 11): every wait-style R02 transition — one
