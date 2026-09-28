@@ -105,3 +105,9 @@ One line per lesson, dated, in the engineer's words, with who said it. Merged da
 - 2026-09-25 [standard] Run Studio's verify checks, not just the import gate. Duplicate destructive bit references were a whole class my gates never looked at, and Jason found them by hand. — Jason's Studio verify
 - 2026-09-25 [standard] Match the project, not the newest standard. This engineer wrote 1158 before the new single-step logic was released, so use the old form - D02S06_SubFlare R01_Inputs is the example. The new form does not even fit the UDT in this project. — Jason
 - 2026-09-25 [standard] Before writing a member reference, check the member exists in THIS controller's copy of the type. Ported logic brings the source project's UDT shape with it. — Jason
+
+## Merged 2026-09-28
+- 2026-09-28 [standard] A part verify station does not get output parameters defined. D01S12 was defined as a part verify station, and Supervisor R01_Inputs included output parameters from it that are not defined, causing compile errors. — Jason
+- 2026-09-28 [standard] All output controls go in R03_StateLogic. D02S13 had a routine called R04_DeviceControl; there is no such routine. — Jason
+- 2026-09-28 [standard] Force checking belongs in R03_StateLogic, not in the transitions - D01S11 rung 11. — Jason
+- 2026-09-28 [standard] Leave Matt's state numbering alone on 1158, it is the project convention - D01S04 runs 4, 6, 7, 10, 13, 16, 50 with a 100/105/110/115/124 camera init block, and that stands even though the template and Rev2 use the +3 grid. — Jason
