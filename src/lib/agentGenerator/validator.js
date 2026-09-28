@@ -381,7 +381,7 @@ function maskMemberSubscripts(s) {
   let out = '', depth = 0;
   for (const ch of s) {
     if (ch === '[') depth++;
-    out += depth ? (ch === '[' || ch === ']' ? ch : ' ') : ch;
+    out += depth ? (ch === '[' || ch === ']' ? ch : ' ') : ch;
     if (ch === ']') depth--;
   }
   return out;
@@ -453,6 +453,72 @@ function checkStructureMembers(xml, errors) {
   for (const f of findBadMemberRefs(xml)) {
     errors.push(`Structure member "${f.prog} - ${f.ref}": "${f.member}" is not a member of ${f.type} ` +
       `(it has: ${f.have.join(', ')}) — Studio's verify rejects this rung`);
+  }
+}
+
+// ── Program shape (Jason, 1158 review 2026-09-28) ──
+// Three rules from one review, each checked where it can be checked mechanically:
+//   1. A reference into another program must resolve to a tag that program declares.
+//      A part verify station does not get q_AutoMode / q_AutoStopped / q_StartOK,
+//      so the Supervisor must not poll it for them — D02S02_PartVerify_DONE is the
+//      shape, and D01S12_PressInspect had been polled for three it does not have.
+//   2. Actuator outputs belong in R03_StateLogic. Status outputs (q_AlarmActive,
+//      q_WarningActive, q_StationComplete, q_ActuatorsSafe) are driven from
+//      R20_Alarms and the verify routines by design and are not actuator outputs.
+//   3. Judging a measurement against a threshold is state logic, not a transition.
+//      D01S11's force window sat in an R02 rung.
+const ACTUATOR_OUTPUT = /^q_(Extend|Retract|Open|Close|Engage|Disengage|Advance|Run|Start|Stop|Raise|Lower|Clamp|Unclamp)[A-Z]/;
+const MOTION_ROUTINE = /Servo$/;
+const MEASURED_VALUE = /PartStatus\.[A-Za-z0-9_]*(?:Force|Depth|Position|Height|Width|Value)|_IN\.Scaled|ActualPosition/;
+const D003_ROBOT_PROGRAM = 'D01_FlexFeeder';   // follows job 1116, deviation D003
+
+function checkProgramShape(xml, errors) {
+  const progs = [...xml.matchAll(/<Program Name="([A-Za-z0-9_]+)"/g)];
+  const bodies = {}, decls = {}, hasStateLogic = {};
+  for (let p = 0; p < progs.length; p++) {
+    const i = progs[p].index;
+    const j = p + 1 < progs.length ? progs[p + 1].index : xml.indexOf('</Programs>', i);
+    const body = xml.slice(i, j);
+    bodies[progs[p][1]] = body;
+    hasStateLogic[progs[p][1]] = body.includes('<Routine Name="R03_StateLogic"');
+    const d = {};
+    for (const m of body.matchAll(/<Tag Name="([A-Za-z0-9_]+)"([^>]*)>/g)) d[m[1]] = (/Usage="(\w+)"/.exec(m[2]) || [])[1] || 'Local';
+    decls[progs[p][1]] = d;
+  }
+
+  const seen = new Set();
+  const once = (key, msg) => { if (seen.has(key)) return; seen.add(key); errors.push(msg); };
+
+  for (const [prog, body] of Object.entries(bodies)) {
+    for (const rm of body.matchAll(/<Routine Name="([A-Za-z0-9_]+)"[\s\S]*?<\/Routine>/g)) {
+      const routine = rm[1];
+      let rung = 0;
+      for (const t of rm[0].matchAll(/<Text>\s*<!\[CDATA\[([\s\S]*?)\]\]>/g)) {
+        const text = t[1];
+        const at = `${prog} ${routine} rung ${rung}`;
+
+        for (const m of text.matchAll(/\\([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)/g)) {
+          if (!decls[m[1]] || m[2] in decls[m[1]]) continue;
+          once(at + m[0], `Cross-program reference "${at}": ${m[1]} does not declare "${m[2]}" — ` +
+            `Studio cannot compile the reference. Either the parameter belongs on that program, or this rung should not poll it.`);
+        }
+
+        if (prog !== D003_ROBOT_PROGRAM && hasStateLogic[prog] && routine !== 'R03_StateLogic' && !MOTION_ROUTINE.test(routine)) {
+          for (const m of text.matchAll(/OT[EL]\((q_[A-Za-z0-9_]+)\)/g)) {
+            if (!ACTUATOR_OUTPUT.test(m[1])) continue;
+            once(at + m[1], `Output control out of place "${at}": ${m[1]} is an actuator output and belongs in R03_StateLogic`);
+          }
+        }
+
+        if (routine === 'R02_StateTransitions' && MEASURED_VALUE.test(text)) {
+          for (const m of text.matchAll(/\b(GE|LE|GT|LT|LIMIT)\(/g)) {
+            once(at + 'eval', `Evaluation in a transition "${at}": a measured value is judged against a threshold here — ` +
+              `that belongs in R03_StateLogic; the transition rung moves the state`);
+          }
+        }
+        rung++;
+      }
+    }
   }
 }
 
@@ -1249,6 +1315,7 @@ function validateL5X(xml, opts = {}) {
   checkImportLimits(xml, errors, warnings);
   checkDuplicateDestructiveBits(xml, errors);
   checkStructureMembers(xml, errors);
+  checkProgramShape(xml, errors);
   checkReadability(xml, warnings);
 
   // 6. No exitless waits (Rule 11): every wait-style R02 transition — one
