@@ -111,3 +111,8 @@ One line per lesson, dated, in the engineer's words, with who said it. Merged da
 - 2026-09-28 [standard] All output controls go in R03_StateLogic. D02S13 had a routine called R04_DeviceControl; there is no such routine. — Jason
 - 2026-09-28 [standard] Force checking belongs in R03_StateLogic, not in the transitions - D01S11 rung 11. — Jason
 - 2026-09-28 [standard] Leave Matt's state numbering alone on 1158, it is the project convention - D01S04 runs 4, 6, 7, 10, 13, 16, 50 with a 100/105/110/115/124 camera init block, and that stands even though the template and Rev2 use the +3 grid. — Jason
+
+## Merged 2026-09-28
+- 2026-09-28 [standard] D01S12 is a Keyence GT2 air probe station: one solenoid, coil on extends, coil off retracts. ETHERNET-MODULE io3_KeyenceProbe at 10.11.58.32, Data-INT, input instance 100 size 84, output instance 101 size 5, config instance 1 size 0, io3_KeyenceProbe_IN typed KeyenceProbe_Inputs. States 4 wait index, 7 extend, 10 check value, 13 retract, 50 complete; both probe positions verified with AOI_RangeCheck; pass/fail is an HMI low/high window; initialized means retracted and it must be verified retracted to allow an index. — Jason
+- 2026-09-28 [standard] A station with a state machine is a full station and declares q_AutoMode, q_AutoStopped and q_StartOK - only a part verify station goes without them. Changing a station's type means changing what the Supervisor polls. — Jason's D01S12 change
+- 2026-09-28 [standard] The probe input parameter is DINT, connected straight to io3_KeyenceProbe_IN.Curnt_Val_0_ID1, and the divisor is 10000 to convert the raw count to mm. Scale inside the station, not in MapInputs. — Jason
