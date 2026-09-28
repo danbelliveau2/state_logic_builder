@@ -144,6 +144,11 @@ function harvestDeclarations(xml) {
   const progsStart = scopeXml.indexOf('<Programs');
   const ctrlSlice = progsStart > 0 ? scopeXml.slice(0, progsStart) : scopeXml;
   const ctrlTags = new Set(collectAll(/<Tag\b[^>]*\bName="([^"]+)"/g, ctrlSlice));
+  // A <Module> declares its own name at controller scope: a rung reaches its I/O
+  // as Module:I / Module:O, which is how every CPS in a mapping program is
+  // written. Without this the checker called every correctly-declared module
+  // undeclared (8 of them in job 1158's untouched baseline, 2026-09-28).
+  for (const n of collectAll(/<Module\b[^>]*\bName="([^"]+)"/g, ctrlSlice)) ctrlTags.add(n);
   const programTags = new Map();
   for (const m of scopeXml.matchAll(/<Program\s([^>]*)>([\s\S]*?)<\/Program>/g)) {
     const name = (m[1].match(/\bName="([^"]+)"/) || [])[1];
