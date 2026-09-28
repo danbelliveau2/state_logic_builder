@@ -144,6 +144,11 @@ function harvestDeclarations(xml) {
   const progsStart = scopeXml.indexOf('<Programs');
   const ctrlSlice = progsStart > 0 ? scopeXml.slice(0, progsStart) : scopeXml;
   const ctrlTags = new Set(collectAll(/<Tag\b[^>]*\bName="([^"]+)"/g, ctrlSlice));
+  // A <Module> declares its own name at controller scope: a rung reaches its I/O
+  // as Module:I / Module:O, which is how every CPS in a mapping program is
+  // written. Without this the checker called every correctly-declared module
+  // undeclared (8 of them in job 1158's untouched baseline, 2026-09-28).
+  for (const n of collectAll(/<Module\b[^>]*\bName="([^"]+)"/g, ctrlSlice)) ctrlTags.add(n);
   const programTags = new Map();
   for (const m of scopeXml.matchAll(/<Program\s([^>]*)>([\s\S]*?)<\/Program>/g)) {
     const name = (m[1].match(/\bName="([^"]+)"/) || [])[1];
@@ -364,6 +369,340 @@ const WAIT_EXEMPT_IDENTS = new Set([
   'SS_OK', 'DryRun', 'Lockout', 'FaultReset', 'Initialized', 'CycleRunning',
   'PartStarted', 'AutoMode', 'ManualMode',
 ]);
+
+
+// ── Structure member references (Jason, 1158 v0.6.5 review 2026-09-25) ──
+// A rung that reaches for a member the UDT does not have fails Studio's verify.
+// It reached a delivery because the member existed in the program this logic was
+// ported from, not in this controller's copy of the type: Tracking_Station_Op_Status
+// here has Lockout/Bypass/SingleStep/DryRun and nothing else.
+const MEMBER_ATOMIC = new Set(['BOOL', 'BIT', 'SINT', 'INT', 'DINT', 'LINT', 'REAL', 'LREAL', 'USINT', 'UINT', 'UDINT', 'BYTE', 'WORD', 'DWORD']);
+const MEMBER_BUILTIN = {
+  TIMER: { PRE: 'DINT', ACC: 'DINT', EN: 'BOOL', TT: 'BOOL', DN: 'BOOL' },
+  COUNTER: { PRE: 'DINT', ACC: 'DINT', CU: 'BOOL', CD: 'BOOL', DN: 'BOOL', OV: 'BOOL', UN: 'BOOL' },
+  CONTROL: { LEN: 'DINT', POS: 'DINT', EN: 'BOOL', EU: 'BOOL', DN: 'BOOL', EM: 'BOOL', ER: 'BOOL', UL: 'BOOL', IN: 'BOOL', FD: 'BOOL' },
+};
+
+/** replace every [...] span with same-length filler so offsets and dots survive */
+function maskMemberSubscripts(s) {
+  let out = '', depth = 0;
+  for (const ch of s) {
+    if (ch === '[') depth++;
+    out += depth ? (ch === '[' || ch === ']' ? ch : ' ') : ch;
+    if (ch === ']') depth--;
+  }
+  return out;
+}
+
+function findBadMemberRefs(xml) {
+  const types = {};
+  for (const m of xml.matchAll(/<DataType Name="([A-Za-z0-9_]+)"[^>]*>([\s\S]*?)<\/DataType>/g)) {
+    const t = {};
+    for (const v of m[2].matchAll(/<Member Name="([A-Za-z0-9_]+)" DataType="([A-Za-z0-9_:]+)"/g)) t[v[1]] = v[2];
+    types[m[1]] = t;
+  }
+  for (const m of xml.matchAll(/<AddOnInstructionDefinition Name="([A-Za-z0-9_]+)"[\s\S]*?<\/AddOnInstructionDefinition>/g)) {
+    const t = { EnableIn: 'BOOL', EnableOut: 'BOOL' };
+    for (const v of m[0].matchAll(/<(?:Parameter|LocalTag) Name="([A-Za-z0-9_]+)"[^>]*DataType="([A-Za-z0-9_:]+)"/g)) t[v[1]] = v[2];
+    types[m[1]] = t;
+  }
+  Object.assign(types, MEMBER_BUILTIN);
+
+  const ctlEnd = xml.indexOf('<Programs>');
+  const ctlTags = {};
+  for (const m of xml.slice(0, ctlEnd).matchAll(/<Tag Name="([A-Za-z0-9_]+)"[^>]*DataType="([A-Za-z0-9_:]+)"/g)) ctlTags[m[1]] = m[2];
+
+  const progs = [...xml.matchAll(/<Program Name="([A-Za-z0-9_]+)"/g)];
+  const progTags = {}, bodies = {};
+  for (let p = 0; p < progs.length; p++) {
+    const i = progs[p].index;
+    const j = p + 1 < progs.length ? progs[p + 1].index : xml.indexOf('</Programs>', i);
+    bodies[progs[p][1]] = xml.slice(i, j);
+    const t = {};
+    for (const m of xml.slice(i, j).matchAll(/<Tag Name="([A-Za-z0-9_]+)"[^>]*DataType="([A-Za-z0-9_:]+)"/g)) t[m[1]] = m[2];
+    progTags[progs[p][1]] = t;
+  }
+
+  const findings = [];
+  for (const [prog, body] of Object.entries(bodies)) {
+    const seen = new Set();
+    for (const t of body.matchAll(/<Text>\s*<!\[CDATA\[([\s\S]*?)\]\]>/g)) {
+      const masked = maskMemberSubscripts(t[1]);
+      for (const m of masked.matchAll(/(\\([A-Za-z0-9_]+)\.)?([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?)*)/g)) {
+        const scope = m[2] || null;
+        const parts = m[3].split('.').map(s => s.replace(/\[.*/, ''));
+        if (!scope && parts.length < 2) continue;                 // a bare name is not a member path
+        let type = scope ? (progTags[scope] || {})[parts[0]] : (progTags[prog][parts[0]] || ctlTags[parts[0]]);
+        if (!type) continue;                                      // unknown base; other checks cover it
+        let path = parts[0];
+        for (let k = 1; k < parts.length; k++) {
+          if (MEMBER_ATOMIC.has(type)) break;                            // bit access on an atom
+          const def = types[type];
+          if (!def) break;                                        // module-defined type, not described here
+          path += '.' + parts[k];
+          if (!(parts[k] in def)) {
+            const ref = (scope ? '\\' + scope + '.' : '') + path;
+            if (!seen.has(ref)) {
+              seen.add(ref);
+              findings.push({ prog, ref, type, member: parts[k], have: Object.keys(def).filter(n => !n.startsWith('ZZZZ')) });
+            }
+            break;
+          }
+          type = def[parts[k]];
+        }
+      }
+    }
+  }
+  return findings;
+}
+
+function checkStructureMembers(xml, errors) {
+  for (const f of findBadMemberRefs(xml)) {
+    errors.push(`Structure member "${f.prog} - ${f.ref}": "${f.member}" is not a member of ${f.type} ` +
+      `(it has: ${f.have.join(', ')}) — Studio's verify rejects this rung`);
+  }
+}
+
+// ── From Jason's corrected export of 1158 v0.7.2 (2026-09-28) ──
+// Three of the thirteen things he fixed are mechanically checkable.
+//   A CPS length counts DESTINATION elements, so copying a module's input into
+//   one UDT buffer is length 1, not the number of source words.
+//   On GuardLogix a Safety program reads only Safety-class tags; a Standard
+//   program writes a Standard "Req" tag and the safety tag mapping carries it.
+//   R03_StateLogic runs status, tracking, station complete, sample the
+//   measurement, judge it, device control, station performance LAST.
+// A fourth — that every station drives Lockout/Bypass/DryRun/SingleStep in
+// R01_Inputs — is deliberately NOT checked: Bypass appears only on the verify
+// stations, so asserting it everywhere would be wrong.
+const ACTUATOR_COIL = /OTE\(q_(Extend|Retract|Open|Close|Advance|Raise|Lower|Clamp|Unclamp)[A-Z]/;
+
+function checkCopyLengths(xml, errors) {
+  const progsStart = xml.indexOf('<Programs>');
+  const dimOf = new Map();
+  const note = (m) => ({ dim: (/Dimensions="(\d+)"/.exec(m[2]) || [])[1], dt: (/DataType="([A-Za-z0-9_:]+)"/.exec(m[2]) || [])[1] });
+  for (const m of xml.slice(0, progsStart).matchAll(/<Tag Name="([A-Za-z0-9_]+)"([^>]*)>/g)) dimOf.set(m[1], note(m));
+
+  for (const p of xml.matchAll(/<Program\s[^>]*?\bName="([A-Za-z0-9_]+)"[^>]*>([\s\S]*?)<\/Program>/g)) {
+    const local = new Map();
+    for (const m of p[2].matchAll(/<Tag Name="([A-Za-z0-9_]+)"([^>]*)>/g)) local.set(m[1], note(m));
+    for (const r of p[2].matchAll(/<Routine Name="([A-Za-z0-9_]+)"[\s\S]*?<\/Routine>/g)) {
+      let rung = 0;
+      for (const t of r[0].matchAll(/<Text>\s*<!\[CDATA\[([\s\S]*?)\]\]>/g)) {
+        for (const c of t[1].matchAll(/\b(CPS|COP)\(([^,]+),([^,]+),(\d+)\)/g)) {
+          const dest = c[3].trim(), len = Number(c[4]);
+          if (/[.:[]/.test(dest)) continue;               // a member or module path, not a bare tag
+          const d = local.get(dest) || dimOf.get(dest);
+          if (!d) continue;
+          const elements = d.dim ? Number(d.dim) : 1;
+          if (len > elements) {
+            errors.push(`Copy length "${p[1]} ${r[1]} rung ${rung}": ${c[1]}(...,${dest},${len}) — ` +
+              `the length counts destination elements and ${dest} is ${d.dt}` +
+              `${d.dim ? `[${d.dim}]` : ' (not an array), so the length is 1'}`);
+          }
+        }
+        rung++;
+      }
+    }
+  }
+}
+
+function checkSafetyClass(xml, errors) {
+  const progsStart = xml.indexOf('<Programs>');
+  const cls = new Map();
+  for (const m of xml.slice(0, progsStart).matchAll(/<Tag Name="([A-Za-z0-9_]+)"([^>]*)>/g))
+    cls.set(m[1], (/Class="(\w+)"/.exec(m[2]) || ['', 'Standard'])[1]);
+
+  for (const p of xml.matchAll(/<Program\s[^>]*?\bName="([A-Za-z0-9_]+)"[^>]*>([\s\S]*?)<\/Program>/g)) {
+    if (!/Class="Safety"/.test(p[0].slice(0, p[0].indexOf('>')))) continue;
+    const seen = new Set();
+    for (const r of p[2].matchAll(/<Routine Name="([A-Za-z0-9_]+)"[\s\S]*?<\/Routine>/g)) {
+      let rung = 0;
+      for (const t of r[0].matchAll(/<Text>\s*<!\[CDATA\[([\s\S]*?)\]\]>/g)) {
+        const at = `${p[1]} ${r[1]} rung ${rung}`;
+        for (const m of t[1].matchAll(/\\([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)/g)) {
+          const key = 'p' + m[1] + m[2];
+          if (seen.has(key)) continue;
+          seen.add(key);
+          errors.push(`Safety scope "${at}": reaches into program ${m[1]} for "${m[2]}" — a Safety ` +
+            `program reads only Safety-class tags. Have the Standard program write a Standard "Req" tag ` +
+            `and map it across.`);
+        }
+        for (const m of t[1].matchAll(/(?:^|[^A-Za-z0-9_.\\])([A-Za-z_][A-Za-z0-9_]*)/g)) {
+          const c = cls.get(m[1]);
+          if (!c || c === 'Safety' || seen.has(m[1])) continue;
+          seen.add(m[1]);
+          errors.push(`Safety scope "${at}": "${m[1]}" is a ${c}-class controller tag — a Safety program ` +
+            `reads only Safety-class tags`);
+        }
+        rung++;
+      }
+    }
+  }
+}
+
+function checkStateLogicOrder(xml, warnings) {
+  for (const p of xml.matchAll(/<Program\s[^>]*?\bName="([A-Za-z0-9_]+)"[^>]*>([\s\S]*?)<\/Program>/g)) {
+    const r = /<Routine Name="R03_StateLogic"[\s\S]*?<\/Routine>/.exec(p[2]);
+    if (!r) continue;
+    const texts = [...r[0].matchAll(/<Text>\s*<!\[CDATA\[([\s\S]*?)\]\]>/g)].map((m) => m[1]);
+    const judge = texts.findIndex((t) =>
+      /OTL\([^)]*Station\[[A-Za-z0-9_]+\]\.(Success|Failure)\)/.test(t) && /\b(GE|LE|LT|GT)\(/.test(t));
+    const device = texts.findIndex((t) => ACTUATOR_COIL.test(t));
+    // Only the judgement/device relation is asserted. "StationPerformance is the
+    // last rung" is how 1158's stations happen to read; job 1160 puts it two or
+    // three rungs from the end throughout a delivered file, so it is not a rule.
+    if (judge >= 0 && device >= 0 && judge > device) {
+      warnings.push(`R03 order ${p[1]}: the pass/fail judgement is at rung ${judge}, after device control ` +
+        `at rung ${device} — judge the measurement before driving the actuators`);
+    }
+  }
+}
+
+// ── Axis load and motor (Jason's 1160 imports 2026-09-22, built 2026-09-28) ──
+// Two defects reached his Studio import log and neither had a rule.
+//   SET THE LOAD, NOT THE ANSWER. An axis with ScalingSource="From Calculator"
+//   DERIVES ConversionConstant from the load, so writing the constant alone does
+//   nothing — Studio recomputes it on import and the file's value is discarded.
+//   For a screw actuator in mm/rev the constant is the lead x 1000. Only a screw
+//   uses ActuatorLead: a rotary axis carries a lead of 1.0 that means nothing,
+//   so the relation is asserted for Linear Actuator + Screw and nowhere else.
+//   THE CATALOG IS THE STUDIO DATABASE FORM, not the BOM's orderable number. A
+//   VPL stops at the -P; a TLP carries lowercase option wildcards. The BOM number
+//   imports as "Selected motor is invalid" and drags FeedbackCommutationAligned
+//   into a second bogus warning with it.
+function checkAxisLoadAndMotor(xml, errors) {
+  for (const m of xml.matchAll(/<Tag Name="([A-Za-z0-9_]+)"[^>]*DataType="AXIS_CIP_DRIVE"[\s\S]*?<\/Tag>/g)) {
+    const axis = m[1], blk = m[0];
+    const get = (k) => (new RegExp('\\b' + k + '="([^"]*)"').exec(blk) || [])[1];
+    if (!get('ConversionConstant')) continue;          // an InOut parameter, not a drive
+
+    const lead = parseFloat(get('ActuatorLead'));
+    const konst = parseFloat(get('ConversionConstant'));
+    if (get('ScalingSource') === 'From Calculator' && get('LoadType') === 'Linear Actuator' &&
+        get('ActuatorType') === 'Screw' && get('ActuatorLeadUnit') === 'Millimeter/Rev' &&
+        Number.isFinite(lead) && Number.isFinite(konst) && Math.abs(konst - lead * 1000) > 0.001) {
+      errors.push(`Axis scaling "${axis}": ActuatorLead ${lead} mm/rev derives ConversionConstant ` +
+        `${lead * 1000}, but the file says ${konst} — Studio recomputes from the lead on import, so ` +
+        `the axis will not move what the logic thinks. Set the load, not the answer.`);
+    }
+
+    const cat = get('MotorCatalogNumber');
+    if (!cat) continue;
+    const option = cat.split('-').pop();
+    if (/X{2,}/.test(cat)) {
+      errors.push(`Motor catalog "${axis}": "${cat}" has uppercase X placeholders — the Studio ` +
+        `database wildcards options in lowercase (TLP-A046-010-Dxxx4x)`);
+    } else if (/^TLP-/i.test(cat) && !/x/.test(option)) {
+      errors.push(`Motor catalog "${axis}": "${cat}" looks like the BOM's orderable number — a TLP in ` +
+        `the database carries lowercase option wildcards, and the full number imports as "Selected motor is invalid"`);
+    } else if (/^VPL-/i.test(cat) && !/-P$/.test(cat)) {
+      errors.push(`Motor catalog "${axis}": "${cat}" looks like the BOM's orderable number — a VPL in ` +
+        `the database stops at the -P (VPL-A1003E-P, not VPL-A1003E-PJ12AA)`);
+    }
+  }
+}
+
+// ── Program shape (Jason, 1158 review 2026-09-28) ──
+// Three rules from one review, each checked where it can be checked mechanically:
+//   1. A reference into another program must resolve to a tag that program declares.
+//      A part verify station does not get q_AutoMode / q_AutoStopped / q_StartOK,
+//      so the Supervisor must not poll it for them — D02S02_PartVerify_DONE is the
+//      shape, and D01S12_PressInspect had been polled for three it does not have.
+//   2. Actuator outputs belong in R03_StateLogic. Status outputs (q_AlarmActive,
+//      q_WarningActive, q_StationComplete, q_ActuatorsSafe) are driven from
+//      R20_Alarms and the verify routines by design and are not actuator outputs.
+//   3. Judging a measurement against a threshold is state logic, not a transition.
+//      D01S11's force window sat in an R02 rung.
+const ACTUATOR_OUTPUT = /^q_(Extend|Retract|Open|Close|Engage|Disengage|Advance|Run|Start|Stop|Raise|Lower|Clamp|Unclamp)[A-Z]/;
+const MOTION_ROUTINE = /Servo$/;
+const MEASURED_VALUE = /PartStatus\.[A-Za-z0-9_]*(?:Force|Depth|Position|Height|Width|Value)|_IN\.Scaled|ActualPosition/;
+const D003_ROBOT_PROGRAM = 'D01_FlexFeeder';   // follows job 1116, deviation D003
+
+function checkProgramShape(xml, errors) {
+  const progs = [...xml.matchAll(/<Program Name="([A-Za-z0-9_]+)"/g)];
+  const bodies = {}, decls = {}, hasStateLogic = {};
+  for (let p = 0; p < progs.length; p++) {
+    const i = progs[p].index;
+    const j = p + 1 < progs.length ? progs[p + 1].index : xml.indexOf('</Programs>', i);
+    const body = xml.slice(i, j);
+    bodies[progs[p][1]] = body;
+    hasStateLogic[progs[p][1]] = body.includes('<Routine Name="R03_StateLogic"');
+    const d = {};
+    for (const m of body.matchAll(/<Tag Name="([A-Za-z0-9_]+)"([^>]*)>/g)) d[m[1]] = (/Usage="(\w+)"/.exec(m[2]) || [])[1] || 'Local';
+    decls[progs[p][1]] = d;
+  }
+
+  const seen = new Set();
+  const once = (key, msg) => { if (seen.has(key)) return; seen.add(key); errors.push(msg); };
+
+  for (const [prog, body] of Object.entries(bodies)) {
+    for (const rm of body.matchAll(/<Routine Name="([A-Za-z0-9_]+)"[\s\S]*?<\/Routine>/g)) {
+      const routine = rm[1];
+      let rung = 0;
+      for (const t of rm[0].matchAll(/<Text>\s*<!\[CDATA\[([\s\S]*?)\]\]>/g)) {
+        const text = t[1];
+        const at = `${prog} ${routine} rung ${rung}`;
+
+        for (const m of text.matchAll(/\\([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)/g)) {
+          if (!decls[m[1]] || m[2] in decls[m[1]]) continue;
+          once(at + m[0], `Cross-program reference "${at}": ${m[1]} does not declare "${m[2]}" — ` +
+            `Studio cannot compile the reference. Either the parameter belongs on that program, or this rung should not poll it.`);
+        }
+
+        if (prog !== D003_ROBOT_PROGRAM && hasStateLogic[prog] && routine !== 'R03_StateLogic' && !MOTION_ROUTINE.test(routine)) {
+          for (const m of text.matchAll(/OT[EL]\((q_[A-Za-z0-9_]+)\)/g)) {
+            if (!ACTUATOR_OUTPUT.test(m[1])) continue;
+            once(at + m[1], `Output control out of place "${at}": ${m[1]} is an actuator output and belongs in R03_StateLogic`);
+          }
+        }
+
+        if (routine === 'R02_StateTransitions' && MEASURED_VALUE.test(text)) {
+          for (const m of text.matchAll(/\b(GE|LE|GT|LT|LIMIT)\(/g)) {
+            once(at + 'eval', `Evaluation in a transition "${at}": a measured value is judged against a threshold here — ` +
+              `that belongs in R03_StateLogic; the transition rung moves the state`);
+          }
+        }
+        rung++;
+      }
+    }
+  }
+}
+
+// ── Duplicate destructive bit references (Jason, 1158 v0.6.4 import 2026-09-25) ──
+// Studio's verify reports every bit written by more than one destructive instruction.
+// OTL+OTU across rungs is the latch idiom and is correct, so only the real conflicts
+// are reported: a second OTE coil, an OTE fighting a latch, and a one-shot storage
+// bit used twice (ONS/OSR/OSF share state, so the second use silently breaks both).
+const DESTRUCTIVE_BIT = /\b(OTE|OTL|OTU|ONS|OSR|OSF)\(([^),]+)\)/g;
+function checkDuplicateDestructiveBits(xml, errors) {
+  for (const p of xml.matchAll(/<Program\b[^>]*?\sName="([^"]+)"[^>]*>([\s\S]*?)<\/Program>/g)) {
+    const [, name, body] = p;
+    const writers = new Map();
+    for (const r of body.matchAll(/<Routine Name="([A-Za-z0-9_]+)"[\s\S]*?<\/Routine>/g)) {
+      let rung = 0;
+      for (const t of r[0].matchAll(/<Text>\s*<!\[CDATA\[([\s\S]*?)\]\]>/g)) {
+        for (const m of t[1].matchAll(DESTRUCTIVE_BIT)) {
+          const bit = m[2].trim();
+          if (!writers.has(bit)) writers.set(bit, []);
+          writers.get(bit).push({ where: `${r[1]} rung ${rung}`, instr: m[1] });
+        }
+        rung++;
+      }
+    }
+    for (const [bit, uses] of writers) {
+      if (uses.length < 2) continue;
+      const kinds = new Set(uses.map((u) => u.instr));
+      const oneShots = uses.filter((u) => u.instr === 'ONS' || u.instr === 'OSR' || u.instr === 'OSF');
+      const coils = uses.filter((u) => u.instr === 'OTE');
+      let why = null;
+      if (oneShots.length > 1) why = 'a one-shot storage bit used by more than one instruction — they share state and both misfire';
+      else if (coils.length > 1) why = 'two OTE coils on one bit — the last rung scanned wins';
+      else if (coils.length === 1 && kinds.size > 1) why = 'an OTE coil on a bit that is also latched — the coil overwrites the latch every scan';
+      if (!why) continue;   // OTL/OTU only: the latch idiom
+      errors.push(`Duplicate destructive bit "${name} - ${bit}": ${why} (${uses.map((u) => `${u.where} ${u.instr}`).join(', ')})`);
+    }
+  }
+}
 
 // ── Readability (Jason, 1160 v1.4 review 2026-09-18: "much easier to read"; Dan 2026-09-19: make it how we build) ──
 // One concise sentence per rung comment, tag descriptions <= 30 chars, no build history / sources / placeholders-as-prose
@@ -971,10 +1310,16 @@ function checkOneMovePerState(ir) {
  * @param {'short'|'long'|null} [opts.compareFamily] compare-mnemonic family the
  *   template uses ('short' = EQ/NE/LT/GT/GE/LE — the SDC V4.2 standard and the
  *   default; pass detectCompareFamily(templateXml) to derive; null disables).
+ * @param {boolean} [opts.stateGrid] warn on sequence states off the 4/7/10 grid.
+ *   Default true. Pass false for a project whose own numbering is the convention
+ *   — job 1158 runs 4/6/7/10/13/16/50 with a 100/105/110/115/124 camera init
+ *   block (Jason, 2026-09-28: "leave Matt's numbering alone, it's the project
+ *   convention"). Illegal state numbers are still errors either way.
  * @returns {{ ok: boolean, errors: string[], warnings: string[] }}
  */
 function validateL5X(xml, opts = {}) {
   const compareFamily = 'compareFamily' in opts ? opts.compareFamily : 'short';
+  const stateGrid = 'stateGrid' in opts ? opts.stateGrid !== false : true;
   const errors = [];
   const warnings = [];
 
@@ -1074,7 +1419,7 @@ function validateL5X(xml, opts = {}) {
               errors.push(
                 `Illegal state number ${n} in ${rung.routine}: MOVE(${n},${dest}) — ` +
                 'legal states are 0-3, 4/7/10...97, 99, 100-127');
-            } else if (cls === 'offgrid') {
+            } else if (cls === 'offgrid' && stateGrid) {
               warnings.push(
                 `State ${n} in ${rung.routine} is off the 4/7/10... grid (MOVE(${n},${dest}))`);
             }
@@ -1120,6 +1465,13 @@ function validateL5X(xml, opts = {}) {
   // 5b. Studio 5000 import limits (Rule 12): description/comment lengths,
   //     name lengths, identifier legality — hard import gates.
   checkImportLimits(xml, errors, warnings);
+  checkDuplicateDestructiveBits(xml, errors);
+  checkStructureMembers(xml, errors);
+  checkProgramShape(xml, errors);
+  checkAxisLoadAndMotor(xml, errors);
+  checkCopyLengths(xml, errors);
+  checkSafetyClass(xml, errors);
+  checkStateLogicOrder(xml, warnings);
   checkReadability(xml, warnings);
 
   // 6. No exitless waits (Rule 11): every wait-style R02 transition — one

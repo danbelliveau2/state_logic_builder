@@ -88,7 +88,15 @@ for (const f of walk(LESSONS).sort()) {
   for (const raw of fs.readFileSync(f, 'utf8').split('\n')) {
     let l = raw.trim(); if (!l.startsWith('- ')) continue;
     if (!/ — \S/.test(l)) l = `${l} — ${who}`;
-    if (/\[deviation\]/i.test(l) || /conflicts with/i.test(l)) {
+    // The tag is the LEADING token, not any mention of it. A [standard] line that
+    // talks about deviations is still a standard line — one such line became a
+    // spurious grid row on 2026-09-28. Untagged lines still fall back on
+    // "conflicts with", which is how they were written before tagging existed.
+    const leadTag = /^- (?:\d{4}-\d\d-\d\d\s*)?\[(\w+)\]/i.exec(l);
+    const isDeviation = leadTag
+      ? leadTag[1].toLowerCase() === 'deviation'
+      : /conflicts with/i.test(l);
+    if (isDeviation) {
       const m = /^- (\d{4}-\d\d-\d\d)?\s*(?:\[deviation\])?\s*(.*?)(?:\|\s*conflicts with:\s*(.*?))?\s*(?: — (.*))?$/i.exec(l.replace(/\[deviation\]/i, '[deviation]'));
       const text = (m && m[2] || l).trim(), rule = (m && m[3] || '').trim(), by = (m && m[4] || who).trim();
       const job = (/\b(\d{4})\b/.exec(text + ' ' + by) || [])[1] || '', station = (/\b(S\d\d)\b/.exec(text) || [])[1] || '';
