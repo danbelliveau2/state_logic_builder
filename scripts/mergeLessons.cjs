@@ -82,7 +82,17 @@ if (fs.existsSync(INBOX)) for (const f of fs.readdirSync(INBOX).sort()) {
 
 // 2. new lines from every person's folder or file
 const walk = (d, out = []) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p, out); else if (/\.md$/i.test(e.name)) out.push(p); } return out; };
-const newStandard = [], newUntagged = [], newDeviation = [];
+const newStandard = [], newUntagged = [], newDeviation = [], describedExisting = [], nearDupes = [];
+const existingIds = new Set(grid.slice(1).map((r) => r[0]));
+// token overlap, to spot a new row that restates one already in the grid
+const tokens = (s) => new Set(norm(s).split(' ').filter((w) => w.length > 3));
+const overlap = (a, b) => {
+  const A = tokens(a), B = tokens(b);
+  if (!A.size || !B.size) return 0;
+  let hit = 0; for (const t of A) if (B.has(t)) hit++;
+  return hit / Math.min(A.size, B.size);
+};
+const existingTexts = grid.slice(1).map((r) => [r[0], r[col('Deviation')]]);
 for (const f of walk(LESSONS).sort()) {
   const who = path.relative(LESSONS, f).split(path.sep)[0].replace(/\.md$/i, '');
   for (const raw of fs.readFileSync(f, 'utf8').split('\n')) {
@@ -93,14 +103,33 @@ for (const f of walk(LESSONS).sort()) {
     // spurious grid row on 2026-09-28. Untagged lines still fall back on
     // "conflicts with", which is how they were written before tagging existed.
     const leadTag = /^- (?:\d{4}-\d\d-\d\d\s*)?\[(\w+)\]/i.exec(l);
-    const isDeviation = leadTag
+    let isDeviation = leadTag
       ? leadTag[1].toLowerCase() === 'deviation'
       : /conflicts with/i.test(l);
+    // A [deviation] line that NAMES a row already in the grid is describing that row, not
+    // asking for a new one. The tag is an instruction to open a row, so a deviation already
+    // logged with logDeviation.cjs must be written up as [standard] citing its ID. Twice now
+    // a line about an existing row has opened a duplicate (2026-09-28, 2026-09-29).
+    if (isDeviation) {
+      const named = (l.match(/\bD\d{3}\b/g) || []).filter((id) => existingIds.has(id));
+      if (named.length) {
+        isDeviation = false;
+        describedExisting.push(named.join(', ') + ': ' + l.slice(0, 120));
+        l = l.replace(/\[deviation\]/i, '[standard]');   // it is a standard line about an existing row
+      }
+    }
     if (isDeviation) {
       const m = /^- (\d{4}-\d\d-\d\d)?\s*(?:\[deviation\])?\s*(.*?)(?:\|\s*conflicts with:\s*(.*?))?\s*(?: — (.*))?$/i.exec(l.replace(/\[deviation\]/i, '[deviation]'));
       const text = (m && m[2] || l).trim(), rule = (m && m[3] || '').trim(), by = (m && m[4] || who).trim();
       const job = (/\b(\d{4})\b/.exec(text + ' ' + by) || [])[1] || '', station = (/\b(S\d\d)\b/.exec(text) || [])[1] || '';
-      if (addRow([null, (m && m[1]) || today, job, station, text, rule, '', by, '', 'Open', '', '', 'from ' + who + "'s lessons"])) newDeviation.push(grid[grid.length - 1]);
+      if (addRow([null, (m && m[1]) || today, job, station, text, rule, '', by, '', 'Open', '', '', 'from ' + who + "'s lessons"])) {
+        newDeviation.push(grid[grid.length - 1]);
+        // only a row that was actually opened can be a duplicate; an already-merged line
+        // matches its own row every time and must not be reported
+        for (const [id, prevText] of existingTexts) {
+          if (overlap(text, prevText) >= 0.6) nearDupes.push(id + ' <- ' + text.slice(0, 110));
+        }
+      }
       continue;
     }
     if (teamLines.has(l)) continue;
@@ -135,3 +164,11 @@ for (const l of newStandard) console.log('  ' + l.slice(0, 170));
 for (const l of newUntagged) console.log('  ' + l.slice(0, 170));
 for (const r of added) console.log(`  ${r[0]} ${r[col('Job')]} ${r[col('Station')]} ${ascii(r[col('Deviation')]).slice(0, 120)}`);
 for (const c of changes) console.log('  ' + c);
+if (describedExisting.length) {
+  console.log('\n  ' + describedExisting.length + ' [deviation] line(s) name a row already in the grid - merged as standard, no new row:');
+  for (const d of describedExisting) console.log('    ' + d);
+}
+if (nearDupes.length) {
+  console.log('\n  CHECK: ' + nearDupes.length + ' new row(s) restate an existing one - approve or delete the duplicate:');
+  for (const d of nearDupes) console.log('    ' + d);
+}
