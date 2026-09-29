@@ -463,6 +463,98 @@ function checkStructureMembers(xml, errors) {
   }
 }
 
+// ── From Jason's Studio import of 1131 v0.5 (2026-09-29) ──
+// Two import rejections, both from transplanting another engineer's rungs:
+//   "invalid expression" - his ServoOverall carried Parameters.Accel as a scalar,
+//   ours carries it as an array, and an expression cannot take a bare array
+//   member. Whole-array operands are legal only in the array instructions.
+//   "Safety mapped tag does not exist" - a Standard controller tag was deleted
+//   while <SafetyTagMap> still named it as the MainTask side of a pair.
+const ARRAY_OPERAND_OK = new Set(['COP', 'CPS', 'FLL', 'FFL', 'FFU', 'LFL', 'LFU', 'SIZE', 'SRT', 'AVE', 'STD', 'FAL', 'FSC', 'BSL', 'BSR', 'SQO', 'SQI', 'SQL', 'DDT', 'DTR', 'FBC', 'CLR', 'MSG', 'GSV', 'SSV', 'JSR', 'SBR', 'RET', 'FOR', 'BRK']);
+
+/** member -> Dimension for every UDT that declares array members */
+function memberDimensions(xml) {
+  const dims = {};
+  for (const m of xml.matchAll(/<DataType Name="([A-Za-z0-9_]+)"[^>]*>([\s\S]*?)<\/DataType>/g)) {
+    const d = {};
+    for (const v of m[2].matchAll(/<Member Name="([A-Za-z0-9_]+)" DataType="([A-Za-z0-9_:]+)"[^>]*?\bDimension="(\d+)"/g)) if (+v[3] > 0) d[v[1]] = { type: v[2], dim: +v[3] };
+    if (Object.keys(d).length) dims[m[1]] = d;
+  }
+  return dims;
+}
+
+function checkBareArrayMembers(xml, errors) {
+  const dims = memberDimensions(xml);
+  if (!Object.keys(dims).length) return;
+  const types = {};
+  for (const m of xml.matchAll(/<DataType Name="([A-Za-z0-9_]+)"[^>]*>([\s\S]*?)<\/DataType>/g)) {
+    const t = {};
+    for (const v of m[2].matchAll(/<Member Name="([A-Za-z0-9_]+)" DataType="([A-Za-z0-9_:]+)"/g)) t[v[1]] = v[2];
+    types[m[1]] = t;
+  }
+  const ctlEnd = xml.indexOf('<Programs>');
+  const ctlTags = {};
+  for (const m of xml.slice(0, ctlEnd).matchAll(/<Tag Name="([A-Za-z0-9_]+)"[^>]*DataType="([A-Za-z0-9_:]+)"/g)) ctlTags[m[1]] = m[2];
+  const progs = [...xml.matchAll(/<Program Name="([A-Za-z0-9_]+)"/g)];
+  for (let p = 0; p < progs.length; p++) {
+    const prog = progs[p][1];
+    const body = xml.slice(progs[p].index, p + 1 < progs.length ? progs[p + 1].index : xml.indexOf('</Programs>'));
+    const progTags = {};
+    for (const m of body.matchAll(/<Tag Name="([A-Za-z0-9_]+)"[^>]*DataType="([A-Za-z0-9_:]+)"/g)) progTags[m[1]] = m[2];
+    const seen = new Set();
+    for (const r of body.matchAll(/<Routine Name="([A-Za-z0-9_]+)"[\s\S]*?(?=<Routine Name=|<\/Routines>)/g)) {
+      for (const g of r[0].matchAll(/<Rung Number="(\d+)"[\s\S]*?<Text>\s*<!\[CDATA\[([\s\S]*?)\]\]>/g)) {
+        // every instruction call: NAME(args) with balanced parentheses
+        const text = g[2];
+        const callRe = /\b([A-Z][A-Z0-9_]*)\(/g;
+        let c;
+        while ((c = callRe.exec(text))) {
+          if (ARRAY_OPERAND_OK.has(c[1])) continue;
+          let depth = 1, i = callRe.lastIndex, start = i;
+          while (i < text.length && depth) { if (text[i] === '(') depth++; else if (text[i] === ')') depth--; i++; }
+          const args = text.slice(start, i - 1);
+          for (const m of args.matchAll(/(?:\\([A-Za-z0-9_]+)\.)?([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?)*)/g)) {
+            const raw = m[2].split('.');
+            if (raw.length < 2) continue;
+            const names = raw.map((s) => s.replace(/\[.*/, ''));
+            let type = m[1] ? null : (progTags[names[0]] || ctlTags[names[0]]);
+            if (!type) continue;
+            for (let k = 1; k < names.length; k++) {
+              const d = (dims[type] || {})[names[k]];
+              const isLast = k === names.length - 1;
+              if (d && isLast && !/\[/.test(raw[k])) {
+                const ref = m[2];
+                if (!seen.has(ref)) {
+                  seen.add(ref);
+                  errors.push(`Array member without a subscript "${prog}/${r[1]} rung ${g[1]} - ${ref}": ${names[k]} is ${d.type}[${d.dim}] and ${c[1]} needs an element - Studio rejects the rung as an invalid expression`);
+                }
+                break;
+              }
+              type = (types[type] || {})[names[k]];
+              if (!type) break;
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+function checkSafetyTagMap(xml, errors) {
+  const m = /<SafetyTagMap>([\s\S]*?)<\/SafetyTagMap>/.exec(xml);
+  if (!m) return;
+  const ctl = xml.slice(0, xml.indexOf('<Programs>'));
+  const cls = {};
+  for (const t of ctl.matchAll(/<Tag Name="([A-Za-z0-9_]+)"([^>]*)>/g)) cls[t[1]] = (/Class="([^"]+)"/.exec(t[2]) || [, 'Standard'])[1];
+  for (const pair of m[1].split(',').map((s) => s.trim()).filter(Boolean)) {
+    const [std, saf] = pair.split('=').map((s) => s.trim());
+    if (!(std in cls)) errors.push(`Safety tag map: Standard side "${std}" (mapped to ${saf}) is not a controller tag - Studio: "SafetyTask: Safety mapped tag does not exist or is invalid"`);
+    else if (cls[std] === 'Safety') errors.push(`Safety tag map: "${std}" is on the Standard side of the map but is a Safety-class tag`);
+    if (!(saf in cls)) errors.push(`Safety tag map: Safety side "${saf}" (mapped from ${std}) is not a controller tag`);
+    else if (cls[saf] !== 'Safety') errors.push(`Safety tag map: "${saf}" is on the Safety side of the map but is ${cls[saf]}-class`);
+  }
+}
+
 // ── From Jason's corrected export of 1158 v0.7.2 (2026-09-28) ──
 // Three of the thirteen things he fixed are mechanically checkable.
 //   A CPS length counts DESTINATION elements, so copying a module's input into
@@ -1467,6 +1559,8 @@ function validateL5X(xml, opts = {}) {
   checkImportLimits(xml, errors, warnings);
   checkDuplicateDestructiveBits(xml, errors);
   checkStructureMembers(xml, errors);
+  checkBareArrayMembers(xml, errors);
+  checkSafetyTagMap(xml, errors);
   checkProgramShape(xml, errors);
   checkAxisLoadAndMotor(xml, errors);
   checkCopyLengths(xml, errors);

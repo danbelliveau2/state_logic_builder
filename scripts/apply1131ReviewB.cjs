@@ -233,8 +233,10 @@ const noRef = (x, names, where) => { for (const n of names) if (new RegExp('(?<!
     'PartGripped': 'TileGripped', 'ZAxisRetractRC': 'ZAxisRetract', 'ZAxisInspectionRC': 'ZAxisGaugePlace', 'ZAxisapproachRangeCheck': 'ZAxisPlaceTransition',
     'I_InspectionPermissive': '\\S08_ThicknessGauge.p_InspectionPermissive', 'i_CartSafeforGantryZMotion': '\\S09_OutfeedCart.p_CartSafeForGantryZMotion',
     'i_analogSensor2': 'i_StackHeight2', 'i_analogSensor': 'i_StackHeight1', 'ONS.11': 'ONS.13', 'Status.State[25]': 'Status.State[22]' };
-  // tracking routine, whole
-  x = addRoutine(x, 'R06_ConveyorTracking', [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((n) => jr(P, 'R06_ConveyorTracking', n, map)));
+  // tracking routine, whole. His ServoOverall carries Parameters.Accel / .Decel as scalars; ours are
+  // arrays, and an expression cannot take a bare array - r11 failed the Studio import that way.
+  const indexAccel = (r) => r.replace(/(HMI_[XZ]Axis\.Parameters\.(?:Accel|Decel))(?![\[\w])/g, '$1[0]');
+  x = addRoutine(x, 'R06_ConveyorTracking', [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((n) => indexAccel(jr(P, 'R06_ConveyorTracking', n, map))));
   x = insertRungs(x, 'R00_Main', (t) => /JSR\(R05_ZAxisServo/.test(t), [newRung('', 'JSR(R06_ConveyorTracking,0);')], W);
   // my window tracking out
   x = dropRungs(x, 'R01_Inputs', (t) => /OTE\(BeltTravel\)|,BeltTravel\)|CPT\(TrackedTileX/.test(t), 2, W);

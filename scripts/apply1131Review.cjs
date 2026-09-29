@@ -102,6 +102,18 @@ for (const half of ['Loader', 'Unloader']) {
   write(f, x);
   f = path.join(CTRL, 'ControllerTags.xml'); x = read(f);
   x = mustDrop(x, 'g_MuteInfeedLightcurtains', 'ControllerTags'); write(f, x);
+  // the standard tag was the MainTask side of a safety tag map pair - the map entry must go with it,
+  // or Studio refuses the SafetyTask ("Safety mapped tag does not exist"). The gs_ twin stays: the
+  // safety programs are Justin's verbatim (D007) and no safety rung reads it.
+  // <SafetyInfo> precedes <DataTypes> in a Studio export, so the split keeps it in 00_header.xml
+  f = ['00_header.xml', 'SafetyInfo.xml'].map((n) => path.join(CTRL, n)).find((p) => fs.existsSync(p) && /<SafetyTagMap>/.test(read(p)));
+  if (!f) fail('no controller piece carries <SafetyTagMap>');
+  x = read(f);
+  const before = x;
+  x = x.replace(/,\s*g_MuteInfeedLightcurtains=gs_\w+/, '').replace(/g_MuteInfeedLightcurtains=gs_\w+\s*,\s*/, '');
+  if (x === before) fail('SafetyInfo: the g_MuteInfeedLightcurtains map entry was not found');
+  if (/g_MuteInfeedLightcurtains/.test(x)) fail('SafetyInfo: the map entry survives');
+  write(f, x);
   for (const p of fs.readdirSync(PROGS)) if (/g_MuteInfeedLightcurtains|p_EntryLightCurtainMute/.test(read(path.join(PROGS, p)))) fail(p + ' still references the mute tags');
   log.push('3  mute request rungs (Supervisor_Loader, S01) and both tags gone; safety programs untouched');
 }
