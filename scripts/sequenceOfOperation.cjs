@@ -246,6 +246,9 @@ P.push(`<table>
 <tr><td><b>127</b></td><td>Fault</td><td>An alarm is active. The state at the time of the fault is stored for the restart.</td></tr>
 </table>`);
 
+// optional extra sections: --front goes after the shared-states table, --back after the last station
+if (flag('front')) P.push(fs.readFileSync(flag('front'), 'utf8'));
+
 const order = Object.keys(META).filter((k) => PROGRAMS[k]).concat(Object.keys(PROGRAMS).filter((k) => !META[k]));
 for (const prog of order) {
   const m = META[prog] || {};
@@ -261,6 +264,7 @@ for (const prog of order) {
   P.push(stateTable(prog, false) || '<p class="sub">No sequence states.</p>');
   if (stationRows(prog, true).length) { P.push('<h3>Initialization</h3>'); P.push(stateTable(prog, true)); }
 }
+if (flag('back')) P.push(fs.readFileSync(flag('back'), 'utf8'));
 P.push('<p class="foot">Read out of ' + esc(path.basename(SRC)) + '. Describes the code as written.</p>');
 P.push('</body></html>');
 
