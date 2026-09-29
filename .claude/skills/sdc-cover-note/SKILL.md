@@ -12,4 +12,6 @@ Format is `X:\Electrical Dept\SDC Engineer\Playbook\PLAYBOOK.md` §6. Write it y
 - Machine block, then one block per station: Programs · Devices (name – part number – purpose, full words) · Sequence (numbered steps, exceptions as a trailing bullet) · Deviation (if any) · Logic n + reasons · Referenced · ▲ Ask inline with who answers.
 - Last line: if a device or step is wrong, fix the code, not this sheet.
 - Ratings change only when code changes.
-- Produce HTML → Word with `scripts/html2docx.ps1 -Html <file> -Docx <file>` (Word COM). Portrait; a station block never splits across a page. Report the page and word count.
+- Produce HTML → Word with `scripts/html2docx.ps1 -Html <file> -Docx <file>` (Word COM). Portrait; a station block never splits across a page.
+- The page count that script prints is **not reliable** — it came back 17 for an 18-page file (2026-09-29). Word's HTML import also drops the `@page` rule, so set the margins after opening. If you quote a page count, get it from a PDF export and count the pages; otherwise quote the word count only.
+- The sequence of operation (§6b) is a separate deliverable on every new job — `/sdc-sequence-of-operation`.

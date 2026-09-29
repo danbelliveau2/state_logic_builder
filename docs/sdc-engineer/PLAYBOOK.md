@@ -43,10 +43,18 @@ Once per machine: cycle time target and index window, counts and side letters, s
 3. **Build** — one builder agent per program family, each returning 0 findings from the shape checker; twins A→B by script; assemble; import simulation; whole-file verify script. Deliver one growing L5X under one name; stamp a copy in `_history`.
 4. **Review pass** (when the CE will not go rung by rung) — auditors by family, one skeptic per finding, fixers per program. Scope: standards and devices only.
 5. **Cover note** — format in §6. Written by you. No agents.
+5b. **Sequence of operation** — format in §6b. Every new job. Generated, not written.
 6. **Return** — CE fixes the code, one line why per change, returns the whole file. Diff against the stamp; every change becomes a rule (knowledge file if the CE's, playbook if the process's). Nobody edits the cover note.
 
 ## 6. Cover note (one document)
 Title · **Revision history** (version, date, what, why) · **What I was given** (nine inputs: have/partial/no, gap) · one line defining Logic · **Machine block** · **Station blocks**: Programs · Devices (name – part number – purpose) · Sequence (numbered) · Deviation (only if any: grid ID, status, who asked) · Logic 1–10 + reasons · Referenced · ▲ Ask inline · last line: fix the code, not this sheet. Portrait, a block never splits a page.
+
+## 6b. Sequence of operation (one document, every new job — Jason, 2026-09-29)
+One table per state machine. Columns: **State · What happens · Goes to · On**. Read out of the L5X — rung comments carry the wording, rung logic carries the conditions; nothing typed by hand except the station headers.
+Front matter once, not per station: how to read the columns, the states every station shares (0 1 2 3 99 100–123 124 127), the machine flow. Per station: Program · Does · Devices · Routines · Notes, then the automatic sequence table, then initialization.
+Generate: `node scripts/sequenceOfOperation.cjs <file.L5X> --out <out.html> [--meta headers.json] [--programs "<regex>"]` → `scripts\html2docx.ps1`. Ships next to the cover note in `Deliveries\<job>\`; the `--meta` JSON goes in `build-inputs\out\` so it regenerates.
+It reads the code, so it also finds things: state 67 of 1131 S07 had no success exit, found this way.
+**The page count `html2docx.ps1` prints is not reliable** (2026-09-29: reported 17 for an 18-page file). If the number matters, export a PDF and count its pages.
 
 ## 7. Chassis-specific rulings (Jason, Sep 2026)
 - 2-UP template is the law. A = left, B = right. Escapements: no tracking, no CycleStation.
