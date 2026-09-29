@@ -222,7 +222,15 @@ td.k { background: #E8E8E8; font-weight: bold; width: 62pt; }
 P.push('<h1>' + TITLE + '</h1>');
 P.push('<p class="sub">' + SUBTITLE + '</p>');
 
-P.push('<h2>How to read the tables</h2>');
+// --head: the cover-note sections that always come first (revision history, what I was given,
+// machine). With it, the sequence tables become one section of the one document (Jason, 2026-09-29).
+if (flag('head')) {
+  P.push(fs.readFileSync(flag('head'), 'utf8'));
+  P.push('<h2 style="page-break-before:always">' + (flag('section-title') || 'Sequence of operation') + '</h2>');
+}
+const H = flag('head') ? 'h3' : 'h2';   // sub-headings sit one level down inside the combined document
+
+P.push('<' + H + '>How to read the tables</' + H + '>');
 P.push(`<table>
 <tr><th style="width:62pt">Column</th><th>Means</th></tr>
 <tr><td><b>State</b></td><td>The value in <b>Control.StateReg</b>. SDC sequence states run 4, 7, 10, &hellip; in steps of three.</td></tr>
@@ -233,7 +241,7 @@ P.push('<p class="sub">Conditions leave out the terms every rung carries &ndash;
   + '<b>Initialized</b>, <b>SafetyOK</b>. A move written as &ldquo;X at Pick (or inside the wide window when blending)&rdquo; is the standard '
   + 'blended-move test: move complete and in position, or still moving but inside the wide deadband.</p>');
 
-P.push('<h2>States every station shares</h2>');
+P.push('<' + H + '>States every station shares</' + H + '>');
 P.push(`<table>
 <tr><th style="width:34pt">State</th><th style="width:96pt">Name</th><th>What it means</th></tr>
 <tr><td><b>0</b></td><td>Safety stop</td><td>Safety circuit open, or first scan. The state the station was in is stored for the restart.</td></tr>
@@ -265,7 +273,7 @@ for (const prog of order) {
   if (stationRows(prog, true).length) { P.push('<h3>Initialization</h3>'); P.push(stateTable(prog, true)); }
 }
 if (flag('back')) P.push(fs.readFileSync(flag('back'), 'utf8'));
-P.push('<p class="foot">Read out of ' + esc(path.basename(SRC)) + '. Describes the code as written.</p>');
+P.push('<p class="foot">' + (flag('foot') || 'Read out of ' + esc(path.basename(SRC)) + '. Describes the code as written.') + '</p>');
 P.push('</body></html>');
 
 fs.mkdirSync(path.dirname(path.resolve(OUT)), { recursive: true });
