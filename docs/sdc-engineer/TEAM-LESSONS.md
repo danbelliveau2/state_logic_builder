@@ -176,3 +176,6 @@ One line per lesson, dated, in the engineer's words, with who said it. Merged da
 - 2026-09-29 [standard] There is an invalid expressions error on R06_ConveyorTracking rung 11. Please fix. — Jason, 1131 v0.5 Studio import
 - 2026-09-29 [standard] Error: SafetyTask: Safety mapped tag "g_MuteInfeedLightcurtains" does not exist or is invalid. — Jason, 1131 v0.5 Studio import
 - 2026-09-29 [standard] Errors are confirmed resolved - 1131 v0.5.1 imports clean in Studio after the R06 rung 11 expression and the SafetyTagMap fixes. — Jason
+
+## Merged 2026-09-29
+- 2026-09-29 [standard] Approve D011 and D012 - air pressure in the Supervisor StartOK string, and Justin's PNP XZ permissive networks kept as he developed them. — Jason
