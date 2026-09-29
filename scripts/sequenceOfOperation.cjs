@@ -196,6 +196,25 @@ function stateTable(prog, wantInit) {
   return h + '</table>\n';
 }
 
+// ── the Devices cell: a table inside the cell, one device per row (Jason, 2026-09-29) ──
+// Accepts an array of [device, part, purpose] rows, or the cover-note string form
+// "name – part – purpose · name – part – purpose". The dash must be spaced to split, so an
+// en dash inside a purpose ("IN [0].0–.3") is left alone.
+function devicesCell(devices) {
+  let rows;
+  if (Array.isArray(devices)) rows = devices.map((r) => (Array.isArray(r) ? r : String(r).split(/\s+(?:–|&ndash;|-)\s+/)));
+  else rows = String(devices).split(/\s*(?:·|&middot;)\s*/).filter(Boolean).map((it) => it.split(/\s+(?:–|&ndash;)\s+/));
+  if (rows.length < 2 && rows.every((r) => r.length < 2)) return String(devices);   // nothing to tabulate
+  let h = '<table class="dev">\n<tr><th style="width:150pt">Device</th><th style="width:130pt">Part</th><th>Purpose</th></tr>\n';
+  for (const r of rows) {
+    const [dev, part, ...rest] = r;
+    if (r.length === 1) h += '<tr><td colspan="3">' + dev + '</td></tr>\n';
+    else if (r.length === 2) h += '<tr><td>' + dev + '</td><td></td><td>' + part + '</td></tr>\n';
+    else h += '<tr><td>' + dev + '</td><td>' + part + '</td><td>' + rest.join(' – ') + '</td></tr>\n';
+  }
+  return h + '</table>';
+}
+
 // ── document ──
 const controller = (/<Controller\b[^>]*\bName="([^"]+)"/.exec(xml) || [])[1] || path.basename(SRC);
 const TITLE = flag('title', controller.replace(/_/g, ' ') + ' \u2013 Sequence of Operation');
@@ -217,6 +236,10 @@ th { background: #E8E8E8; font-weight: bold; }
 td.k { background: #E8E8E8; font-weight: bold; width: 62pt; }
 .sub { font-size: 9pt; margin: 0 0 8pt 0; color: #333; }
 .acts { color: #444; font-size: 8pt; margin-top: 1pt; }
+td.nest { padding: 0; }
+table.dev { margin: 0; width: 100%; }
+table.dev th { background: #F2F2F2; font-size: 8pt; border: 0.5pt solid #BBB; }
+table.dev td { font-size: 8pt; border: 0.5pt solid #BBB; }
 .foot { margin-top: 10pt; font-style: italic; font-size: 8.5pt; }
 </style></head><body>`);
 P.push('<h1>' + TITLE + '</h1>');
@@ -263,7 +286,7 @@ for (const prog of order) {
   P.push('<h2 style="page-break-before:always">' + (m.title || prog) + '</h2>');
   let hdr = '<table>\n<tr><td class="k">Program</td><td>' + prog + '</td></tr>\n';
   if (m.does) hdr += '<tr><td class="k">Does</td><td>' + m.does + '</td></tr>\n';
-  if (m.devices) hdr += '<tr><td class="k">Devices</td><td>' + m.devices + '</td></tr>\n';
+  if (m.devices) hdr += '<tr><td class="k">Devices</td><td class="nest">' + devicesCell(m.devices) + '</td></tr>\n';
   hdr += '<tr><td class="k">Routines</td><td>' + Object.entries(PROGRAMS[prog]).map(([n, v]) => n + ' (' + v.length + ')').join(' &middot; ') + '</td></tr>\n';
   if (m.notes) hdr += '<tr><td class="k">Notes</td><td>' + m.notes + '</td></tr>\n';
   for (const [k, v] of Object.entries(m.extra || {})) hdr += '<tr><td class="k">' + k + '</td><td>' + v + '</td></tr>\n';
