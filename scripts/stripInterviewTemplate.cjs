@@ -7,8 +7,9 @@
  *   keep     MapInputs, Supervisor, Tracking, StateMachine, S00_IndexerSP, Production, Alarms, HMI,
  *            MapOutputs, SafetyProgram
  *   remove   every other program, its ParameterConnections, its schedule entry, the AOIs / UDTs
- *            only it used, the motion group and every axis, every EtherNet/IP module and its
- *            buffer tags
+ *            only it used, the station axes a03-a05, every EtherNet/IP module and its buffer tags
+ *            except the Indexer's two Kinetix drives (MotionGroup, a01, a02, sd01, sd02 stay -
+ *            Jason 2026-10-01)
  *   bare     the kept programs' polls of the removed stations are stripped to what remains
  *            (S00_IndexerSP) or to the template's own AlwaysOff placeholder - the candidate wires
  *            their station in
@@ -34,7 +35,10 @@ const fail = (m) => { console.error('  !! ' + m); process.exit(1); };
 const log = [];
 
 const KEEP = new Set(['MapInputs', 'Supervisor', 'Tracking', 'StateMachine', 'S00_IndexerSP', 'Production', 'Alarms', 'HMI', 'MapOutputs', 'SafetyProgram']);
-const KEEP_MODULES = new Set(['Local', 'SIN1', 'SOUT1']);                 // the controller and its local safety cards
+// the controller, its local safety cards, and the Indexer's two drives (Jason 2026-10-01: MotionGroup,
+// a01, a02, sd01, sd02 stay - S00_IndexerSP cannot lose its axes)
+const KEEP_MODULES = new Set(['Local', 'SIN1', 'SOUT1', 'sd01_Indexer', 'sd02_ShotPin']);
+const KEEP_CTL_TAGS = new Set(['MotionGroup', 'a01_Indexer', 'a02_ShotPin']);
 if (KEEP_SAFETY_RACK) for (const n of ['io01_MainMachine', 'io01_SIN2', 'io1_SOUT2']) KEEP_MODULES.add(n);
 // AOIs / UDTs the two target station types need, kept even though no kept program uses them
 const KEEP_TYPES_FOR_CANDIDATE = new Set(['AOI_Debounce', 'StationPerformance']);
@@ -128,6 +132,7 @@ const removedCtlTags = [];
 {
   const head = x.slice(0, ctlEnd()), tail = x.slice(ctlEnd());
   const newHead = head.replace(ctlTagRe, (m, name, attrs) => {
+    if (KEEP_CTL_TAGS.has(name)) return m;
     const dt = (/DataType="([^"]+)"/.exec(attrs) || [])[1] || '';
     const byModule = removedModNames.some((mn) => name.startsWith(mn));
     const byAxis = /^(AXIS_CIP_DRIVE|AXIS_VIRTUAL|MOTION_GROUP)$/.test(dt);
@@ -141,8 +146,9 @@ const removedCtlTags = [];
   x = newHead + tail;
 }
 log.push('controller tags removed (' + removedCtlTags.length + '): ' + removedCtlTags.join(', '));
-// ParameterConnections that name a removed module or axis
-x = x.replace(/<ParameterConnection[^>]*>\s*/g, (m) => (removedModNames.some((n) => m.includes(n + ':') || m.includes(n + '_')) || /\ba0\d_/.test(m) ? '' : m));
+// ParameterConnections that name a removed module or a removed axis (the Indexer's a01 / a02 stay)
+const removedAxes = removedCtlTags.filter((t) => /:AXIS_/.test(t)).map((t) => t.split(':')[0]);
+x = x.replace(/<ParameterConnection[^>]*>\s*/g, (m) => (removedModNames.some((n) => m.includes(n + ':') || m.includes(n + '_')) || removedAxes.some((a) => m.includes('"' + a + '"')) ? '' : m));
 
 // ═══ 3. bare the kept programs ══════════════════════════════════════════════
 const remRe = new RegExp('\\\\(' + REMOVED_PROGS.join('|') + ')\\.');
@@ -153,9 +159,15 @@ for (const rn of ['R01_Inputs']) editRoutine('Supervisor', rn, (rungs) => rungs.
   if (/^OTE\(/.test(nt) || /^\s*OTE/.test(nt)) nt = AOFF + nt;          // nothing left in series
   return setRungText(r, nt);
 }));
-// Supervisor EIP monitor: no EtherNet/IP nodes remain
-editRoutine('Supervisor', 'R15_EIPMonitor', (rungs) => rungs.map((r) => (/GE\(EIPStatusCount,/.test(rungText(r)) ? setRungComment(setRungText(r, 'GE(EIPStatusCount,1)MOVE(0,EIPStatusCount);'), 'Wrap the node counter after the last EIP node - none in this file; set to your node count') : r)));
-editRoutine('Supervisor', 'R20_Alarms', (rungs) => rungs.filter((r) => !/AOI_EIPStatus\(/.test(rungText(r))));
+// Supervisor EIP monitor: only the kept modules' loss-of-EIP alarms stay; the wrap follows the node count
+const modRe = new RegExp('(?<![A-Za-z0-9_])(' + removedModNames.join('|') + ')(?![A-Za-z0-9_])');
+let eipNodes = 0;
+editRoutine('Supervisor', 'R20_Alarms', (rungs) => rungs.filter((r) => !(/AOI_EIPStatus\(/.test(rungText(r)) && modRe.test(rungText(r)))).map((r) => {
+  if (!/AOI_EIPStatus\(/.test(rungText(r))) return r;
+  return setRungText(r, rungText(r).replace(/EQ\(EIPStatusCount,\d+\)/, 'EQ(EIPStatusCount,' + (eipNodes++) + ')'));
+}));
+editRoutine('Supervisor', 'R15_EIPMonitor', (rungs) => rungs.map((r) => (/GE\(EIPStatusCount,/.test(rungText(r)) ? setRungText(r, 'GE(EIPStatusCount,' + Math.max(eipNodes, 1) + ')MOVE(0,EIPStatusCount);') : r)));
+log.push('Supervisor EIP monitor: ' + eipNodes + ' node(s) kept, wrap at ' + Math.max(eipNodes, 1));
 { let b = programBody('Supervisor'); for (const m of removedModNames) b = dropTagIn(b, m + 'EIP'); replaceProgram('Supervisor', b); }
 // Indexer polls and per-station complete times
 editRoutine('S00_IndexerSP', 'R01_Inputs', (rungs) => rungs.map((r) => {
@@ -165,9 +177,6 @@ editRoutine('S00_IndexerSP', 'R01_Inputs', (rungs) => rungs.map((r) => {
   return setRungComment(setRungText(r, nt), rungComment(r) + ' - add your station');
 }));
 editRoutine('S00_IndexerSP', 'R03_StateLogic', (rungs) => rungs.filter((r) => !(remRe.test(rungText(r)) && /StationCompleteTimes\[/.test(rungText(r)))));
-// no motion group in the file: the axis-ready rungs lose the GroupSynced term (the Indexer's axes
-// are InOut parameters with nothing to connect to - reported below)
-for (const rn of ['R04_IndexerServo', 'R05_ShotPinServo']) editRoutine('S00_IndexerSP', rn, (rungs) => rungs.map((r) => (/MotionGroup\./.test(rungText(r)) ? setRungText(r, rungText(r).replace(/XI[CO]\(MotionGroup\.[A-Za-z0-9_]+\)/g, '').trim()) : r)));
 editRoutine('S00_IndexerSP', 'R20_Alarms', (rungs) => rungs.map((r) => (remRe.test(rungText(r)) ? setRungText(r, stripRemovedTerms(rungText(r))) : r)));
 // Alarms roll-up
 editRoutine('Alarms', 'R01_Logic', (rungs) => rungs.map((r) => (remRe.test(rungText(r)) ? setRungText(r, stripRemovedTerms(rungText(r))) : r)));
@@ -245,7 +254,7 @@ for (const [prog, c] of [['MapInputs', 'Map EtherNet/IP inputs here with a CPS p
     // With no writer, GuardDoorZ2EDM would hold the E-stop reset off forever - Zone 2 goes with
     // its hardware: Zone 1 + E-stop + reset remain on the local 5069 safety cards.
     const z2out = /OTE\(GuardDoorZ2Output\)|TOF\(GuardDoorZ2OffDelay/;
-    for (const rn of ['R02_Logic']) editRoutine('SafetyProgram', rn, (rungs) => rungs.filter((r) => !z2out.test(rungText(r))).map((r) => {
+    for (const rn of ['R02_Logic', 'R03_Outputs']) editRoutine('SafetyProgram', rn, (rungs) => rungs.filter((r) => !z2out.test(rungText(r))).map((r) => {
       const t = rungText(r); if (!/GuardDoorZ2/.test(t)) return r;
       return setRungText(r, t.replace(/XI[CO]\(GuardDoorZ2(?:EDM|Output|Input)\)/g, '').replace(/\s+/g, ' ').trim());
     }));
