@@ -190,3 +190,6 @@ One line per lesson, dated, in the engineer's words, with who said it. Merged da
 - 2026-10-01 [standard] CE interview test, assignment B: make clear the candidate is required to define the servo axes in the motion group and create the servo drives in the hardware configuration. — Jason
 - 2026-10-01 [standard] CE interview test instructions: move "What we look at" to the next page. — Jason
 - 2026-10-01 [standard] CE interview test: instructions document looks good (6 pages, final). — Jason
+
+## Merged 2026-10-01
+- 2026-10-01 [standard] Code reviews of an engineer's L5X are filed under Deliveries\<job>\ (1119 Karl Storz review filed there). — Jason
