@@ -193,3 +193,6 @@ One line per lesson, dated, in the engineer's words, with who said it. Merged da
 
 ## Merged 2026-10-01
 - 2026-10-01 [standard] Code reviews of an engineer's L5X are filed under Deliveries\<job>\ (1119 Karl Storz review filed there). — Jason
+
+## Merged 2026-10-01
+- 2026-10-01 [standard] I like the overall format of the 1119 code review document (machine, defects with verbatim rungs, standard conformance, observations, validator items to discount). Also produce a defects-only version without sections 2, 3 and 4. — Jason
