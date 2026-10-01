@@ -179,3 +179,14 @@ One line per lesson, dated, in the engineer's words, with who said it. Merged da
 
 ## Merged 2026-09-29
 - 2026-09-29 [standard] Approve D011 and D012 - air pressure in the Supervisor StartOK string, and Justin's PNP XZ permissive networks kept as he developed them. — Jason
+
+## Merged 2026-10-01
+- 2026-10-01 [standard] CE interview test: create "CE Interview Test" in Deliveries. Leave the SafetyProgram as is. Strip bare - the candidate wires their station into the Supervisor, Indexer, Alarms, Tracking and Production polls. Candidate does all I/O and IP assignment. Work from the stripped file only; scoring is internal. — Jason
+- 2026-10-01 [standard] CE interview test file: remove io1_MainMachine and all Safety logic referencing those modules; keep 5069-IB8S SIN1 and 5069-OBV8S SOUT1 and all logic referencing them. Keep MotionGroup, a01, a02, sd01 and sd02 defined - they cannot be removed. — Jason
+- 2026-10-01 [standard] CE interview test: the L5X looks good and I really like the document. Instructions: new page for The Station and Hardware; a signal table for assignment B with the gripper solenoids; every signal listed on its own row with the I/O point to assign, starting at 0; the debounce AOI is required for i_PartPresent; for assignment A a device position uses its sensors AND the solenoid coils - X extended = i_XAxisExtended AND NOT i_XAxisRetracted AND q_ExtendXAxis AND NOT q_RetractXAxis. — Jason
+- 2026-10-01 [standard] CE interview test instructions: assignment B starts on a new page; a table near the beginning defines the SDC tag naming convention - i_ input parameter, q_, p_, etc. — Jason
+- 2026-10-01 [standard] CE interview test instructions, assignment B: tell the candidate to use the servo routines in the Indexer program as reference. — Jason
+- 2026-10-01 [standard] CE interview test, assignment B: servo moves must be blended where applicable - X axis starts extending / retracting before Z axis is fully retracted; Z axis starts moving to pick / place before X axis is fully extended / retracted. — Jason
+- 2026-10-01 [standard] CE interview test, assignment B: make clear the candidate is required to define the servo axes in the motion group and create the servo drives in the hardware configuration. — Jason
+- 2026-10-01 [standard] CE interview test instructions: move "What we look at" to the next page. — Jason
+- 2026-10-01 [standard] CE interview test: instructions document looks good (6 pages, final). — Jason
