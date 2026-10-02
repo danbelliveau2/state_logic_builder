@@ -329,9 +329,9 @@ function expandRefs(t) {
   replaceProgram('Tracking', b);
   editRoutine('Tracking', 'R01_Inputs', (rungs) => rungs.map((r) => {
     const t = rungText(r);
-    if (/OTE\(IncrementFailure\)/.test(t)) return setRungComment(setRungText(r, '[XIC(\\S11_RejectUnloadA.q_PartUnloaded) OTE(IncrementFailure) ,XIC(\\S11_RejectUnloadB.q_PartUnloaded) OTE(IncrementFailureB) ]'), 'Reject Unload Triggers - A And B');
+    if (/OTE\(IncrementFailure\)/.test(t)) return setRungComment(setRungText(r, '[XIC(\\S11_RejectUnloadA.q_PartUnloaded) OTE(IncrementFailure) ,XIC(\\S11_RejectUnloadB.q_PartUnloaded) OTE(IncrementFailureB) ];'), 'Reject Unload Triggers - A And B');
     if (/MOVE\(p_Data\.Station\[18\]/.test(t)) return setRungComment(setRungText(r, 'MOVE(p_Data.Station[11].NestNumA,FailureNestNum)MOVE(p_Data.Station[11].NestNumB,FailureNestNumB);'), 'Nest Numbers At The Reject Unload Station');
-    if (/OTE\(IncrementSuccess\)/.test(t)) return setRungComment(setRungText(r, '[XIC(\\S12_GoodUnloadA.q_PartUnloaded) OTE(IncrementSuccess) ,XIC(\\S12_GoodUnloadB.q_PartUnloaded) OTE(IncrementSuccessB) ]'), 'Good Unload Triggers - A And B');
+    if (/OTE\(IncrementSuccess\)/.test(t)) return setRungComment(setRungText(r, '[XIC(\\S12_GoodUnloadA.q_PartUnloaded) OTE(IncrementSuccess) ,XIC(\\S12_GoodUnloadB.q_PartUnloaded) OTE(IncrementSuccessB) ];'), 'Good Unload Triggers - A And B');
     if (/MOVE\(p_Data\.Station\[19\]/.test(t)) return setRungComment(setRungText(r, 'MOVE(p_Data.Station[12].NestNumA,SuccessNestNum)MOVE(p_Data.Station[12].NestNumB,SuccessNestNumB);'), 'Nest Numbers At The Good Unload Station');
     return r;
   }));

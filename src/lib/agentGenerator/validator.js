@@ -555,6 +555,22 @@ function checkSafetyTagMap(xml, errors) {
   }
 }
 
+// Every RLL rung's neutral text must end with ";" - Studio rejects the rung ("Failed to set the
+// 'Text' property - Syntax error found while scanning import file") and then every rung after it
+// in the routine ("Rung number is 0 or greater than number of rungs in routine").
+// From Jason's import of the 2UP indexer template, 2026-10-02 (Tracking R01 rungs 1 and 3).
+function checkRungTerminator(xml, errors) {
+  for (const p of xml.matchAll(/<Program\b[^>]*?\sName="([^"]+)"[^>]*>([\s\S]*?)<\/Program>/g)) {
+    for (const r of p[2].matchAll(/<Routine\b[^>]*\bName="([^"]+)"[^>]*\bType="RLL"[^>]*>([\s\S]*?)<\/Routine>/g)) {
+      for (const g of r[2].matchAll(/<Rung\b[^>]*\bNumber="(\d+)"[^>]*>([\s\S]*?)<\/Rung>/g)) {
+        const t = ((/<Text>\s*<!\[CDATA\[([\s\S]*?)\]\]>/.exec(g[2]) || [])[1] || '').trim();
+        if (!t) errors.push(`${p[1]} ${r[1]} rung ${g[1]}: empty rung text - Studio refuses the rung and every rung after it`);
+        else if (!t.endsWith(';')) errors.push(`${p[1]} ${r[1]} rung ${g[1]}: rung text does not end with ";" - Studio: "Failed to set the 'Text' property (Syntax error found while scanning import file)", then every later rung in the routine fails`);
+      }
+    }
+  }
+}
+
 // ── From Jason's corrected export of 1158 v0.7.2 (2026-09-28) ──
 // Three of the thirteen things he fixed are mechanically checkable.
 //   A CPS length counts DESTINATION elements, so copying a module's input into
@@ -1561,6 +1577,7 @@ function validateL5X(xml, opts = {}) {
   checkStructureMembers(xml, errors);
   checkBareArrayMembers(xml, errors);
   checkSafetyTagMap(xml, errors);
+  checkRungTerminator(xml, errors);
   checkProgramShape(xml, errors);
   checkAxisLoadAndMotor(xml, errors);
   checkCopyLengths(xml, errors);
