@@ -345,7 +345,16 @@ function expandRefs(t) {
     }
     return out;
   });
-  log.push('Tracking: p_Data regenerated (Nest[' + (NEST_QTY + 1) + '], Station[' + (STATION_QTY + 1) + ']); four unload triggers; R05 walks both nests of every station; R06 resets per side');
+  // the A side is named A, never bare (Jason 2026-10-02); the nest-performance instances say what they count
+  {
+    let b2 = programBody('Tracking');
+    const renames = [['IncrementFailure', 'IncrementFailureA'], ['IncrementSuccess', 'IncrementSuccessA'], ['FailureNestNum', 'FailureNestNumA'], ['SuccessNestNum', 'SuccessNestNumA']];
+    for (const [from, to] of renames) b2 = b2.replace(new RegExp('(?<![A-Za-z0-9_])' + from + '(?![A-Za-z0-9_])', 'g'), to);
+    for (const [from, to] of [['NestPerformanceA', 'NestPerformanceRejectA'], ['NestPerformanceC', 'NestPerformanceRejectB'], ['NestPerformanceB', 'NestPerformanceGoodA'], ['NestPerformanceD', 'NestPerformanceGoodB']]) b2 = b2.replace(new RegExp('(?<![A-Za-z0-9_])' + from + '(?![A-Za-z0-9_])', 'g'), '\u0000' + to);
+    b2 = b2.replace(/\u0000/g, '');
+    replaceProgram('Tracking', b2);
+  }
+  log.push('Tracking: p_Data regenerated (Nest[' + (NEST_QTY + 1) + '], Station[' + (STATION_QTY + 1) + ']); four unload triggers (IncrementFailureA/B, IncrementSuccessA/B, FailureNestNumA/B, SuccessNestNumA/B, NestPerformanceRejectA/B, NestPerformanceGoodA/B); R05 walks both nests of every station; R06 resets per side');
 }
 
 // ═══ 7. Supervisor, Alarms, Production, HMI, Map programs ═══════════════════
