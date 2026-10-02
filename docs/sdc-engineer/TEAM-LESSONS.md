@@ -196,3 +196,11 @@ One line per lesson, dated, in the engineer's words, with who said it. Merged da
 
 ## Merged 2026-10-01
 - 2026-10-01 [standard] I like the overall format of the 1119 code review document (machine, defects with verbatim rungs, standard conformance, observations, validator items to discount). Also produce a defects-only version without sections 2, 3 and 4. — Jason
+
+## Merged 2026-10-02
+- 2026-10-02 [standard] 2UP linear indexer: Model 2 - station numbers mean the machine station (S01 = Station[1]); each side is its own program (A left, B right) on the same StaNum; the right nest is the left nest + 1. Lockout, single step, bypass etc. must be operable per side independently or A and B together. — Jason
+- 2026-10-02 [standard] 2UP linear indexer: "together" is synchronous, not lockstep - one press advances A and B one state each in their own sequence. Tracking_Station carries NestNumA and NestNumB (not NestNum + NestNumB). — Jason
+- 2026-10-02 [standard] 2UP linear indexer: 64 nests, 12 stations, two nests wide per station on even boundaries, two empty-nest sensors, a starved side pauses the indexer, two nests leave per index. Parameterize the indexer with NestsPerIndex. Build a new 2UP version of SoftwareStandardizationNew.L5X in Deliveries; no current template is touched; 2UP versions of S01_PartLoad, S18_RejectUnload, S19_GoodUnload; the other station programs removed. — Jason
+- 2026-10-02 [standard] 2UP linear indexer build approved as planned: hardware of removed programs goes (indexer drive, 1734 rack, valve bank, safety stay); HMI screens out of scope, only the A/B bits provided; StateMachine skeleton carries the current single-step block written against the A bits. — Jason
+- 2026-10-02 [standard] 2UP template Studio import: Tracking R01_Inputs rung 1 "Failed to set the Text property (Syntax error found while scanning import file)" and the following rungs "Rung number is 0 or greater than number of rungs in routine" - the rung text had no terminating semicolon. — Jason
+- 2026-10-02 [standard] 2UP template import was clean. In Tracking, IncrementFailure should be IncrementFailureA; other similar tags must follow the same naming (A and B, never a bare name for the A side). — Jason
