@@ -1,6 +1,6 @@
 ﻿<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<RSLogix5000Content SchemaRevision="1.0" SoftwareRevision="37.00" TargetName="SoftwareStandardization" TargetType="Controller" ContainsContext="false" ExportDate="Wed Sep 23 09:10:10 2026" ExportOptions="NoRawData L5KData DecoratedData ForceProtectedEncoding AllProjDocTrans">
-<Controller Use="Target" Name="SoftwareStandardization" ProcessorType="5069-L320ERMS2" MajorRev="37" MinorRev="11" ProjectCreationDate="Tue Apr 15 14:41:39 2025" LastModifiedDate="Wed Sep 23 08:39:51 2026" SFCExecutionControl="CurrentActive" SFCRestartPosition="MostRecent" SFCLastScan="DontScan" ProjectSN="16#0000_0000"
+<RSLogix5000Content SchemaRevision="1.0" SoftwareRevision="37.00" TargetName="SoftwareStandardization" TargetType="Controller" ContainsContext="false" ExportDate="Mon Oct 05 14:29:24 2026" ExportOptions="NoRawData L5KData DecoratedData ForceProtectedEncoding AllProjDocTrans">
+<Controller Use="Target" Name="SoftwareStandardization" ProcessorType="5069-L320ERMS2" MajorRev="37" MinorRev="11" ProjectCreationDate="Tue Apr 15 14:41:39 2025" LastModifiedDate="Mon Oct 05 14:28:06 2026" SFCExecutionControl="CurrentActive" SFCRestartPosition="MostRecent" SFCLastScan="DontScan" ProjectSN="16#0000_0000"
  MatchProjectToController="false" CanUseRPIFromProducer="false" InhibitAutomaticFirmwareUpdate="0" PassThroughConfiguration="EnabledWithAppend" DownloadProjectDocumentationAndExtendedProperties="true" DownloadProjectCustomProperties="true" ReportMinorOverflow="false" EtherNetIPMode="A1/A2: Dual-IP" AutoDiagsEnabled="true" WebServerEnabled="false" DataExchangeId="{A3547B54-759B-44E9-A490-894ED1CC44F8}"
 >
 <RedundancyInfo Enabled="false" KeepTestEditsOnSwitchOver="false"/>
@@ -28780,7 +28780,7 @@ Home Direction = 0 Is Positive, 1 Is Negative]]>
 <![CDATA[Manual Mode]]>
 </Comment>
 <Text>
-<![CDATA[XIC(SafetyOK)XIC(Status.State[1])[[MOVE(HMI_IndexerAxis.Parameters.ManualSpeed,IndexerAxisMotionParameters.Speed) ,MOVE(HMI_IndexerAxis.Parameters.Accel[0],IndexerAxisMotionParameters.Accel) ,MOVE(HMI_IndexerAxis.Parameters.Decel[0],IndexerAxisMotionParameters.Decel) ] ,XIC(IndexerAxisPermissive) XIC(HMI_IndexerAxis.Control.ManMoves.0) ONS(ONS.5) [[XIO(p_OnStation) ,XIC(p_OnStation) LE(DialPosRmndr,OnStationTolNests) ] SUB(1.0,DialPosRmndr,IndexerAxisMotionParameters.Position) ,XIC(p_OnStation) GE(DialPosRmndr,OnStaTol1Minus) CPT(IndexerAxisMotionParameters.Position,1.0 + (1.0-DialPosRmndr)) ] OTE(IndexerAxisManMoveTrig) ];]]>
+<![CDATA[XIC(SafetyOK)XIC(Status.State[1])[[MOVE(1,IndexerAxisMotionParameters.MoveType) ,MOVE(HMI_IndexerAxis.Parameters.ManualSpeed,IndexerAxisMotionParameters.Speed) ,MOVE(HMI_IndexerAxis.Parameters.Accel[0],IndexerAxisMotionParameters.Accel) ,MOVE(HMI_IndexerAxis.Parameters.Decel[0],IndexerAxisMotionParameters.Decel) ] ,XIC(IndexerAxisPermissive) XIC(HMI_IndexerAxis.Control.ManMoves.0) ONS(ONS.5) [[XIO(p_OnStation) ,XIC(p_OnStation) LE(DialPosRmndr,OnStationTolNests) ] SUB(1.0,DialPosRmndr,IndexerAxisMotionParameters.Position) ,XIC(p_OnStation) GE(DialPosRmndr,OnStaTol1Minus) CPT(IndexerAxisMotionParameters.Position,1.0 + (1.0-DialPosRmndr)) ] OTE(IndexerAxisManMoveTrig) ];]]>
 </Text>
 </Rung>
 <Rung Number="14" Type="N">
@@ -32041,7 +32041,7 @@ Home Direction = 0 Is Positive, 1 Is Negative]]>
 <![CDATA[Manual Mode]]>
 </Comment>
 <Text>
-<![CDATA[XIC(SafetyOK)XIC(Status.State[1])[[MOVE(HMI_IndexerAxis.Parameters.ManualSpeed,IndexerAxisMotionParameters.Speed) ,MOVE(HMI_IndexerAxis.Parameters.Accel[0],IndexerAxisMotionParameters.Accel) ,MOVE(HMI_IndexerAxis.Parameters.Decel[0],IndexerAxisMotionParameters.Decel) ] ,XIC(IndexerAxisPermissive) XIC(HMI_IndexerAxis.Control.ManMoves.0) ONS(ONS.5) [[XIO(p_OnStation) ,XIC(p_OnStation) LE(DialPosRmndr,OnStationTolNests) ] SUB(1.0,DialPosRmndr,IndexerAxisMotionParameters.Position) ,XIC(p_OnStation) GE(DialPosRmndr,OnStaTol1Minus) CPT(IndexerAxisMotionParameters.Position,1.0 + (1.0-DialPosRmndr)) ] OTE(IndexerAxisManMoveTrig) ];]]>
+<![CDATA[XIC(SafetyOK)XIC(Status.State[1])[[MOVE(1,IndexerAxisMotionParameters.MoveType) ,MOVE(HMI_IndexerAxis.Parameters.ManualSpeed,IndexerAxisMotionParameters.Speed) ,MOVE(HMI_IndexerAxis.Parameters.Accel[0],IndexerAxisMotionParameters.Accel) ,MOVE(HMI_IndexerAxis.Parameters.Decel[0],IndexerAxisMotionParameters.Decel) ] ,XIC(IndexerAxisPermissive) XIC(HMI_IndexerAxis.Control.ManMoves.0) ONS(ONS.5) [[XIO(p_OnStation) ,XIC(p_OnStation) LE(DialPosRmndr,OnStationTolNests) ] SUB(1.0,DialPosRmndr,IndexerAxisMotionParameters.Position) ,XIC(p_OnStation) GE(DialPosRmndr,OnStaTol1Minus) CPT(IndexerAxisMotionParameters.Position,1.0 + (1.0-DialPosRmndr)) ] OTE(IndexerAxisManMoveTrig) ];]]>
 </Text>
 </Rung>
 <Rung Number="14" Type="N">
