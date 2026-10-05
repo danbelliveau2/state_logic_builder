@@ -150,11 +150,23 @@ x = x.replace(udtBlock(x, 'Tracking_Data'), udtBlock(x, 'Tracking_Data').replace
   x = x.replace(b, b.replace(/<Members>[\s\S]*<\/Members>/, '<Members>\n' + members + '\n</Members>'));
 }
 x = x.replace(udtBlock(x, 'Tracking_Perform_Station'), udtBlock(chassis, 'Tracking_Perform_Station'));
+// per-nest station results: one slot per station (count + 1), not the template's 21 (Jason 2026-10-05)
+x = x.replace(udtBlock(x, 'Tracking_Part_Assy_Stat'), udtBlock(x, 'Tracking_Part_Assy_Stat').replace(/(Name="Station" DataType="Tracking_Process_Op_Result" Dimension=")21/, '$1' + (STATION_QTY + 1)));
+if (!new RegExp('Name="Station" DataType="Tracking_Process_Op_Result" Dimension="' + (STATION_QTY + 1) + '"').test(udtBlock(x, 'Tracking_Part_Assy_Stat'))) fail('Part_Assy_Stat Station dimension not applied');
+// every Tracking_Part_Assy_Stat tag (the ZeroPartAssyStat constants) gets data built to the new size
+const opResultL5K = '[' + Array(STATION_QTY + 1).fill('[0]').join(',') + ']';
+const partAssyL5K = '[0,' + opResultL5K + ",0,[0,'" + '$00'.repeat(82) + "'\n\t\t]]";
+const partAssyDec = '<Structure DataType="Tracking_Part_Assy_Stat">\n<DataValueMember Name="Good" DataType="BOOL" Value="0"/>\n<DataValueMember Name="Bad" DataType="BOOL" Value="0"/>\n<DataValueMember Name="PartLoaded" DataType="BOOL" Value="0"/>\n<ArrayMember Name="Station" DataType="Tracking_Process_Op_Result" Dimensions="' + (STATION_QTY + 1) + '">\n' + Array.from({ length: STATION_QTY + 1 }, (_, i) => '<Element Index="[' + i + ']">\n<Structure DataType="Tracking_Process_Op_Result">\n<DataValueMember Name="Attempt" DataType="BOOL" Value="0"/>\n<DataValueMember Name="Success" DataType="BOOL" Value="0"/>\n<DataValueMember Name="Failure" DataType="BOOL" Value="0"/>\n<DataValueMember Name="Lockout" DataType="BOOL" Value="0"/>\n</Structure>\n</Element>').join('\n') + '\n</ArrayMember>\n<DataValueMember Name="FailureType" DataType="INT" Radix="Decimal" Value="0"/>\n<StructureMember Name="FailureMessage" DataType="STRING">\n<DataValueMember Name="LEN" DataType="DINT" Radix="Decimal" Value="0"/>\n<DataValueMember Name="DATA" DataType="STRING" Radix="ASCII">\n<![CDATA[]]>\n</DataValueMember>\n</StructureMember>\n</Structure>';
+function resizePartAssyTags(body) {
+  return body.replace(/<Tag Name="([^"]+)"([^>]*DataType="Tracking_Part_Assy_Stat"[^>]*)>[\s\S]*?<\/Tag>/g, (m, name, attrs) => '<Tag Name="' + name + '"' + attrs + '>\n<Data Format="L5K">\n<![CDATA[' + partAssyL5K + ']]>\n</Data>\n<Data Format="Decorated">\n' + partAssyDec + '\n</Data>\n</Tag>');
+}
 log.push('Tracking UDTs: Nest[' + (NEST_QTY + 1) + '] Station[' + (STATION_QTY + 1) + ']; NestNumA/NestNumB; OpStatus and PerformData per side (A/B)');
 
 // ═══ 4. the station pairs ═══════════════════════════════════════════════════
 const STATIONS = [
-  { src: 'S01_PartLoad', base: 'S01_PartLoad', staNum: 1, staNumPre: STATION_QTY, list: 'S01 Part Load: ', words: 'Part Load' },
+  // S01's incoming nests are not at station 12 - a linear loop has more nests than stations - they are the pair one
+  // index upstream of station 1, which the indexer publishes as Station[0].NestNumA/B (Jason 2026-10-05)
+  { src: 'S01_PartLoad', base: 'S01_PartLoad', staNum: 1, staNumPre: 0, list: 'S01 Part Load: ', words: 'Part Load' },
   { src: 'S18_RejectUnload', base: 'S11_RejectUnload', staNum: 11, staNumPre: 10, list: 'S11 Reject Unload: ', words: 'Reject Unload' },
   { src: 'S19_GoodUnload', base: 'S12_GoodUnload', staNum: 12, staNumPre: 10, list: 'S12 Good Unload: ', words: 'Good Unload' },
 ];
@@ -236,6 +248,7 @@ function expandRefs(t) {
     let b2 = programBody('S00_IndexerNoSP');
     b2 = setST(b2, 'R10_CalcDialStationNestNums', [
       '//Nest numbers for every station: one index moves NestsPerIndex nests, a station spans two nests (A left, B right)',
+      '//Station[0] is the pair one index upstream of station 1 - the nests arriving next, which S01 reads as its incoming nests',
       'NewNestNum := ((TRUNC(iq_IndexerAxis.ActualPosition + OnStationTolNests) + (\\Tracking.p_NestQty - 1)) MOD \\Tracking.p_NestQty) + 1;',
       'IF (\\Tracking.p_Data.Station[1].NestNumA = NewNestNum) THEN',
       '\tNestsShiftedPulse := 0;',
@@ -243,7 +256,7 @@ function expandRefs(t) {
       '\t\\Tracking.p_Data.Station[1].NestNumA := NewNestNum;',
       '\tNestsShiftedPulse := 1;',
       'END_IF;',
-      'FOR StationNum := 1 TO \\Tracking.p_StationQty by 1 DO',
+      'FOR StationNum := 0 TO \\Tracking.p_StationQty by 1 DO',
       '\t\\Tracking.p_Data.Station[StationNum].NestNumA := (NewNestNum - 1 - ' + NESTS_PER_INDEX + '*(StationNum - 1) + ' + NESTS_PER_INDEX + '*\\Tracking.p_NestQty) MOD \\Tracking.p_NestQty + 1;',
       '\t\\Tracking.p_Data.Station[StationNum].NestNumB := (\\Tracking.p_Data.Station[StationNum].NestNumA MOD \\Tracking.p_NestQty) + 1;',
       'END_FOR;',
@@ -279,8 +292,11 @@ function expandRefs(t) {
     const inner = l5k.slice(1, -1);                      // [nests],[stations]
     const nestsArr = (() => { let d = 0, i = 0; for (; i < inner.length; i++) { if (inner[i] === '[') d++; else if (inner[i] === ']') { d--; if (d === 0) break; } } return inner.slice(0, i + 1); })();
     const nestElem = (() => { const s = nestsArr.slice(1); let d = 0, i = 0; for (; i < s.length; i++) { if (s[i] === '[') d++; else if (s[i] === ']') { d--; if (d === 0) break; } } return s.slice(0, i + 1); })();
+    // the nest element's per-station result array shrinks with the UDT (21 -> STATION_QTY + 1)
+    const nestElemSized = nestElem.replace(/\[(?:\[0\],){20}\[0\]\]/, opResultL5K);
+    if (nestElemSized === nestElem) fail('nest L5K element: 21-slot station array not found');
     const stationElemL5K = '[[0,0],0,0,[0,0,0,0.00000000e+000,0,0,0,0,0,0,0.00000000e+000,0,0,0]]';
-    const newL5K = '[[' + Array(NEST_QTY + 1).fill(nestElem).join(',') + '],[' + Array(STATION_QTY + 1).fill(stationElemL5K).join(',') + ']]';
+    const newL5K = '[[' + Array(NEST_QTY + 1).fill(nestElemSized).join(',') + '],[' + Array(STATION_QTY + 1).fill(stationElemL5K).join(',') + ']]';
     const dec = (/<Data Format="Decorated">([\s\S]*?)<\/Data>/.exec(old) || [])[1];
     // the first Nest element, whole: Element tags nest (PartStatus.Station[] inside), so match by depth
     const nestDec = (() => {
@@ -290,11 +306,17 @@ function expandRefs(t) {
       while ((m = re.exec(dec))) { d += m[0] === '</Element>' ? -1 : 1; if (d === 0) return dec.slice(start, m.index + '</Element>'.length); }
       fail('nest element end');
     })();
+    const nestDecSized = nestDec.replace(/<ArrayMember Name="Station" DataType="Tracking_Process_Op_Result" Dimensions="21">[\s\S]*?<\/ArrayMember>/, (m) => {
+      const els = [...m.matchAll(/<Element Index="\[(\d+)\]">[\s\S]*?<\/Element>/g)].filter((e) => +e[1] <= STATION_QTY).map((e) => e[0]);
+      if (els.length !== STATION_QTY + 1) fail('nest decorated element: station array not 21');
+      return '<ArrayMember Name="Station" DataType="Tracking_Process_Op_Result" Dimensions="' + (STATION_QTY + 1) + '">\n' + els.join('\n') + '\n</ArrayMember>';
+    });
+    if (nestDecSized === nestDec) fail('nest decorated element: station array not found');
     const bits = ['Lockout', 'Bypass', 'SingleStep', 'DryRun', 'SingleCycle', 'SingleTrigger', 'SingleDisableTracking', 'SingleClearTracking'];
     const perf = (s) => ['Attempts', 'Successes', 'Failures'].map((n) => '<DataValueMember Name="' + n + s + '" DataType="DINT" Radix="Decimal" Value="0"/>').join('\n') + '\n<DataValueMember Name="Efficiency' + s + '" DataType="REAL" Radix="Float" Value="0.0"/>\n<DataValueMember Name="FaultCount' + s + '" DataType="DINT" Radix="Decimal" Value="0"/>\n<DataValueMember Name="HMIColorStatus' + s + '" DataType="DINT" Radix="Decimal" Value="0"/>\n<DataValueMember Name="HMI_Reset' + s + '" DataType="BOOL" Value="0"/>';
     const stationDec = '<Structure DataType="Tracking_Station">\n<StructureMember Name="OpStatus" DataType="Tracking_Station_Op_Status">\n' + ['A', 'B'].flatMap((s) => bits.map((n) => '<DataValueMember Name="' + n + s + '" DataType="BOOL" Value="0"/>')).join('\n') + '\n</StructureMember>\n<DataValueMember Name="NestNumA" DataType="DINT" Radix="Decimal" Value="0"/>\n<DataValueMember Name="NestNumB" DataType="DINT" Radix="Decimal" Value="0"/>\n<StructureMember Name="PerformData" DataType="Tracking_Perform_Station">\n' + perf('A') + '\n' + perf('B') + '\n</StructureMember>\n</Structure>';
     const elems = (tpl, n, isNest) => Array.from({ length: n }, (_, i) => isNest ? tpl.replace(/^<Element Index="\[0\]">/, '<Element Index="[' + i + ']">') : '<Element Index="[' + i + ']">\n' + tpl + '\n</Element>').join('\n');
-    const newDec = '<Structure DataType="Tracking_Data">\n<ArrayMember Name="Nest" DataType="Tracking_Nest" Dimensions="' + (NEST_QTY + 1) + '">\n' + elems(nestDec, NEST_QTY + 1, true) + '\n</ArrayMember>\n<ArrayMember Name="Station" DataType="Tracking_Station" Dimensions="' + (STATION_QTY + 1) + '">\n' + elems(stationDec, STATION_QTY + 1, false) + '\n</ArrayMember>\n</Structure>';
+    const newDec = '<Structure DataType="Tracking_Data">\n<ArrayMember Name="Nest" DataType="Tracking_Nest" Dimensions="' + (NEST_QTY + 1) + '">\n' + elems(nestDecSized, NEST_QTY + 1, true) + '\n</ArrayMember>\n<ArrayMember Name="Station" DataType="Tracking_Station" Dimensions="' + (STATION_QTY + 1) + '">\n' + elems(stationDec, STATION_QTY + 1, false) + '\n</ArrayMember>\n</Structure>';
     const head = (/<Tag Name="p_Data"[^>]*>/.exec(old) || [])[0];
     b = b.replace(old, head + '\n<Data Format="L5K">\n<![CDATA[' + newL5K + ']]>\n</Data>\n<Data Format="Decorated">\n' + newDec + '\n</Data>\n</Tag>');
   }
@@ -430,6 +452,13 @@ x = x.replace(tagXml(x.slice(0, x.indexOf('<Programs>')), 'g_StationList'), stri
   b = dropTagIn(b, 'HMI_Toggle');
   replaceProgram('StateMachine', b);
   log.push('StateMachine: single-step block from S01_PartLoadA (A bits), HMI_Toggle form removed');
+}
+
+// ═══ 8b. every ZeroPartAssyStat constant rebuilt to the 13-slot Part_Assy_Stat ══
+{
+  const before = (x.match(/DataType="Tracking_Part_Assy_Stat"[^>]*>/g) || []).length;
+  for (const p of [...x.matchAll(/<Program\b[^>]*?\sName="([^"]+)"/g)].map((m) => m[1])) { const b = programBody(p); if (/DataType="Tracking_Part_Assy_Stat"/.test(b)) replaceProgram(p, resizePartAssyTags(b)); }
+  log.push('Tracking_Part_Assy_Stat: Station[' + (STATION_QTY + 1) + ']; ' + before + ' tag(s) of that type rebuilt');
 }
 
 // ═══ 9. AOIs / UDTs nothing uses any more ═══════════════════════════════════
