@@ -204,3 +204,8 @@ One line per lesson, dated, in the engineer's words, with who said it. Merged da
 - 2026-10-02 [standard] 2UP linear indexer build approved as planned: hardware of removed programs goes (indexer drive, 1734 rack, valve bank, safety stay); HMI screens out of scope, only the A/B bits provided; StateMachine skeleton carries the current single-step block written against the A bits. — Jason
 - 2026-10-02 [standard] 2UP template Studio import: Tracking R01_Inputs rung 1 "Failed to set the Text property (Syntax error found while scanning import file)" and the following rungs "Rung number is 0 or greater than number of rungs in routine" - the rung text had no terminating semicolon. — Jason
 - 2026-10-02 [standard] 2UP template import was clean. In Tracking, IncrementFailure should be IncrementFailureA; other similar tags must follow the same naming (A and B, never a bare name for the A side). — Jason
+
+## Merged 2026-10-05
+- 2026-10-05 [standard] 2UP template: in Tracking_Part_Assy_Stat the Station array length must be 13 (12 stations). A linear indexer has many more nests than stations and they wrap around, so station 1 NestNumIncoming cannot be taken from station 12 - find another way for S01 A and B. — Jason
+- 2026-10-05 [standard] Jason: SoftwareStandardizationNew.L5X updated - for both Indexer programs, added MOV 1 MoveType for the manual indexer move. Template changes are overwritten in place, same name; the 2UP build re-reads it. — jperry
+- 2026-10-05 [standard] Jason: The 2UP template we have been working on looks good (SoftwareStandardization2UP v0.2.1 - Part_Assy_Stat.Station[13], S01 incoming nests from Station[0], MoveType 1 on the manual move). — jperry
