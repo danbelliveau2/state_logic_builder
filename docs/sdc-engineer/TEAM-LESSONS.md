@@ -209,3 +209,7 @@ One line per lesson, dated, in the engineer's words, with who said it. Merged da
 - 2026-10-05 [standard] 2UP template: in Tracking_Part_Assy_Stat the Station array length must be 13 (12 stations). A linear indexer has many more nests than stations and they wrap around, so station 1 NestNumIncoming cannot be taken from station 12 - find another way for S01 A and B. — Jason
 - 2026-10-05 [standard] Jason: SoftwareStandardizationNew.L5X updated - for both Indexer programs, added MOV 1 MoveType for the manual indexer move. Template changes are overwritten in place, same name; the 2UP build re-reads it. — jperry
 - 2026-10-05 [standard] Jason: The 2UP template we have been working on looks good (SoftwareStandardization2UP v0.2.1 - Part_Assy_Stat.Station[13], S01 incoming nests from Station[0], MoveType 1 on the manual move). — jperry
+
+## Merged 2026-10-07
+- 2026-10-07 [standard] Jason: Assignment B imported clean in Studio - Studio accepts an L5K value with an extra closing bracket that our import simulator rejects; score raised to 90. — jperry
+- 2026-10-07 [standard] Jason: Amol loses points on Assignment B - the servo axis scaling was not correct. He entered 10 mm for the screw lead but added a 10:1 on top of it in Scaling (10.0 mm per 1.0 Load Millimeter); that field should be 1. — jperry
