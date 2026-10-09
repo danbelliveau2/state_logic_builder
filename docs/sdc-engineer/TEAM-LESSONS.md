@@ -213,3 +213,9 @@ One line per lesson, dated, in the engineer's words, with who said it. Merged da
 ## Merged 2026-10-07
 - 2026-10-07 [standard] Jason: Assignment B imported clean in Studio - Studio accepts an L5K value with an extra closing bracket that our import simulator rejects; score raised to 90. — jperry
 - 2026-10-07 [standard] Jason: Amol loses points on Assignment B - the servo axis scaling was not correct. He entered 10 mm for the screw lead but added a 10:1 on top of it in Scaling (10.0 mm per 1.0 Load Millimeter); that field should be 1. — jperry
+
+## Merged 2026-10-09
+- 2026-10-09 [standard] Jason on the CE Interview Test instructions: add a table after SDC tag naming describing in one sentence what each routine R00-R20 is for; separate one-sentence tables for the AOIs and the UDTs instead of a run-on paragraph; no bullet list right after a table - use a table or another format; hardware signal tables get a parameter-type column, and the servo assignment lists the X and Z axis InOut parameters; the blending text made easier to understand. — jperry
+- 2026-10-09 [standard] Jason: CE Interview Test instructions - move What we look at to page 7 under the blending section; other than that it looks good. — jperry
+- 2026-10-09 [standard] Jason: CE Interview Test instructions - in Rules for the station add an example alarm, then describe in one sentence what each tag in Outputs to the machine does. — jperry
+- 2026-10-09 [standard] Jason: CE Interview Test instructions - put the Alarms row back the way it was (no example alarm in the rules table). — jperry
