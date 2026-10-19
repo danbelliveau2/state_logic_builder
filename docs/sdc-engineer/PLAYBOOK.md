@@ -62,6 +62,9 @@ It reads the code, so it also finds things: state 67 of 1131 S07 had no success 
 - Heat: one `HeatControl` program in a 1 s periodic task (setpoints + UPD, one PID rung per loop); station heat logic in MainTask. IY4 read direct, no scaling. v37 compare set: `EQ NE LT GT LE GE LIMIT MEQ CMP`, move is `MOVE`; never `EQU NEQ LES GRT LEQ GEQ LIM MOV` (Jason, 2026-09-21; shapeLint rule legacy-mnemonic).
 - Feeders digital on/off. Cameras per S06_IV4Vision. Index permissive = clearance per axis, OR'd. Failure code = station × 10 + reason. Full-text failure messages.
 
+## 7b. Alarm rulings (Jason, 2026-10-19)
+- A waiting-for fault goes on every state that waits on a sensor or an axis. None on a timer-only state or on a device with coils and no sensor (a gripper on a delay) - it cannot get stuck. Template S03 / S05 R20 are the form.
+
 ## 8. Deviations never stop a build (Dan, 2026-09-21)
 - A deviation = anything the engineer asks for that the template, the examples or this playbook lack.
 - Say it once: `Deviation from the standard: <what>. Conflicts with: <rule>. Logging it as D0nn. Say go and I build it that way.` Log it: `node "X:\Electrical Dept\SDC Engineer\Scripts\logDeviation.cjs" --job <n> --station <Snn> --what "…" --conflicts "…" --asked-by "<who>"`. Build it on go. Name it in the cover note with its ID and status.
