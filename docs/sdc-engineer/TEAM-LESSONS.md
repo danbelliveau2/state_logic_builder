@@ -222,3 +222,6 @@ One line per lesson, dated, in the engineer's words, with who said it. Merged da
 
 ## Merged 2026-10-19
 - 2026-10-19 [standard] Jason: As a general rule, faults are not necessary for timer-only states, or for a device like a gripper that has no associated sensors, just the solenoid coils - it is not possible to get stuck in those states. (Template S03/S05 R20 have no gripper alarm; the test scoring sheet said 'every move' and is corrected.) — jperry
+
+## Merged 2026-10-19
+- 2026-10-19 [standard] Jason: Amol's code more closely follows our standard - he did the servo move blending and the MAM triggers like our standard (blend conditions in the R02 transitions, MAM gated on the state list), where Dhiraj added new bits for those functions. The code is still functional, but following our standard is important and must be reflected in the scoring. — jperry
