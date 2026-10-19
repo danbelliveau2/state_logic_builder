@@ -219,3 +219,6 @@ One line per lesson, dated, in the engineer's words, with who said it. Merged da
 - 2026-10-09 [standard] Jason: CE Interview Test instructions - move What we look at to page 7 under the blending section; other than that it looks good. — jperry
 - 2026-10-09 [standard] Jason: CE Interview Test instructions - in Rules for the station add an example alarm, then describe in one sentence what each tag in Outputs to the machine does. — jperry
 - 2026-10-09 [standard] Jason: CE Interview Test instructions - put the Alarms row back the way it was (no example alarm in the rules table). — jperry
+
+## Merged 2026-10-19
+- 2026-10-19 [standard] Jason: As a general rule, faults are not necessary for timer-only states, or for a device like a gripper that has no associated sensors, just the solenoid coils - it is not possible to get stuck in those states. (Template S03/S05 R20 have no gripper alarm; the test scoring sheet said 'every move' and is corrected.) — jperry
