@@ -225,3 +225,11 @@ One line per lesson, dated, in the engineer's words, with who said it. Merged da
 
 ## Merged 2026-10-19
 - 2026-10-19 [standard] Jason: Amol's code more closely follows our standard - he did the servo move blending and the MAM triggers like our standard (blend conditions in the R02 transitions, MAM gated on the state list), where Dhiraj added new bits for those functions. The code is still functional, but following our standard is important and must be reflected in the scoring. — jperry
+
+## Merged 2026-10-23
+- 2026-10-23 [standard] Jason: 1756-L908TS is the ControlLogix 5590 processor (not 5580); job 1163 Haemonetics runs on it, Studio 5000 v38.03, with the 1756-L9SP safety partner. — jperry
+- 2026-10-23 [standard] Jason: on 1163 the indexer motor was fixed in Studio - the database string VPL-A1003F-P was right, the file still carried the old motor's data, so Studio warned "Selected motor is invalid" until the motor was re-selected and its ratings loaded (MotorDeviceCode 16#0909, 11.49 A, 240 V, 5500 rpm). A motor change in an L5X needs the motor data, not just the catalog number. He also removed Recipe as it is not needed for this job, renamed the indexer program, axis and drive with an L2 prefix (L2_S00_IndexerNoSP, a01_L2Indexer, sd01_L2Indexer) and set 50:1 gearing. His export is the 1163 delivery and build baseline (v0.2). — jperry
+- 2026-10-23 [standard] Jason: VPL-A motors use the 200-240VAC selection in the drive power configuration (a VPL-A on a 2198-H040-ERS2 is intended; set the drive's AC input voltage to 200-240 V). — jperry
+- 2026-10-23 [standard] Jason: the AlwaysOff actuators-safe placeholder in the indexer is correct until a station is wired in. — jperry
+- 2026-10-23 [standard] Jason: do not rebuild the 2UP template deliverable for the Supervisor/Alarms indexer-poll fix; the build script carries the fix for the next build. — jperry
+- 2026-10-23 [standard] Jason: machine 1163 will have two indexers, one identified as L1 and the other L2 - hence the L2_ prefix on the indexer program, axis, drive and safety tags. — jperry

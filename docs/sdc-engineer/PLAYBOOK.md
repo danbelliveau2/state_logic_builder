@@ -65,6 +65,9 @@ It reads the code, so it also finds things: state 67 of 1131 S07 had no success 
 ## 7b. Alarm rulings (Jason, 2026-10-19)
 - A waiting-for fault goes on every state that waits on a sensor or an axis. None on a timer-only state or on a device with coils and no sensor (a gripper on a delay) - it cannot get stuck. Template S03 / S05 R20 are the form.
 
+## 7c. Servo hardware rulings (Jason, 2026-10-23)
+- A motor change in an L5X needs the motor data, not just the catalog number: write the Motion Database name (a VPL stops at -P) and let Jason re-select the motor in Studio so its ratings load; say so in the Asks. VPL-A motors take the 200-240 VAC selection in the drive power configuration.
+
 ## 8. Deviations never stop a build (Dan, 2026-09-21)
 - A deviation = anything the engineer asks for that the template, the examples or this playbook lack.
 - Say it once: `Deviation from the standard: <what>. Conflicts with: <rule>. Logging it as D0nn. Say go and I build it that way.` Log it: `node "X:\Electrical Dept\SDC Engineer\Scripts\logDeviation.cjs" --job <n> --station <Snn> --what "…" --conflicts "…" --asked-by "<who>"`. Build it on go. Name it in the cover note with its ID and status.
