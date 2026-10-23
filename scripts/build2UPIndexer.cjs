@@ -204,6 +204,7 @@ const ALL_STATIONS = newPrograms.map((p) => p.name);
 // cross-program references: expand the source names into A and B, strip the removed programs
 const removedRe = new RegExp('(XIC|XIO)\\(\\\\(?:' + REMOVED.map(esc).join('|') + ')\\.[A-Za-z0-9_.\\[\\]]+\\)\\s*', 'g');
 function expandRefs(t) {
+  t = t.replace(/\\S00_IndexerSP\./g, '\\S00_IndexerNoSP.');   // the template polls its SP indexer; this machine's indexer is the NoSP one (Jason, 2026-10-23: the 2UP v0.2.1 polls had dropped it)
   for (const st of STATIONS) t = t.replace(new RegExp('(XIC|XIO)\\(\\\\' + st.src + '\\.([A-Za-z0-9_]+)\\)', 'g'), '$1(\\' + st.base + 'A.$2)$1(\\' + st.base + 'B.$2)');
   return t.replace(removedRe, '').replace(/\s+/g, ' ').trim();
 }
