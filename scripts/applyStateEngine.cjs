@@ -58,7 +58,7 @@ if (UDT_RE.test(xml)) {
 xml = xml.replace(/<Tag [^>]*DataType="StateLogicStatus"[^>]*>[\s\S]*?<\/Tag>/g, tag => {
   if (/Name="StateDuration"/.test(tag)) { report.statusTagsCurrent++; return tag; }
   if (/Dimensions=/.test(tag.split('\n')[0])) { console.warn('array of StateLogicStatus not handled: ' + tag.split('\n')[0]); return tag; }
-  let t = tag.replace(/\],0,0\]\]\]>/, `],0,0,[${ZEROS}]]]]>`);
+  let t = tag.replace(/\],(-?\d+),(-?\d+)\]\]\]>/, (m, p, q) => `],${p},${q},[${ZEROS}]]]]>`);
   t = t.replace(/(<DataValueMember Name="TransitionTimerDone" DataType="BOOL" Value="0"\/>)\r?\n<\/Structure>/, `$1\n${DEC_ARRAY}\n</Structure>`);
   if (t === tag) { console.warn('StateLogicStatus tag data not recognised: ' + tag.split('\n')[0]); return tag; }
   report.statusTags++;
@@ -67,8 +67,9 @@ xml = xml.replace(/<Tag [^>]*DataType="StateLogicStatus"[^>]*>[\s\S]*?<\/Tag>/g,
 
 // 4. AOI instance tags (localStatus is the 6th element of the L5K: [EnableIn,[timer],i,prev,[timer],[status],size])
 xml = xml.replace(/<Tag [^>]*DataType="State_Engine_128Max"[^>]*>[\s\S]*?<\/Tag>/g, tag => {
-  if (/\],0,0,\[0,/.test(tag)) { report.engineTagsCurrent++; return tag; }
-  const t = tag.replace(/\],0,0\],0\]\]\]>/, `],0,0,[${ZEROS}]],0]]]>`);
+  // localStatus is [[128 bools],PreviousState,bits(,[128 durations])] followed by HistoryArraySize
+  if (/\],-?\d+,-?\d+,\[[-\d,\s]*\]\],-?\d+\]\]\]>/.test(tag)) { report.engineTagsCurrent++; return tag; }
+  const t = tag.replace(/\],(-?\d+),(-?\d+)\],(-?\d+)\]\]\]>/, (m, p, q, s) => `],${p},${q},[${ZEROS}]],${s}]]]>`);
   if (t === tag) { console.warn('State_Engine_128Max tag data not recognised: ' + tag.split('\n')[0]); return tag; }
   report.engineTags++;
   return t;
