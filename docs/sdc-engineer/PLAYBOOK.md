@@ -71,6 +71,11 @@ It reads the code, so it also finds things: state 67 of 1131 S07 had no success 
 ## 7d. State engine (Jason, 2026-10-26)
 - Every new delivery carries the current `State_Engine_128Max` (edited 2026-10-26): `StateLogicStatus.StateDuration[128]` holds the ms spent in each state. Source: `plc-reference/standard/aoi/`. Run `node scripts/applyStateEngine.cjs <file.L5X>` on every assembled file before the validator; `--check` says whether a file is current.
 
+## 7e. Epson robot form (Jason, 2026-10-29, returned V5.3)
+- `S08_EpsonRobotPNP` in V5.3 is the template: command word `UserWord[0]` out / echo in (2 pick, 3 place, 100 safe home), positions from the robot's InsideBox outputs (1 indexer zone, 2 pick, 3 place, 4 safe home; operand comments carry the robot Out number), AOI_Epson_IN / OUT on a generic ETHERNET-MODULE (in 100 / out 150, 32 INT, config 1 size 0).
+- Stop = one rung: [NOT SafetyOK, State 1, 22, 127] TON 1 s, StopCmd while timing, StoppingRobot while true. Start = StartCmd on Flash while NOT Paused when [State 103 | q_StartOK AND NOT StoppingRobot] or HMI_Hold.0. Continue, Reset (250 ms after SafetyOK while Error / EStopOn / SafeguardOn, or Error AND FaultReset), Motors On / Off (init 100, HMI_Hold.2 / .3) each one rung. No program-stop bit, no abort alarm, no auto-confirm.
+- q_StartOK = AutoMode, NOT Error, NOT EStopOn, NOT SafeguardOn. Inserting an init state shifts the Status.State[] operand comments with it.
+
 ## 8. Deviations never stop a build (Dan, 2026-09-21)
 - A deviation = anything the engineer asks for that the template, the examples or this playbook lack.
 - Say it once: `Deviation from the standard: <what>. Conflicts with: <rule>. Logging it as D0nn. Say go and I build it that way.` Log it: `node "X:\Electrical Dept\SDC Engineer\Scripts\logDeviation.cjs" --job <n> --station <Snn> --what "…" --conflicts "…" --asked-by "<who>"`. Build it on go. Name it in the cover note with its ID and status.

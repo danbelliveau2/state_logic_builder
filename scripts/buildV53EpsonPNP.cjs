@@ -14,6 +14,11 @@
  *      UserWord[0] out / echo in, UserIn[0] / UserOut[0] bits, InsideBox zones), motors-on init step, one more alarm.
  *   5. Scheduled, polled by Supervisor, rolled up by Alarms, EIP-loss alarm; V5.2 defects fixed (S08 Fanuc connected
  *      to rob02 tags, rob02 EIP-loss alarm added).
+ *
+ *   SUPERSEDED 2026-10-29: Jason corrected the output in Studio (stop / start / continue / reset rungs, q_StartOK,
+ *   InsideBox4 safe home, Alarm[2] Not Used, init-state comments) - his file is the V5.3 template
+ *   (Deliveries\SoftwareStandardization V5.3\SoftwareStandardization.L5X, _history\ has both). Copy the Epson form
+ *   from that file (playbook 7e); this script reproduces only the first delivery.
  */
 const fs = require('fs');
 const path = require('path');
