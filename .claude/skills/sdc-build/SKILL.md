@@ -10,7 +10,7 @@ Before anything: read `X:\Electrical Dept\SDC Engineer\Playbook\PLAYBOOK.md` in 
 3. **Example per station** — from `station-examples.json`. No example → the simplest example form that fits plus one question; never a new feature.
 3a. **Deviations never stop the build** (PLAYBOOK §8). First read the job's rows: `node "X:\Electrical Dept\SDC Engineer\Scripts\logDeviation.cjs" --list --job <n>`. Approved = build it. Denied = build the standard form, say which ID. When the engineer asks for something the standard lacks: say once `Deviation from the standard: <what>. Conflicts with: <rule>. Logging it as D0nn. Say go and I build it that way.`, log it with `logDeviation.cjs --job --station --what --conflicts --asked-by`, build on go. The cover note names the ID and status.
 4. **Build** — one builder per program family in parallel; each must print 0 findings from the shape checker before returning. Twins A→B by script only. Builders never touch another builder's file.
-5. **Assemble + verify** — `assemble1160.cjs` (copy and re-point for a new job) → `validate1160.cjs` (import simulation 0 errors) → whole-file verify of every CE ruling.
+5. **Assemble + verify** — `assemble1160.cjs` (copy and re-point for a new job) → `applyStateEngine.cjs` (current State_Engine_128Max + StateLogicStatus, PLAYBOOK §7d) → `validate1160.cjs` (import simulation 0 errors) → whole-file verify of every CE ruling.
 6. **Deliver** — one file, one name, stamped copy in `_history`. Reveal the full path.
 7. **Cover note** — `/sdc-cover-note`. No agents.
 8. **Cost** — keep a ledger row per increment (tokens, $, what changed). Stop at the cap the owner set and ask.

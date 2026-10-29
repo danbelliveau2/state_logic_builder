@@ -1,0 +1,42 @@
+﻿<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<RSLogix5000Content SchemaRevision="1.0" SoftwareRevision="37.00" TargetName="StateLogicStatus" TargetType="DataType" ContainsContext="true" ExportDate="Mon Oct 26 10:48:36 2026" ExportOptions="References NoRawData L5KData DecoratedData Context Dependencies ForceProtectedEncoding AllProjDocTrans">
+<Controller Use="Context" Name="SoftwareStandardization">
+<DataTypes Use="Context">
+<DataType Use="Target" Name="StateLogicStatus" Family="NoFamily" Class="User">
+<Members>
+<Member Name="State" DataType="BOOL" Dimension="128" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Control Bits]]>
+</Description>
+</Member>
+<Member Name="PreviousState" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Previous State]]>
+</Description>
+</Member>
+<Member Name="ZZZZZZZZZZStateLogic2" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="StateChangeOccurred_OS" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZStateLogic2" BitNumber="0" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Change Occurred]]>
+</Description>
+</Member>
+<Member Name="TimeoutFlt" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZStateLogic2" BitNumber="1" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Timeout Fault]]>
+</Description>
+</Member>
+<Member Name="TransitionTimerDone" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZStateLogic2" BitNumber="2" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[State Transition Time Done]]>
+</Description>
+</Member>
+<Member Name="StateDuration" DataType="DINT" Dimension="128" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+<![CDATA[Duration (ms) In Each State]]>
+</Description>
+</Member>
+</Members>
+</DataType>
+</DataTypes>
+</Controller>
+</RSLogix5000Content>

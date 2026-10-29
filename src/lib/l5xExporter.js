@@ -610,6 +610,14 @@ ${cdata(String(defaultValue.toFixed(6)))}
 
 // ── 128-element BOOL array helpers ───────────────────────────────────────────
 
+export function generate128DintL5K() {
+  return Array(128).fill('0').join(',');
+}
+
+export function generate128DintDecorated() {
+  return Array.from({ length: 128 }, (_, i) => `<Element Index="[${i}]" Value="0"/>`).join('\n');
+}
+
 export function generate128BoolL5K() {
   return Array(128).fill('2#0').join(',');
 }
@@ -697,6 +705,8 @@ function buildStatusTagXml(orderedNodes, stepMap, devices) {
 
   const boolL5K = generate128BoolL5K();
   const boolDec = generate128BoolDecorated();
+  const dintL5K = generate128DintL5K();
+  const dintDec = generate128DintDecorated();
 
   return `
 <Tag Name="Status" TagType="Base" DataType="StateLogicStatus" Usage="Public" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
@@ -704,7 +714,7 @@ function buildStatusTagXml(orderedNodes, stepMap, devices) {
 ${comments.join('\n')}
 </Comments>
 <Data Format="L5K">
-${cdata(`[[${boolL5K}],0,0]`)}
+${cdata(`[[${boolL5K}],0,0,[${dintL5K}]]`)}
 </Data>
 <Data Format="Decorated">
 <Structure DataType="StateLogicStatus">
@@ -715,6 +725,9 @@ ${boolDec}
 <DataValueMember Name="StateChangeOccurred_OS" DataType="BOOL" Value="0"/>
 <DataValueMember Name="TimeoutFlt" DataType="BOOL" Value="0"/>
 <DataValueMember Name="TransitionTimerDone" DataType="BOOL" Value="0"/>
+<ArrayMember Name="StateDuration" DataType="DINT" Dimensions="128" Radix="Decimal">
+${dintDec}
+</ArrayMember>
 </Structure>
 </Data>
 </Tag>`;
@@ -724,11 +737,12 @@ ${boolDec}
 
 export function buildStateEngineTagXml() {
   const boolL5K = generate128BoolL5K();
+  const dintL5K = generate128DintL5K();
 
   return `
 <Tag Name="StateEngine" TagType="Base" DataType="State_Engine_128Max" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
 <Data Format="L5K">
-${cdata(`[1,[1,0,0,0,0,0,0,0,0,4,0,0],0,0,[1,0,0,0,0,0,0,0,0,4,0,0],[[${boolL5K}],0,0],0]`)}
+${cdata(`[1,[1,0,0,0,0,0,0,0,0,4,0,0],0,0,[1,0,0,0,0,0,0,0,0,4,0,0],[[${boolL5K}],0,0,[${dintL5K}]],0]`)}
 </Data>
 <Data Format="Decorated">
 <Structure DataType="State_Engine_128Max">
@@ -3554,20 +3568,25 @@ ${cdata('State Control Bits')}
 ${cdata('Previous State')}
 </Description>
 </Member>
-<Member Name="ZZZZZZZZZZState_Logi2" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
-<Member Name="StateChangeOccurred_OS" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZState_Logi2" BitNumber="0" ExternalAccess="Read/Write">
+<Member Name="ZZZZZZZZZZStateLogic2" DataType="SINT" Dimension="0" Radix="Decimal" Hidden="true" ExternalAccess="Read/Write"/>
+<Member Name="StateChangeOccurred_OS" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZStateLogic2" BitNumber="0" ExternalAccess="Read/Write">
 <Description>
 ${cdata('State Change Occurred')}
 </Description>
 </Member>
-<Member Name="TimeoutFlt" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZState_Logi2" BitNumber="1" ExternalAccess="Read/Write">
+<Member Name="TimeoutFlt" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZStateLogic2" BitNumber="1" ExternalAccess="Read/Write">
 <Description>
 ${cdata('State Timeout Fault')}
 </Description>
 </Member>
-<Member Name="TransitionTimerDone" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZState_Logi2" BitNumber="2" ExternalAccess="Read/Write">
+<Member Name="TransitionTimerDone" DataType="BIT" Dimension="0" Radix="Decimal" Hidden="false" Target="ZZZZZZZZZZStateLogic2" BitNumber="2" ExternalAccess="Read/Write">
 <Description>
 ${cdata('State Transition Time Done')}
+</Description>
+</Member>
+<Member Name="StateDuration" DataType="DINT" Dimension="128" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Description>
+${cdata('Duration (ms) In Each State')}
 </Description>
 </Member>
 </Members>
@@ -3774,6 +3793,8 @@ ${cdata('LIMIT(MinWide,Actual,MaxWide)OTE(InPosWide);')}
 export function generateAOI(hasServos = false, hasRobots = false, hasDebouncedSensors = false) {
   const boolL5K = generate128BoolL5K();
   const boolDec = generate128BoolDecorated();
+  const dintL5K = generate128DintL5K();
+  const dintDec = generate128DintDecorated();
 
   // FBD_TIMER default data (used for StateDurationTimer and FaultTimer local tags)
   const fbdTimerL5K = '[1,0,0,0,0,0,0,0,0,4,0,0]';
@@ -3793,7 +3814,7 @@ export function generateAOI(hasServos = false, hasRobots = false, hasDebouncedSe
 </Structure>`;
 
   // StateLogicStatus default for localStatus local tag
-  const localStatusL5K = `[[${boolL5K}],0,0]`;
+  const localStatusL5K = `[[${boolL5K}],0,0,[${dintL5K}]]`;
   const localStatusDec = `<Structure DataType="StateLogicStatus">
 <ArrayMember Name="State" DataType="BOOL" Dimensions="128" Radix="Decimal">
 ${boolDec}
@@ -3802,6 +3823,9 @@ ${boolDec}
 <DataValueMember Name="StateChangeOccurred_OS" DataType="BOOL" Value="0"/>
 <DataValueMember Name="TimeoutFlt" DataType="BOOL" Value="0"/>
 <DataValueMember Name="TransitionTimerDone" DataType="BOOL" Value="0"/>
+<ArrayMember Name="StateDuration" DataType="DINT" Dimensions="128" Radix="Decimal">
+${dintDec}
+</ArrayMember>
 </Structure>`;
 
   // Structured Text logic lines
@@ -3819,6 +3843,7 @@ ${boolDec}
     '',
     '\t//State Duration Timer',
     '\tStateDurationTimer.TimerEnable := 1;',
+    '\tlocalStatus.StateDuration[StateLogicControl.StateReg]:=StateDurationTimer.ACC;',
     '',
     '\t//State Fault Timer',
     '\tIF (StateDurationTimer.ACC >= StateLogicControl.FaultTime ) THEN',
@@ -3875,7 +3900,7 @@ ${boolDec}
 
   return `
 <AddOnInstructionDefinitions Use="Context">
-<AddOnInstructionDefinition Name="State_Engine_128Max" Class="Standard" Revision="5.0" Vendor="Steven Douglas Corp." ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" CreatedDate="2013-06-25T13:55:13.933Z" CreatedBy="SDC" EditedDate="2025-08-25T14:49:42.628Z" EditedBy="SDC"
+<AddOnInstructionDefinition Name="State_Engine_128Max" Class="Standard" Revision="5.0" Vendor="Steven Douglas Corp." ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" CreatedDate="2013-06-25T13:55:13.933Z" CreatedBy="SDC" EditedDate="2026-10-26T13:47:19.162Z" EditedBy="SDC"
  SoftwareRevision="v35.00">
 <Description>
 ${cdata('State Logic Engine For 128 States')}
