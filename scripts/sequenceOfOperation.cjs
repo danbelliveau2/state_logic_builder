@@ -185,7 +185,7 @@ function stateTable(prog, wantInit) {
   let h = '<table>\n<tr><th style="width:34pt">State</th><th style="width:206pt">What happens</th>'
         + '<th style="width:58pt">Goes to</th><th>On</th></tr>\n';
   for (const r of rows) {
-    const nxt = r.next.length ? r.next : [{ to: '&mdash;', when: 'only the mode states 0&ndash;3 lead out' }];
+    const nxt = r.next.length ? r.next : [{ to: '&mdash;', when: 'only the mode states 0–3 lead out' }];
     const acts = r.acts.length ? '<div class="acts">' + r.acts.map(esc).join(' &middot; ') + '</div>' : '';
     const what = r.what ? esc(r.what) : '<i>no rung comment in the source</i>';
     h += '<tr><td rowspan="' + nxt.length + '"><b>' + r.s + '</b></td>'
