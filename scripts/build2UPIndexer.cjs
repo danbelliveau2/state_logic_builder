@@ -479,6 +479,8 @@ x = x.replace(tagXml(x.slice(0, x.indexOf('<Programs>')), 'g_StationList'), stri
 fs.mkdirSync(OUT_DIR, { recursive: true });
 const outFile = path.join(OUT_DIR, NAME + '.L5X');
 fs.writeFileSync(outFile, x, 'utf8');
+require('child_process').execFileSync(process.execPath, [path.join(__dirname, 'applyStateEngine.cjs'), outFile], { stdio: 'inherit' }); // current State_Engine_128Max (PLAYBOOK 7d)
+x = fs.readFileSync(outFile, 'utf8');
 if (fs.readFileSync(SRC, 'utf8') !== original) fail('the template changed on disk during the run');
 console.log('2UP linear indexer template\n');
 for (const l of log) console.log('  ' + l);

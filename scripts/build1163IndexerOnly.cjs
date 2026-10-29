@@ -165,6 +165,8 @@ must(!stationRef.test(x), 'a station reference survived'); stationRef.lastIndex 
 // ═══ write ═════════════════════════════════════════════════════════════════
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
 fs.writeFileSync(OUT, x);
+require('child_process').execFileSync(process.execPath, [path.join(__dirname, 'applyStateEngine.cjs'), OUT], { stdio: 'inherit' }); // current State_Engine_128Max (PLAYBOOK 7d)
+x = fs.readFileSync(OUT, 'utf8');
 console.log('1163 Haemonetics - indexer only\n');
 for (const l of log) console.log('  ' + l);
 console.log('\n  programs: ' + [...x.matchAll(/<Program\b[^>]*?\sName="([^"]+)"/g)].map((m) => m[1]).join(', '));
