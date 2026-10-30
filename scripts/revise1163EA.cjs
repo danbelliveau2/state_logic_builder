@@ -6,8 +6,9 @@
  *   node scripts/revise1163EA.cjs [--src <L5X>] [--out <L5X>]
  *
  *   1. MapInputs maps whole blocks with CPS only: the unpack rung (COP of dancer words and micrometer values) is gone.
- *   2. Dancer distances: UDT Banner_Q4X_PDI + AOI_BannerQ4X_PD (ST, from the Schneider Banner_Q4X_PD_v4 snippet) decode the
- *      two IO-Link process-data bytes per port in MapInputs; the Dereeler reads i_DancerA/B of the UDT type (Measurement_Value mm).
+ *   2. Dancer distances: UDT Banner_Q4X_PDI + AOI_BannerQ4X_PD (ST, from the Schneider Banner_Q4X_PD_v4 snippet). Each Dereeler
+ *      takes the two IO-Link bytes per sensor as SINT input parameters (i_DancerAByte0/1, i_DancerBByte0/1, connected to the
+ *      EX600-LAB1 bytes of vb01_MainAssembly_IN) and decodes them in R01 (Jason: the despooler owns its sensors, MapInputs is CPS only).
  *   3. Micrometer values are input parameters: i_MicrometerX/Y connect to mm01_L2S01Micrometer_IN.Data[25..28] (OUT1..OUT4,
  *      CB-EP100 monitor data bytes 100-115); MicrometerCountsPerMm 100 (display unit code 1 = 0.01 mm).
  *   4. Buffer tags match the module sizes (SINT 54/52, DINT 312/124); vb01_DancerDistance and mm01_L2S01MicrometerValue removed.
@@ -97,31 +98,37 @@ x = replaceTagIn(x, MM + '_IN', bufferTag(MM + '_IN', 'DINT', 312, 78, 'I'));
 x = replaceTagIn(x, MM + '_OUT', bufferTag(MM + '_OUT', 'DINT', 124, 31, 'O'));
 x = dropTagIn(x, 'vb01_DancerDistance');
 x = dropTagIn(x, 'mm01_L2S01MicrometerValue');
-const DANCERS = [['UpstreamA', 6], ['UpstreamB', 8], ['DownstreamA', 10], ['DownstreamB', 12]];   // first byte of each IO-Link port's pair
-const dancerTags = DANCERS.map(([d]) => ctrlTag('vb01_Dancer' + d, UDT, '', dataBlock(udtL5k, udtDec)) + '\n' +
-  ctrlTag('Dancer' + d + 'Inputs', AOI, '', dataBlock('[1,0,0,0,0,0,0,0]', '<Structure DataType="' + AOI + '">\n<DataValueMember Name="EnableIn" DataType="BOOL" Value="1"/>\n<DataValueMember Name="EnableOut" DataType="BOOL" Value="0"/>\n<DataValueMember Name="SINT0" DataType="SINT" Radix="Decimal" Value="0"/>\n<DataValueMember Name="SINT1" DataType="SINT" Radix="Decimal" Value="0"/>\n<DataValueMember Name="Byte_Swap" DataType="BOOL" Value="0"/>\n</Structure>'))).join('\n');
-{ const m = /<\/Tags>\s*<Programs>/.exec(x) || fail('controller tags end'); x = x.slice(0, m.index) + dancerTags + '\n' + x.slice(m.index); }
-log.push('buffers SINT 54/52, DINT 312/124; 4 dancer UDT tags + 4 AOI tags; DancerDistance / MicrometerValue tags removed');
+log.push('buffers SINT 54/52, DINT 312/124; DancerDistance / MicrometerValue tags removed');
 
-// ═══ 3. MapInputs: CPS whole blocks, AOI per dancer ═══════════════════════
+// ═══ 3. MapInputs: CPS whole blocks only ══════════════════════════════════
 editRoutine('MapInputs', 'R01_Logic', (r) => {
   must(r.length === 3 && /^\[COP\(/.test(rungText(r[2])), 'MapInputs R01 rung 2 is the unpack rung');
-  const aoi = DANCERS.map(([d, b]) => AOI + '(Dancer' + d + 'Inputs,' + VB + '_IN.Data[' + b + '],' + VB + '_IN.Data[' + (b + 1) + '],0,vb01_Dancer' + d + ')').join(' ,');
-  return [r[0], r[1], newRung('Map Ethernet IP Inputs Using CPS Instruction - L2S01 Dancer Distances (IO-Link)', '[' + aoi + ' ];')];
+  return [r[0], r[1]];
 });
-log.push('MapInputs rung 2: four ' + AOI + ' calls');
+log.push('MapInputs: unpack rung removed, two CPS rungs remain');
 
-// ═══ 4. Dereeler programs: i_DancerA/B of the UDT type, mm from the AOI ═══
+// ═══ 4. Dereeler programs: raw IO-Link bytes in as parameters, AOI decode in R01 (Jason: the despooler owns its sensors) ═══
+// VB1 input bytes: LAB1 at 4-47, port n data at LAB1 bytes 2n / 2n+1 -> Upstream A 6/7, B 8/9, Downstream A 10/11, B 12/13
+const DANCER_BYTES = { Upstream: { A: 6, B: 8 }, Downstream: { A: 10, B: 12 } };
+const progTag = (name, type, extra, desc, body) => '<Tag Name="' + name + '" TagType="Base" DataType="' + type + '"' + extra + ' Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">\n' + (desc ? '<Description>\n<![CDATA[' + desc + ']]>\n</Description>\n' : '') + body + '\n</Tag>';
+const sintParam = (name, desc) => progTag(name, 'SINT', ' Radix="Decimal" Usage="Input"', desc, dataBlock('0', '<DataValue DataType="SINT" Radix="Decimal" Value="0"/>'));
+const aoiTag = (name) => progTag(name, AOI, '', '', dataBlock('[1,0,0,0,0,0,0,0]', '<Structure DataType="' + AOI + '">\n<DataValueMember Name="EnableIn" DataType="BOOL" Value="1"/>\n<DataValueMember Name="EnableOut" DataType="BOOL" Value="0"/>\n<DataValueMember Name="SINT0" DataType="SINT" Radix="Decimal" Value="0"/>\n<DataValueMember Name="SINT1" DataType="SINT" Radix="Decimal" Value="0"/>\n<DataValueMember Name="Byte_Swap" DataType="BOOL" Value="0"/>\n</Structure>'));
 for (const side of ['Upstream', 'Downstream']) {
   const p = 'L2_S01_Dereeler' + side;
   let b = programBody(p) || fail('no program ' + p);
   for (const k of ['A', 'B']) {
-    b = replaceTagIn(b, 'i_Dancer' + k, '<Tag Name="i_Dancer' + k + '" TagType="Base" DataType="' + UDT + '" Usage="Input" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">\n<Description>\n<![CDATA[Dancer ' + k + ' Distance Sensor]]>\n</Description>\n' + dataBlock(udtL5k, udtDec) + '\n</Tag>');
+    const newTags = sintParam('i_Dancer' + k + 'Byte0', 'Dancer ' + k + ' IO-Link Byte 0') + '\n' + sintParam('i_Dancer' + k + 'Byte1', 'Dancer ' + k + ' IO-Link Byte 1') + '\n' +
+      progTag('Dancer' + k, UDT, '', 'Dancer ' + k + ' Process Data', dataBlock(udtL5k, udtDec)) + '\n' + aoiTag('Dancer' + k + 'Inputs');
+    b = replaceTagIn(b, 'i_Dancer' + k, newTags);
   }
   const old = 'DIV(i_DancerA,10.0,DancerADistance)DIV(i_DancerB,10.0,DancerBDistance);';
   must(countOf(b, old) === 1, p + ' dancer rung');
-  b = b.replace(old, 'MOVE(i_DancerA.Measurement_Value,DancerADistance)MOVE(i_DancerB.Measurement_Value,DancerBDistance);');
-  b = b.replace('<![CDATA[Dancer arm distance, larger as the arm drops]]>', '<![CDATA[Dancer arm distance from the IO-Link sensors, larger as the arm drops]]>');
+  const rungs = rungList(getRoutine(b, 'R01_Inputs'));
+  const i = rungs.findIndex((r) => rungText(r) === old);
+  must(i > 0, p + ' dancer rung index');
+  const decode = (k) => newRung(k === 'A' ? 'Dancer arm distance from the IO-Link sensors, larger as the arm drops' : '', AOI + '(Dancer' + k + 'Inputs,i_Dancer' + k + 'Byte0,i_Dancer' + k + 'Byte1,0,Dancer' + k + ')MOVE(Dancer' + k + '.Measurement_Value,Dancer' + k + 'Distance);');
+  rungs.splice(i, 1, decode('A'), decode('B'));
+  b = putRungs(b, 'R01_Inputs', rungs);
   replaceProgram(p, b);
 }
 // TubeFeed: micrometer scale = display unit code 1 (0.01 mm) -> 100 counts per mm
@@ -146,13 +153,12 @@ log.push('Dereeler i_DancerA/B -> ' + UDT + '; TubeFeed MicrometerCountsPerMm 10
   pcs = pcs.map((p) => p.replace(/vb01_MainAssembly_IN\.Data\[(25|26|27)\]/, (s, n) => 'vb01_MainAssembly_IN.Data[' + (Number(n) - 25) + ']').replace(/vb01_MainAssembly_OUT\.Data\[([012])\]/, (s, n) => 'vb01_MainAssembly_OUT.Data[' + (Number(n) + 47) + ']'));
   must(!/vb01_MainAssembly_IN\.Data\[2[5-7]\]/.test(pcs.join()) && pcs.filter((p) => /_OUT\.Data\[4[789]\]/.test(p)).length === 20, 'VB1 byte map re-pointed');
   const add = [
-    ['vb01_DancerUpstreamA', '\\L2_S01_DereelerUpstream.i_DancerA'], ['vb01_DancerUpstreamB', '\\L2_S01_DereelerUpstream.i_DancerB'],
-    ['vb01_DancerDownstreamA', '\\L2_S01_DereelerDownstream.i_DancerA'], ['vb01_DancerDownstreamB', '\\L2_S01_DereelerDownstream.i_DancerB'],
+    ...['Upstream', 'Downstream'].flatMap((side) => ['A', 'B'].flatMap((k) => [0, 1].map((n) => [VB + '_IN.Data[' + (DANCER_BYTES[side][k] + n) + ']', '\\L2_S01_Dereeler' + side + '.i_Dancer' + k + 'Byte' + n]))),
     [MM + '_IN.Data[25]', '\\L2_S01_TubeFeedUpstream.i_MicrometerX'], [MM + '_IN.Data[26]', '\\L2_S01_TubeFeedUpstream.i_MicrometerY'],
     [MM + '_IN.Data[27]', '\\L2_S01_TubeFeedDownstream.i_MicrometerX'], [MM + '_IN.Data[28]', '\\L2_S01_TubeFeedDownstream.i_MicrometerY'],
   ].map(([a, b]) => '<ParameterConnection EndPoint1="' + a + '" EndPoint2="' + b + '"/>');
   x = x.slice(0, m.index) + '<ParameterConnections>\n' + pcs.concat(add).join('\n') + '\n</ParameterConnections>' + x.slice(m.index + m[0].length);
-  log.push('parameter connections: ' + (pcs.length + add.length) + ' (8 replaced, VB1 bytes re-pointed)');
+  log.push('parameter connections: ' + (pcs.length + add.length) + ' (8 dancer bytes + 4 micrometers added, VB1 bytes re-pointed)');
 }
 
 // ═══ 6. write ═════════════════════════════════════════════════════════════

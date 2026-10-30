@@ -56,7 +56,10 @@ const JOB = {
   ],
 
   // Instructions this job legitimately uses that the corpus cannot supply.
-  vocabularyExtras: {},
+  vocabularyExtras: {
+    // Banner Q4X IO-Link process-data decode, built from Jason's Schneider snippet (2026-10-30); called in the Dereeler programs.
+    AOI_BannerQ4X_PD: 'Banner Q4X IO-Link decode AOI (Jason, 1163 v0.4)',
+  },
 
   // closest example per program family: [maxTags, maxRungs, maxNonTrackingLatches, note]
   families: [
