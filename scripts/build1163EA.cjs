@@ -14,6 +14,10 @@
  *   Services: MapInputs/MapOutputs CPS + unpack rungs, Supervisor polls + 8 EIP-loss alarms, Alarms roll-up,
  *             MainTask schedule, g_StationList[1], ParameterConnections.
  *   Twins are built by the same generator with side = 'Upstream' | 'Downstream'.
+ *
+ *   LINEAGE: this script produced v0.3 / v0.3.1 from the Oct 29 export. Jason imported v0.3.1, set the vb01 / mm01 module
+ *   sizes in Studio and exported again (v0.3.2 returned); revise1163EA.cjs applies the v0.4 changes to THAT export. Re-running
+ *   this script alone does not reproduce the delivered file.
  */
 const fs = require('fs');
 const path = require('path');
