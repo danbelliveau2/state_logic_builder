@@ -129,6 +129,24 @@ for (const side of ['Upstream', 'Downstream']) {
   const decode = (k) => newRung(k === 'A' ? 'Dancer arm distance from the IO-Link sensors, larger as the arm drops' : '', AOI + '(Dancer' + k + 'Inputs,i_Dancer' + k + 'Byte0,i_Dancer' + k + 'Byte1,0,Dancer' + k + ')MOVE(Dancer' + k + '.Measurement_Value,Dancer' + k + 'Distance);');
   rungs.splice(i, 1, decode('A'), decode('B'));
   b = putRungs(b, 'R01_Inputs', rungs);
+  // VFD blocks as parameters (Jason: passed in / out of the Dereeler; the template's i_/q_InclineConveyor form)
+  const FD = { Upstream: { A: 'fd01_L2S01PayoutUpstreamA', B: 'fd02_L2S01PayoutUpstreamB' }, Downstream: { A: 'fd03_L2S01PayoutDownstreamA', B: 'fd04_L2S01PayoutDownstreamB' } }[side];
+  const asParam = (ctrl, name, usage) => { const t = tagXml(x, ctrl); must(t, 'controller tag ' + ctrl); return t.replace(/^<Tag Name="[^"]*" Class="Standard" TagType="Base" DataType="([^"]*)"/, '<Tag Name="' + name + '" TagType="Base" DataType="$1" Usage="' + usage + '"'); };
+  let vfdTags = '';
+  for (const k of ['A', 'B']) {
+    must(countOf(b, FD[k] + '_IN') >= 3 && countOf(b, FD[k] + '_OUT') >= 3, p + ' rungs reference ' + FD[k]);
+    b = b.split(FD[k] + '_IN').join('i_Payout' + k).split(FD[k] + '_OUT').join('q_Payout' + k);
+    vfdTags += asParam(FD[k] + '_IN', 'i_Payout' + k, 'Input') + '\n' + asParam(FD[k] + '_OUT', 'q_Payout' + k, 'Output') + '\n';
+  }
+  b = b.replace('</Tags>', vfdTags + '</Tags>');
+  // state 7 leaves only with the active drive running; state 10 leaves only with it stopped
+  const s10old = 'XIC(Status.State[7])GE(ActiveDancerDistance,HMI_PayoutStopDistance)MOVE(10,Control.StateReg);';
+  must(countOf(b, s10old) === 1, p + ' state 10 rung');
+  b = b.replace(s10old, 'XIC(Status.State[7])[XIO(ActiveTubeB) XIC(i_PayoutA.Active) ,XIC(ActiveTubeB) XIC(i_PayoutB.Active) ]GE(ActiveDancerDistance,HMI_PayoutStopDistance)MOVE(10,Control.StateReg);');
+  b = b.replace('<![CDATA[State 10: Stop the payout when the dancer is back down]]>', '<![CDATA[State 10: Drive running and the dancer back down, stop the payout]]>');
+  const s4old = ',XIC(Status.State[10]) XIO(i_PayoutA.Active) XIO(i_PayoutB.Active) ,';
+  must(countOf(b, s4old) === 1, p + ' state 4 rung from state 10');
+  b = b.replace(s4old, ',XIC(Status.State[10]) [XIO(ActiveTubeB) XIO(i_PayoutA.Active) ,XIC(ActiveTubeB) XIO(i_PayoutB.Active) ] ,');
   replaceProgram(p, b);
 }
 // TubeFeed: micrometer scale = display unit code 1 (0.01 mm) -> 100 counts per mm
@@ -154,6 +172,8 @@ log.push('Dereeler i_DancerA/B -> ' + UDT + '; TubeFeed MicrometerCountsPerMm 10
   must(!/vb01_MainAssembly_IN\.Data\[2[5-7]\]/.test(pcs.join()) && pcs.filter((p) => /_OUT\.Data\[4[789]\]/.test(p)).length === 20, 'VB1 byte map re-pointed');
   const add = [
     ...['Upstream', 'Downstream'].flatMap((side) => ['A', 'B'].flatMap((k) => [0, 1].map((n) => [VB + '_IN.Data[' + (DANCER_BYTES[side][k] + n) + ']', '\\L2_S01_Dereeler' + side + '.i_Dancer' + k + 'Byte' + n]))),
+    ...[['Upstream', 'A', 'fd01_L2S01PayoutUpstreamA'], ['Upstream', 'B', 'fd02_L2S01PayoutUpstreamB'], ['Downstream', 'A', 'fd03_L2S01PayoutDownstreamA'], ['Downstream', 'B', 'fd04_L2S01PayoutDownstreamB']]
+      .flatMap(([side, k, fd]) => [[fd + '_IN', '\\L2_S01_Dereeler' + side + '.i_Payout' + k], ['\\L2_S01_Dereeler' + side + '.q_Payout' + k, fd + '_OUT']]),
     [MM + '_IN.Data[25]', '\\L2_S01_TubeFeedUpstream.i_MicrometerX'], [MM + '_IN.Data[26]', '\\L2_S01_TubeFeedUpstream.i_MicrometerY'],
     [MM + '_IN.Data[27]', '\\L2_S01_TubeFeedDownstream.i_MicrometerX'], [MM + '_IN.Data[28]', '\\L2_S01_TubeFeedDownstream.i_MicrometerY'],
   ].map(([a, b]) => '<ParameterConnection EndPoint1="' + a + '" EndPoint2="' + b + '"/>');
