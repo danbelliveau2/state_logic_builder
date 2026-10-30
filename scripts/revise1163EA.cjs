@@ -147,8 +147,62 @@ for (const side of ['Upstream', 'Downstream']) {
   const s4old = ',XIC(Status.State[10]) XIO(i_PayoutA.Active) XIO(i_PayoutB.Active) ,';
   must(countOf(b, s4old) === 1, p + ' state 4 rung from state 10');
   b = b.replace(s4old, ',XIC(Status.State[10]) [XIO(ActiveTubeB) XIO(i_PayoutA.Active) ,XIC(ActiveTubeB) XIO(i_PayoutB.Active) ] ,');
+  // payout only while the tube feed is idle (Jason); the feed publishes q_FeedIdle, the dereeler publishes q_PayoutRunning
+  const boolTag = (name, usage, desc) => progTag(name, 'BOOL', ' Radix="Decimal"' + (usage ? ' Usage="' + usage + '"' : ''), desc, dataBlock('0', '<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>'));
+  b = b.replace('</Tags>', boolTag('FeedIdle', '', '') + '\n' + boolTag('q_PayoutRunning', 'Output', 'Payout Motor Running') + '\n</Tags>');
+  {
+    const r01 = rungList(getRoutine(b, 'R01_Inputs'));
+    const j = r01.findIndex((r) => rungText(r) === 'XIC(\\L2_S01_TubeFeed' + side + '.q_TubeInDrive)OTE(TubeInDrive);');
+    must(j > 0, p + ' TubeInDrive rung');
+    r01.splice(j + 1, 0, newRung('', 'XIC(\\L2_S01_TubeFeed' + side + '.q_FeedIdle)OTE(FeedIdle);'));
+    b = putRungs(b, 'R01_Inputs', r01);
+  }
+  const s7old = 'XIC(Status.State[4])XIC(TubeInDrive)XIO(ActiveSpoolEmpty)LE(ActiveDancerDistance,HMI_PayoutStartDistance)XIC(SS_OK)MOVE(7,Control.StateReg);';
+  must(countOf(b, s7old) === 1, p + ' state 7 rung');
+  b = b.replace(s7old, 'XIC(Status.State[4])XIC(TubeInDrive)XIC(FeedIdle)XIO(ActiveSpoolEmpty)LE(ActiveDancerDistance,HMI_PayoutStartDistance)XIC(SS_OK)MOVE(7,Control.StateReg);');
+  b = b.replace('<![CDATA[State 7: Run the active payout]]>', '<![CDATA[State 7: Run the active payout while the tube feed is idle]]>');
+  // state 13 (spool empty) returns to idle when the cycle stops (Jason)
+  const s3old = ',[XIC(Status.State[4]) ,XIC(Status.State[10]) ,XIC(Status.State[124]) ] XIO(CycleRunning) ]MOVE(3,Control.StateReg);';
+  must(countOf(b, s3old) === 1, p + ' state 3 rung');
+  b = b.replace(s3old, ',[XIC(Status.State[4]) ,XIC(Status.State[10]) ,XIC(Status.State[13]) ,XIC(Status.State[124]) ] XIO(CycleRunning) ]MOVE(3,Control.StateReg);');
+  {
+    const r03 = rungList(getRoutine(b, 'R03_StateLogic'));
+    const j = r03.findIndex((r) => /OTE\(q_AutoStopped\);$/.test(rungText(r)));
+    must(j > 0, p + ' q_AutoStopped rung');
+    r03.splice(j + 1, 0, newRung('Payout running, the tube feed waits', '[XIC(Status.State[7]) ,XIC(Status.State[10]) ]OTE(q_PayoutRunning);'));
+    b = putRungs(b, 'R03_StateLogic', r03);
+  }
   replaceProgram(p, b);
 }
+// TubeFeed: publish q_FeedIdle, wait for the payout before feeding or changing over
+for (const side of ['Upstream', 'Downstream']) {
+  const p = 'L2_S01_TubeFeed' + side;
+  let b = programBody(p) || fail('no program ' + p);
+  const boolTag = (name, usage, desc) => progTag(name, 'BOOL', ' Radix="Decimal"' + (usage ? ' Usage="' + usage + '"' : ''), desc, dataBlock('0', '<DataValue DataType="BOOL" Radix="Decimal" Value="0"/>'));
+  b = b.replace('</Tags>', boolTag('PayoutRunning', '', '') + '\n' + boolTag('q_FeedIdle', 'Output', 'Tube Feed Idle') + '\n</Tags>');
+  {
+    const r01 = rungList(getRoutine(b, 'R01_Inputs'));
+    const j = r01.findIndex((r) => /OTE\(ActiveSpoolEmpty\);$/.test(rungText(r)));
+    must(j > 0, p + ' ActiveSpoolEmpty rung');
+    r01.splice(j + 1, 0, newRung('Payout of the active spool is running', 'XIC(\\L2_S01_Dereeler' + side + '.q_PayoutRunning)OTE(PayoutRunning);'));
+    b = putRungs(b, 'R01_Inputs', r01);
+  }
+  const f7 = 'XIC(Status.State[4])XIC(StagingEmpty)XIC(TubeInDrive)XIO(ActiveSpoolEmpty)XIC(SS_OK)MOVE(7,Control.StateReg);';
+  must(countOf(b, f7) === 1, p + ' state 7 rung');
+  b = b.replace(f7, 'XIC(Status.State[4])XIC(StagingEmpty)XIC(TubeInDrive)XIO(ActiveSpoolEmpty)XIO(PayoutRunning)XIC(SS_OK)MOVE(7,Control.StateReg);');
+  const f40 = 'XIC(Status.State[4])XIC(StagingEmpty)[XIO(TubeInDrive) ,XIC(ActiveSpoolEmpty) ]XIC(SS_OK)MOVE(40,Control.StateReg);';
+  must(countOf(b, f40) === 1, p + ' state 40 rung');
+  b = b.replace(f40, 'XIC(Status.State[4])XIC(StagingEmpty)[XIO(TubeInDrive) ,XIC(ActiveSpoolEmpty) ]XIO(PayoutRunning)XIC(SS_OK)MOVE(40,Control.StateReg);');
+  {
+    const r03 = rungList(getRoutine(b, 'R03_StateLogic'));
+    const j = r03.findIndex((r) => /OTE\(q_AutoStopped\);$/.test(rungText(r)));
+    must(j > 0, p + ' q_AutoStopped rung');
+    r03.splice(j + 1, 0, newRung('Tube feed idle, the payout may run', 'XIO(Status.State[10])XIO(Status.State[16])XIO(Status.State[40])XIO(Status.State[49])XIO(Status.State[55])XIO(iq_FeedAxis.MoveStatus)XIO(iq_FeedAxis.JogStatus)OTE(q_FeedIdle);'));
+    b = putRungs(b, 'R03_StateLogic', r03);
+  }
+  replaceProgram(p, b);
+}
+log.push('payout only while the feed is idle (q_FeedIdle / q_PayoutRunning); Dereeler state 13 returns to idle on cycle stop');
 // TubeFeed: micrometer scale = display unit code 1 (0.01 mm) -> 100 counts per mm
 for (const side of ['Upstream', 'Downstream']) {
   const p = 'L2_S01_TubeFeed' + side;
