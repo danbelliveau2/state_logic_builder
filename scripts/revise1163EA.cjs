@@ -19,7 +19,7 @@ const fs = require('fs');
 const path = require('path');
 const argv = process.argv.slice(2);
 const flag = (n, d) => { const i = argv.indexOf('--' + n); return i >= 0 ? argv[i + 1] : d; };
-const SRC = flag('src', 'C:/1163 AI Code/_1163_Haemonetics.L5X');
+const SRC = flag('src', 'X:/Electrical Dept/SDC Engineer/Deliveries/1163/_history/1163_Haemonetics_v0.3.2_returned_2026-10-30.L5X');
 const OUT = flag('out', 'X:/Electrical Dept/SDC Engineer/Deliveries/1163/1163_Haemonetics.L5X');
 const fail = (m) => { console.error('  !! ' + m); process.exit(1); };
 const must = (c, m) => { if (!c) fail(m); };
@@ -235,7 +235,19 @@ log.push('Dereeler i_DancerA/B -> ' + UDT + '; TubeFeed MicrometerCountsPerMm 10
   log.push('parameter connections: ' + (pcs.length + add.length) + ' (8 dancer bytes + 4 micrometers added, VB1 bytes re-pointed)');
 }
 
-// ═══ 6. write ═════════════════════════════════════════════════════════════
+// ═══ 6. Kinetix 5300 AC Input Phasing = Single Phase on the two feed drives (Jason, 2026-10-30) ═══
+//     ConfigData DINT[35]: 33554432 (0x02000000) three phase -> 33619968 (0x02010000) single phase; learned from his export.
+for (const m of ['sd02_L2S01FeedUpstream', 'sd03_L2S01FeedDownstream']) {
+  const re = new RegExp('(<Module Name="' + m + '"[\\s\\S]*?<ConfigData[\\s\\S]*?<!\\[CDATA\\[)([\\s\\S]*?)(\\]\\]>)');
+  const mm = re.exec(x) || fail('ConfigData of ' + m);
+  const vals = mm[2].replace(/\s+/g, '').replace(/^\[+/, '').replace(/\]+$/, '').split(',').filter((v) => v !== '');
+  must(vals.length === 119 && (vals[35] === '33554432' || vals[35] === '33619968'), m + ' ConfigData shape: ' + vals.length + ' values, [35]=' + vals[35]);
+  vals[35] = '33619968';
+  x = x.slice(0, mm.index) + mm[1] + '[' + vals.join(',') + ']' + mm[3] + x.slice(mm.index + mm[0].length);
+}
+log.push('sd02 / sd03 AC Input Phasing: Single Phase (ConfigData[35] = 33619968)');
+
+// ═══ 7. write ═════════════════════════════════════════════════════════════
 must(!/vb01_DancerDistance|mm01_L2S01MicrometerValue/.test(x), 'old buffer names still referenced');
 const d = new Date();
 x = x.replace(/ExportDate="[^"]*"/, 'ExportDate="' + d.toDateString().replace(/ \d{4}$/, '') + ' ' + d.toTimeString().slice(0, 8) + ' ' + d.getFullYear() + '"');
