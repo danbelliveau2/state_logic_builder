@@ -483,7 +483,13 @@ for (const side of ['Upstream', 'Downstream']) {
   setAttr('ActuatorType', 'Belt and Pulley'); setAttr('TravelMode', 'Unlimited'); setAttr('TransmissionRatioInput', '20'); setAttr('TransmissionRatioOutput', '15');
   setAttr('ActuatorLead', '1.0'); setAttr('ActuatorDiameter', '50.927'); setAttr('MaximumSpeed', '10200.0'); setAttr('MaximumAcceleration', '1473265.0'); setAttr('MaximumDeceleration', '1473265.0');
   setAttr('MaximumAccelerationJerk', '425590416.0'); setAttr('MaximumDecelerationJerk', '425590416.0');
+  // every axis in a project needs its own AxisID (Studio: "Duplicate Axis ID has been found")
+  setAttr('AxisID', String(2640443100 + axes.length + 1));
   axes.push(ax);
+}
+{
+  const ids = [...(x + axes.join('')).matchAll(/AxisID="(\d+)"/g)].map((m) => m[1]);
+  must(new Set(ids).size === ids.length, 'duplicate AxisID: ' + ids.join(','));
 }
 // PowerFlex 525 (1146 fd01_FFConv form) + buffer tags
 const fdTpl = moduleXml(e, 'fd01_FFConv');
@@ -504,7 +510,11 @@ function genericModule(name, ip, inB, outB, inCxn, outCxn) {
   m = m.replace('PrimCxnInputSize="4"', 'PrimCxnInputSize="' + inB + '"').replace('PrimCxnOutputSize="4"', 'PrimCxnOutputSize="' + outB + '"');
   m = m.replace(/InputCxnPoint="100" OutputCxnPoint="150" OutputSize="4" InputSize="4"/, 'InputCxnPoint="' + inCxn + '" OutputCxnPoint="' + outCxn + '" OutputSize="' + outB + '" InputSize="' + inB + '"');
   m = m.replace('AB:ETHERNET_MODULE_SINT_4Bytes:I:0', 'AB:ETHERNET_MODULE_SINT_' + inB + 'Bytes:I:0').replace('AB:ETHERNET_MODULE_SINT_4Bytes:O:0', 'AB:ETHERNET_MODULE_SINT_' + outB + 'Bytes:O:0');
-  must(m.includes('SINT_' + inB + 'Bytes:I:0') && m.includes('SINT_' + outB + 'Bytes:O:0') && m.includes('InputSize="' + inB + '"'), 'generic module sizes');
+  // the connection tags' Decorated data must carry one Element per byte (Studio: "Use 'Element' formatting")
+  const arr = (n) => '<ArrayMember Name="Data" DataType="SINT" Dimensions="' + n + '" Radix="Decimal">\n' + sintArrayDecorated(n) + '\n</ArrayMember>';
+  const arrRe = /<ArrayMember Name="Data" DataType="SINT" Dimensions="4" Radix="Decimal">[\s\S]*?<\/ArrayMember>/;
+  m = m.replace(/<InputTag[\s\S]*?<\/InputTag>/, (s) => s.replace(arrRe, arr(inB))).replace(/<OutputTag[\s\S]*?<\/OutputTag>/, (s) => s.replace(arrRe, arr(outB)));
+  must(m.includes('SINT_' + inB + 'Bytes:I:0') && m.includes('SINT_' + outB + 'Bytes:O:0') && m.includes('InputSize="' + inB + '"') && !/Dimensions="4"/.test(m.replace(/Dimensions="4" Radix="Decimal">\n<Element Index="\[0\]" Value="0"\/>\n<Element Index="\[1\]" Value="0"\/>\n<Element Index="\[2\]" Value="0"\/>\n<Element Index="\[3\]" Value="0"\/>\n<\/ArrayMember>/g, (s) => (outB === 4 ? '' : s))), 'generic module sizes');
   return m;
 }
 mods.push(genericModule(VB, '10.1.60.40', 32, 8, 100, 150));
