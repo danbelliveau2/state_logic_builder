@@ -453,6 +453,46 @@ function scanBranches(text) {
   return faults;
 }
 
+// ── Axis IDs (Studio: "Failed to set the 'AxisID' property (Duplicate Axis ID has been found)") ──
+// 2026-10-30, job 1163 v0.3: two feed axes copied from one template axis kept its AxisID; Studio refused the import.
+function checkAxisIds(xml, errors) {
+  const seen = new Map();
+  for (const m of xml.matchAll(/<Tag\s+Name="([^"]+)"[^>]*DataType="AXIS_CIP_DRIVE"[^>]*>[\s\S]*?<AxisParameters\b([^>]*)>/g)) {
+    const id = (/\bAxisID="([^"]*)"/.exec(m[2]) || [])[1];
+    if (!id) continue;
+    if (seen.has(id)) errors.push(`Tag ${m[1]}: AxisID="${id}" is already used by axis ${seen.get(id)} — Studio: "Failed to set the 'AxisID' property (Duplicate Axis ID has been found)"; every AXIS_CIP_DRIVE tag needs its own AxisID`);
+    else seen.set(id, m[1]);
+  }
+}
+
+// ── Module connection-tag data (Studio: "The data for 'X:I' will not be imported (Format of data element inside an
+//    array is invalid. Use 'Element' formatting.)") — a generic ETHERNET-MODULE's InputTag/OutputTag Decorated data must
+//    carry one <Element> per byte of the declared size. 2026-10-30, job 1163 v0.3: 32-byte types copied with 4-element arrays.
+function checkModuleConnectionData(xml, errors, warnings) {
+  for (const mod of xml.matchAll(/<Module\s+Name="([^"]+)"[^>]*>([\s\S]*?)<\/Module>/g)) {
+    const [, name, body] = mod;
+    for (const conn of body.matchAll(/<Connection\s+Name="([^"]+)"([^>]*)>([\s\S]*?)<\/Connection>/g)) {
+      const [, connName, attrs, cbody] = conn;
+      const sizeOf = (k) => { const m = new RegExp('\\b' + k + '="(\\d+)"').exec(attrs); return m ? Number(m[1]) : null; };
+      for (const [tagEl, sizeKey, suffix] of [['InputTag', 'InputSize', 'I'], ['OutputTag', 'OutputSize', 'O']]) {
+        const t = new RegExp('<' + tagEl + '\\b[^>]*>([\\s\\S]*?)</' + tagEl + '>').exec(cbody);
+        if (!t) continue;
+        const where = `Module ${name} connection ${connName} ${tagEl} (${name}:${suffix})`;
+        const typ = /<Structure\s+DataType="AB:ETHERNET_MODULE_(SINT|INT|DINT|REAL)_(\d+)Bytes:[IO]:\d+"/.exec(t[1]);
+        const elemBytes = typ ? { SINT: 1, INT: 2, DINT: 4, REAL: 4 }[typ[1]] : null;
+        for (const arr of t[1].matchAll(/<ArrayMember\s+Name="([^"]+)"[^>]*\bDimensions="(\d+)"[^>]*>([\s\S]*?)<\/ArrayMember>/g)) {
+          const dims = Number(arr[2]);
+          const elems = (arr[3].match(/<Element\s+Index=/g) || []).length;
+          const expected = typ && arr[1] === 'Data' ? Number(typ[2]) / elemBytes : dims;
+          if (elems !== dims || dims !== expected) warnings.push(`${where}: Decorated array "${arr[1]}" has Dimensions="${dims}" with ${elems} Element(s) but the ${typ ? typ[0].replace(/<Structure\s+DataType=/, '') + ' type holds ' + expected : 'type holds ' + dims} — Studio drops the data ("Format of data element inside an array is invalid. Use 'Element' formatting"); one Element per array member`);
+        }
+        const declared = sizeOf(sizeKey);
+        if (typ && declared != null && Number(typ[2]) !== declared) errors.push(`${where}: connection ${sizeKey}="${declared}" but the data type says ${typ[2]} bytes — the generic module's size and its tag type must agree`);
+      }
+    }
+  }
+}
+
 // ── Entry point ──────────────────────────────────────────────────────────────
 
 /**
@@ -473,6 +513,8 @@ function simulateImport(xml) {
   }
   checkCdataAscii(xml, errors, warnings);
   checkBranchStructure(xml, errors);
+  checkAxisIds(xml, errors);
+  checkModuleConnectionData(xml, errors, warnings);
   return { ok: errors.length === 0, errors, warnings };
 }
 
