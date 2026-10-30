@@ -43,7 +43,11 @@ if (AOI_RE.test(xml)) {
   const cur = xml.match(AOI_RE)[0];
   const curDate = (cur.match(/EditedDate="([^"]+)"/) || [])[1];
   const stdDate = (stdAoi.match(/EditedDate="([^"]+)"/) || [])[1];
+  // Same logic = current. A project re-saved in Studio re-stamps EditedDate / SoftwareRevision and drops the export-only
+  // <Dependencies> block (1163, 2026-10-30: every export since v0.2 carries Jason's 14:49 copy of the 13:47 standard).
+  const logic = s => s.replace(/\s(EditedDate|SoftwareRevision|Use)="[^"]*"/g, '').replace(/<Dependencies>[\s\S]*?<\/Dependencies>/, '').replace(/\s+/g, ' ').replace(/\s+>/g, '>').replace(/> </g, '><').trim();
   if (curDate === stdDate) report.aoi = 'current';
+  else if (logic(cur) === logic(stdAoi)) report.aoi = `current (same logic, Studio re-stamped ${curDate})`;
   else { xml = xml.replace(AOI_RE, () => noTarget(stdAoi)); report.aoi = `replaced (${curDate} -> ${stdDate})`; }
 }
 

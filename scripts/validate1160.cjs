@@ -109,7 +109,15 @@ function resolveModuleIoEndpoint(ep, mods) {
   const sec = mod[conn];
   if (!sec) return { err: `module ${mod.name} (${mod.catalog}) has no ${conn === 'I' ? 'Input' : conn === 'O' ? 'Output' : 'Config'} connection tag` };
   const sm = sec.match(new RegExp(`<StructureMember\\s+Name="${member}"([^>]*)>([\\s\\S]*?)<\\/StructureMember>`));
-  if (!sm) return { err: `module ${mod.name} (${mod.catalog}) ${conn} connection has no member "${member}" — a point the card does not have` };
+  if (!sm) {
+    // Flat connection members (1756-HSC/D, 2026-10-30): an ArrayMember (Local:6:I.PresentValue[0]) or a scalar
+    // DataValueMember whose bit is addressed (Local:6:O.ResetCounter.1) sit directly under the connection structure.
+    const am = sec.match(new RegExp(`<ArrayMember\\s+Name="${member}"([^>]*)>`));
+    if (am) return { decl: { dataType: /\]\.\d+$/.test(rest) ? 'BOOL' : attrOf(' ' + am[1], 'DataType'), module: mod.name } };
+    const dvm = sec.match(new RegExp(`<DataValueMember\\s+Name="${member}"\\s+DataType="([^"]+)"`));
+    if (dvm) return { decl: { dataType: /\.\d+$/.test(rest) ? 'BOOL' : dvm[1], module: mod.name } };
+    return { err: `module ${mod.name} (${mod.catalog}) ${conn} connection has no member "${member}" — a point the card does not have` };
+  }
   const leaf = (rest.match(/\.([A-Za-z_][A-Za-z0-9_]*)(?:\[\d+\])?$/) || [])[1];
   if (leaf === member) return { decl: { dataType: attrOf(' ' + sm[1], 'DataType'), module: mod.name } };
   const dv = sm[2].match(new RegExp(`<DataValueMember\\s+Name="${leaf}"\\s+DataType="([^"]+)"`));
