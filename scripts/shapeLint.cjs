@@ -33,47 +33,35 @@ const ROOT = path.resolve(__dirname, '..');
 // JOB CONFIG — the only part that changes per job
 // ═══════════════════════════════════════════════════════════════════════════════
 const JOB = {
-  id: '1131',
+  id: '1163',
 
   // 'chassis-1up' cam chassis, one nest      ChassisStandard_1UP.L5X        (13 programs, single-sided)
   // 'chassis-2up' cam chassis, two-up        ChassisStandard_2UP_*.L5X      (19 programs, A/B twins)
   // 'dial'        indexing dial / ring       SoftwareStandardizationNew.L5X (22 programs)
   // 'standalone'  no indexer, no cams        1131 Tarkett (Dan 2026-09-28, D006): services from the standard project,
   //               stations self-actuated with p_ handshakes; single step is the StateMachine-skeleton HMI_Toggle form
-  platform: 'standalone',
+  // 1163 L2 is the 2UP linear indexer (SoftwareStandardization2UP): single step is required, no cam positions.
+  platform: 'dial',
 
-  progDir: 'generated/1131/build/programs',
-  tasks: 'generated/1131/build/controller/Tasks.xml',
+  progDir: 'generated/1163/build/programs',
+  tasks: 'generated/1163/build/controller/Tasks.xml',
 
   corpus: [
-    // THE PROJECT FILE WINS (Jason 2026-09-23): every standard program - S05_ServoPNP, S06_IV4Vision, S10_FlexFeedConveyor,
-    // Supervisor, Alarms, HMI, Production, Recipe, MapInputs/MapOutputs, StateMachine, SafetyProgram - is in this export.
-    'plc-reference/training-material/SDC Standard Templates/SoftwareStandardizationNew.L5X',
+    // THE PROJECT FILE WINS: the job file (Jason's export) first, then the 2UP template it came from, V5.3 for the
+    // servo / VFD / alarm forms (S05_ServoPNP, S10_FlexFeedConveyor, S03_PartLoad) and job 1146 for the PowerFlex 525 form.
+    'X:/Electrical Dept/SDC Engineer/Deliveries/1163/_history/1163_Haemonetics_v0.2_returned_2026-10-29.L5X',
+    'X:/Electrical Dept/SDC Engineer/Deliveries/2UP Linear Indexer/SoftwareStandardization2UP.L5X',
+    'X:/Electrical Dept/SDC Engineer/Deliveries/SoftwareStandardization V5.3/SoftwareStandardization.L5X',
+    'C:/1163 AI Code/AI Inputs/_1146_AlconNewRegisters.L5X',
   ],
 
   // Instructions this job legitimately uses that the corpus cannot supply.
-  vocabularyExtras: {
-    // Outfeed gantry picks on the fly: X is geared to the belt axis while the pick happens (John Stanko P06 R04 rung 27,
-    // commissioned). No template carries gearing - PROPOSED NON-STANDARD PATTERN named in the cover note.
-    MAG: 'outfeed gantry X geared to the outfeed belt axis for the pick on the fly',
-    // Vendor IO-Link AOI on the 1734-4IOL (ifm O1D100 stack-height laser), called from MapInputs.
-    O1D100_Decode: 'ifm O1D100 IO-Link laser decode (John Stanko, commissioned)',
-    // GuardLogix safety instructions in the two carried-verbatim safety programs.
-    LC: 'light curtain (SafetyProgramLoader/Unloader, verbatim)',
-    TSSM: 'two-sensor muting (SafetyProgramLoader/Unloader, verbatim)',
-    CROUT: 'monitored safety output (SafetyProgramLoader/Unloader, verbatim)',
-    MSG: 'Timesavers peer PLC stubs (Communications, verbatim)',
-    OSR: 'one-shot rising in the two carried-verbatim safety programs (SafetyProgramLoader/Unloader)',
-  },
+  vocabularyExtras: {},
 
   // closest example per program family: [maxTags, maxRungs, maxNonTrackingLatches, note]
   families: [
-    [/^S03_InfeedGantry$/, [175, 167, 4, 'S05_ServoPNP in the project file (137 tags, 133 rungs, 2 latches) +25 %; +3 tags for the master Restart Logic rung (UseRestartLogic) and the two safety axis-stop reads the review required']],
-    [/^S07_OutfeedGantry$/, [205, 195, 6, 'S05_ServoPNP (137/133) + gearing rungs + gauge place/retrieve branch (PROPOSED NON-STANDARD PATTERN)']],
-    [/^S0(1_InfeedCart|9_OutfeedCart)$/, [160, 150, 4, 'S05_ServoPNP one-axis half (~95/90) + 12 pneumatic devices with derived states (~50/45) +25 %']],
-    [/^S0(2_InfeedVision|6_OutfeedVision)$/, [120, 110, 4, 'S06_IV4Vision (55 tags, 51 rungs) + S05 single-axis block (~40/35) +25 %']],
-    [/^S0(4_InfeedConveyor|5_OutfeedConveyor)$/, [110, 100, 2, 'S10_FlexFeedConveyor in the project file (~95 tags, 93 rungs) +25 %']],
-    [/^S08_ThicknessGauge$/, [120, 115, 4, 'StateMachine skeleton (35 rungs) + 6 pneumatic devices + 4 analog probes + ConsecFails (S04_PartVerify form) +25 %']],
+    [/^L2_S01_TubeFeed(Upstream|Downstream)$/, [215, 170, 8, 'S05_ServoPNP one axis (~100 tags / 95 rungs) + S03_PartLoad pneumatics for cutter, selector, inserter, two grippers (~60 / 40) + S04_PartVerify result (~10 / 5) +25 %']],
+    [/^L2_S01_Dereeler(Upstream|Downstream)$/, [120, 100, 8, 'S10_FlexFeedConveyor VFD half (~60 tags / 55 rungs, 4 manual-latch OTL/OTU) + 1146 fd01_FFConv rungs (~10 / 8) + dereeler state machine (~15 / 10) +25 %; +4 OTL/OTU for the two spool-empty memories']],
   ],
 
   // Task schedule this job must satisfy. heatStationPrograms: [] when a job has no heaters.
@@ -88,7 +76,7 @@ const JOB = {
 
 const PROG_DIR = path.join(ROOT, JOB.progDir);
 const TASKS = path.join(ROOT, JOB.tasks);
-const CORPUS = JOB.corpus.map((p) => path.join(ROOT, p));
+const CORPUS = JOB.corpus.map((p) => path.resolve(ROOT, p));
 const FAMILIES = JOB.families;
 const IS_CHASSIS = JOB.platform.startsWith('chassis');
 
