@@ -896,6 +896,46 @@ function checkExitlessWaits(rungs, warnings) {
   }
 }
 
+// ── Alarm seal-in (Jason, 1163 0.5 returned, 2026-10-30) ────────────────────
+// A fault alarm holds until FaultReset: [<condition> ,XIC(Alarm[n].Active) XIO(FaultReset) ][OTE(Alarm[n].Active) ,ONS …].
+// Only a warning (MOVE(1,Alarm[n].Severity)) is unsealed; a static-condition alarm (cam window LIMIT, comms ComOK) holds by itself and is
+// not checked; the Supervisor seals on q_FaultReset. His correction of 0.5 added the seal-in the
+// "Selector Not At Active Tube" rung lacked. ServoAlarm[] rungs follow the axis fault word and are not checked.
+function checkAlarmSealIn(rungs, warnings) {
+  for (const r of rungs) {
+    if (!/R20|Alarm/i.test(r.routine)) continue;
+    const m = r.text.match(/OTE\(Alarm\[(\d+)\]\.Active\)/);
+    if (!m) continue;
+    const n = m[1];
+    if (r.text.includes('MOVE(1,Alarm[' + n + '].Severity)')) continue; // warning class
+    if (r.text.includes('g_MachineBasic.AlwaysOff')) continue; // template placeholder rung
+    if (!r.text.includes('TimeoutFlt') && !r.text.includes('.DN)')) continue; // only timed conditions drop out on their own; a static check (cam window LIMIT, comms ComOK) holds by itself
+    const sealed = r.text.includes('XIC(Alarm[' + n + '].Active)') && (r.text.includes('XIO(FaultReset)') || r.text.includes('XIO(q_FaultReset)'));
+    if (!sealed) warnings.push('Alarm seal-in missing: ' + r.program + ' Alarm[' + n + '] is a fault alarm with no [… ,XIC(Alarm[' + n + '].Active) XIO(FaultReset)] branch — a fault holds until FaultReset, only a Severity 1 warning is unsealed (Jason, 1163 0.5 returned)');
+  }
+}
+
+// ── State comments follow renumbering (Jason, 1163 0.5 returned, 2026-10-30) ─
+// Every state a program's R02 moves to (4..97) carries its name as the Status tag's .STATE[n] operand comment;
+// renumbering a block without moving the comments left 52 "Stop Drive Open Gripper" and 55 "Prime Feed" in 0.5.
+// Checked only in programs that use the convention (at least one .STATE[n] comment).
+function checkStateOperandComments(xml, rungs, warnings) {
+  const progStart = xml.indexOf('<Programs'), progEnd = xml.lastIndexOf('</Programs>');
+  const section = progStart >= 0 && progEnd > progStart ? xml.slice(progStart, progEnd) : xml;
+  for (const pm of section.matchAll(/<Program\b[^>]*\bName="([^"]+)"[\s\S]*?<\/Program>/g)) {
+    const name = pm[1], body = pm[0];
+    const commented = new Set([...body.matchAll(/<Comment Operand="\.STATE\[(\d+)\]">/gi)].map(x => parseInt(x[1], 10)));
+    if (commented.size === 0) continue;
+    const moved = new Set();
+    for (const r of rungs) {
+      if (r.program !== name || !/R02/i.test(r.routine)) continue;
+      for (const x of r.text.matchAll(/MOVE?\((\d+),\s*Control\.StateReg\)/g)) { const n = parseInt(x[1], 10); if (n >= 4 && n <= 97) moved.add(n); }
+    }
+    const missing = [...moved].filter(n => !commented.has(n)).sort((a, b) => a - b);
+    if (missing.length) warnings.push('State comment missing: ' + name + ' Status .STATE[' + missing.join('], .STATE[') + '] has no operand comment — a renumbered state takes its name with it (Jason, 1163 0.5 returned)');
+  }
+}
+
 // ── ParameterConnections (Jason's real-controller import, 2026-08-31) ───────
 //
 // Studio 5000 validates every <ParameterConnection> at import: both endpoints
@@ -1592,6 +1632,8 @@ function validateL5X(xml, opts = {}) {
   //    ProgramAlarmHandler coverage). Warning, not error — the heuristic
   //    can't see cross-program recovery paths.
   checkExitlessWaits(rungs, warnings);
+  checkAlarmSealIn(rungs, warnings);
+  checkStateOperandComments(xml, rungs, warnings);
 
   // 7. R02 rung order is template law (Rule 15): sequence rungs ascending,
   //    before the override block; State_Engine call after every state MOVE.
