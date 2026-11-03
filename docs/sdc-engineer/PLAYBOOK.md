@@ -74,6 +74,7 @@ It reads the code, so it also finds things: state 67 of 1131 S07 had no success 
 
 ## 7d. State engine (Jason, 2026-10-26)
 - Every new delivery carries the current `State_Engine_128Max` (edited 2026-10-26): `StateLogicStatus.StateDuration[128]` holds the ms spent in each state. Source: `plc-reference/standard/aoi/`. Run `node scripts/applyStateEngine.cjs <file.L5X>` on every assembled file before the validator; `--check` says whether a file is current.
+- Same carrier for the AOIs the dial template owns: `LightControl` (V5.4, 2026-11-03: the horn counter resets when the fault clears, so the three-pulse horn sounds on every fault). An AOI change is never a re-delivery on its own; it rides with the job's next increment (Jason, 2026-10-29).
 
 ## 7e. Epson robot form (Jason, 2026-10-29, returned V5.3)
 - `S08_EpsonRobotPNP` in V5.3 is the template: command word `UserWord[0]` out / echo in (2 pick, 3 place, 100 safe home), positions from the robot's InsideBox outputs (1 indexer zone, 2 pick, 3 place, 4 safe home; operand comments carry the robot Out number), AOI_Epson_IN / OUT on a generic ETHERNET-MODULE (in 100 / out 150, 32 INT, config 1 size 0).

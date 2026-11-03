@@ -3,7 +3,9 @@
 //   - replaces the State_Engine_128Max AOI definition
 //   - replaces the StateLogicStatus UDT (adds StateDuration DINT[128])
 //   - widens the data of every StateLogicStatus tag and every AOI instance tag
-// Source of truth: plc-reference/standard/aoi/{State_Engine_128Max,StateLogicStatus}.L5X
+//   - replaces the standard AOIs the dial template owns (LightControl, Jason 2026-11-03) when their logic differs
+// Source of truth: plc-reference/standard/aoi/{State_Engine_128Max,StateLogicStatus}.L5X and
+//   plc-reference/training-material/SDC Standard Templates/SoftwareStandardization.L5X (TEMPLATE_AOIS)
 //
 // usage: node scripts/applyStateEngine.cjs <in.L5X> [--out <out.L5X>] [--check]
 //   --check  report only, write nothing (exit 1 when the file is behind the standard)
@@ -51,6 +53,30 @@ if (AOI_RE.test(xml)) {
   else { xml = xml.replace(AOI_RE, () => noTarget(stdAoi)); report.aoi = `replaced (${curDate} -> ${stdDate})`; }
 }
 
+// 1b. Standard AOIs whose source of truth is the dial template (Jason, 2026-11-03: "The LightControl AOI was also
+//     updated" - V5.4 resets the horn counter when the fault clears). Logic-only changes: parameters and local tags must
+//     match, or the instance tag data image would be wrong and the file is left alone with a warning.
+const TEMPLATE = path.join(__dirname, '..', 'plc-reference', 'training-material', 'SDC Standard Templates', 'SoftwareStandardization.L5X');
+const TEMPLATE_AOIS = ['LightControl'];
+report.templateAois = [];
+{
+  const tpl = fs.readFileSync(TEMPLATE, 'utf8');
+  const logic = s => s.replace(/\s(EditedDate|SoftwareRevision|Use)="[^"]*"/g, '').replace(/<Dependencies>[\s\S]*?<\/Dependencies>/, '').replace(/\s+/g, ' ').replace(/\s+>/g, '>').replace(/> </g, '><').trim();
+  const shape = s => (s.match(/<(?:Parameter|LocalTag) Name="[^"]+"[^>]*DataType="[^"]+"/g) || []).map(m => m.replace(/\s(Required|Visible|Description|ExternalAccess)="[^"]*"/g, '')).join('|');
+  for (const name of TEMPLATE_AOIS) {
+    const re = new RegExp('<AddOnInstructionDefinition [^>]*Name="' + name + '"[^>]*>[\\s\\S]*?</AddOnInstructionDefinition>');
+    const std = (tpl.match(re) || [])[0];
+    if (!std) { console.warn(name + ' not in the template ' + TEMPLATE); continue; }
+    const cur = (xml.match(re) || [])[0];
+    if (!cur) { report.templateAois.push(name + ' absent'); continue; }
+    const curDate = (cur.match(/EditedDate="([^"]+)"/) || [])[1], stdDate = (std.match(/EditedDate="([^"]+)"/) || [])[1];
+    if (curDate === stdDate || logic(cur) === logic(std)) { report.templateAois.push(name + ' current'); continue; }
+    if (shape(cur) !== shape(std)) { console.warn(name + ': parameters or local tags differ from the template - instance data would need rebuilding, left alone'); report.templateAois.push(name + ' SHAPE DIFFERS'); continue; }
+    xml = xml.replace(re, () => noTarget(std));
+    report.templateAois.push(name + ` replaced (${curDate} -> ${stdDate})`);
+  }
+}
+
 // 2. UDT
 if (UDT_RE.test(xml)) {
   const cur = xml.match(UDT_RE)[0];
@@ -79,8 +105,8 @@ xml = xml.replace(/<Tag [^>]*DataType="State_Engine_128Max"[^>]*>[\s\S]*?<\/Tag>
   return t;
 });
 
-const behind = /replaced/.test(report.aoi) || report.udt === 'replaced' || report.statusTags || report.engineTags;
-console.log(`${path.basename(inFile)}: AOI ${report.aoi}; UDT ${report.udt}; Status tags widened ${report.statusTags} (current ${report.statusTagsCurrent}); engine tags widened ${report.engineTags} (current ${report.engineTagsCurrent})`);
+const behind = /replaced/.test(report.aoi) || report.udt === 'replaced' || report.statusTags || report.engineTags || report.templateAois.some(s => /replaced/.test(s));
+console.log(`${path.basename(inFile)}: AOI ${report.aoi}; UDT ${report.udt}; Status tags widened ${report.statusTags} (current ${report.statusTagsCurrent}); engine tags widened ${report.engineTags} (current ${report.engineTagsCurrent}); template AOIs: ${report.templateAois.join(', ') || 'none'}`);
 if (checkOnly) process.exit(behind ? 1 : 0);
 if (behind) { fs.writeFileSync(outFile, xml); console.log('written ' + outFile); }
 else console.log('already current, nothing written');
