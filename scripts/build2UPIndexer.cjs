@@ -336,7 +336,7 @@ function expandRefs(t) {
     'IF p_Data.Nest[MyNestNum].PartStatus.PartLoaded THEN',
     'IF (p_Data.Nest[MyNestNum].PartStatus.Station[StationNum2].Failure) THEN', 'NestFailure := 1;', 'NestSuccess := 0;', 'EXIT;',
     'ELSIF (p_Data.Nest[MyNestNum].PartStatus.Station[StationNum2].Success) THEN', 'NestFailure := 0;', 'NestSuccess := 1;',   // no EXIT on a Success - a later Failure must still turn the nest Bad (Jason, 2026-11-03)
-    'else', 'NestFailure := 0;', 'NestSuccess := 0;', 'End_if;', 'End_if;', 'End_for;',
+    'End_if;', 'End_if;', 'End_for;',   // no ELSE: a station with no result leaves Good / Bad as found - Good holds from the first Success until a Failure (Jason, 2026-11-03)
     'If (NestSuccess) Then', 'p_Data.Nest[MyNestNum].PartStatus.Bad := 0;', 'p_Data.Nest[MyNestNum].PartStatus.Good := 1;',
     'ELSIf (NestFailure) Then', 'p_Data.Nest[MyNestNum].PartStatus.Bad := 1;', 'p_Data.Nest[MyNestNum].PartStatus.Good := 0;',
     'Else', 'p_Data.Nest[MyNestNum].PartStatus.Bad := 0;', 'p_Data.Nest[MyNestNum].PartStatus.Good := 0;', 'End_if;',
