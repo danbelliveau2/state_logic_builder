@@ -19,7 +19,7 @@ const fs = require('fs');
 const path = require('path');
 const argv = process.argv.slice(2);
 const flag = (n, d) => { const i = argv.indexOf('--' + n); return i >= 0 ? argv[i + 1] : d; };
-const SRC = flag('src', 'X:/Electrical Dept/SDC Engineer/Templates/SoftwareStandardizationNew.L5X');
+const SRC = flag('src', 'X:/Electrical Dept/SDC Engineer/Templates/SoftwareStandardization.L5X');   // V5.4 (Jason, 2026-11-03) replaced SoftwareStandardizationNew
 const CHASSIS = flag('chassis', 'X:/Electrical Dept/SDC Engineer/Templates/ChassisStandard_2UP_2026-09-17.L5X');
 const OUT_DIR = flag('out', 'X:/Electrical Dept/SDC Engineer/Deliveries/2UP Linear Indexer');
 const NAME = flag('name', 'SoftwareStandardization2UP');

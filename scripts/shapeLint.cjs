@@ -37,7 +37,7 @@ const JOB = {
 
   // 'chassis-1up' cam chassis, one nest      ChassisStandard_1UP.L5X        (13 programs, single-sided)
   // 'chassis-2up' cam chassis, two-up        ChassisStandard_2UP_*.L5X      (19 programs, A/B twins)
-  // 'dial'        indexing dial / ring       SoftwareStandardizationNew.L5X (22 programs)
+  // 'dial'        indexing dial / ring       SoftwareStandardization.L5X (V5.4, 23 programs; replaced SoftwareStandardizationNew 2026-11-03)
   // 'standalone'  no indexer, no cams        1131 Tarkett (Dan 2026-09-28, D006): services from the standard project,
   //               stations self-actuated with p_ handshakes; single step is the StateMachine-skeleton HMI_Toggle form
   // 1163 L2 is the 2UP linear indexer (SoftwareStandardization2UP): single step is required, no cam positions.
