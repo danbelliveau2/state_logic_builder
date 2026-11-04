@@ -661,7 +661,7 @@ if (!h.includes('<tr><td>' + VERSION + '</td>')) {
   must(h.includes('Coiler: wait for the index'), 'head modes');
 }
 if (!b.includes('vb06_MainAssembly')) {
-  b = rep1(b, 'Alarms rolls up Supervisor, the indexer and the four L2S01 p', 'Alarms rolls up Supervisor, the indexer, the four L2S01 programs and ' + PROG + ' (faults and warnings); <code>g_StationList[10]</code> = &ldquo;' + PREFIX + '&rdquo;. Alarms rolls up Supervisor, the indexer and the four L2S01 p', 'back alarms');
+  b = rep1(b, 'Alarms rolls up Supervisor, the indexer and the four L2S01 programs (faults and warnings). ', 'Alarms rolls up Supervisor, the indexer, the four L2S01 programs and ' + PROG + ' (faults and warnings); <code>g_StationList[10]</code> = &ldquo;' + PREFIX + '&rdquo;. ', 'back alarms');
   b = rep1(b, 'CPS of vb01_MainAssembly, mm01_L2S01Micrometer and the four ', 'CPS of vb01_MainAssembly, vb06_MainAssembly, mm01_L2S01Micrometer and the four ', 'back map');
   b = rep1(b, '65 parameter connections', '84 parameter connections', 'back pcs');
   b = rep1(b, 'Polls five state machines; EIP monitor counts 9 nodes; Alarm', 'Polls six state machines; EIP monitor counts 15 nodes; Alarm[10]&ndash;[15] are the S10 loss-of-communication alarms (five drives, VB6), the array grown to 20; Alarm', 'back supervisor');
