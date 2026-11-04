@@ -53,6 +53,8 @@ const JOB = {
     'X:/Electrical Dept/SDC Engineer/Deliveries/2UP Linear Indexer/SoftwareStandardization2UP.L5X',
     'X:/Electrical Dept/SDC Engineer/Deliveries/SoftwareStandardization V5.3/SoftwareStandardization.L5X',
     'C:/1163 AI Code/AI Inputs/_1146_AlconNewRegisters.L5X',
+    // the cam form (MCCP / MAPC / MAS Position Cam) for the L2S10 coiler comes from the chassis template Chassis program
+    'plc-reference/training-material/SDC Standard Templates/ChassisStandard_2UP_2026-09-17.L5X',
   ],
 
   // Instructions this job legitimately uses that the corpus cannot supply.
@@ -65,6 +67,7 @@ const JOB = {
   families: [
     [/^L2_S01_TubeFeed(Upstream|Downstream)$/, [215, 170, 8, 'S05_ServoPNP one axis (~100 tags / 95 rungs) + S03_PartLoad pneumatics for cutter, selector, inserter, two grippers (~60 / 40) + S04_PartVerify result (~10 / 5) +25 %']],
     [/^L2_S01_Dereeler(Upstream|Downstream)$/, [120, 100, 8, 'S10_FlexFeedConveyor VFD half (~60 tags / 55 rungs, 4 manual-latch OTL/OTU) + 1146 fd01_FFConv rungs (~10 / 8) + dereeler state machine (~15 / 10) +25 %; +4 OTL/OTU for the two spool-empty memories']],
+    [/^L2_S10_BlueTubeCoiler$/, [360, 265, 8, 'S05_ServoPNP (~136 tags / 95 rungs, 2 axes) scaled to 5 axes (+3 x ~45 tags / 23 rungs) + two heads of grippers and nest openers (S03 form, ~40 / 20) + chassis MCCP / MAPC cam rungs (~14 / 6) +25 %; latches are tracking only']],
   ],
 
   // Task schedule this job must satisfy. heatStationPrograms: [] when a job has no heaters.
@@ -88,8 +91,9 @@ const ROUTINE_SETS = [
   "R00_Main,R01_Inputs,R02_StateTransitions,R03_StateLogic,R20_Alarms",
   "R00_Main,R01_Inputs,R02_StateTransitions,R03_StateLogic,R04_ZAxisServo,R20_Alarms",
 ];
-// A station may carry one or two per-axis servo routines, R04_{Axis}Servo[,R05_{Axis}Servo] (S05_ServoPNP form: R04_XAxisServo,R05_ZAxisServo).
-const ROUTINE_SET_RE = /^R00_Main,R01_Inputs,R02_StateTransitions,R03_StateLogic(,R04_[A-Z][A-Za-z]*AxisServo(,R05_[A-Z][A-Za-z]*AxisServo)?)?,R20_Alarms$/;
+// A station carries one per-axis servo routine per axis, R04_{Axis}Servo, R05_{Axis}Servo, ... (S05_ServoPNP form: R04_XAxisServo,R05_ZAxisServo;
+// the 1163 L2S10 coiler has five: R04_XAxisServo .. R08_RotaryAxisRightServo).
+const ROUTINE_SET_RE = /^R00_Main,R01_Inputs,R02_StateTransitions,R03_StateLogic(,R0[4-9]_[A-Z][A-Za-z]*Axis[A-Za-z]*Servo)*,R20_Alarms$/;
 const FORBIDDEN = [
   // chassis only — the dial platform requires this block
   ...(IS_CHASSIS ? [
