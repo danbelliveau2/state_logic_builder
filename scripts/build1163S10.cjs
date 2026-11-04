@@ -21,7 +21,7 @@ const ROOT = path.join(__dirname, '..');
 const D = 'X:/Electrical Dept/SDC Engineer/Deliveries/1163', B = D + '/build-inputs', OUT = B + '/out', H = D + '/_history';
 const BASE = H + '/1163_Haemonetics_v0.6.2_2026-11-03.L5X';
 const V54 = path.join(ROOT, 'plc-reference/training-material/SDC Standard Templates/SoftwareStandardization.L5X');
-const M = '1163_Haemonetics', JOB = '1163', VERSION = '0.7';
+const M = '1163_Haemonetics', JOB = '1163', VERSION = '0.7.1';
 const ISO = new Date().toISOString().slice(0, 10), SHORT = 'Nov 4';
 const DRY = process.argv.includes('--dry');
 const PROGDIR = path.join(ROOT, 'generated', '1163', 'build', 'programs');
@@ -155,19 +155,19 @@ function programXml(name, tags, routines) {
 }
 
 // ═══ hardware configuration (Master Electrical IP tab, 2026-11-04) ═══════════
-const SIDES = ['Left', 'Right'];
+const SIDES = ['Upstream', 'Downstream'];
 const AXES = {
   XAxis: { tag: 'a14_L2S10Horizontal', drive: 'sd14_L2S10Horizontal', ip: SUBNET + '33', kind: 'linear', lead: 20.0, motor: 'TLP-A070-040-Dxxx2x', label: 'X Axis', eip: 'Loss Of L2S10 Horizontal Servo EIP' },
-  ZAxisLeft: { tag: 'a12_L2S10VerticalLeft', drive: 'sd12_L2S10VerticalLeft', ip: SUBNET + '31', kind: 'linear', lead: 10.0, motor: 'TLP-A070-040-Dxxx4x', label: 'Z Axis Left', eip: 'Loss Of L2S10 Vertical Left Servo EIP' },
-  ZAxisRight: { tag: 'a13_L2S10VerticalRight', drive: 'sd13_L2S10VerticalRight', ip: SUBNET + '32', kind: 'linear', lead: 10.0, motor: 'TLP-A070-040-Dxxx4x', label: 'Z Axis Right', eip: 'Loss Of L2S10 Vertical Right Servo EIP' },
-  RAxisLeft: { tag: 'a10_L2S10RotaryLeft', drive: 'sd10_L2S10RotaryLeft', ip: SUBNET + '29', kind: 'rotary', gear: 10, motor: 'TLP-A070-040-Dxxx2x', label: 'R Axis Left', eip: 'Loss Of L2S10 Rotary Left Servo EIP' },
-  RAxisRight: { tag: 'a11_L2S10RotaryRight', drive: 'sd11_L2S10RotaryRight', ip: SUBNET + '30', kind: 'rotary', gear: 10, motor: 'TLP-A070-040-Dxxx2x', label: 'R Axis Right', eip: 'Loss Of L2S10 Rotary Right Servo EIP' },
+  ZAxisUpstream: { tag: 'a12_L2S10VerticalLeft', drive: 'sd12_L2S10VerticalLeft', ip: SUBNET + '31', kind: 'linear', lead: 10.0, motor: 'TLP-A070-040-Dxxx4x', label: 'Z Axis Upstream', eip: 'Loss Of L2S10 Vertical Left Servo EIP' },
+  ZAxisDownstream: { tag: 'a13_L2S10VerticalRight', drive: 'sd13_L2S10VerticalRight', ip: SUBNET + '32', kind: 'linear', lead: 10.0, motor: 'TLP-A070-040-Dxxx4x', label: 'Z Axis Downstream', eip: 'Loss Of L2S10 Vertical Right Servo EIP' },
+  RAxisUpstream: { tag: 'a10_L2S10RotaryLeft', drive: 'sd10_L2S10RotaryLeft', ip: SUBNET + '29', kind: 'rotary', gear: 10, motor: 'TLP-A070-040-Dxxx2x', label: 'R Axis Upstream', eip: 'Loss Of L2S10 Rotary Left Servo EIP' },
+  RAxisDownstream: { tag: 'a11_L2S10RotaryRight', drive: 'sd11_L2S10RotaryRight', ip: SUBNET + '30', kind: 'rotary', gear: 10, motor: 'TLP-A070-040-Dxxx2x', label: 'R Axis Downstream', eip: 'Loss Of L2S10 Rotary Right Servo EIP' },
 };
-const AX_ORDER = ['RAxisLeft', 'RAxisRight', 'ZAxisLeft', 'ZAxisRight', 'XAxis'];   // a10 .. a14
+const AX_ORDER = ['RAxisUpstream', 'RAxisDownstream', 'ZAxisUpstream', 'ZAxisDownstream', 'XAxis'];   // a10 .. a14
 const VB = 'vb06_MainAssembly', VB_IP = SUBNET + '93', VB_IN = 10, VB_OUT = 8;   // EX600-SEN7: 2x DXPC (4) + AXA (4) + DMPF (1) + pad / DYPE (2) + DMPF (1) + 16 stations x 2 coils (4) + pad
 const COIL0 = 3;   // first valve-coil byte of the output assembly (after DYPE 0-1, DMPF 2)
 // valve station n: A coil = bit 2n-2 (close / extend), B coil = bit 2n-1 (open / retract); EJ1-EJ4 in I/O-list order, nest openers 5 / 6
-const VALVE = { SpikeGripperLeft: 1, SpikeGripperRight: 2, CoilGripperLeft: 3, CoilGripperRight: 4, NestOpenerLeft: 5, NestOpenerRight: 6 };
+const VALVE = { SpikeGripperUpstream: 1, SpikeGripperDownstream: 2, CoilGripperUpstream: 3, CoilGripperDownstream: 4, NestOpenerUpstream: 5, NestOpenerDownstream: 6 };
 const coilBit = (station, b) => { const bit = 2 * (station - 1) + b; return '.Data[' + (COIL0 + Math.floor(bit / 8)) + '].' + (bit % 8); };
 const IP_MOVES = [['sd01_L2Indexer', '10.1.60.20', '20'], ['sd02_L2S01FeedUpstream', '10.1.60.21', '21'], ['sd03_L2S01FeedDownstream', '10.1.60.22', '22'],
   ['fd01_L2S01PayoutUpstreamA', '10.1.60.31', '50'], ['fd02_L2S01PayoutUpstreamB', '10.1.60.32', '51'], ['fd03_L2S01PayoutDownstreamA', '10.1.60.33', '52'], ['fd04_L2S01PayoutDownstreamB', '10.1.60.34', '53'],
@@ -177,7 +177,7 @@ const IP_MOVES = [['sd01_L2Indexer', '10.1.60.20', '20'], ['sd02_L2S01FeedUpstre
 function coilerProgram() {
   const OP = '\\L2_Tracking.p_Data.Station[StaNum].OpStatus.';
   const NEST = (side) => '\\L2_Tracking.p_Data.Nest[NestNumCurrent' + side + ']';
-  const AB = { Left: 'A', Right: 'B' };
+  const AB = { Upstream: 'A', Downstream: 'B' };
   const IDX = '\\L2_S00_IndexerNoSP.';
   const states = {
     0: 'Safety Stop', 1: 'Manual Mode', 2: 'Auto Mode Idle Not Ready', 3: 'Auto Mode Idle Ready',
@@ -189,13 +189,13 @@ function coilerProgram() {
     'Waiting For Coil Cams To Lock', 'Waiting For Coil Move', 'Waiting For Coil Cams To Release', 'Waiting For Z Axis To Extend To Place',
     'Waiting For Z Axis To Retract', 'Waiting For R Axis To Home', 'Waiting For X Axis To Return To Pick', 'Coil Interrupted, Nest Failed'];
   const servoAlarms = [];
-  for (const a of AX_ORDER.slice().sort((p, q) => ['XAxis', 'ZAxisLeft', 'ZAxisRight', 'RAxisLeft', 'RAxisRight'].indexOf(p) - ['XAxis', 'ZAxisLeft', 'ZAxisRight', 'RAxisLeft', 'RAxisRight'].indexOf(q))) servoAlarms.push(AXES[a].label + ' Servo Drive Is Faulted', AXES[a].label + ' Loss Of Absolute Position Reference');
-  const SERVO_ORDER = ['XAxis', 'ZAxisLeft', 'ZAxisRight', 'RAxisLeft', 'RAxisRight'];
+  for (const a of AX_ORDER.slice().sort((p, q) => ['XAxis', 'ZAxisUpstream', 'ZAxisDownstream', 'RAxisUpstream', 'RAxisDownstream'].indexOf(p) - ['XAxis', 'ZAxisUpstream', 'ZAxisDownstream', 'RAxisUpstream', 'RAxisDownstream'].indexOf(q))) servoAlarms.push(AXES[a].label + ' Servo Drive Is Faulted', AXES[a].label + ' Loss Of Absolute Position Reference');
+  const SERVO_ORDER = ['XAxis', 'ZAxisUpstream', 'ZAxisDownstream', 'RAxisUpstream', 'RAxisDownstream'];
 
   const tags = [
     // parameters
     ...SERVO_ORDER.map((a) => '<Tag Name="iq_' + a + '" TagType="Base" DataType="AXIS_CIP_DRIVE" Usage="InOut" ExternalAccess="Read/Write" OpcUaAccess="None"/>'),
-    ...SIDES.map((s) => boolTag('i_NestOpener' + s + 'Retracted', { usage: 'Input', desc: 'Nest Opener ' + s + ' Retracted' })),
+    ...SIDES.map((s) => boolTag('i_NestOpener' + s + 'Retracted', { usage: 'Input', desc: 'Nest ' + s + ' Retracted' })),
     ...SIDES.flatMap((s) => [
       boolTag('q_CloseSpikeGripper' + s, { usage: 'Output', desc: 'Close Spike Gripper ' + s }), boolTag('q_OpenSpikeGripper' + s, { usage: 'Output', desc: 'Open Spike Gripper ' + s }),
       boolTag('q_OpenCoilGripper' + s, { usage: 'Output', desc: 'Open Coil Gripper ' + s }), boolTag('q_CloseCoilGripper' + s, { usage: 'Output', desc: 'Close Coil Gripper ' + s }),
@@ -215,12 +215,12 @@ function coilerProgram() {
     copyTag(TRK, 'ZeroPartAssyStat', 'ZeroPartAssyStat'),
     ...SIDES.flatMap((s) => [dintTag('NestNumCurrent' + s, 0), dintTag('NestNumIncoming' + s, 0), boolTag('CycleStationA' + s), boolTag('CycleStationB' + s), boolTag('Lockout' + s), boolTag('DryRun' + s),
       boolTag('Work' + s), boolTag('CoilStarted' + s), copyTag(S05, 'SingleResetDelay', 'SingleResetDelay' + s), copyTag(S05, 'StationPerformance', 'StationPerformance' + s)]),
-    dintCommentTag('HMI_Momentary', [[0, 'Close Spike Gripper Left'], [1, 'Open Spike Gripper Left'], [2, 'Close Spike Gripper Right'], [3, 'Open Spike Gripper Right'], [4, 'Open Coil Gripper Left'], [5, 'Close Coil Gripper Left'], [6, 'Open Coil Gripper Right'], [7, 'Close Coil Gripper Right'], [8, 'Open Nest Left'], [9, 'Close Nest Left'], [10, 'Open Nest Right'], [11, 'Close Nest Right']]),
+    dintCommentTag('HMI_Momentary', [[0, 'Close Spike Gripper Upstream'], [1, 'Open Spike Gripper Upstream'], [2, 'Close Spike Gripper Downstream'], [3, 'Open Spike Gripper Downstream'], [4, 'Open Coil Gripper Upstream'], [5, 'Close Coil Gripper Upstream'], [6, 'Open Coil Gripper Downstream'], [7, 'Close Coil Gripper Downstream'], [8, 'Open Nest Upstream'], [9, 'Close Nest Upstream'], [10, 'Open Nest Downstream'], [11, 'Close Nest Downstream']]),
     // device states
     ...SIDES.flatMap((s) => [
       boolTag('SpikeGripper' + s + 'Closed'), boolTag('SpikeGripper' + s + 'Opened'), copyTag(S05, 'CloseGripperDelay', 'CloseSpikeGripper' + s + 'Delay', 'Spike ' + s + ' Close Delay'), copyTag(S05, 'OpenGripperDelay', 'OpenSpikeGripper' + s + 'Delay', 'Spike ' + s + ' Open Delay'),
       boolTag('CoilGripper' + s + 'Opened'), boolTag('CoilGripper' + s + 'Closed'), copyTag(S05, 'OpenGripperDelay', 'OpenCoilGripper' + s + 'Delay', 'Coil ' + s + ' Open Delay'), copyTag(S05, 'CloseGripperDelay', 'CloseCoilGripper' + s + 'Delay', 'Coil ' + s + ' Close Delay'),
-      boolTag('NestOpener' + s + 'Extended'), boolTag('NestOpener' + s + 'Retracted'), timerTag('NestOpener' + s + 'ExtendedDelay', 500, 'Nest ' + s + ' Opener Extend Delay')]),
+      boolTag('NestOpener' + s + 'Extended'), boolTag('NestOpener' + s + 'Retracted'), timerTag('NestOpener' + s + 'ExtendedDelay', 500, 'Nest ' + s + ' Open Delay')]),
     // coil cams (chassis template form) and setpoints
     camTag('RotaryCam', 2), camProfileTag('RotaryCamProfile', 2), camTag('ZCam', 2), camProfileTag('ZCamProfile', 2),
     copyTag(S01, 'FeedAxis_MAM', 'RotaryCam_MCCP', ''), copyTag(S01, 'FeedAxis_MAM', 'ZCam_MCCP', ''),
@@ -248,33 +248,33 @@ function coilerProgram() {
   const working = (side, cond) => '[XIO(Work' + side + ') ,' + cond + ' ]';   // a head with no work passes
   const everyHead = (fn) => SIDES.map((s) => working(s, fn(s))).join('');
 
-  const R00 = [['Subroutine Calls', 'JSR(R01_Inputs,0);'], ['', 'JSR(R02_StateTransitions,0);'], ['', 'JSR(R03_StateLogic,0);'], ['', 'JSR(R04_XAxisServo,0);'], ['', 'JSR(R05_ZAxisLeftServo,0);'], ['', 'JSR(R06_ZAxisRightServo,0);'], ['', 'JSR(R07_RAxisLeftServo,0);'], ['', 'JSR(R08_RAxisRightServo,0);'], ['', 'JSR(R20_Alarms,0);']];
+  const R00 = [['Subroutine Calls', 'JSR(R01_Inputs,0);'], ['', 'JSR(R02_StateTransitions,0);'], ['', 'JSR(R03_StateLogic,0);'], ['', 'JSR(R04_XAxisServo,0);'], ['', 'JSR(R05_ZAxisUpstreamServo,0);'], ['', 'JSR(R06_ZAxisDownstreamServo,0);'], ['', 'JSR(R07_RAxisUpstreamServo,0);'], ['', 'JSR(R08_RAxisDownstreamServo,0);'], ['', 'JSR(R20_Alarms,0);']];
   const R01 = [
-    ['Nest & Station Numbers', '[MOVE(' + STA + ',StaNum) MOVE(' + STAPRE + ',StaNumPre) ,MOVE(\\L2_Tracking.p_Data.Station[StaNum].NestNumA,NestNumCurrentLeft) MOVE(\\L2_Tracking.p_Data.Station[StaNumPre].NestNumA,NestNumIncomingLeft) ,MOVE(\\L2_Tracking.p_Data.Station[StaNum].NestNumB,NestNumCurrentRight) MOVE(\\L2_Tracking.p_Data.Station[StaNumPre].NestNumB,NestNumIncomingRight) ];'],
+    ['Nest & Station Numbers', '[MOVE(' + STA + ',StaNum) MOVE(' + STAPRE + ',StaNumPre) ,MOVE(\\L2_Tracking.p_Data.Station[StaNum].NestNumA,NestNumCurrentUpstream) MOVE(\\L2_Tracking.p_Data.Station[StaNumPre].NestNumA,NestNumIncomingUpstream) ,MOVE(\\L2_Tracking.p_Data.Station[StaNum].NestNumB,NestNumCurrentDownstream) MOVE(\\L2_Tracking.p_Data.Station[StaNumPre].NestNumB,NestNumIncomingDownstream) ];'],
     ['Coil start X = pick position + pre-tension move', 'ADD(HMI_XAxis.Parameters.Positions[0],HMI_PretensionDistance,CoilStartPosition);'],
-    ['Mapped/debounced inputs', 'XIC(q_CloseSpikeGripperLeft)XIO(q_OpenSpikeGripperLeft)TON(CloseSpikeGripperLeftDelay,?,?)XIC(CloseSpikeGripperLeftDelay.DN)OTE(SpikeGripperLeftClosed);'],
-    ['', 'XIC(q_OpenSpikeGripperLeft)XIO(q_CloseSpikeGripperLeft)TON(OpenSpikeGripperLeftDelay,?,?)XIC(OpenSpikeGripperLeftDelay.DN)OTE(SpikeGripperLeftOpened);'],
-    ['', 'XIC(q_CloseSpikeGripperRight)XIO(q_OpenSpikeGripperRight)TON(CloseSpikeGripperRightDelay,?,?)XIC(CloseSpikeGripperRightDelay.DN)OTE(SpikeGripperRightClosed);'],
-    ['', 'XIC(q_OpenSpikeGripperRight)XIO(q_CloseSpikeGripperRight)TON(OpenSpikeGripperRightDelay,?,?)XIC(OpenSpikeGripperRightDelay.DN)OTE(SpikeGripperRightOpened);'],
-    ['Coil gripper open = jaws set to the coil diameter, closed = coil released', 'XIC(q_OpenCoilGripperLeft)XIO(q_CloseCoilGripperLeft)TON(OpenCoilGripperLeftDelay,?,?)XIC(OpenCoilGripperLeftDelay.DN)OTE(CoilGripperLeftOpened);'],
-    ['', 'XIC(q_CloseCoilGripperLeft)XIO(q_OpenCoilGripperLeft)TON(CloseCoilGripperLeftDelay,?,?)XIC(CloseCoilGripperLeftDelay.DN)OTE(CoilGripperLeftClosed);'],
-    ['', 'XIC(q_OpenCoilGripperRight)XIO(q_CloseCoilGripperRight)TON(OpenCoilGripperRightDelay,?,?)XIC(OpenCoilGripperRightDelay.DN)OTE(CoilGripperRightOpened);'],
-    ['', 'XIC(q_CloseCoilGripperRight)XIO(q_OpenCoilGripperRight)TON(CloseCoilGripperRightDelay,?,?)XIC(CloseCoilGripperRightDelay.DN)OTE(CoilGripperRightClosed);'],
-    ['Nest openers: retracted sensor, extended by delay', 'XIO(i_NestOpenerLeftRetracted)XIC(q_ExtendNestOpenerLeft)XIO(q_RetractNestOpenerLeft)TON(NestOpenerLeftExtendedDelay,?,?)XIC(NestOpenerLeftExtendedDelay.DN)OTE(NestOpenerLeftExtended);'],
-    ['', 'XIC(i_NestOpenerLeftRetracted)XIC(q_RetractNestOpenerLeft)XIO(q_ExtendNestOpenerLeft)OTE(NestOpenerLeftRetracted);'],
-    ['', 'XIO(i_NestOpenerRightRetracted)XIC(q_ExtendNestOpenerRight)XIO(q_RetractNestOpenerRight)TON(NestOpenerRightExtendedDelay,?,?)XIC(NestOpenerRightExtendedDelay.DN)OTE(NestOpenerRightExtended);'],
-    ['', 'XIC(i_NestOpenerRightRetracted)XIC(q_RetractNestOpenerRight)XIO(q_ExtendNestOpenerRight)OTE(NestOpenerRightRetracted);'],
+    ['Mapped/debounced inputs', 'XIC(q_CloseSpikeGripperUpstream)XIO(q_OpenSpikeGripperUpstream)TON(CloseSpikeGripperUpstreamDelay,?,?)XIC(CloseSpikeGripperUpstreamDelay.DN)OTE(SpikeGripperUpstreamClosed);'],
+    ['', 'XIC(q_OpenSpikeGripperUpstream)XIO(q_CloseSpikeGripperUpstream)TON(OpenSpikeGripperUpstreamDelay,?,?)XIC(OpenSpikeGripperUpstreamDelay.DN)OTE(SpikeGripperUpstreamOpened);'],
+    ['', 'XIC(q_CloseSpikeGripperDownstream)XIO(q_OpenSpikeGripperDownstream)TON(CloseSpikeGripperDownstreamDelay,?,?)XIC(CloseSpikeGripperDownstreamDelay.DN)OTE(SpikeGripperDownstreamClosed);'],
+    ['', 'XIC(q_OpenSpikeGripperDownstream)XIO(q_CloseSpikeGripperDownstream)TON(OpenSpikeGripperDownstreamDelay,?,?)XIC(OpenSpikeGripperDownstreamDelay.DN)OTE(SpikeGripperDownstreamOpened);'],
+    ['Coil gripper open = jaws set to the coil diameter, closed = coil released', 'XIC(q_OpenCoilGripperUpstream)XIO(q_CloseCoilGripperUpstream)TON(OpenCoilGripperUpstreamDelay,?,?)XIC(OpenCoilGripperUpstreamDelay.DN)OTE(CoilGripperUpstreamOpened);'],
+    ['', 'XIC(q_CloseCoilGripperUpstream)XIO(q_OpenCoilGripperUpstream)TON(CloseCoilGripperUpstreamDelay,?,?)XIC(CloseCoilGripperUpstreamDelay.DN)OTE(CoilGripperUpstreamClosed);'],
+    ['', 'XIC(q_OpenCoilGripperDownstream)XIO(q_CloseCoilGripperDownstream)TON(OpenCoilGripperDownstreamDelay,?,?)XIC(OpenCoilGripperDownstreamDelay.DN)OTE(CoilGripperDownstreamOpened);'],
+    ['', 'XIC(q_CloseCoilGripperDownstream)XIO(q_OpenCoilGripperDownstream)TON(CloseCoilGripperDownstreamDelay,?,?)XIC(CloseCoilGripperDownstreamDelay.DN)OTE(CoilGripperDownstreamClosed);'],
+    ['Nest openers: retracted sensor, extended by delay', 'XIO(i_NestOpenerUpstreamRetracted)XIC(q_ExtendNestOpenerUpstream)XIO(q_RetractNestOpenerUpstream)TON(NestOpenerUpstreamExtendedDelay,?,?)XIC(NestOpenerUpstreamExtendedDelay.DN)OTE(NestOpenerUpstreamExtended);'],
+    ['', 'XIC(i_NestOpenerUpstreamRetracted)XIC(q_RetractNestOpenerUpstream)XIO(q_ExtendNestOpenerUpstream)OTE(NestOpenerUpstreamRetracted);'],
+    ['', 'XIO(i_NestOpenerDownstreamRetracted)XIC(q_ExtendNestOpenerDownstream)XIO(q_RetractNestOpenerDownstream)TON(NestOpenerDownstreamExtendedDelay,?,?)XIC(NestOpenerDownstreamExtendedDelay.DN)OTE(NestOpenerDownstreamExtended);'],
+    ['', 'XIC(i_NestOpenerDownstreamRetracted)XIC(q_RetractNestOpenerDownstream)XIO(q_ExtendNestOpenerDownstream)OTE(NestOpenerDownstreamRetracted);'],
     ['Logic inputs  *Replace always off bits with real conditions', 'XIC(\\Supervisor.q_ManualMode)XIO(HMI_LocalManualOverride)OTE(ManualMode);'],
     ['', 'XIC(\\Supervisor.q_AutoIdle)OTE(AutoIdle);'], ['', 'XIC(\\Supervisor.q_SafetyOK)OTE(SafetyOK);'], ['', 'XIC(\\Supervisor.q_FaultReset)OTE(FaultReset);'],
     ['', '[XIC(\\Supervisor.q_CycleStartLatch) ,XIC(HMI_LocalManualOverride) ,XIC(' + OP + 'SingleStepA) ,XIC(' + OP + 'SingleStepB) ,XIC(' + OP + 'SingleCycleA) ,XIC(' + OP + 'SingleCycleB) ]OTE(CycleRunning);'],
     ['', 'XIO(\\Supervisor.q_CycleStartLatch)XIO(HMI_LocalManualOverride)XIO(' + OP + 'SingleStepA)XIO(' + OP + 'SingleStepB)XIO(' + OP + 'SingleCycleA)XIO(' + OP + 'SingleCycleB)OTE(CycleStopping);'],
     ['', 'XIC(\\Supervisor.q_CycleStopped)ONS(ONS.0)XIO(Status.State[2])XIO(Status.State[3])OTE(CycleStopped);'],
-    ['', 'XIC(ZAxisLeftRetract.InPos)XIC(ZAxisRightRetract.InPos)XIC(NestOpenerLeftRetracted)XIC(NestOpenerRightRetracted)XIC(SpikeGripperLeftOpened)XIC(SpikeGripperRightOpened)XIC(CoilGripperLeftClosed)XIC(CoilGripperRightClosed)XIC(XAxisPick.InPos)OTE(Initialized);'],
-    ['Lockout per nest side, station lockout when both', 'XIC(' + OP + 'LockoutA)XIO(ManualMode)OTE(LockoutLeft);'],
-    ['', 'XIC(' + OP + 'LockoutB)XIO(ManualMode)OTE(LockoutRight);'],
-    ['', 'XIC(LockoutLeft)XIC(LockoutRight)OTE(Lockout);'],
-    ['Dry run logic (can add supervisor dry run condition if needed as parallel branch)', '[XIC(' + OP + 'DryRunA) ,XIC(g_HMI_DryRun) ]OTE(DryRunLeft);'],
-    ['', '[XIC(' + OP + 'DryRunB) ,XIC(g_HMI_DryRun) ]OTE(DryRunRight);'],
+    ['', 'XIC(ZAxisUpstreamRetract.InPos)XIC(ZAxisDownstreamRetract.InPos)XIC(NestOpenerUpstreamRetracted)XIC(NestOpenerDownstreamRetracted)XIC(SpikeGripperUpstreamOpened)XIC(SpikeGripperDownstreamOpened)XIC(CoilGripperUpstreamClosed)XIC(CoilGripperDownstreamClosed)XIC(XAxisPick.InPos)OTE(Initialized);'],
+    ['Lockout per nest side, station lockout when both', 'XIC(' + OP + 'LockoutA)XIO(ManualMode)OTE(LockoutUpstream);'],
+    ['', 'XIC(' + OP + 'LockoutB)XIO(ManualMode)OTE(LockoutDownstream);'],
+    ['', 'XIC(LockoutUpstream)XIC(LockoutDownstream)OTE(Lockout);'],
+    ['Dry run logic (can add supervisor dry run condition if needed as parallel branch)', '[XIC(' + OP + 'DryRunA) ,XIC(g_HMI_DryRun) ]OTE(DryRunUpstream);'],
+    ['', '[XIC(' + OP + 'DryRunB) ,XIC(g_HMI_DryRun) ]OTE(DryRunDownstream);'],
     ['Single Step Logic, either side steps both heads', '[XIC(AutoIdle) ,XIC(HMI_LocalManualOverride) ][XIC(' + OP + 'SingleStepA) ,XIC(' + OP + 'SingleStepB) ,XIC(' + OP + 'SingleCycleA) ,XIC(' + OP + 'SingleCycleB) ]OTE(SS);'],
     ['', 'XIC(SS)[XIC(' + OP + 'SingleDisableTrackingA) ,XIC(' + OP + 'SingleDisableTrackingB) ]OTE(SingleDisableTracking);'],
     ['', '[XIC(' + OP + 'SingleStepA) ,XIC(' + OP + 'SingleStepB) ]ONS(ONS.12)OTU(' + OP + 'SingleCycleA)OTU(' + OP + 'SingleCycleB);'],
@@ -282,10 +282,10 @@ function coilerProgram() {
     ['', '[XIC(AutoIdle) ,XIC(HMI_LocalManualOverride) ][XIC(' + OP + 'SingleCycleA) XIC(' + OP + 'SingleTriggerA) ,XIC(' + OP + 'SingleCycleB) XIC(' + OP + 'SingleTriggerB) ]ONS(ONS.14)OTL(SingleCycle);'],
     ['', 'XIC(SingleCycle)[XIO(AutoIdle) XIO(HMI_LocalManualOverride) ,XIO(' + OP + 'SingleCycleA) XIO(' + OP + 'SingleCycleB) ,XIC(q_AlarmActive) ,XIC(Status.State[4]) ONS(ONS.15) ]OTU(SingleCycle);'],
     ['', '[XIO(SS) ,[XIC(AutoIdle) ,XIC(HMI_LocalManualOverride) ] XIC(' + IDX + 'p_OnStation) [[XIC(LocalSSONS) ,XIC(' + OP + 'SingleTriggerA) ,XIC(' + OP + 'SingleTriggerB) ] ONS(ONS.1) ,XIC(SingleCycle) ] ]OTE(SS_OK);'],
-    ['', 'XIC(SS)XIC(' + OP + 'SingleClearTrackingA)TON(SingleResetDelayLeft,?,?)XIC(SingleResetDelayLeft.DN)COP(ZeroPartAssyStat,' + NEST('Left') + '.PartStatus,1);'],
-    ['', 'XIC(SS)XIC(' + OP + 'SingleClearTrackingB)TON(SingleResetDelayRight,?,?)XIC(SingleResetDelayRight.DN)COP(ZeroPartAssyStat,' + NEST('Right') + '.PartStatus,1);'],
-    ['Cycle Station per nest side', cycleStation('Left')],
-    ['', cycleStation('Right')],
+    ['', 'XIC(SS)XIC(' + OP + 'SingleClearTrackingA)TON(SingleResetDelayUpstream,?,?)XIC(SingleResetDelayUpstream.DN)COP(ZeroPartAssyStat,' + NEST('Upstream') + '.PartStatus,1);'],
+    ['', 'XIC(SS)XIC(' + OP + 'SingleClearTrackingB)TON(SingleResetDelayDownstream,?,?)XIC(SingleResetDelayDownstream.DN)COP(ZeroPartAssyStat,' + NEST('Downstream') + '.PartStatus,1);'],
+    ['Cycle Station per nest side', cycleStation('Upstream')],
+    ['', cycleStation('Downstream')],
     ['Clear HMI Manual Triggers', 'XIC(HMI_MomentaryOnPrevScan)MOVE(0,HMI_Momentary);'], ['', 'NE(HMI_Momentary,0)OTE(HMI_MomentaryOnPrevScan);'],
   ];
   function cycleStation(s) {
@@ -297,7 +297,7 @@ function coilerProgram() {
     ['State 2: Auto mode idle not ready', '[XIC(Status.State[0]) XIC(SafetyOK) ,XIC(Status.State[1]) XIO(ManualMode) ,[XIC(Status.State[3]) ,XIC(CycleStopped) ] XIO(Initialized) ,XIC(Status.State[99]) XIO(CycleRunning) ,XIC(Status.State[127]) XIO(q_AlarmActive) ]MOVE(2,Control.StateReg);'],
     ['State 3: Auto mode idle ready', '[[XIC(Status.State[2]) ,XIC(CycleStopped) ] XIC(Initialized) ,[XIC(Status.State[4]) ,XIC(Status.State[124]) ] XIO(CycleRunning) ]MOVE(3,Control.StateReg);'],
     ['State 4: Start of sequence, wait for the index with the heads at pick', '[XIC(Status.State[3]) XIC(Initialized) ,XIC(Status.State[124]) ,XIC(Status.State[52]) XIC(XAxis_MAM.PC) XIC(XAxisPick.InPos) ]XIC(CycleRunning)XIO(Lockout)MOVE(4,Control.StateReg);'],
-    ['State 7: Nests on station, extend the working Z axes to pick', 'XIC(Status.State[4])XIC(' + IDX + 'q_WaitStationsComplete)[XIC(WorkLeft) ,XIC(WorkRight) ]XIC(SS_OK)MOVE(7,Control.StateReg)XIO(SingleDisableTracking)[XIC(WorkLeft) OTL(' + trk('Left', 'Attempt') + ') ,XIC(WorkRight) OTL(' + trk('Right', 'Attempt') + ') ];'],
+    ['State 7: Nests on station, extend the working Z axes to pick', 'XIC(Status.State[4])XIC(' + IDX + 'q_WaitStationsComplete)[XIC(WorkUpstream) ,XIC(WorkDownstream) ]XIC(SS_OK)MOVE(7,Control.StateReg)XIO(SingleDisableTracking)[XIC(WorkUpstream) OTL(' + trk('Upstream', 'Attempt') + ') ,XIC(WorkDownstream) OTL(' + trk('Downstream', 'Attempt') + ') ];'],
     ['State 10: Close the spike grippers on the tube', 'XIC(Status.State[7])' + everyHead((s) => 'XIC(ZAxis' + s + '_MAM.PC) XIC(ZAxis' + s + 'Pick.InPos)') + 'XIC(SS_OK)MOVE(10,Control.StateReg);'],
     ['State 13: Open the coil grippers to the coil diameter', 'XIC(Status.State[10])' + everyHead((s) => 'XIC(SpikeGripper' + s + 'Closed)') + 'XIC(SS_OK)MOVE(13,Control.StateReg);'],
     ['State 16: Open the nests', 'XIC(Status.State[13])' + everyHead((s) => 'XIC(CoilGripper' + s + 'Opened)') + 'XIC(SS_OK)MOVE(16,Control.StateReg);'],
@@ -310,15 +310,15 @@ function coilerProgram() {
     ['State 37: Working Z axes down to place', 'XIC(Status.State[34])' + everyHead((s) => 'XIC(RAxis' + s + '_MAS_Cam.PC) XIC(ZAxis' + s + '_MAS_Cam.PC)') + 'XIC(SS_OK)MOVE(37,Control.StateReg);'],
     ['State 40: Close the coil grippers to relax the coil', 'XIC(Status.State[37])' + everyHead((s) => 'XIC(ZAxis' + s + '_MAM.PC) XIC(ZAxis' + s + 'Place.InPos)') + 'XIC(SS_OK)MOVE(40,Control.StateReg);'],
     ['State 43: Open the spike grippers', 'XIC(Status.State[40])' + everyHead((s) => 'XIC(CoilGripper' + s + 'Closed)') + 'XIC(SS_OK)MOVE(43,Control.StateReg);'],
-    ['State 46: Coil placed, retract the Z axes', 'XIC(Status.State[43])' + everyHead((s) => 'XIC(SpikeGripper' + s + 'Opened)') + 'XIC(SS_OK)MOVE(46,Control.StateReg)XIO(SingleDisableTracking)[XIC(WorkLeft) OTL(' + trk('Left', 'Success') + ') ,XIC(WorkRight) OTL(' + trk('Right', 'Success') + ') ];'],
+    ['State 46: Coil placed, retract the Z axes', 'XIC(Status.State[43])' + everyHead((s) => 'XIC(SpikeGripper' + s + 'Opened)') + 'XIC(SS_OK)MOVE(46,Control.StateReg)XIO(SingleDisableTracking)[XIC(WorkUpstream) OTL(' + trk('Upstream', 'Success') + ') ,XIC(WorkDownstream) OTL(' + trk('Downstream', 'Success') + ') ];'],
     ['State 49: Rotary axes back to home', 'XIC(Status.State[46])' + everyHead((s) => 'XIC(ZAxis' + s + '_MAM.PC) XIC(ZAxis' + s + 'Retract.InPos)') + 'XIC(SS_OK)MOVE(49,Control.StateReg);'],
     ['State 52: X axis back to pick', 'XIC(Status.State[49])' + everyHead((s) => 'XIC(RAxis' + s + '_MAM.PC)') + 'XIC(SS_OK)MOVE(52,Control.StateReg);'],
     ['State 99: Lockout', 'XIC(CycleRunning)XIC(Lockout)MOVE(99,Control.StateReg);'],
     ['State 100:Start of initialization sequence, release the grippers', 'XIC(Status.State[2])XIO(Initialized)XIC(CycleRunning)XIC(SS_OK)MOVE(100,Control.StateReg);'],
-    ['State 103: Initialization retract the Z axes', 'XIC(Status.State[100])XIC(SpikeGripperLeftOpened)XIC(SpikeGripperRightOpened)XIC(CoilGripperLeftClosed)XIC(CoilGripperRightClosed)XIC(SS_OK)MOVE(103,Control.StateReg);'],
-    ['State 106: Initialization close the nests', 'XIC(Status.State[103])XIC(ZAxisLeft_MAM.PC)XIC(ZAxisLeftRetract.InPos)XIC(ZAxisRight_MAM.PC)XIC(ZAxisRightRetract.InPos)XIC(SS_OK)MOVE(106,Control.StateReg);'],
-    ['State 109: Initialization rotary axes home', 'XIC(Status.State[106])XIC(NestOpenerLeftRetracted)XIC(NestOpenerRightRetracted)XIC(SS_OK)MOVE(109,Control.StateReg);'],
-    ['State 112: Initialization X axis to pick', 'XIC(Status.State[109])XIC(RAxisLeft_MAM.PC)XIC(RAxisRight_MAM.PC)XIC(SS_OK)MOVE(112,Control.StateReg);'],
+    ['State 103: Initialization retract the Z axes', 'XIC(Status.State[100])XIC(SpikeGripperUpstreamOpened)XIC(SpikeGripperDownstreamOpened)XIC(CoilGripperUpstreamClosed)XIC(CoilGripperDownstreamClosed)XIC(SS_OK)MOVE(103,Control.StateReg);'],
+    ['State 106: Initialization close the nests', 'XIC(Status.State[103])XIC(ZAxisUpstream_MAM.PC)XIC(ZAxisUpstreamRetract.InPos)XIC(ZAxisDownstream_MAM.PC)XIC(ZAxisDownstreamRetract.InPos)XIC(SS_OK)MOVE(106,Control.StateReg);'],
+    ['State 109: Initialization rotary axes home', 'XIC(Status.State[106])XIC(NestOpenerUpstreamRetracted)XIC(NestOpenerDownstreamRetracted)XIC(SS_OK)MOVE(109,Control.StateReg);'],
+    ['State 112: Initialization X axis to pick', 'XIC(Status.State[109])XIC(RAxisUpstream_MAM.PC)XIC(RAxisDownstream_MAM.PC)XIC(SS_OK)MOVE(112,Control.StateReg);'],
     ['State 124: Initialization complete', 'XIC(Status.State[112])XIC(XAxis_MAM.PC)XIC(XAxisPick.InPos)MOVE(124,Control.StateReg);'],
     ['Restart Logic  *Use the part status at this station to determine a course of action here.  For instance, no attempt made, no part present, no success or failure status at this station indicates initialization is in order. If an attempt was made with no success or failure, restart at last state may be in order. Also, you do not always need to go into the state you left. Some cases require you to go into the prior state to restart a particular portion of the sequence.', 'XIC(Status.State[2])XIC(UseRestartLogic)XIC(CycleRunning)XIC(g_MachineBasic.AlwaysOff)MOVE(RestartState,FaultState);'],
     ['State 127: Fault', 'XIC(q_AlarmActive)[ONS(ONS.2) LIMIT(4,Control.StateReg,99) MOVE(Control.StateReg,FaultState) MOVE(Control.StateReg,RestartState) ,MOVE(127,Control.StateReg) ];'],
@@ -330,7 +330,7 @@ function coilerProgram() {
   const gripper = (out, closeStates, openStates, side, bitOn, bitOff, other) =>
     '[XIO(Status.State[1]) [' + closeStates + ' ,XIC(' + out + ') ' + openStates + ' ] ,XIC(Status.State[1]) [XIC(HMI_Momentary.' + bitOn + ') ,XIC(' + out + ') XIO(HMI_Momentary.' + bitOff + ') ] ]OTE(' + out + ');';
   const sideOut = (s) => {
-    const b = s === 'Left' ? 0 : 2;   // momentary bit base per side (spike 0/2, coil 4/6, nest 8/10)
+    const b = s === 'Upstream' ? 0 : 2;   // momentary bit base per side (spike 0/2, coil 4/6, nest 8/10)
     return [
       ['Spike Gripper ' + s + ' Control: closed on the tube, opened once the coil is placed', gripper('q_CloseSpikeGripper' + s, 'XIC(Status.State[10]) XIC(Work' + s + ')', 'XIO(Status.State[43]) XIO(Status.State[100])', s, b, b + 1)],
       ['', gripper('q_OpenSpikeGripper' + s, 'XIC(Status.State[43]) ,XIC(Status.State[100])', '[XIO(Status.State[10]) ,XIO(Work' + s + ') ]', s, b + 1, b)],
@@ -347,24 +347,24 @@ function coilerProgram() {
     ['Output Status to Supervisor', SERVO_ORDER.map((a) => 'XIC(iq_' + a + '.ServoActionStatus)XIC(iq_' + a + '.AxisHomedStatus)').join('') + 'XIO(' + OP + 'SingleStepA)XIO(' + OP + 'SingleStepB)XIO(' + OP + 'SingleCycleA)XIO(' + OP + 'SingleCycleB)OTE(q_StartOK);'],
     ['', '[XIC(Status.State[2]) ,XIC(Status.State[3]) ]XIO(CycleRunning)OTE(q_AutoMode);'],
     ['', '[XIC(Status.State[2]) ,XIC(Status.State[3]) ,XIC(Status.State[127]) ]XIO(CycleRunning)OTE(q_AutoStopped);'],
-    ['Actuators Safe For Index', 'XIC(iq_ZAxisLeft.AxisHomedStatus)XIC(ZAxisLeftRetract.InPos)XIC(iq_ZAxisRight.AxisHomedStatus)XIC(ZAxisRightRetract.InPos)XIC(NestOpenerLeftRetracted)XIC(NestOpenerRightRetracted)OTE(q_ActuatorsSafe);'],
+    ['Actuators Safe For Index', 'XIC(iq_ZAxisUpstream.AxisHomedStatus)XIC(ZAxisUpstreamRetract.InPos)XIC(iq_ZAxisDownstream.AxisHomedStatus)XIC(ZAxisDownstreamRetract.InPos)XIC(NestOpenerUpstreamRetracted)XIC(NestOpenerDownstreamRetracted)OTE(q_ActuatorsSafe);'],
     ['Pause Request To Indexer', 'XIC(g_MachineBasic.AlwaysOff)OTE(q_Pause);'],
-    ['Heads working this cycle: a side with a part to coil and not locked out, held until the cycle ends', '[XIC(Status.State[4]) XIC(CycleStationALeft) XIO(LockoutLeft) ,XIC(WorkLeft) XIO(Status.State[1]) XIO(Status.State[2]) XIO(Status.State[3]) XIO(Status.State[4]) ]OTE(WorkLeft);'],
-    ['', '[XIC(Status.State[4]) XIC(CycleStationARight) XIO(LockoutRight) ,XIC(WorkRight) XIO(Status.State[1]) XIO(Status.State[2]) XIO(Status.State[3]) XIO(Status.State[4]) ]OTE(WorkRight);'],
-    ['Coil started: the spike gripper holds the tube until the coil is placed', '[XIC(Status.State[10]) XIC(WorkLeft) ,XIC(CoilStartedLeft) XIO(Status.State[46]) XIO(Status.State[103]) XIO(g_MachineBasic.PowerUpCP) ]OTE(CoilStartedLeft);'],
-    ['', '[XIC(Status.State[10]) XIC(WorkRight) ,XIC(CoilStartedRight) XIO(Status.State[46]) XIO(Status.State[103]) XIO(g_MachineBasic.PowerUpCP) ]OTE(CoilStartedRight);'],
-    ['Coil interrupted: a tube released at initialization fails its nest', 'XIC(Status.State[100])ONS(ONS.5)XIO(SingleDisableTracking)[XIC(CoilStartedLeft) OTL(' + trk('Left', 'Failure') + ') MOVE(101,' + NEST('Left') + '.PartStatus.FailureType) ,XIC(CoilStartedRight) OTL(' + trk('Right', 'Failure') + ') MOVE(101,' + NEST('Right') + '.PartStatus.FailureType) ];'],
-    ['Set Part Tracking If Station Or Side Is Locked Out', 'XIC(' + IDX + 'q_WaitStationsComplete)[XIC(Status.State[99]) ,XIC(LockoutLeft) ]XIC(' + NEST('Left') + '.PartStatus.PartLoaded)OTL(' + trk('Left', 'Lockout') + ');'],
-    ['', 'XIC(' + IDX + 'q_WaitStationsComplete)[XIC(Status.State[99]) ,XIC(LockoutRight) ]XIC(' + NEST('Right') + '.PartStatus.PartLoaded)OTL(' + trk('Right', 'Lockout') + ');'],
+    ['Heads working this cycle: a side with a part to coil and not locked out, held until the cycle ends', '[XIC(Status.State[4]) XIC(CycleStationAUpstream) XIO(LockoutUpstream) ,XIC(WorkUpstream) XIO(Status.State[1]) XIO(Status.State[2]) XIO(Status.State[3]) XIO(Status.State[4]) ]OTE(WorkUpstream);'],
+    ['', '[XIC(Status.State[4]) XIC(CycleStationADownstream) XIO(LockoutDownstream) ,XIC(WorkDownstream) XIO(Status.State[1]) XIO(Status.State[2]) XIO(Status.State[3]) XIO(Status.State[4]) ]OTE(WorkDownstream);'],
+    ['Coil started: the spike gripper holds the tube until the coil is placed', '[XIC(Status.State[10]) XIC(WorkUpstream) ,XIC(CoilStartedUpstream) XIO(Status.State[46]) XIO(Status.State[103]) XIO(g_MachineBasic.PowerUpCP) ]OTE(CoilStartedUpstream);'],
+    ['', '[XIC(Status.State[10]) XIC(WorkDownstream) ,XIC(CoilStartedDownstream) XIO(Status.State[46]) XIO(Status.State[103]) XIO(g_MachineBasic.PowerUpCP) ]OTE(CoilStartedDownstream);'],
+    ['Coil interrupted: a tube released at initialization fails its nest', 'XIC(Status.State[100])ONS(ONS.5)XIO(SingleDisableTracking)[XIC(CoilStartedUpstream) OTL(' + trk('Upstream', 'Failure') + ') MOVE(101,' + NEST('Upstream') + '.PartStatus.FailureType) ,XIC(CoilStartedDownstream) OTL(' + trk('Downstream', 'Failure') + ') MOVE(101,' + NEST('Downstream') + '.PartStatus.FailureType) ];'],
+    ['Set Part Tracking If Station Or Side Is Locked Out', 'XIC(' + IDX + 'q_WaitStationsComplete)[XIC(Status.State[99]) ,XIC(LockoutUpstream) ]XIC(' + NEST('Upstream') + '.PartStatus.PartLoaded)OTL(' + trk('Upstream', 'Lockout') + ');'],
+    ['', 'XIC(' + IDX + 'q_WaitStationsComplete)[XIC(Status.State[99]) ,XIC(LockoutDownstream) ]XIC(' + NEST('Downstream') + '.PartStatus.PartLoaded)OTL(' + trk('Downstream', 'Lockout') + ');'],
     ['Station Complete', 'XIC(' + IDX + 'q_WaitStationsComplete)' + SIDES.map((s) => '[XIC(CycleStationB' + s + ') [XIC(' + trk(s, 'Success') + ') ,XIC(' + trk(s, 'Failure') + ') ,XIC(' + trk(s, 'Lockout') + ') ] ,XIO(CycleStationB' + s + ') ]').join('') + 'OTE(q_StationComplete);'],
-    ...sideOut('Left'), ...sideOut('Right'),
+    ...sideOut('Upstream'), ...sideOut('Downstream'),
     ['Coil cam profiles: one rotary turn and one pitch of Z per pi x coil diameter of X travel, place to coil start', 'XIC(Status.State[28])SUB(CoilStartPosition,HMI_XAxis.Parameters.Positions[1],CoilTravel)CPT(CoilRevolutions,CoilTravel/(3.14159*HMI_CoilDiameter))CPT(RotaryCoilTravel,CoilRevolutions*360.0)CPT(ZCoilTravel,CoilRevolutions*HMI_CoilPitch)[MOVE(HMI_XAxis.Parameters.Positions[1],RotaryCam[0].Master) MOVE(RotaryCoilTravel,RotaryCam[0].Slave) MOVE(0,RotaryCam[0].SegmentType) ,MOVE(CoilStartPosition,RotaryCam[1].Master) MOVE(0.0,RotaryCam[1].Slave) MOVE(0,RotaryCam[1].SegmentType) ,MOVE(HMI_XAxis.Parameters.Positions[1],ZCam[0].Master) MOVE(ZCoilTravel,ZCam[0].Slave) MOVE(0,ZCam[0].SegmentType) ,MOVE(CoilStartPosition,ZCam[1].Master) MOVE(0.0,ZCam[1].Slave) MOVE(0,ZCam[1].SegmentType) ]MCCP(RotaryCam_MCCP,RotaryCam,2,0,0,RotaryCamProfile)MCCP(ZCam_MCCP,ZCam,2,0,0,ZCamProfile);'],
-    ['Lock the Left head to the X axis', 'XIC(Status.State[28])XIC(WorkLeft)XIC(RotaryCam_MCCP.DN)XIC(ZCam_MCCP.DN)' + mapc('RAxisLeft', 'RotaryCamProfile') + mapc('ZAxisLeft', 'ZCamProfile') + ';'],
-    ['Lock the Right head to the X axis', 'XIC(Status.State[28])XIC(WorkRight)XIC(RotaryCam_MCCP.DN)XIC(ZCam_MCCP.DN)' + mapc('RAxisRight', 'RotaryCamProfile') + mapc('ZAxisRight', 'ZCamProfile') + ';'],
-    ['Release the heads from the X axis once the coil move is done', 'XIC(Status.State[34])XIC(WorkLeft)' + masCam('RAxisLeft') + masCam('ZAxisLeft') + ';'],
-    ['', 'XIC(Status.State[34])XIC(WorkRight)' + masCam('RAxisRight') + masCam('ZAxisRight') + ';'],
-    ['Station Performance per nest side', perf('Left')],
-    ['', perf('Right')],
+    ['Lock the Upstream head to the X axis', 'XIC(Status.State[28])XIC(WorkUpstream)XIC(RotaryCam_MCCP.DN)XIC(ZCam_MCCP.DN)' + mapc('RAxisUpstream', 'RotaryCamProfile') + mapc('ZAxisUpstream', 'ZCamProfile') + ';'],
+    ['Lock the Downstream head to the X axis', 'XIC(Status.State[28])XIC(WorkDownstream)XIC(RotaryCam_MCCP.DN)XIC(ZCam_MCCP.DN)' + mapc('RAxisDownstream', 'RotaryCamProfile') + mapc('ZAxisDownstream', 'ZCamProfile') + ';'],
+    ['Release the heads from the X axis once the coil move is done', 'XIC(Status.State[34])XIC(WorkUpstream)' + masCam('RAxisUpstream') + masCam('ZAxisUpstream') + ';'],
+    ['', 'XIC(Status.State[34])XIC(WorkDownstream)' + masCam('RAxisDownstream') + masCam('ZAxisDownstream') + ';'],
+    ['Station Performance per nest side', perf('Upstream')],
+    ['', perf('Downstream')],
   ];
 
   // ── servo routine per axis (S05 R04 / R05 form) ──
@@ -410,7 +410,7 @@ function coilerProgram() {
     mamGate: '[XIC(Work' + s + ') XIC(Status.State[49]) ,XIC(Status.State[109]) ]',
   });
   const R04 = servoRoutine('XAxis', {
-    permissive: 'XIC(iq_ZAxisLeft.AxisHomedStatus)XIC(iq_ZAxisRight.AxisHomedStatus)[XIO(Status.State[1]) ,XIC(ZAxisLeftRetract.InPos) XIC(ZAxisRightRetract.InPos) ]', manual: ['Pick', 'Place'], moveType: 0,
+    permissive: 'XIC(iq_ZAxisUpstream.AxisHomedStatus)XIC(iq_ZAxisDownstream.AxisHomedStatus)[XIO(Status.State[1]) ,XIC(ZAxisUpstreamRetract.InPos) XIC(ZAxisDownstreamRetract.InPos) ]', manual: ['Pick', 'Place'], moveType: 0,
     autoComment: 'Auto Mode - 0 pick, 1 place; pre-tension is an incremental move, the coil move runs at AutoSpeed[1]',
     auto: 'XIC(Status.State[19]) MOVE(1,XAxisMotionParameters.MoveType) MOVE(HMI_PretensionDistance,XAxisMotionParameters.Position) ,XIC(Status.State[31]) MOVE(HMI_XAxis.Parameters.AutoSpeed[1],XAxisMotionParameters.Speed) MOVE(HMI_XAxis.Parameters.Positions[1],XAxisMotionParameters.Position) ,[XIC(Status.State[52]) ,XIC(Status.State[112]) ] MOVE(HMI_XAxis.Parameters.Positions[0],XAxisMotionParameters.Position)',
     mamGate: '[XIC(Status.State[19]) ,XIC(Status.State[31]) ,XIC(Status.State[52]) ,XIC(Status.State[112]) ]',
@@ -432,7 +432,7 @@ function coilerProgram() {
   const R20 = [
     ...servoAl,
     al(0, [7], 3000), al(1, [19], 3000), al(2, [22], 3000), al(3, [25, 106], 5000), al(4, [28], 3000), al(5, [31], 15000), al(6, [34], 3000), al(7, [37], 3000), al(8, [46, 103], 3000), al(9, [49, 109], 5000), al(10, [52, 112], 10000),
-    [alarms[11], 'XIC(Status.State[100])[XIC(CoilStartedLeft) ,XIC(CoilStartedRight) ][OTE(Alarm[11].Active) ,ONS(ONS.27) MOVE(1,Alarm[11].Severity) CONCAT(g_StationList[StaNum],AlarmList[11],Alarm[11].Message) ];'],
+    [alarms[11], 'XIC(Status.State[100])[XIC(CoilStartedUpstream) ,XIC(CoilStartedDownstream) ][OTE(Alarm[11].Active) ,ONS(ONS.27) MOVE(1,Alarm[11].Severity) CONCAT(g_StationList[StaNum],AlarmList[11],Alarm[11].Message) ];'],
     ['Servo Alarm Handler', 'ProgramAlarmHandler(ServoFaultHandler,\\Alarms.p_ProgramID,ServoAlarm,\\Alarms.p_Active,\\Alarms.p_History,g_CPUDateTime,ServoAlarmActive,ServoWarningActive);'],
     ['Station Alarm Handler', 'ProgramAlarmHandler(ProgramFaultHandler,\\Alarms.p_ProgramID,Alarm,\\Alarms.p_Active,\\Alarms.p_History,g_CPUDateTime,AlarmActive,WarningActive);'],
     ['Alarm/Warning Active Outputs', '[XIC(ServoAlarmActive) ,XIC(AlarmActive) ]OTE(q_AlarmActive);'],
@@ -440,8 +440,8 @@ function coilerProgram() {
   ];
   return programXml(PROG, tags, [
     { name: 'R00_Main', rungs: R00 }, { name: 'R01_Inputs', rungs: R01 }, { name: 'R02_StateTransitions', rungs: R02 }, { name: 'R03_StateLogic', rungs: R03 },
-    { name: 'R04_XAxisServo', rungs: R04 }, { name: 'R05_ZAxisLeftServo', rungs: zAxis('Left') }, { name: 'R06_ZAxisRightServo', rungs: zAxis('Right') },
-    { name: 'R07_RAxisLeftServo', rungs: rotary('Left') }, { name: 'R08_RAxisRightServo', rungs: rotary('Right') }, { name: 'R20_Alarms', rungs: R20 }]);
+    { name: 'R04_XAxisServo', rungs: R04 }, { name: 'R05_ZAxisUpstreamServo', rungs: zAxis('Upstream') }, { name: 'R06_ZAxisDownstreamServo', rungs: zAxis('Downstream') },
+    { name: 'R07_RAxisUpstreamServo', rungs: rotary('Upstream') }, { name: 'R08_RAxisDownstreamServo', rungs: rotary('Downstream') }, { name: 'R20_Alarms', rungs: R20 }]);
 }
 
 // ═══ 1. IP addresses: every existing module onto the IP tab ═══════════════════
@@ -597,8 +597,8 @@ must(countOf(programBody(x, 'Alarms'), '\\' + PROG + '.q_') === 2, 'Alarms roll-
 x = insertAfter(x, '<ScheduledProgram Name="L2_S01_DereelerDownstream"/>', '\n<ScheduledProgram Name="' + PROG + '"/>', 'MainTask schedule');
 // parameter connections
 const pcs = [];
-for (const a of ['XAxis', 'ZAxisLeft', 'ZAxisRight', 'RAxisLeft', 'RAxisRight']) pcs.push(['\\' + PROG + '.iq_' + a, AXES[a].tag]);
-pcs.push([VB + '_IN.Data[0].0', '\\' + PROG + '.i_NestOpenerLeftRetracted'], [VB + '_IN.Data[0].1', '\\' + PROG + '.i_NestOpenerRightRetracted']);
+for (const a of ['XAxis', 'ZAxisUpstream', 'ZAxisDownstream', 'RAxisUpstream', 'RAxisDownstream']) pcs.push(['\\' + PROG + '.iq_' + a, AXES[a].tag]);
+pcs.push([VB + '_IN.Data[0].0', '\\' + PROG + '.i_NestOpenerUpstreamRetracted'], [VB + '_IN.Data[0].1', '\\' + PROG + '.i_NestOpenerDownstreamRetracted']);
 for (const s of SIDES) {
   pcs.push(['\\' + PROG + '.q_CloseSpikeGripper' + s, VB + '_OUT' + coilBit(VALVE['SpikeGripper' + s], 0)], ['\\' + PROG + '.q_OpenSpikeGripper' + s, VB + '_OUT' + coilBit(VALVE['SpikeGripper' + s], 1)]);
   pcs.push(['\\' + PROG + '.q_CloseCoilGripper' + s, VB + '_OUT' + coilBit(VALVE['CoilGripper' + s], 0)], ['\\' + PROG + '.q_OpenCoilGripper' + s, VB + '_OUT' + coilBit(VALVE['CoilGripper' + s], 1)]);
@@ -639,8 +639,8 @@ must(lint.code === 0 && /PASS/.test(verdict) && g.code === 0, 'a gate failed; no
 const headF = OUT + '/' + JOB + '_CoverNote_head.html', backF = OUT + '/' + JOB + '_CoverNote_back.html', frontF = OUT + '/' + JOB + '_CoverNote_front.html', metaF = OUT + '/' + JOB + '_CoverNote_meta.json';
 let h = fs.readFileSync(headF, 'utf8'), b = fs.readFileSync(backF, 'utf8'), f = fs.readFileSync(frontF, 'utf8');
 const meta = JSON.parse(fs.readFileSync(metaF, 'utf8'));
-if (!h.includes('<tr><td>' + VERSION + '</td>')) {
-  h = h.replace(/<\/table>\r?\n<h2>What I was given<\/h2>/, '<tr><td>' + VERSION + '</td><td>' + SHORT + '</td><td>L2S10 (EJ) Blue Tube Coiler: one program <code>' + PROG + '</code> with five axes (a10&ndash;a14 on sd10&ndash;sd14), VB6, two nest openers, SCHUNK spike and 3-jaw coil grippers L / R; coil = MAPC position cams on the rotary and Z axes with the X axis as master. Every module moved to the Master Electrical IP tab (10.68.167.x). Indexer stations-complete, actuators-safe and pause rungs take S10. LightControl V5.4 rides in.</td><td>Jason, ' + SHORT + ': &ldquo;write the logic for 1163 L2S10 &hellip; S10 should only be 1 program. The x axis is shared &hellip; Q2 MAPC cam per slave &hellip; Q4 nest openers have retracted sensors. Defaults for remaining.&rdquo;</td></tr>\n</table>\n<h2>What I was given</h2>');
+if (!h.includes('<tr><td>0.7</td>')) {
+  h = h.replace(/<\/table>\r?\n<h2>What I was given<\/h2>/, '<tr><td>0.7</td><td>' + SHORT + '</td><td>L2S10 (EJ) Blue Tube Coiler: one program <code>' + PROG + '</code> with five axes (a10&ndash;a14 on sd10&ndash;sd14), VB6, two nest openers, SCHUNK spike and 3-jaw coil grippers L / R; coil = MAPC position cams on the rotary and Z axes with the X axis as master. Every module moved to the Master Electrical IP tab (10.68.167.x). Indexer stations-complete, actuators-safe and pause rungs take S10. LightControl V5.4 rides in.</td><td>Jason, ' + SHORT + ': &ldquo;write the logic for 1163 L2S10 &hellip; S10 should only be 1 program. The x axis is shared &hellip; Q2 MAPC cam per slave &hellip; Q4 nest openers have retracted sensors. Defaults for remaining.&rdquo;</td></tr>\n</table>\n<h2>What I was given</h2>');
   h = rep1(h, 'answered Oct 30</td></tr>', 'answered Oct 30. EJ walkthrough Nov 3 (Jason, Vipin, Caleb, Tim), questions answered Nov 4</td></tr>', 'head row 1');
   h = rep1(h, 'WA, WB)</td></tr>', 'WA, WB). EJ: gantry screenshot, no balloons</td></tr>', 'head row 2');
   h = rep1(h, 'walkthrough and I/O list govern</td></tr>', 'walkthrough and I/O list govern. EJ rows 118&ndash;122 (budget-era: two rotary heads, head openers, push-off, load verify)</td></tr>', 'head row 3');
@@ -649,7 +649,7 @@ if (!h.includes('<tr><td>' + VERSION + '</td>')) {
   h = rep1(h, 'no circuit drawing</td></tr>', 'no circuit drawing. VB6 manifold layout (SY3000, 16 stations, EX600 2x DXPC), no station map</td></tr>', 'head row 6');
   h = rep1(h, '1117 HoseFeed / Dereeler as sequence reference only</td></tr>', '1117 HoseFeed / Dereeler as sequence reference only. S10: V5.4 S05_ServoPNP (servo form), chassis template Chassis (MCCP / MAPC cam form), 2UP S01 / S11 (per-side tracking); no example has five axes or a cam slaved to a PNP axis</td></tr>', 'head row 8');
   h = rep1(h, '<tr><td>9 Ethernet device list</td><td>partial</td><td>Module sizes set by Jason in Studio (0.3.2); CB-EP100 manual section 3-3 for the micrometer map; IPs still assumed</td></tr>', '<tr><td>9 Ethernet device list</td><td>yes</td><td>Master Electrical &ldquo;IP Addresses&rdquo; tab (Nov 3): every device IP on 10.68.167.x, device order = axis / drive numbers; VB6 sizes still assumed</td></tr>', 'head row 9');
-  h = rep1(h, 'pick and place (not designed yet).</td></tr>', 'pick and place (not designed yet). <b>L2S10 (EJ)</b>, the blue tube coiler: a shared X gantry carrying two heads (Left = nest A = Upstream, Right = nest B), each a Z axis, a rotary axis with a spike gripper and a 3-jaw coil gripper, plus a nest opener per side. The heads pick the tube by its spike, pre-tension, lift, and coil three turns onto the 3-jaw while the X axis carries them to place.</td></tr>', 'head platform');
+  h = rep1(h, 'pick and place (not designed yet).</td></tr>', 'pick and place (not designed yet). <b>L2S10 (EJ)</b>, the blue tube coiler: a shared X gantry carrying two heads (Upstream = nest A = the IP tab&rsquo;s Left, Downstream = nest B = Right), each a Z axis, a rotary axis with a spike gripper and a 3-jaw coil gripper, plus a nest opener per side. The heads pick the tube by its spike, pre-tension, lift, and coil three turns onto the 3-jaw while the X axis carries them to place.</td></tr>', 'head platform');
   h = rep1(h, 'L2_S01_DereelerDownstream</b>, Production', 'L2_S01_DereelerDownstream, ' + PROG + '</b>, Production', 'head controller');
   h = rep1(h, '<b>sd02_L2S01FeedUpstream</b> 10.1.60.21, <b>sd03_L2S01FeedDownstream</b> .22', '<b>sd02_L2S01FeedUpstream</b> 10.68.167.21, <b>sd03_L2S01FeedDownstream</b> .22', 'head sd02');
   h = rep1(h, '(Upstream A/B .31/.32, Downstream A/B .33/.34)', '(Upstream A/B .50/.51, Downstream A/B .52/.53)', 'head fd');
@@ -659,6 +659,11 @@ if (!h.includes('<tr><td>' + VERSION + '</td>')) {
   h = rep1(h, 'StagingEmpty is a placeholder).</td></tr>', 'StagingEmpty is a placeholder). S10: 6 &ndash; sequence per the EJ walkthrough and Jason&rsquo;s Nov 4 answers; the cam form (MAPC per slave, X master, 2-point linear profile from coil diameter and pitch) has no SDC precedent on a PNP axis, VB6 sizes and bits, Z direction and the brake-motor database name are assumptions in the Asks.</td></tr>', 'head logic');
   h = h.replace('<tr><td class="k"><b>Modes</b></td><td>', '<tr><td class="k"><b>Modes</b></td><td>Coiler: wait for the index &rarr; working Z axes to pick &rarr; spike grippers close &rarr; 3-jaws open to the coil diameter &rarr; nests open &rarr; 10 mm pre-tension &rarr; Z to coil start &rarr; nests close &rarr; rotary and Z cams lock to X &rarr; X to place (coil) &rarr; cams release &rarr; Z to place &rarr; 3-jaws close (coil relaxes) &rarr; spike grippers open (Success) &rarr; Z retract &rarr; rotaries home &rarr; X to pick. A side with no part or locked out stays up; both heads ride the same X pass. ');
   must(h.includes('Coiler: wait for the index'), 'head modes');
+}
+if (!h.includes('<tr><td>0.7.1</td>')) {
+  h = h.replace(/<\/table>\r?\n<h2>What I was given<\/h2>/, '<tr><td>0.7.1</td><td>' + SHORT + '</td><td>L2S10 sides renamed Upstream (nest A, IP-tab Left) / Downstream (nest B, Right) in every program tag, routine, HMI tag and alarm; axis and drive names keep the IP tab&rsquo;s Left / Right. Same logic.</td><td>Jason, ' + SHORT + ': &ldquo;I want left / right defined as upstream / downstream in the program, like was done with S01.&rdquo;</td></tr>\n</table>\n<h2>What I was given</h2>');
+  h = rep1(h, '(Left = nest A = Upstream, Right = nest B)', '(Upstream = nest A = the IP tab&rsquo;s Left, Downstream = nest B = Right)', 'head 0.7.1 sides');
+  must(h.includes('<tr><td>0.7.1</td>'), 'head 0.7.1 row');
 }
 if (!b.includes('vb06_MainAssembly')) {
   b = rep1(b, 'Alarms rolls up Supervisor, the indexer and the four L2S01 programs (faults and warnings). ', 'Alarms rolls up Supervisor, the indexer, the four L2S01 programs and ' + PROG + ' (faults and warnings); <code>g_StationList[10]</code> = &ldquo;' + PREFIX + '&rdquo;. ', 'back alarms');
@@ -684,12 +689,17 @@ if (!f.includes('Coiler')) {
   f = f.replace('L2S01 has no nest and does not gate the index.', 'L2S01 has no nest and does not gate the index; L2S10 is the first station wired into the stations-complete, actuators-safe (both Z retracted, nests closed) and pause rungs.');
   must(f.includes('L2S10 is the first station'), 'front index');
 }
+if (meta[PROG] && /nest A \(Left\)/.test(meta[PROG].notes)) {
+  for (const k of ['does', 'devices', 'notes']) meta[PROG][k] = meta[PROG][k].replace(/\bLeft\b/g, 'Upstream').replace(/\bRight\b/g, 'Downstream');
+  meta[PROG].does = meta[PROG].does.replace('the Upstream head works nest A and the Downstream head nest B', 'the Upstream head (IP-tab Left) works nest A and the Downstream head (Right) nest B');
+  must(/IP-tab Left/.test(meta[PROG].does), 'meta 0.7.1 sides');
+}
 if (!meta[PROG]) {
   meta[PROG] = {
     title: 'L2S10 &ndash; Blue tube coiler, two heads on a shared X axis',
-    does: 'Picks the blue tube from each nest by its spike, forms three turns of coil around the 3-jaw gripper while the X axis carries the head to place, and lays the coil down. One program: the X axis is shared, the Left head works nest A and the Right head nest B; a side with no part or locked out stays retracted and the other coils alone.',
-    devices: 'X Axis &ndash; TLP-A070-040-DJA32A on 2198-C1004-ERS (sd14), 20 mm screw, shared gantry &middot; Z Axis Left / Right &ndash; TLP-A070-040-DJA34A brake motor on sd12 / sd13, 10 mm screw &middot; R Axis Left / Right (rotary coiling head) &ndash; TLP-A070-040-DJA32A on sd10 / sd11, 10:1 gearbox, degrees &middot; Spike Gripper Left / Right &ndash; SCHUNK 0305521 parallel gripper, valves EJ1 / EJ2, two solenoids, delay-confirmed &middot; Coil Gripper Left / Right &ndash; SCHUNK 0340530 3-jaw, valves EJ3 / EJ4, open = jaws at the coil diameter, close = coil released &middot; Nest Opener Left / Right &ndash; VB6 stations 5 / 6, retracted sensor, extended by delay',
-    notes: 'StaNum 10, StaNumPre 9; nest A (Left) and nest B (Right) tracked per side: CycleStationA/BLeft and Right, lockout / dry run per side (LockoutA / B, DryRunA / B), single step or single cycle from either side steps both heads. Attempt at state 7, Success at 43 (spike gripper opened at place), Lockout on a locked-out side at the index, Failure 101 on a tube released by a restart (CoilStartedLeft / Right). Coil cams: at state 28 the profile is computed from HMI_CoilDiameter (75 mm) and HMI_CoilPitch (4.2 mm) over the X travel from CoilStartPosition (pick + HMI_PretensionDistance 10 mm) to place and loaded with MCCP; each working rotary and Z axis is locked to the X command position with MAPC (Once, Immediate, Bi-Directional), the X move to place runs at AutoSpeed[1], MAS Position Cam releases them at 34. Initialization releases the grippers (3-jaw close, spike open), retracts both Z, closes the nests, homes the rotaries and returns X to pick. q_ActuatorsSafe = both Z at retract and homed, both nests closed. Fault times 3 s per move, 5 s nest close / rotary home, 10 s X return, 15 s coil move; gripper states have no alarm (coils and a delay only).',
+    does: 'Picks the blue tube from each nest by its spike, forms three turns of coil around the 3-jaw gripper while the X axis carries the head to place, and lays the coil down. One program: the X axis is shared, the Upstream head works nest A and the Downstream head nest B; a side with no part or locked out stays retracted and the other coils alone.',
+    devices: 'X Axis &ndash; TLP-A070-040-DJA32A on 2198-C1004-ERS (sd14), 20 mm screw, shared gantry &middot; Z Axis Upstream / Downstream &ndash; TLP-A070-040-DJA34A brake motor on sd12 / sd13, 10 mm screw &middot; R Axis Upstream / Downstream (rotary coiling head) &ndash; TLP-A070-040-DJA32A on sd10 / sd11, 10:1 gearbox, degrees &middot; Spike Gripper Upstream / Downstream &ndash; SCHUNK 0305521 parallel gripper, valves EJ1 / EJ2, two solenoids, delay-confirmed &middot; Coil Gripper Upstream / Downstream &ndash; SCHUNK 0340530 3-jaw, valves EJ3 / EJ4, open = jaws at the coil diameter, close = coil released &middot; Nest Opener Upstream / Downstream &ndash; VB6 stations 5 / 6, retracted sensor, extended by delay',
+    notes: 'StaNum 10, StaNumPre 9; nest A (Upstream) and nest B (Downstream) tracked per side: CycleStationA/BUpstream and Downstream, lockout / dry run per side (LockoutA / B, DryRunA / B), single step or single cycle from either side steps both heads. Attempt at state 7, Success at 43 (spike gripper opened at place), Lockout on a locked-out side at the index, Failure 101 on a tube released by a restart (CoilStartedUpstream / Downstream). Coil cams: at state 28 the profile is computed from HMI_CoilDiameter (75 mm) and HMI_CoilPitch (4.2 mm) over the X travel from CoilStartPosition (pick + HMI_PretensionDistance 10 mm) to place and loaded with MCCP; each working rotary and Z axis is locked to the X command position with MAPC (Once, Immediate, Bi-Directional), the X move to place runs at AutoSpeed[1], MAS Position Cam releases them at 34. Initialization releases the grippers (3-jaw close, spike open), retracts both Z, closes the nests, homes the rotaries and returns X to pick. q_ActuatorsSafe = both Z at retract and homed, both nests closed. Fault times 3 s per move, 5 s nest close / rotary home, 10 s X return, 15 s coil move; gripper states have no alarm (coils and a delay only).',
     extra: { Form: 'S05_ServoPNP servo form per axis (R04&ndash;R08) + S03 pneumatics for grippers and nest openers + 2UP S01 / S11 per-side tracking; chassis Chassis program for MCCP / MAPC', Logic: '6 &ndash; sequence per the EJ walkthrough and the Nov 4 answers; cam form, VB6 map, Z sign and scaling are assumptions', Referenced: 'NAMES_CONTRACT_L2S01_EA.md (L2S10 section), L2S10_EJ_readiness_2026-11-04.md', Ask: '20, 21, 22, 23, 24, 25' },
   };
   meta.Supervisor.does = meta.Supervisor.does.replace('nine EIP nodes monitored (indexer drive, two feed drives, four payout VFDs, valve bank, micrometer)', 'fifteen EIP nodes monitored (indexer drive, two feed drives, four payout VFDs, VB1, micrometer, five S10 drives, VB6)');
@@ -700,8 +710,12 @@ if (!meta[PROG]) {
 }
 const cf = B + '/plan/NAMES_CONTRACT_L2S01_EA.md';
 let c = fs.readFileSync(cf, 'utf8');
+if (c.includes('Left = nest A = Upstream, Right = nest B')) {
+  c = c.replace('Left = nest A = Upstream, Right = nest B', 'Upstream = nest A = IP-tab Left, Downstream = nest B = Right, D013 form').replace('program tags XAxis, ZAxisLeft / Right, RAxisLeft / Right (routines R04-R08)', 'program tags XAxis, ZAxisUpstream / Downstream, RAxisUpstream / Downstream (routines R04-R08); axis and drive names keep the IP-tab Left / Right');
+  must(c.includes('ZAxisUpstream / Downstream'), 'contract 0.7.1');
+}
 if (!c.includes('## L2S10 (EJ)')) {
-  c = c.trimEnd() + '\n\n## L2S10 (EJ) Blue Tube Coiler (0.7, Jason 2026-11-04)\n| Item | Name |\n|---|---|\n| Program | `' + PROG + '` (one program: X shared, Z / rotary per nest side; Left = nest A = Upstream, Right = nest B) |\n| StaNum | 10, StaNumPre 9; reads Station[10].NestNumA / NestNumB, OpStatus A / B bits; FailureType 101 coil interrupted |\n| Axes (IP-tab order) | `a10_L2S10RotaryLeft` / `sd10_L2S10RotaryLeft` 10.68.167.29 · a11 / sd11 RotaryRight .30 · a12 / sd12 VerticalLeft .31 · a13 / sd13 VerticalRight .32 · a14 / sd14 Horizontal .33 (2198-C1004-ERS single phase; TLP-A070-040-Dxxx2x, Dxxx4x brake on Z); program tags XAxis, ZAxisLeft / Right, RAxisLeft / Right (routines R04-R08) |\n| Scaling | X screw 20 mm, Z screw 10 mm (limited); rotary 10:1 transmission, deg, cyclic 360 |\n| Valve bank | `vb06_MainAssembly` .93 (EX600-SEN7, generic SINT, in 10 / out 8 assumed, instances 100 / 150); coils from byte 3: station n A = bit 2n-2, B = 2n-1 |\n| Valve stations | 1 EJ1 spike gripper L (close 3.0 / open 3.1) · 2 EJ2 spike R (3.2 / 3.3) · 3 EJ3 3-jaw coil L (close 3.4 / open 3.5) · 4 EJ4 coil R (3.6 / 3.7) · 5 nest opener L (extend 4.0 / retract 4.1) · 6 nest opener R (4.2 / 4.3) |\n| Inputs | nest opener L / R retracted = in 0.0 / 0.1 (DXPC1) |\n| HMI setpoints | HMI_CoilDiameter 75.0, HMI_CoilPitch 4.2 (signed, Z per turn), HMI_PretensionDistance 10.0; X Positions[0] pick 765.5, [1] place 50.0; Z Positions 0 pick, 1 place, 2 retract, 3 coil start; R Positions[0] home |\n| Cams | RotaryCam / ZCam (CAM[2]) -> RotaryCamProfile / ZCamProfile (CAM_PROFILE[2]) via MCCP at state 28; MAPC per working slave, master iq_XAxis Command, Once, Immediate, Bi-Directional; MAS Position Cam at 34 |\n| To the indexer | q_StationComplete, q_ActuatorsSafe (both Z retracted + homed, nests closed), q_Pause (AlwaysOff) - first station wired into R01 rungs 2-4 |\n| Supervisor | EIP nodes 9-14 = sd10-sd14, vb06; Alarm[10]-[15]; node count 15 |\n\nIP tab (2026-11-04): sd01 .20, sd02 .21, sd03 .22, fd01-fd04 .50-.53, vb01 .90, mm01 .80 on 10.68.167.x. Reserved by order: a04 / a05 L2S2, a06-a09 L2S4, a15 L2S11, a16-a20 L2S14.\n';
+  c = c.trimEnd() + '\n\n## L2S10 (EJ) Blue Tube Coiler (0.7, Jason 2026-11-04)\n| Item | Name |\n|---|---|\n| Program | `' + PROG + '` (one program: X shared, Z / rotary per nest side; Upstream = nest A = IP-tab Left, Downstream = nest B = Right, D013 form) |\n| StaNum | 10, StaNumPre 9; reads Station[10].NestNumA / NestNumB, OpStatus A / B bits; FailureType 101 coil interrupted |\n| Axes (IP-tab order) | `a10_L2S10RotaryLeft` / `sd10_L2S10RotaryLeft` 10.68.167.29 · a11 / sd11 RotaryRight .30 · a12 / sd12 VerticalLeft .31 · a13 / sd13 VerticalRight .32 · a14 / sd14 Horizontal .33 (2198-C1004-ERS single phase; TLP-A070-040-Dxxx2x, Dxxx4x brake on Z); program tags XAxis, ZAxisUpstream / Downstream, RAxisUpstream / Downstream (routines R04-R08) |\n| Scaling | X screw 20 mm, Z screw 10 mm (limited); rotary 10:1 transmission, deg, cyclic 360 |\n| Valve bank | `vb06_MainAssembly` .93 (EX600-SEN7, generic SINT, in 10 / out 8 assumed, instances 100 / 150); coils from byte 3: station n A = bit 2n-2, B = 2n-1 |\n| Valve stations | 1 EJ1 spike gripper L (close 3.0 / open 3.1) · 2 EJ2 spike R (3.2 / 3.3) · 3 EJ3 3-jaw coil L (close 3.4 / open 3.5) · 4 EJ4 coil R (3.6 / 3.7) · 5 nest opener L (extend 4.0 / retract 4.1) · 6 nest opener R (4.2 / 4.3) |\n| Inputs | nest opener L / R retracted = in 0.0 / 0.1 (DXPC1) |\n| HMI setpoints | HMI_CoilDiameter 75.0, HMI_CoilPitch 4.2 (signed, Z per turn), HMI_PretensionDistance 10.0; X Positions[0] pick 765.5, [1] place 50.0; Z Positions 0 pick, 1 place, 2 retract, 3 coil start; R Positions[0] home |\n| Cams | RotaryCam / ZCam (CAM[2]) -> RotaryCamProfile / ZCamProfile (CAM_PROFILE[2]) via MCCP at state 28; MAPC per working slave, master iq_XAxis Command, Once, Immediate, Bi-Directional; MAS Position Cam at 34 |\n| To the indexer | q_StationComplete, q_ActuatorsSafe (both Z retracted + homed, nests closed), q_Pause (AlwaysOff) - first station wired into R01 rungs 2-4 |\n| Supervisor | EIP nodes 9-14 = sd10-sd14, vb06; Alarm[10]-[15]; node count 15 |\n\nIP tab (2026-11-04): sd01 .20, sd02 .21, sd03 .22, fd01-fd04 .50-.53, vb01 .90, mm01 .80 on 10.68.167.x. Reserved by order: a04 / a05 L2S2, a06-a09 L2S4, a15 L2S11, a16-a20 L2S14.\n';
 }
 const exF = B + '/plan/station-examples.json';
 const ex = JSON.parse(fs.readFileSync(exF, 'utf8'));
