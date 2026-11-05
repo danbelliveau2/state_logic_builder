@@ -1,4 +1,6 @@
 'use strict';
+// SUPERSEDED 2026-11-05: Jason's Studio copy of v0.7.5 is the lineage from v0.7.6 on (cam lock at CoilTravel like auto, no
+// spike-gripper condition on engage, rotary limits set in Studio). Kept as the record of the forms; do not re-run on a later stamp.
 // build1163S10jog.cjs — 1163 v0.7.5 on the v0.7.4 stamp: manual coil jog on L2_S10_BlueTubeCoiler (D016, Jason 2026-11-05).
 // In manual one head at a time cams its Z and R to the X axis with the auto cam profiles, Bi-Directional, and the operator
 // jogs X with the normal jog buttons. Momentary Cam On / Cam Off per head (HMI_Momentary.12-15), the PLC latches CamJog{Side};
