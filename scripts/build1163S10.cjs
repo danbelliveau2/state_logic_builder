@@ -487,7 +487,7 @@ AX_ORDER.forEach((a, i) => {
   if (C.kind === 'linear') {
     setAttr('LoadType', 'Linear Actuator'); setAttr('ActuatorType', 'Screw'); setAttr('ActuatorLead', C.lead.toFixed(1)); setAttr('ActuatorDiameter', '1.0'); setAttr('TravelMode', 'Limited');
     setAttr('TransmissionRatioInput', '1'); setAttr('TransmissionRatioOutput', '1'); setAttr('PositionUnits', 'mm');
-    setAttr('ConversionConstant', '10000.0'); setAttr('MotionResolution', '10000'); setAttr('PositionUnwind', '1000000'); // 10000 counts per mm on every screw axis (Jason set X so in Studio, 2026-11-05); the lead does not enter the pair
+    setAttr('ConversionConstant', '10000.0'); setAttr('MotionResolution', '10000'); setAttr('PositionUnwind', '1000000'); // 10000 counts per mm on every screw axis: Studio recomputes the pair on import and discards the file's value (X went in 20000, came back 10000 untouched, 2026-11-05); the lead does not enter it
   } else {
     setAttr('LoadType', 'Rotary Transmission'); setAttr('ActuatorType', '&lt;none>'); setAttr('ActuatorLead', '1.0'); setAttr('ActuatorDiameter', '1.0'); setAttr('TravelMode', 'Cyclic');
     setAttr('TransmissionRatioInput', String(C.gear)); setAttr('TransmissionRatioOutput', '1'); setAttr('PositionUnits', 'deg');
