@@ -21,6 +21,10 @@ const ROOT = path.join(__dirname, '..');
 const D = 'X:/Electrical Dept/SDC Engineer/Deliveries/1163', B = D + '/build-inputs', OUT = B + '/out', H = D + '/_history';
 const BASE = H + '/1163_Haemonetics_v0.6.2_2026-11-03.L5X';
 const V54 = path.join(ROOT, 'plc-reference/training-material/SDC Standard Templates/SoftwareStandardization.L5X');
+// SUPERSEDED 2026-11-05: Jason's Studio copy of v0.7.3 is the lineage from v0.7.4 on (returnIntake + apply1163_v074.cjs).
+// Re-running this build from the v0.6.2 stamp would undo his corrections (cycle-complete state 55, absolute pre-tension,
+// relative cams Reverse Only with Z negative, PositionCamStatus transitions, rotary absolute home, X permissive by height).
+// Kept as the record of the forms; the brake, scaling and legs() fixes below are current.
 const M = '1163_Haemonetics', JOB = '1163', VERSION = '0.7.3';
 const ISO = new Date().toISOString().slice(0, 10), SHORT = 'Nov 4';
 const DRY = process.argv.includes('--dry');
@@ -483,7 +487,7 @@ AX_ORDER.forEach((a, i) => {
   if (C.kind === 'linear') {
     setAttr('LoadType', 'Linear Actuator'); setAttr('ActuatorType', 'Screw'); setAttr('ActuatorLead', C.lead.toFixed(1)); setAttr('ActuatorDiameter', '1.0'); setAttr('TravelMode', 'Limited');
     setAttr('TransmissionRatioInput', '1'); setAttr('TransmissionRatioOutput', '1'); setAttr('PositionUnits', 'mm');
-    setAttr('ConversionConstant', (C.lead * 1000).toFixed(1)); setAttr('MotionResolution', String(C.lead * 1000)); setAttr('PositionUnwind', '1000000');
+    setAttr('ConversionConstant', '10000.0'); setAttr('MotionResolution', '10000'); setAttr('PositionUnwind', '1000000'); // 10000 counts per mm on every screw axis (Jason set X so in Studio, 2026-11-05); the lead does not enter the pair
   } else {
     setAttr('LoadType', 'Rotary Transmission'); setAttr('ActuatorType', '&lt;none>'); setAttr('ActuatorLead', '1.0'); setAttr('ActuatorDiameter', '1.0'); setAttr('TravelMode', 'Cyclic');
     setAttr('TransmissionRatioInput', String(C.gear)); setAttr('TransmissionRatioOutput', '1'); setAttr('PositionUnits', 'deg');

@@ -684,14 +684,18 @@ function checkAxisLoadAndMotor(xml, errors) {
     const get = (k) => (new RegExp('\\b' + k + '="([^"]*)"').exec(blk) || [])[1];
     if (!get('ConversionConstant')) continue;          // an InOut parameter, not a drive
 
-    const lead = parseFloat(get('ActuatorLead'));
+    // Studio pairs ConversionConstant with MotionResolution x PositionScalingDenominator / PositionScalingNumerator
+    // (Control Scaling); the screw lead does not enter it. 1163 a14, Studio export 2026-11-05: lead 20 mm/rev,
+    // MotionResolution 10000, ConversionConstant 10000; rotary a10: 360000 counts, numerator 360, constant 1000.
     const konst = parseFloat(get('ConversionConstant'));
-    if (get('ScalingSource') === 'From Calculator' && get('LoadType') === 'Linear Actuator' &&
-        get('ActuatorType') === 'Screw' && get('ActuatorLeadUnit') === 'Millimeter/Rev' &&
-        Number.isFinite(lead) && Number.isFinite(konst) && Math.abs(konst - lead * 1000) > 0.001) {
-      errors.push(`Axis scaling "${axis}": ActuatorLead ${lead} mm/rev derives ConversionConstant ` +
-        `${lead * 1000}, but the file says ${konst} — Studio recomputes from the lead on import, so ` +
-        `the axis will not move what the logic thinks. Set the load, not the answer.`);
+    const res = parseFloat(get('MotionResolution'));
+    const num = parseFloat(get('PositionScalingNumerator') || '1'), den = parseFloat(get('PositionScalingDenominator') || '1');
+    if (get('MotionScalingConfiguration') === 'Control Scaling' && [konst, res, num, den].every(Number.isFinite) && num > 0) {
+      const derived = res * den / num;
+      if (Math.abs(konst - derived) > 0.001) {
+        errors.push(`Axis scaling "${axis}": MotionResolution ${res} x ${den} / ${num} derives ConversionConstant ` +
+          `${derived}, but the file says ${konst} — Studio recomputes it on import, so the axis will not move what the logic thinks.`);
+      }
     }
 
     const cat = get('MotorCatalogNumber');
