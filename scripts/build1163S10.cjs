@@ -156,10 +156,11 @@ function programXml(name, tags, routines) {
 
 // ═══ hardware configuration (Master Electrical IP tab, 2026-11-04) ═══════════
 const SIDES = ['Upstream', 'Downstream'];
+const BRAKE = { engage: 0.08, release: 0.04 }; // vertical brake motors: Jason set these in Studio on v0.7.3 (2026-11-05)
 const AXES = {
   XAxis: { tag: 'a14_L2S10Horizontal', drive: 'sd14_L2S10Horizontal', ip: SUBNET + '33', kind: 'linear', lead: 20.0, motor: 'TLP-A070-040-Dxxx2x', label: 'X Axis', eip: 'Loss Of L2S10 Horizontal Servo EIP' },
-  ZAxisUpstream: { tag: 'a12_L2S10VerticalUpstream', drive: 'sd12_L2S10VerticalUpstream', ip: SUBNET + '31', kind: 'linear', lead: 10.0, motor: 'TLP-A070-040-Dxxx4x', label: 'Z Axis Upstream', eip: 'Loss Of L2S10 Vertical Upstream Servo EIP' },
-  ZAxisDownstream: { tag: 'a13_L2S10VerticalDownstream', drive: 'sd13_L2S10VerticalDownstream', ip: SUBNET + '32', kind: 'linear', lead: 10.0, motor: 'TLP-A070-040-Dxxx4x', label: 'Z Axis Downstream', eip: 'Loss Of L2S10 Vertical Downstream Servo EIP' },
+  ZAxisUpstream: { tag: 'a12_L2S10VerticalUpstream', drive: 'sd12_L2S10VerticalUpstream', ip: SUBNET + '31', kind: 'linear', lead: 10.0, motor: 'TLP-A070-040-Dxxx4x', brake: BRAKE, label: 'Z Axis Upstream', eip: 'Loss Of L2S10 Vertical Upstream Servo EIP' },
+  ZAxisDownstream: { tag: 'a13_L2S10VerticalDownstream', drive: 'sd13_L2S10VerticalDownstream', ip: SUBNET + '32', kind: 'linear', lead: 10.0, motor: 'TLP-A070-040-Dxxx4x', brake: BRAKE, label: 'Z Axis Downstream', eip: 'Loss Of L2S10 Vertical Downstream Servo EIP' },
   RAxisUpstream: { tag: 'a10_L2S10RotaryUpstream', drive: 'sd10_L2S10RotaryUpstream', ip: SUBNET + '29', kind: 'rotary', gear: 10, motor: 'TLP-A070-040-Dxxx2x', label: 'R Axis Upstream', eip: 'Loss Of L2S10 Rotary Upstream Servo EIP' },
   RAxisDownstream: { tag: 'a11_L2S10RotaryDownstream', drive: 'sd11_L2S10RotaryDownstream', ip: SUBNET + '30', kind: 'rotary', gear: 10, motor: 'TLP-A070-040-Dxxx2x', label: 'R Axis Downstream', eip: 'Loss Of L2S10 Rotary Downstream Servo EIP' },
 };
@@ -477,6 +478,7 @@ AX_ORDER.forEach((a, i) => {
   // scaling in the template forms: screw (V5.4 a03/a04: lead 10 -> ConversionConstant 10000, MotionResolution 10000, Limited);
   // rotary in degrees through a gearbox (chassis a01_Cam: 1000 counts/deg, MotionResolution 360000, unwind 360000, Cyclic)
   setAttr('AxisID', String(maxAxisId + 1 + i)); setAttr('MotorCatalogNumber', C.motor);
+  if (C.brake) { setAttr('MechanicalBrakeEngageDelay', C.brake.engage.toFixed(2)); setAttr('MechanicalBrakeReleaseDelay', C.brake.release.toFixed(2)); }
   if (C.kind === 'linear') {
     setAttr('LoadType', 'Linear Actuator'); setAttr('ActuatorType', 'Screw'); setAttr('ActuatorLead', C.lead.toFixed(1)); setAttr('ActuatorDiameter', '1.0'); setAttr('TravelMode', 'Limited');
     setAttr('TransmissionRatioInput', '1'); setAttr('TransmissionRatioOutput', '1'); setAttr('PositionUnits', 'mm');
