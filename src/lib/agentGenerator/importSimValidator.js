@@ -425,11 +425,15 @@ function checkBranchStructure(xml, errors) {
 function scanBranches(text) {
   const faults = [];
   const open = [];
+  let paren = 0; // commas inside an instruction's operand list are not leg separators
   const closeLeg = (frame, end) => {
     if (text.slice(frame.legStart, end).trim() === '') frame.empty.push(frame.legs);
   };
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
+    if (ch === '(') { paren++; continue; }
+    if (ch === ')') { if (paren > 0) paren--; continue; }
+    if (paren > 0) continue;
     if (ch === '[') {
       const prev = text[i - 1] || '';
       open.push(/[A-Za-z0-9_\].]/.test(prev)

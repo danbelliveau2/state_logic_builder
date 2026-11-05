@@ -21,7 +21,7 @@ const ROOT = path.join(__dirname, '..');
 const D = 'X:/Electrical Dept/SDC Engineer/Deliveries/1163', B = D + '/build-inputs', OUT = B + '/out', H = D + '/_history';
 const BASE = H + '/1163_Haemonetics_v0.6.2_2026-11-03.L5X';
 const V54 = path.join(ROOT, 'plc-reference/training-material/SDC Standard Templates/SoftwareStandardization.L5X');
-const M = '1163_Haemonetics', JOB = '1163', VERSION = '0.7.2';
+const M = '1163_Haemonetics', JOB = '1163', VERSION = '0.7.3';
 const ISO = new Date().toISOString().slice(0, 10), SHORT = 'Nov 4';
 const DRY = process.argv.includes('--dry');
 const PROGDIR = path.join(ROOT, 'generated', '1163', 'build', 'programs');
@@ -245,6 +245,7 @@ function coilerProgram() {
   // per-side helpers
   const both = (fn) => SIDES.map(fn).join('');
   const bothBr = (fn) => '[' + SIDES.map(fn).join(' ,') + ' ]';
+  const legs = (xs) => xs.length === 1 ? xs[0] : '[' + xs.join(' ,') + ' ]'; // Studio refuses a one-leg branch
   const working = (side, cond) => '[XIO(Work' + side + ') ,' + cond + ' ]';   // a head with no work passes
   const everyHead = (fn) => SIDES.map((s) => working(s, fn(s))).join('');
 
@@ -384,7 +385,7 @@ function coilerProgram() {
       ['', 'XIC(Status.State[1])[XIC(' + CT + '.HomeConfirm) ONS(' + a + 'ONS.4) ,XIC(' + a + 'HomeConfimed) XIC(' + a + 'HomeSelect) XIO(' + a + 'TorqueHome.PC) XIO(' + a + 'TorqueHome.Error) ]OTE(' + a + 'HomeConfimed);'],
       ['Home Select = 0 is for Immediate Home (Example, servo indexer) Home Select = 1 is for Home To Torque (Example, PNP)  Homing Torque = Start at 25%, Increase In 5% Increments If Not Enough Run Torque = Normal Running Torque Of Axis Homing Speed = Homing Speed in units/s Overtorque Limit = Set The Same As Homing Torque Home Offset Distance = Distance Moved Off Of Hard Stop When Homing Complete Home Direction = 0 Is Positive, 1 Is Negative', 'XIC(' + a + 'HomeConfimed)[XIO(' + a + 'HomeSelect) MAH(' + A + ',' + a + '_MAH) ,XIC(' + a + 'HomeSelect) AOI_TorqueHome(' + a + 'TorqueHome,' + A + ',25.0,100.0,5.0,25.0,0.5,1) ];'],
       ['', '[XIC(' + a + 'HomeRequested) OTE(' + ST + '.HomeRequested) ,[XIC(' + a + 'TorqueHome.IP) ,XIC(' + a + '_MAH.IP) ] OTE(' + ST + '.HomeInProcess) ,[XIC(' + a + 'TorqueHome.PC) ,XIC(' + a + '_MAH.PC) ] OTE(' + ST + '.HomeComplete) ];'],
-      ['Manual Mode', 'XIC(SafetyOK)XIC(Status.State[1])[[MOVE(' + P + '.ManualSpeed,' + MP + '.Speed) ,MOVE(' + P + '.Accel[0],' + MP + '.Accel) ,MOVE(' + P + '.Decel[0],' + MP + '.Decel) ] ,XIC(' + a + 'Permissive) [' + o.manual.map((name, i) => 'XIC(' + CT + '.ManMoves.' + i + ') MOVE(' + P + '.Positions[' + i + '],' + MP + '.Position)').join(' ,') + ' ] OTE(' + a + 'ManMoveTrig) ];'],
+      ['Manual Mode', 'XIC(SafetyOK)XIC(Status.State[1])[[MOVE(' + P + '.ManualSpeed,' + MP + '.Speed) ,MOVE(' + P + '.Accel[0],' + MP + '.Accel) ,MOVE(' + P + '.Decel[0],' + MP + '.Decel) ] ,XIC(' + a + 'Permissive) ' + legs(o.manual.map((name, i) => 'XIC(' + CT + '.ManMoves.' + i + ') MOVE(' + P + '.Positions[' + i + '],' + MP + '.Position)')) + ' OTE(' + a + 'ManMoveTrig) ];'],
       [o.autoComment, 'XIC(SafetyOK)XIO(Status.State[1])[MOVE(' + o.moveType + ',' + MP + '.MoveType) ,MOVE(' + P + '.AutoSpeed[0],' + MP + '.Speed) ,MOVE(' + P + '.Accel[0],' + MP + '.Accel) ,MOVE(' + P + '.Decel[0],' + MP + '.Decel) ,' + o.auto + ' ];'],
       ['Axis Motion Command', 'XIC(SafetyOK)[XIC(Status.State[1]) XIC(' + a + 'ManMoveTrig) ,XIO(Status.State[1]) ' + o.mamGate + ' ]XIC(' + A + '.ServoActionStatus)XIC(' + A + '.AxisHomedStatus)XIC(' + a + 'Permissive)MAM(' + A + ',' + a + '_MAM,' + MP + '.MoveType,' + MP + '.Position,' + MP + '.Speed,Units per sec,' + MP + '.Accel,Units per sec2,' + MP + '.Decel,Units per sec2,Trapezoidal,0,0,Units per sec3,Disabled,0,0,None,0,0);'],
       ['Stop axis if permissive turns off while in motion and use max or close to max decel value', 'XIO(' + A + '.MotionStatus.0)[XIO(' + a + 'Permissive) ,XIO(SafetyOK) ]MAS(' + A + ',' + a + '_MAS_All,All,Yes,' + ST + '.MaxDecel,Units per sec2,Yes,10,% of Time);'],
@@ -393,7 +394,7 @@ function coilerProgram() {
       ['Retrieve values from axis', 'MOVE(' + A + '.ActualPosition,' + ST + '.ActualPosition)MOVE(' + A + '.ActualVelocity,' + ST + '.ActualVelocity)MOVE(' + A + '.TorqueReferenceFiltered,' + ST + '.ActualTorque);'],
       ['Retrieve the maximum speed value from the axis and calculate max accel and decel.  The max velocity is 85% of full speed.  Equation is based upon 100% speed at a 30ms accel/decel time.', 'XIC(S:FS)GSV(Axis,' + A + ',MaximumSpeed,' + ST + '.MaxVelocity)CPT(' + ST + '.MaxAccel,(' + ST + '.MaxVelocity/0.85)/0.03)MOVE(' + ST + '.MaxAccel,' + ST + '.MaxDecel);'],
     ];
-    if (o.ranges) r.push(['Axis Position Monitor', '[' + o.ranges.map(([n, i, wide]) => 'AOI_RangeCheck(' + n + ',' + P + '.Positions[' + i + '],0.5,' + ST + '.ActualPosition,' + wide + ')').join(' ,') + ' ];']);
+    if (o.ranges) r.push(['Axis Position Monitor', legs(o.ranges.map(([n, i, wide]) => 'AOI_RangeCheck(' + n + ',' + P + '.Positions[' + i + '],0.5,' + ST + '.ActualPosition,' + wide + ')')) + ';']);
     return r;
   }
   const zAxis = (s) => servoRoutine('ZAxis' + s, {
@@ -542,7 +543,7 @@ editRoutine('L2_S00_IndexerNoSP', 'R01_Inputs', (r) => {
   must(rungText(r[3]) === 'XIC(g_MachineBasic.AlwaysOff)OTE(ActuatorsSafe);' && rungText(r[4]) === 'XIC(g_MachineBasic.AlwaysOff)OTE(Pause);', 'indexer r3 / r4');
   r[2] = setRungComment(setRungText(r[2], 'XIC(Status.State[4])TON(StationsCompleteDelay,?,?)XIC(StationsCompleteDelay.DN)XIC(\\' + PROG + '.q_StationComplete)ONS(ONS.6)OTE(StationsComplete);'), 'All Stations Complete');
   r[3] = setRungComment(setRungText(r[3], 'XIC(\\' + PROG + '.q_ActuatorsSafe)OTE(ActuatorsSafe);'), 'All Actuators Safe');
-  r[4] = setRungComment(setRungText(r[4], '[XIC(\\' + PROG + '.q_Pause) MOVE(' + STA + ',PauseReason) ]OTE(Pause);'), 'Move The Indexer Into Pause');
+  r[4] = setRungComment(setRungText(r[4], 'XIC(\\' + PROG + '.q_Pause)MOVE(' + STA + ',PauseReason)OTE(Pause);'), 'Move The Indexer Into Pause');
   return r;
 });
 // Supervisor polls
@@ -659,6 +660,10 @@ if (!h.includes('<tr><td>0.7</td>')) {
   h = rep1(h, 'StagingEmpty is a placeholder).</td></tr>', 'StagingEmpty is a placeholder). S10: 6 &ndash; sequence per the EJ walkthrough and Jason&rsquo;s Nov 4 answers; the cam form (MAPC per slave, X master, 2-point linear profile from coil diameter and pitch) has no SDC precedent on a PNP axis, VB6 sizes and bits, Z direction and the brake-motor database name are assumptions in the Asks.</td></tr>', 'head logic');
   h = h.replace('<tr><td class="k"><b>Modes</b></td><td>', '<tr><td class="k"><b>Modes</b></td><td>Coiler: wait for the index &rarr; working Z axes to pick &rarr; spike grippers close &rarr; 3-jaws open to the coil diameter &rarr; nests open &rarr; 10 mm pre-tension &rarr; Z to coil start &rarr; nests close &rarr; rotary and Z cams lock to X &rarr; X to place (coil) &rarr; cams release &rarr; Z to place &rarr; 3-jaws close (coil relaxes) &rarr; spike grippers open (Success) &rarr; Z retract &rarr; rotaries home &rarr; X to pick. A side with no part or locked out stays up; both heads ride the same X pass. ');
   must(h.includes('Coiler: wait for the index'), 'head modes');
+}
+if (h.includes('<tr><td>0.7.2</td>') && !h.includes('<tr><td>0.7.3</td>')) {
+  h = h.replace(/<\/table>\r?\n<h2>What I was given<\/h2>/, '<tr><td>0.7.3</td><td>' + SHORT + '</td><td>Studio import fix: the indexer pause rung and the rotary Manual Mode rungs (R07 / R08 rung 13) wrapped a single leg in branch brackets, which Studio refuses along with every rung after it (28 errors). Brackets removed; the import simulation now counts legs outside operand lists. Same logic.</td><td>Jason, ' + SHORT + ': &ldquo;There were 28 errors when importing.&rdquo;</td></tr>\n</table>\n<h2>What I was given</h2>');
+  must(h.includes('<tr><td>0.7.3</td>'), 'head 0.7.3');
 }
 if (h.includes('<tr><td>0.7.1</td>') && !h.includes('<tr><td>0.7.2</td>')) {
   h = h.replace(/<\/table>\r?\n<h2>What I was given<\/h2>/, '<tr><td>0.7.2</td><td>' + SHORT + '</td><td>Axis and drive names follow the sides too: a10 / sd10 RotaryUpstream, a11 / sd11 RotaryDownstream, a12 / sd12 VerticalUpstream, a13 / sd13 VerticalDownstream (a14 / sd14 Horizontal unchanged); Supervisor EIP alarm text to match. Same logic.</td><td>Jason, ' + SHORT + ': &ldquo;Rename them too.&rdquo;</td></tr>\n</table>\n<h2>What I was given</h2>');
