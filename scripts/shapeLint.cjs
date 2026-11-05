@@ -67,7 +67,7 @@ const JOB = {
   families: [
     [/^L2_S01_TubeFeed(Upstream|Downstream)$/, [215, 170, 8, 'S05_ServoPNP one axis (~100 tags / 95 rungs) + S03_PartLoad pneumatics for cutter, selector, inserter, two grippers (~60 / 40) + S04_PartVerify result (~10 / 5) +25 %']],
     [/^L2_S01_Dereeler(Upstream|Downstream)$/, [120, 100, 8, 'S10_FlexFeedConveyor VFD half (~60 tags / 55 rungs, 4 manual-latch OTL/OTU) + 1146 fd01_FFConv rungs (~10 / 8) + dereeler state machine (~15 / 10) +25 %; +4 OTL/OTU for the two spool-empty memories']],
-    [/^L2_S10_BlueTubeCoiler$/, [360, 265, 8, 'S05_ServoPNP (~136 tags / 95 rungs, 2 axes) scaled to 5 axes (+3 x ~45 tags / 23 rungs) + two heads of grippers and nest openers (S03 form, ~40 / 20) + chassis MCCP / MAPC cam rungs (~14 / 6) +25 %; latches are tracking only']],
+    [/^L2_S10_BlueTubeCoiler$/, [360, 280, 8,'S05_ServoPNP (~136 tags / 95 rungs, 2 axes) scaled to 5 axes (+3 x ~45 tags / 23 rungs) + two heads of grippers and nest openers (S03 form, ~40 / 20) + chassis MCCP / MAPC cam rungs (~14 / 6) +25 %; latches are tracking only']],
   ],
 
   // Task schedule this job must satisfy. heatStationPrograms: [] when a job has no heaters.
