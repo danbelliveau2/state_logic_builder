@@ -71,6 +71,11 @@ const JOB = {
     // 1163 L1 (2026-11-06): the L2 indexer and tracking programs re-pointed - L2_S00 92 tags / 84 rungs + 4 StationCompleteTimes rungs; L2_Tracking 40 tags / 10 rungs + one position table
     [/^L1_S00_IndexerNoSP$/, [115, 110, 2, 'L2_S00_IndexerNoSP (template S00_IndexerNoSP, 92 tags / 84 rungs) + 4 StationCompleteTimes rungs +25 %']],
     [/^L1_Tracking$/, [52, 19, 0, 'L2_Tracking (template Tracking, 40 tags / 15 rungs) + p_StationPositionB +25 %']],
+    // 1163 L2S04 (2026-11-06): escapement (one axis + blade, two rotaries, two grippers, blow-off, reject blocks), PNP (three axes, four grippers,
+    // two load cells, pass / fail), dispensers (Dereeler-sized follower)
+    [/^L2_S04_SpikeEscapement$/, [240, 200, 10, 'S05_ServoPNP one axis (~100 tags / 95 rungs) + S03 pneumatics for blade, two rotaries, two grippers, blow-off (~60 / 45) + two reject blocks and feeder (~15 / 15) +25 %; latches = part-held memories and feeder bowl']],
+    [/^L2_S04_SpikePNP$/, [360, 260, 24, 'S05_ServoPNP (~136 tags / 95 rungs, 2 axes) + a third axis (~45 / 23) + four grippers (S03 form, ~40 / 20) + S04 pass / fail with two load cells (~40 / 25) +25 %; latches = force-watch memories per side (8) + tracking']],
+    [/^L2_S04_Dispenser(Upstream|Downstream)$/, [90, 75, 2, 'S10_FlexFeedConveyor follower half (~60 tags / 55 rungs) + Dosaset handshake (~15 / 12) +25 %']],
   ],
 
   // Task schedule this job must satisfy. heatStationPrograms: [] when a job has no heaters.
