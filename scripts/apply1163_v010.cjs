@@ -14,7 +14,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const H = require('./lib/l5xBuild.cjs');
-const { fail, must, programBody, insertBefore, countOf } = H;
+const { fail, must, programBody, insertBefore, countOf, rungList, rungText, setRungText, newRung, getRoutine, putRungs, tagXml, replaceTagIn } = H;
 const ESC = require('./lib/s4/escapement.cjs');
 const PNP = require('./lib/s4/pnp.cjs');
 const DISP = require('./lib/s4/dispenser.cjs');
@@ -23,7 +23,7 @@ const ROOT = path.join(__dirname, '..');
 const D = 'X:/Electrical Dept/SDC Engineer/Deliveries/1163', H_ = D + '/_history';
 const BASE = H_ + '/1163_Haemonetics_v0.9.1_returned_2026-11-06.L5X';
 const V54 = path.join(ROOT, 'plc-reference/training-material/SDC Standard Templates/SoftwareStandardization.L5X');
-const M = '1163_Haemonetics', VERSION = '0.10';
+const M = '1163_Haemonetics', VERSION = '0.10.1';
 const ISO = new Date().toISOString().slice(0, 10);
 const DRY = process.argv.includes('--dry');
 const PROGDIR = path.join(ROOT, 'generated', '1163', 'build', 'programs');
@@ -60,6 +60,33 @@ for (const [a, b] of pcs) { must(!x.includes('EndPoint1="' + a + '"'), 'point al
 x = insertBefore(x, '</ParameterConnections>', pcs.map(([a, b]) => '<ParameterConnection EndPoint1="' + a + '" EndPoint2="' + b + '"/>').join('\n') + '\n', '</ParameterConnections>');
 console.log('parameter connections added: ' + pcs.length);
 
+// ═══ 2b. L2_S10 nest opener faults in the TubeFeed device form (Jason 2026-11-06: pneumatic devices with sensors fault like TubeFeed) ═══
+const S10 = 'L2_S10_BlueTubeCoiler';
+{
+  const PFX = 'L2S10 Tube Coil: ';
+  let b = programBody(x, S10) || fail(S10);
+  const list = [...tagXml(b, 'AlarmList').matchAll(/<!\[CDATA\['([^']*)'\]\]>/g)].map((m) => m[1]);
+  must(list.length === 23 && list[5] === 'Waiting For Nest Opener Upstream To Retract' && list[6] === 'Waiting For Nest Opener Downstream To Retract', 'S10 alarm list as expected: ' + list.length);
+  const msgs = [...list, 'Waiting For Nest Opener Upstream To Extend', 'Waiting For Nest Opener Downstream To Extend'];
+  b = replaceTagIn(b, 'Alarm', H.alarmArrayTag('Alarm', PFX, msgs, 25));
+  b = replaceTagIn(b, 'AlarmList', H.stringArrayTag('AlarmList', msgs, 25));
+  must(!tagXml(b, 'AlarmTimerNestOpenerUpstreamRetracted'), 'S10 alarm timers absent');
+  b = insertBefore(b, '</Tags>', SIDES.flatMap((s) => ['Retracted', 'Extended'].map((d) => H.alarmTimerTag('AlarmTimerNestOpener' + s + d))).join('\n') + '\n', 'S10 tags end');
+  const rungs = rungList(getRoutine(b, 'R20_Alarms') || fail('S10 R20'));
+  const idx = (n) => rungs.findIndex((r) => rungText(r).includes('OTE(Alarm[' + n + '].Active)'));
+  const i5 = idx(5), i6 = idx(6);
+  must(i5 >= 0 && i6 === i5 + 1, 'S10 nest opener rungs 5 / 6');
+  const dev = (n, s, dir, cmd) => H.deviceAlarm(n, 'Lockout' + s, 'q_' + cmd + 'NestOpener' + s, 'NestOpener' + s + dir, 'AlarmTimerNestOpener' + s + dir, 'AlarmONS.' + n);
+  rungs[i5] = setRungText(rungs[i5], dev(5, 'Upstream', 'Retracted', 'Retract'));
+  rungs[i6] = setRungText(rungs[i6], dev(6, 'Downstream', 'Retracted', 'Retract'));
+  rungs.splice(i6 + 1, 0, newRung(msgs[23], dev(23, 'Upstream', 'Extended', 'Extend')), newRung(msgs[24], dev(24, 'Downstream', 'Extended', 'Extend')));
+  b = putRungs(b, 'R20_Alarms', rungs);
+  for (const t of ['q_ExtendNestOpenerUpstream', 'NestOpenerDownstreamExtended', 'LockoutUpstream']) must(tagXml(b, t), 'S10 tag ' + t);
+  replaceProgram(S10, b);
+  fs.writeFileSync(path.join(PROGDIR, S10 + '.xml'), b);
+  console.log('L2_S10: nest opener faults in the device form, alarms 23 / 24 added (array 25)');
+}
+
 // ═══ 3. write + gates ════════════════════════════════════════════════════════
 const NOW = new Date();
 x = x.replace(/ExportDate="[^"]*"/, 'ExportDate="' + NOW.toDateString().replace(/^(\w+) (\w+) (\d+) (\d+)$/, '$1 $2 $3') + ' ' + NOW.toTimeString().slice(0, 8) + ' ' + NOW.getFullYear() + '"');
@@ -70,7 +97,7 @@ fs.writeFileSync(OUTFILE, x);
 console.log('wrote ' + OUTFILE + ' (' + x.length + ' chars)');
 
 const run = (args) => { const r = spawnSync(process.execPath, args, { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 << 20 }); return { code: r.status, out: (r.stdout || '') + (r.stderr || '') }; };
-const lint = run(['scripts/shapeLint.cjs', ...NEW.map((n) => path.join(PROGDIR, n + '.xml'))]);
+const lint = run(['scripts/shapeLint.cjs', ...[...NEW, S10].map((n) => path.join(PROGDIR, n + '.xml'))]);
 console.log('- shape lint: ' + (lint.code === 0 ? '0 findings' : 'FINDINGS') + '\n' + lint.out.trim().split('\n').slice(-25).map((l) => '    ' + l).join('\n'));
 const eng = run(['scripts/applyStateEngine.cjs', OUTFILE, '--out', OUTFILE]);
 console.log('- state engine + template AOIs: ' + eng.out.trim().split('\n').slice(-2).join(' | '));

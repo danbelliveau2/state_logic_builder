@@ -125,3 +125,12 @@ const sealedAlarm = (i, cond, onsBit) =>
 module.exports = { fail, must, cdataOf, rungList, rungText, setRungText, setRungComment, newRung, renumber, progRe, programBody, getRoutine, putRungs, tagXml, replaceTagIn,
   insertBefore, insertAfter, countOf, rep1, guid, moduleXml, legs, st, states, l5kStr, descXml, openTag, l5kReal, decReal, scalarTag, boolTag, dintTag, sintTag, realTag, timerTag,
   stringTag, strElemDec, stringArrayTag, alarmElemL5K, alarmElemDec, alarmArrayTag, dintCommentTag, copyTag, hmiAxisTag, statusTag, programXml, outputRung, waitAlarm, warnAlarm, sealedAlarm };
+
+// SDC standard pneumatic fault form (L2_S01 TubeFeed, Jason 2026-11-06): command on, derived state not reached, per-device alarm timer,
+// sealed on FaultReset; a two-sensor device also gets "Sensors/Outputs Misconfigured" (both outputs or both sensors on).
+const deviceAlarm = (i, lockout, cmd, state, timer, onsBit) =>
+  '[XIO(' + lockout + ') XIC(' + cmd + ') XIO(' + state + ') TON(' + timer + ',?,?) XIC(' + timer + '.DN) ,XIC(Alarm[' + i + '].Active) XIO(FaultReset) ][OTE(Alarm[' + i + '].Active) ,ONS(' + onsBit + ') CONCAT(g_L2StationList[StaNum],AlarmList[' + i + '],Alarm[' + i + '].Message) ];';
+const misconfiguredAlarm = (i, lockout, cmdA, cmdB, sensA, sensB, timer, onsBit) =>
+  '[XIO(' + lockout + ') [XIC(' + cmdA + ') XIC(' + cmdB + ') ,XIC(' + sensA + ') XIC(' + sensB + ') ] TON(' + timer + ',?,?) XIC(' + timer + '.DN) ,XIC(Alarm[' + i + '].Active) XIO(FaultReset) ][OTE(Alarm[' + i + '].Active) ,ONS(' + onsBit + ') CONCAT(g_L2StationList[StaNum],AlarmList[' + i + '],Alarm[' + i + '].Message) ];';
+const alarmTimerTag = (name) => timerTag(name, 5000, 'Alarm Timer');
+Object.assign(module.exports, { deviceAlarm, misconfiguredAlarm, alarmTimerTag });

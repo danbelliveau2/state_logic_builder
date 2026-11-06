@@ -22,7 +22,8 @@ function build({ S01, S05, PREFIX, STA }) {
   const alarms = ['Waiting For Shuttle At Upstream Load', 'Waiting For Blade To Retract', 'Waiting For Spike From Feeder Upstream', 'Cap Missing Upstream, Part Rejected',
     'Waiting For Shuttle At Downstream Load', 'Waiting For Spike From Feeder Downstream', 'Cap Missing Downstream, Part Rejected', 'Waiting For Shuttle At Pick',
     'Waiting For Rotary Upstream To Present', 'Waiting For Rotary Downstream To Present', 'Waiting For Rotary Upstream To Return', 'Waiting For Rotary Downstream To Return',
-    'Waiting For Shuttle At Reject Upstream', 'Waiting For Shuttle At Reject Downstream', 'Consecutive Cap Missing Rejects', 'Waiting For Blade To Extend'];
+    'Waiting For Shuttle At Reject Upstream', 'Waiting For Shuttle At Reject Downstream', 'Consecutive Cap Missing Rejects', 'Waiting For Blade To Extend',
+    'Rotary Upstream Sensors/Outputs Misconfigured', 'Rotary Downstream Sensors/Outputs Misconfigured'];
   const servo = V.servoAlarms([['XAxis', 'Shuttle Axis']]);
   const ranges = [['XAxisLoadUpstream', 0, 5, 'At Upstream Load'], ['XAxisLoadDownstream', 1, 5, 'At Downstream Load'], ['XAxisPick', 2, 5, 'At Pick Position'], ['XAxisRejectUpstream', 3, 5, 'At Upstream Reject'], ['XAxisRejectDownstream', 4, 5, 'At Downstream Reject']];
 
@@ -42,6 +43,8 @@ function build({ S01, S05, PREFIX, STA }) {
       H.boolTag('Rotary' + s + 'Extended'), H.boolTag('Rotary' + s + 'Retracted'),
       H.boolTag('RotaryGripper' + s + 'Closed'), H.boolTag('RotaryGripper' + s + 'Opened'), H.copyTag(S05, 'CloseGripperDelay', 'CloseRotaryGripper' + s + 'Delay', 'Gripper ' + s + ' Close Delay'), H.copyTag(S05, 'OpenGripperDelay', 'OpenRotaryGripper' + s + 'Delay', 'Gripper ' + s + ' Open Delay')]),
     H.boolTag('AnyHeld'), H.boolTag('GrippersMatchHeld'), H.boolTag('RotariesPresented'),
+    H.alarmTimerTag('AlarmTimerEscapementExtended'), H.alarmTimerTag('AlarmTimerEscapementRetracted'),
+    ...SIDES.flatMap((s) => [H.alarmTimerTag('AlarmTimerRotary' + s + 'Extended'), H.alarmTimerTag('AlarmTimerRotary' + s + 'Retracted'), H.alarmTimerTag('AlarmTimerRotary' + s + 'Misconfigured')]),
     H.boolTag('EscapementExtended'), H.boolTag('EscapementRetracted'), H.timerTag('EscapementExtendedDelay', 300, 'Blade Extend Delay'), H.boolTag('ShuttleAtLoad'), H.boolTag('PnpClear'), H.boolTag('PartsPicked'),
     H.copyTag(S01, 'TubeALoadedDebounce', 'SpikePresentDebounce', 'Spike Present Sensor'), H.copyTag(S01, 'TubeALoadedDebounce', 'CapPresentDebounce', 'Cap Present Sensor'), H.boolTag('SpikePresent'), H.boolTag('CapPresent'),
     H.timerTag('CapCheckDelay', 200, 'Cap Check Settle'), H.timerTag('BlowOffDelay', 500, 'Reject Blow-Off Time'), H.boolTag('FeederBowlManLatch'), H.copyTag(S01, 'ConsecFails', 'ConsecFails'),
@@ -134,10 +137,10 @@ function build({ S01, S05, PREFIX, STA }) {
     ['Consecutive cap-missing rejects', states([67, 76]) + 'ONS(ONS.5)ADD(ConsecFails.Count,1,ConsecFails.Count);'],
     ['', states([25, 43]) + 'ONS(ONS.6)MOVE(0,ConsecFails.Count);'],
     ['Handshake to the pick and place', 'XIC(PartLoadedUpstream)OTE(p_PartLoadedUpstream);'], ['', 'XIC(PartLoadedDownstream)OTE(p_PartLoadedDownstream);'],
-    ['', 'XIC(XAxisPick.InPos)XIO(iq_XAxis.MotionStatus.0)XIC(RotaryUpstreamExtended)XIC(RotaryDownstreamExtended)OTE(p_EscapementSafeForPick);'],
+    ['', 'XIC(XAxisPick.InPos)XIO(iq_XAxis.MotionStatus.0)XIC(RotariesPresented)OTE(p_EscapementSafeForPick);'],
     ['', st(49) + 'XIC(p_EscapementSafeForPick)OTE(p_PartsPresented);'],
     ['', '[XIC(LockoutUpstream) ,XIC(RotaryGripperUpstreamOpened) ][XIC(LockoutDownstream) ,XIC(RotaryGripperDownstreamOpened) ]OTE(p_EscapementGrippersOpen);'],
-    ['', 'XIC(RotaryUpstreamRetracted)XIC(RotaryDownstreamRetracted)OTE(p_RotariesReturned);'],
+    ['', 'XIC(i_RotaryUpstreamRetracted)XIC(i_RotaryDownstreamRetracted)OTE(p_RotariesReturned);'],
     ['Feeder bowl runs while the cycle runs', 'XIC(Status.State[1])XIC(HMI_Momentary.9)OTL(FeederBowlManLatch);'],
     ['', 'XIC(FeederBowlManLatch)[XIC(HMI_Momentary.10) ,XIO(Status.State[1]) ]OTU(FeederBowlManLatch);'],
     ['', '[XIO(Status.State[1]) XIC(CycleRunning) XIO(Lockout) XIO(Status.State[127]) ,XIC(Status.State[1]) XIC(FeederBowlManLatch) ]XIC(SafetyOK)OTE(q_FeederBowlEnable);'],
@@ -164,22 +167,24 @@ function build({ S01, S05, PREFIX, STA }) {
   const R20 = [
     ...servo.rungs,
     [alarms[0], waitAlarm(0, [7, 73, 109], 5000, 'XIO(XAxisLoadUpstream.InPos) ', A + 0)],
-    [alarms[1], waitAlarm(1, [10, 28], 3000, 'XIO(EscapementRetracted) ', A + 1)],
+    [alarms[1], H.deviceAlarm(1, 'Lockout', 'q_RetractEscapement', 'EscapementRetracted', 'AlarmTimerEscapementRetracted', A + 1)],
     [alarms[2], warnAlarm(2, st(13) + 'MOVE(30000,Control.FaultTime)XIC(Status.TimeoutFlt)', A + 2)],
     [alarms[3], warnAlarm(3, st(67), A + 3)],
     [alarms[4], waitAlarm(4, [25, 82], 5000, 'XIO(XAxisLoadDownstream.InPos) ', A + 4)],
     [alarms[5], warnAlarm(5, st(31) + 'MOVE(30000,Control.FaultTime)XIC(Status.TimeoutFlt)', A + 5)],
     [alarms[6], warnAlarm(6, st(76), A + 6)],
     [alarms[7], waitAlarm(7, [43], 5000, 'XIO(XAxisPick.InPos) ', A + 7)],
-    [alarms[8], waitAlarm(8, [46], 3000, 'XIO(RotaryUpstreamExtended) ', A + 8)],
-    [alarms[9], waitAlarm(9, [46], 3000, 'XIO(RotaryDownstreamExtended) ', A + 9)],
-    [alarms[10], waitAlarm(10, [55, 106], 3000, 'XIO(RotaryUpstreamRetracted) ', A + 10)],
-    [alarms[11], waitAlarm(11, [55, 106], 3000, 'XIO(RotaryDownstreamRetracted) ', A + 11)],
+    [alarms[8], H.deviceAlarm(8, 'LockoutUpstream', 'q_ExtendRotaryUpstream', 'RotaryUpstreamExtended', 'AlarmTimerRotaryUpstreamExtended', A + 8)],
+    [alarms[9], H.deviceAlarm(9, 'LockoutDownstream', 'q_ExtendRotaryDownstream', 'RotaryDownstreamExtended', 'AlarmTimerRotaryDownstreamExtended', A + 9)],
+    [alarms[10], H.deviceAlarm(10, 'LockoutUpstream', 'q_RetractRotaryUpstream', 'RotaryUpstreamRetracted', 'AlarmTimerRotaryUpstreamRetracted', A + 10)],
+    [alarms[11], H.deviceAlarm(11, 'LockoutDownstream', 'q_RetractRotaryDownstream', 'RotaryDownstreamRetracted', 'AlarmTimerRotaryDownstreamRetracted', A + 11)],
     [alarms[12], waitAlarm(12, [67], 5000, 'XIO(XAxisRejectUpstream.InPos) ', A + 12)],
     [alarms[13], waitAlarm(13, [76], 5000, 'XIO(XAxisRejectDownstream.InPos) ', A + 13)],
     [alarms[14], sealedAlarm(14, 'GT(ConsecFails.Count,ConsecFails.Setpoint)', A + 14)],
     ['', 'XIC(Alarm[14].Active)MOVE(0,ConsecFails.Count);'],
-    [alarms[15], waitAlarm(15, [19, 37, 100], 3000, 'XIO(EscapementExtended) ', A + 15)],
+    [alarms[15], H.deviceAlarm(15, 'Lockout', 'q_ExtendEscapement', 'EscapementExtended', 'AlarmTimerEscapementExtended', A + 15)],
+    [alarms[16], H.misconfiguredAlarm(16, 'LockoutUpstream', 'q_RetractRotaryUpstream', 'q_ExtendRotaryUpstream', 'i_RotaryUpstreamExtended', 'i_RotaryUpstreamRetracted', 'AlarmTimerRotaryUpstreamMisconfigured', A + 16)],
+    [alarms[17], H.misconfiguredAlarm(17, 'LockoutDownstream', 'q_RetractRotaryDownstream', 'q_ExtendRotaryDownstream', 'i_RotaryDownstreamExtended', 'i_RotaryDownstreamRetracted', 'AlarmTimerRotaryDownstreamMisconfigured', A + 17)],
     ...C.r20Tail(true),
   ];
   return H.programXml(PROG, tags, [{ name: 'R00_Main', rungs: R00 }, { name: 'R01_Inputs', rungs: R01 }, { name: 'R02_StateTransitions', rungs: R02 }, { name: 'R03_StateLogic', rungs: R03 }, { name: 'R04_XAxisServo', rungs: R04 }, { name: 'R20_Alarms', rungs: R20 }]);
