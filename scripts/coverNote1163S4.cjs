@@ -6,7 +6,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const ROOT = path.resolve(__dirname, '..');
 const D = 'X:/Electrical Dept/SDC Engineer/Deliveries/1163', B = D + '/build-inputs', OUT = B + '/out', H = D + '/_history';
-const M = '1163_Haemonetics', JOB = '1163', VERSION = '0.9', SHORT = 'Nov 6';
+const M = '1163_Haemonetics', JOB = '1163', VERSION = '0.9.1', SHORT = 'Nov 6';
 const ISO = new Date().toISOString().slice(0, 10);
 const DRY = process.argv.includes('--dry');
 const fail = (m) => { console.error('  !! ' + m); process.exit(1); };
@@ -19,6 +19,11 @@ const headF = OUT + '/' + JOB + '_CoverNote_head.html', backF = OUT + '/' + JOB 
 let h = fs.readFileSync(headF, 'utf8'), b = fs.readFileSync(backF, 'utf8'), f = fs.readFileSync(frontF, 'utf8');
 const meta = JSON.parse(fs.readFileSync(metaF, 'utf8'));
 
+// ── 0.9.1: I/O-list names back (RotaryUpstream / Downstream, Escapement); validator audit matches whole names ──
+const back = (s) => s.split('i_Presenter').join('i_Rotary').split('Presenter').join('Rotary').split('rotary presenters').join('rotary actuators').split('presenter').join('rotary').split('i_BladeRetracted').join('i_EscapementRetracted');
+h = back(h); b = back(b); f = back(f); for (const k of Object.keys(meta)) for (const kk of ['does', 'devices', 'notes']) if (meta[k][kk]) meta[k][kk] = back(meta[k][kk]);
+const ROW091 = '<tr><td>0.9.1</td><td>' + SHORT + '</td><td>Escapement devices carry their I/O-list names again: <code>q_ExtendRotaryUpstream</code> / <code>Downstream</code>, <code>i_RotaryUpstreamExtended</code> / <code>Retracted</code>, <code>q_ExtendEscapement</code> / <code>q_RetractEscapement</code>, <code>i_EscapementRetracted</code>. The import simulation&rsquo;s device audit now matches whole names, so a pneumatic device may share a word with a servo axis of another program. Same logic.</td><td>Jason, ' + SHORT + ': &ldquo;Why would this be the case if we are using local tags &hellip; Yes, rename back.&rdquo; Side mapping, jog direction and AXA byte order confirmed (asks 35, 38 closed).</td></tr>';
+if (h.includes('<tr><td>0.9</td>') && !h.includes('<tr><td>0.9.1</td>')) h = h.replace(/<\/table>\r?\n<h2>What I was given<\/h2>/, ROW091 + '\n</table>\n<h2>What I was given</h2>');
 // ── head ──
 if (!h.includes('<tr><td>' + VERSION + '</td>')) {
   h = h.replace(/<\/table>\r?\n<h2>What I was given<\/h2>/, '<tr><td>' + VERSION + '</td><td>' + SHORT + '</td><td>L2S04 (EC) Spike and Cap Load, four programs: <code>' + ESC + '</code> (feeder bowl, blade, servo shuttle with five positions, two rotary presenters with grippers, reject blow-off, cap check with a consecutive-reject fault), <code>' + PNP + '</code> (X / Z / spindle, spike grippers, two load cells, funnel grippers; solvent dip, force-watched insertion with an optional seat jog, Station[4] tracking per nest side), <code>' + DU + '</code> / <code>' + DD + '</code> (Marposs DST503 PLC-mode entry and dip cycle). Drives sd06&ndash;sd09 with axes a06&ndash;a09 (IP tab order); all I/O on VB1 (DXPC, AXA, DMPF, DYPE to VB3). Indexer stations-complete, actuators-safe, pause and complete-time rungs take S04; Supervisor polls and four EIP-loss alarms; <code>g_L2StationList[4]</code>. Escapement and PNP interlock both ways. 51 parameter connections. Built by <code>scripts/build1163S4.cjs</code>; shape checker 0, import simulation PASS, regression pass.</td><td>Jason, ' + SHORT + ': &ldquo;Write the code for L2S4 &hellip; I believe the station needs to be broken down into 4 programs &hellip; Build on the remaining defaults. Also, please note that there must be permissives between the escapement and PNP.&rdquo; EC walkthrough Nov 6 (Mark, Caleb, Tim); asks 3, 8, 9, 13 answered Nov 6.</td></tr>\n</table>\n<h2>What I was given</h2>');

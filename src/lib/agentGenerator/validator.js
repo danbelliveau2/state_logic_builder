@@ -1695,7 +1695,9 @@ function validateL5X(xml, opts = {}) {
       const typeOf = (base) => {
         if (!typed) return null;
         const k = nk(base);
-        const hit = typed.find((d) => d.k === k || d.k.includes(k) || k.includes(d.k));
+        // whole-name match only: a 20-program file carries every axis of the machine, and a pneumatic device in one program
+        // may share a word with a servo axis of another (1163 L2S04 RotaryUpstream vs a10_L2S10RotaryUpstream, Jason 2026-11-06)
+        const hit = typed.find((d) => d.k === k);
         return hit ? hit.type : null;
       };
       const seenQ = new Set();

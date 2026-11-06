@@ -24,7 +24,7 @@ const ROOT = path.join(__dirname, '..');
 const D = 'X:/Electrical Dept/SDC Engineer/Deliveries/1163', B = D + '/build-inputs', H_ = D + '/_history';
 const BASE = H_ + '/1163_Haemonetics_v0.8.1_2026-11-06.L5X';
 const V54 = path.join(ROOT, 'plc-reference/training-material/SDC Standard Templates/SoftwareStandardization.L5X');
-const M = '1163_Haemonetics', VERSION = '0.9';
+const M = '1163_Haemonetics', VERSION = '0.9.1';
 const ISO = new Date().toISOString().slice(0, 10);
 const DRY = process.argv.includes('--dry');
 const PROGDIR = path.join(ROOT, 'generated', '1163', 'build', 'programs');
@@ -178,12 +178,12 @@ const pcs = [];
 for (const k of AX_ORDER) pcs.push(['\\' + AXES[k].prog + '.' + AXES[k].param, AXES[k].tag]);
 const E = '\\' + ESC.PROG + '.', P = '\\' + PNP.PROG + '.';
 // escapement inputs: DXPC IN3 = byte 2, IN4 = byte 3 (BOM I/O ASSIGNMENT); Upstream = I/O-list LT, Downstream = RT
-pcs.push([IN(2, 2), E + 'i_BladeRetracted'], [IN(2, 3), E + 'i_SpikePresent'], [IN(2, 4), E + 'i_CapPresent'],
-  [IN(2, 5), E + 'i_PresenterUpstreamExtended'], [IN(2, 6), E + 'i_PresenterUpstreamRetracted'], [IN(2, 7), E + 'i_PresenterDownstreamExtended'], [IN(3, 0), E + 'i_PresenterDownstreamRetracted']);
+pcs.push([IN(2, 2), E + 'i_EscapementRetracted'], [IN(2, 3), E + 'i_SpikePresent'], [IN(2, 4), E + 'i_CapPresent'],
+  [IN(2, 5), E + 'i_RotaryUpstreamExtended'], [IN(2, 6), E + 'i_RotaryUpstreamRetracted'], [IN(2, 7), E + 'i_RotaryDownstreamExtended'], [IN(3, 0), E + 'i_RotaryDownstreamRetracted']);
 // escapement outputs: EC1 blade VB1 st11, EC2 blow-off VB1 st12 (single), EC3 RT rotary VB1 st13, EC4 RT rotary gripper VB1 st14, EC5 LT rotary VB3 st1, EC6 LT rotary gripper VB3 st2
-pcs.push([E + 'q_ExtendBlade', vb1(11, 0)], [E + 'q_RetractBlade', vb1(11, 1)], [E + 'q_RejectBlowOff', vb1(12, 0)],
-  [E + 'q_ExtendPresenterDownstream', vb1(13, 0)], [E + 'q_RetractPresenterDownstream', vb1(13, 1)], [E + 'q_CloseRotaryGripperDownstream', vb1(14, 0)], [E + 'q_OpenRotaryGripperDownstream', vb1(14, 1)],
-  [E + 'q_ExtendPresenterUpstream', vb3(1, 0)], [E + 'q_RetractPresenterUpstream', vb3(1, 1)], [E + 'q_CloseRotaryGripperUpstream', vb3(2, 0)], [E + 'q_OpenRotaryGripperUpstream', vb3(2, 1)],
+pcs.push([E + 'q_ExtendEscapement', vb1(11, 0)], [E + 'q_RetractEscapement', vb1(11, 1)], [E + 'q_RejectBlowOff', vb1(12, 0)],
+  [E + 'q_ExtendRotaryDownstream', vb1(13, 0)], [E + 'q_RetractRotaryDownstream', vb1(13, 1)], [E + 'q_CloseRotaryGripperDownstream', vb1(14, 0)], [E + 'q_OpenRotaryGripperDownstream', vb1(14, 1)],
+  [E + 'q_ExtendRotaryUpstream', vb3(1, 0)], [E + 'q_RetractRotaryUpstream', vb3(1, 1)], [E + 'q_CloseRotaryGripperUpstream', vb3(2, 0)], [E + 'q_OpenRotaryGripperUpstream', vb3(2, 1)],
   [E + 'q_FeederBowlEnable', 'Local:5:O.Data.7']);
 // PNP: EC7 RT spike gripper VB3 st3, EC8 LT st4, EC9 RT funnel st5, EC10 LT funnel st6; load cells AXA CH0 (bytes 48-49) Upstream, CH1 (50-51) Downstream
 pcs.push([P + 'q_CloseSpikeGripperDownstream', vb3(3, 0)], [P + 'q_OpenSpikeGripperDownstream', vb3(3, 1)], [P + 'q_CloseSpikeGripperUpstream', vb3(4, 0)], [P + 'q_OpenSpikeGripperUpstream', vb3(4, 1)],

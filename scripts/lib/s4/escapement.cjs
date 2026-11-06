@@ -27,17 +27,17 @@ function build({ S01, S05, PREFIX, STA }) {
   const tags = [
     ...C.engineTags(S01, PREFIX, stateComments, alarms, servo.list),
     ...V.servoTags(S01, S05, 'XAxis', { label: 'Shuttle Axis', positions: [0, 200, 300, 0, 0], ranges }),
-    H.boolTag('i_BladeRetracted', { usage: 'Input', desc: 'Blade Retracted' }), H.boolTag('i_SpikePresent', { usage: 'Input', desc: 'Spike Present' }), H.boolTag('i_CapPresent', { usage: 'Input', desc: 'Cap Present On Spike' }),
-    ...SIDES.flatMap((s) => [H.boolTag('i_Presenter' + s + 'Extended', { usage: 'Input', desc: 'Rotary ' + s + ' Presented' }), H.boolTag('i_Presenter' + s + 'Retracted', { usage: 'Input', desc: 'Rotary ' + s + ' Returned' })]),
-    H.boolTag('q_ExtendBlade', { usage: 'Output', desc: 'Extend Blade' }), H.boolTag('q_RetractBlade', { usage: 'Output', desc: 'Retract Blade' }), H.boolTag('q_RejectBlowOff', { usage: 'Output', desc: 'Reject Blow-Off' }),
+    H.boolTag('i_EscapementRetracted', { usage: 'Input', desc: 'Blade Retracted' }), H.boolTag('i_SpikePresent', { usage: 'Input', desc: 'Spike Present' }), H.boolTag('i_CapPresent', { usage: 'Input', desc: 'Cap Present On Spike' }),
+    ...SIDES.flatMap((s) => [H.boolTag('i_Rotary' + s + 'Extended', { usage: 'Input', desc: 'Rotary ' + s + ' Presented' }), H.boolTag('i_Rotary' + s + 'Retracted', { usage: 'Input', desc: 'Rotary ' + s + ' Returned' })]),
+    H.boolTag('q_ExtendEscapement', { usage: 'Output', desc: 'Extend Blade' }), H.boolTag('q_RetractEscapement', { usage: 'Output', desc: 'Retract Blade' }), H.boolTag('q_RejectBlowOff', { usage: 'Output', desc: 'Reject Blow-Off' }),
     H.boolTag('q_FeederBowlEnable', { usage: 'Output', desc: 'Feeder Bowl Run' }),
-    ...SIDES.flatMap((s) => [H.boolTag('q_ExtendPresenter' + s, { usage: 'Output', desc: 'Present Rotary ' + s }), H.boolTag('q_RetractPresenter' + s, { usage: 'Output', desc: 'Return Rotary ' + s }),
+    ...SIDES.flatMap((s) => [H.boolTag('q_ExtendRotary' + s, { usage: 'Output', desc: 'Present Rotary ' + s }), H.boolTag('q_RetractRotary' + s, { usage: 'Output', desc: 'Return Rotary ' + s }),
       H.boolTag('q_CloseRotaryGripper' + s, { usage: 'Output', desc: 'Close Gripper ' + s }), H.boolTag('q_OpenRotaryGripper' + s, { usage: 'Output', desc: 'Open Gripper ' + s })]),
     H.boolTag('p_PartsPresented', { usage: 'Public', desc: 'Parts Presented To PNP' }), H.boolTag('p_EscapementGrippersOpen', { usage: 'Public', desc: 'Rotary Grippers Open' }), H.boolTag('p_EscapementSafeForPick', { usage: 'Public', desc: 'Safe For PNP To Pick' }),
     ...SIDES.map((s) => H.boolTag('p_PartLoaded' + s, { usage: 'Public', desc: 'Good Part Held ' + s })),
-    ...SIDES.flatMap((s) => [H.boolTag('Lockout' + s), H.boolTag('DryRun' + s), H.boolTag('PartLoaded' + s), H.boolTag('Presenter' + s + 'Extended'), H.boolTag('Presenter' + s + 'Retracted'),
+    ...SIDES.flatMap((s) => [H.boolTag('Lockout' + s), H.boolTag('DryRun' + s), H.boolTag('PartLoaded' + s), H.boolTag('Rotary' + s + 'Extended'), H.boolTag('Rotary' + s + 'Retracted'),
       H.boolTag('RotaryGripper' + s + 'Closed'), H.boolTag('RotaryGripper' + s + 'Opened'), H.copyTag(S05, 'CloseGripperDelay', 'CloseRotaryGripper' + s + 'Delay', 'Gripper ' + s + ' Close Delay'), H.copyTag(S05, 'OpenGripperDelay', 'OpenRotaryGripper' + s + 'Delay', 'Gripper ' + s + ' Open Delay')]),
-    H.boolTag('BladeExtended'), H.boolTag('BladeRetracted'), H.timerTag('BladeExtendedDelay', 300, 'Blade Extend Delay'), H.boolTag('ShuttleAtLoad'), H.boolTag('PnpClear'), H.boolTag('PartsPicked'),
+    H.boolTag('EscapementExtended'), H.boolTag('EscapementRetracted'), H.timerTag('EscapementExtendedDelay', 300, 'Blade Extend Delay'), H.boolTag('ShuttleAtLoad'), H.boolTag('PnpClear'), H.boolTag('PartsPicked'),
     H.copyTag(S01, 'TubeALoadedDebounce', 'SpikePresentDebounce', 'Spike Present Sensor'), H.copyTag(S01, 'TubeALoadedDebounce', 'CapPresentDebounce', 'Cap Present Sensor'), H.boolTag('SpikePresent'), H.boolTag('CapPresent'),
     H.timerTag('CapCheckDelay', 200, 'Cap Check Settle'), H.timerTag('BlowOffDelay', 500, 'Reject Blow-Off Time'), H.boolTag('FeederBowlManLatch'), H.copyTag(S01, 'ConsecFails', 'ConsecFails'),
     H.dintCommentTag('HMI_Momentary', [[0, 'Present Rotary Upstream'], [1, 'Return Rotary Upstream'], [2, 'Present Rotary Downstream'], [3, 'Return Rotary Downstream'], [4, 'Close Rotary Gripper Upstream'], [5, 'Open Rotary Gripper Upstream'],
@@ -51,12 +51,12 @@ function build({ S01, S05, PREFIX, STA }) {
     ['', 'XIC(' + PNP + 'p_PartsPicked)OTE(PartsPicked);'],
     ['Spike and cap present sensors', 'AOI_Debounce(SpikePresentDebounce,i_SpikePresent,100,100)XIC(SpikePresentDebounce.On)OTE(SpikePresent);'],
     ['', 'AOI_Debounce(CapPresentDebounce,i_CapPresent,100,100)XIC(CapPresentDebounce.On)OTE(CapPresent);'],
-    ['Escapement blade: retracted sensor, extended by delay', 'XIC(i_BladeRetracted)XIC(q_RetractBlade)XIO(q_ExtendBlade)OTE(BladeRetracted);'],
-    ['', 'XIO(i_BladeRetracted)XIC(q_ExtendBlade)XIO(q_RetractBlade)TON(BladeExtendedDelay,?,?)XIC(BladeExtendedDelay.DN)OTE(BladeExtended);'],
+    ['Escapement blade: retracted sensor, extended by delay', 'XIC(i_EscapementRetracted)XIC(q_RetractEscapement)XIO(q_ExtendEscapement)OTE(EscapementRetracted);'],
+    ['', 'XIO(i_EscapementRetracted)XIC(q_ExtendEscapement)XIO(q_RetractEscapement)TON(EscapementExtendedDelay,?,?)XIC(EscapementExtendedDelay.DN)OTE(EscapementExtended);'],
   ];
   SIDES.forEach((s, i) => {
-    R01.push([i === 0 ? 'Rotary actuators: two sensors, extended = presented to the pick and place' : '', 'XIC(i_Presenter' + s + 'Extended)XIO(i_Presenter' + s + 'Retracted)XIC(q_ExtendPresenter' + s + ')XIO(q_RetractPresenter' + s + ')OTE(Presenter' + s + 'Extended);']);
-    R01.push(['', 'XIC(i_Presenter' + s + 'Retracted)XIO(i_Presenter' + s + 'Extended)XIC(q_RetractPresenter' + s + ')XIO(q_ExtendPresenter' + s + ')OTE(Presenter' + s + 'Retracted);']);
+    R01.push([i === 0 ? 'Rotary actuators: two sensors, extended = presented to the pick and place' : '', 'XIC(i_Rotary' + s + 'Extended)XIO(i_Rotary' + s + 'Retracted)XIC(q_ExtendRotary' + s + ')XIO(q_RetractRotary' + s + ')OTE(Rotary' + s + 'Extended);']);
+    R01.push(['', 'XIC(i_Rotary' + s + 'Retracted)XIO(i_Rotary' + s + 'Extended)XIC(q_RetractRotary' + s + ')XIO(q_ExtendRotary' + s + ')OTE(Rotary' + s + 'Retracted);']);
   });
   SIDES.forEach((s, i) => {
     R01.push([i === 0 ? 'Rotary grippers: commanded state plus delay' : '', 'XIC(q_CloseRotaryGripper' + s + ')XIO(q_OpenRotaryGripper' + s + ')TON(CloseRotaryGripper' + s + 'Delay,?,?)XIC(CloseRotaryGripper' + s + 'Delay.DN)OTE(RotaryGripper' + s + 'Closed);']);
@@ -64,7 +64,7 @@ function build({ S01, S05, PREFIX, STA }) {
   });
   R01.push(...C.logicInputs({
     sides: ['A', 'B'], dial: false,
-    initialized: 'XIC(BladeExtended)XIC(PresenterUpstreamRetracted)XIC(PresenterDownstreamRetracted)XIC(RotaryGripperUpstreamOpened)XIC(RotaryGripperDownstreamOpened)XIC(XAxisLoadUpstream.InPos)',
+    initialized: 'XIC(EscapementExtended)XIC(RotaryUpstreamRetracted)XIC(RotaryDownstreamRetracted)XIC(RotaryGripperUpstreamOpened)XIC(RotaryGripperDownstreamOpened)XIC(XAxisLoadUpstream.InPos)',
     lockoutRungs: [['Lockout per side, station lockout when both', 'XIC(' + C.OP + 'LockoutA)XIO(ManualMode)OTE(LockoutUpstream);'], ['', 'XIC(' + C.OP + 'LockoutB)XIO(ManualMode)OTE(LockoutDownstream);'], ['', 'XIC(LockoutUpstream)XIC(LockoutDownstream)OTE(Lockout);']],
     dryRunRungs: [['Dry run logic (can add supervisor dry run condition if needed as parallel branch)', '[XIC(' + C.OP + 'DryRunA) ,XIC(g_HMI_DryRun) ]OTE(DryRunUpstream);'], ['', '[XIC(' + C.OP + 'DryRunB) ,XIC(g_HMI_DryRun) ]OTE(DryRunDownstream);']],
   }));
@@ -78,22 +78,22 @@ function build({ S01, S05, PREFIX, STA }) {
     ['State 4: Start of sequence, rotaries returned and grippers open', '[XIC(Status.State[3]) XIC(Initialized) ,XIC(Status.State[58]) ,XIC(Status.State[124]) ]XIC(CycleRunning)XIO(Lockout)MOVE(4,Control.StateReg);'],
     ['State 7: Shuttle to the Upstream load position', st(4) + 'XIO(LockoutUpstream)XIC(SS_OK)MOVE(7,Control.StateReg);'],
     ['State 10: Retract the blade to let one spike into the Upstream gripper', states([7, 73]) + atPos('XAxisLoadUpstream') + 'XIC(SS_OK)MOVE(10,Control.StateReg);'],
-    ['State 13: Wait for the feeder to present a spike', st(10) + 'XIC(BladeRetracted)XIC(SS_OK)MOVE(13,Control.StateReg);'],
+    ['State 13: Wait for the feeder to present a spike', st(10) + 'XIC(EscapementRetracted)XIC(SS_OK)MOVE(13,Control.StateReg);'],
     ['State 16: Close the Upstream rotary gripper on the spike', st(13) + '[XIC(SpikePresent) ,XIC(DryRunUpstream) ]XIC(SS_OK)MOVE(16,Control.StateReg);'],
     ['State 19: Extend the blade to hold the inline back', st(16) + 'XIC(RotaryGripperUpstreamClosed)XIC(SS_OK)MOVE(19,Control.StateReg);'],
-    ['State 22: Check the cap is on the Upstream spike', st(19) + 'XIC(BladeExtended)XIC(SS_OK)MOVE(22,Control.StateReg);'],
+    ['State 22: Check the cap is on the Upstream spike', st(19) + 'XIC(EscapementExtended)XIC(SS_OK)MOVE(22,Control.StateReg);'],
     ['State 25: Shuttle to the Downstream load position', '[' + st(22) + ' ' + capOk('Upstream') + ' ,' + st(4) + ' XIC(LockoutUpstream) ]XIO(LockoutDownstream)XIC(SS_OK)MOVE(25,Control.StateReg);'],
     ['State 28: Retract the blade to let one spike into the Downstream gripper', states([25, 82]) + atPos('XAxisLoadDownstream') + 'XIC(SS_OK)MOVE(28,Control.StateReg);'],
-    ['State 31: Wait for the feeder to present a spike', st(28) + 'XIC(BladeRetracted)XIC(SS_OK)MOVE(31,Control.StateReg);'],
+    ['State 31: Wait for the feeder to present a spike', st(28) + 'XIC(EscapementRetracted)XIC(SS_OK)MOVE(31,Control.StateReg);'],
     ['State 34: Close the Downstream rotary gripper on the spike', st(31) + '[XIC(SpikePresent) ,XIC(DryRunDownstream) ]XIC(SS_OK)MOVE(34,Control.StateReg);'],
     ['State 37: Extend the blade to hold the inline back', st(34) + 'XIC(RotaryGripperDownstreamClosed)XIC(SS_OK)MOVE(37,Control.StateReg);'],
-    ['State 40: Check the cap is on the Downstream spike', st(37) + 'XIC(BladeExtended)XIC(SS_OK)MOVE(40,Control.StateReg);'],
+    ['State 40: Check the cap is on the Downstream spike', st(37) + 'XIC(EscapementExtended)XIC(SS_OK)MOVE(40,Control.StateReg);'],
     ['State 43: Shuttle to the pick position', '[' + st(40) + ' ' + capOk('Downstream') + ' ,' + st(22) + ' ' + capOk('Upstream') + ' XIC(LockoutDownstream) ]XIC(SS_OK)MOVE(43,Control.StateReg);'],
     ['State 46: Present the rotaries to the pick and place', st(43) + atPos('XAxisPick') + 'XIC(PnpClear)XIC(SS_OK)MOVE(46,Control.StateReg);'],
-    ['State 49: Parts presented, wait for the pick and place to take them', st(46) + 'XIC(PresenterUpstreamExtended)XIC(PresenterDownstreamExtended)XIC(SS_OK)MOVE(49,Control.StateReg);'],
+    ['State 49: Parts presented, wait for the pick and place to take them', st(46) + 'XIC(RotaryUpstreamExtended)XIC(RotaryDownstreamExtended)XIC(SS_OK)MOVE(49,Control.StateReg);'],
     ['State 52: Open the rotary grippers', st(49) + 'XIC(PartsPicked)XIC(SS_OK)MOVE(52,Control.StateReg);'],
     ['State 55: Return the rotaries once the pick and place is clear', st(52) + 'XIC(RotaryGripperUpstreamOpened)XIC(RotaryGripperDownstreamOpened)XIC(PnpClear)XIC(SS_OK)MOVE(55,Control.StateReg);'],
-    ['State 58: Cycle Complete', st(55) + 'XIC(PresenterUpstreamRetracted)XIC(PresenterDownstreamRetracted)MOVE(58,Control.StateReg);'],
+    ['State 58: Cycle Complete', st(55) + 'XIC(RotaryUpstreamRetracted)XIC(RotaryDownstreamRetracted)MOVE(58,Control.StateReg);'],
     ['State 67: Cap missing, shuttle the Upstream part to the reject chute', st(22) + 'XIC(CapCheckDelay.DN)XIO(CapPresent)XIO(DryRunUpstream)XIC(SS_OK)MOVE(67,Control.StateReg);'],
     ['State 70: Open the Upstream gripper and blow the part down the chute', st(67) + atPos('XAxisRejectUpstream') + 'XIC(SS_OK)MOVE(70,Control.StateReg);'],
     ['State 73: Shuttle back to the Upstream load position', st(70) + 'XIC(RotaryGripperUpstreamOpened)XIC(BlowOffDelay.DN)XIC(SS_OK)MOVE(73,Control.StateReg);'],
@@ -102,8 +102,8 @@ function build({ S01, S05, PREFIX, STA }) {
     ['State 82: Shuttle back to the Downstream load position', st(79) + 'XIC(RotaryGripperDownstreamOpened)XIC(BlowOffDelay.DN)XIC(SS_OK)MOVE(82,Control.StateReg);'],
     ...C.r02Tail(),
     ['State 100:Start of initialization sequence, extend the blade', 'XIC(Status.State[2])XIO(Initialized)XIC(CycleRunning)XIC(SS_OK)MOVE(100,Control.StateReg);'],
-    ['State 103: Initialization return the rotaries', st(100) + 'XIC(BladeExtended)XIC(SS_OK)MOVE(103,Control.StateReg);'],
-    ['State 106: Initialization open the rotary grippers', st(103) + 'XIC(PresenterUpstreamRetracted)XIC(PresenterDownstreamRetracted)XIC(SS_OK)MOVE(106,Control.StateReg);'],
+    ['State 103: Initialization return the rotaries', st(100) + 'XIC(EscapementExtended)XIC(SS_OK)MOVE(103,Control.StateReg);'],
+    ['State 106: Initialization open the rotary grippers', st(103) + 'XIC(RotaryUpstreamRetracted)XIC(RotaryDownstreamRetracted)XIC(SS_OK)MOVE(106,Control.StateReg);'],
     ['State 109: Initialization shuttle to the Upstream load position', st(106) + 'XIC(RotaryGripperUpstreamOpened)XIC(RotaryGripperDownstreamOpened)XIC(SS_OK)MOVE(109,Control.StateReg);'],
     ['State 124: Initialization complete', st(109) + atPos('XAxisLoadUpstream') + 'MOVE(124,Control.StateReg);'],
     ...C.r02End(),
@@ -118,20 +118,20 @@ function build({ S01, S05, PREFIX, STA }) {
     ['Consecutive cap-missing rejects', states([67, 76]) + 'ONS(ONS.5)ADD(ConsecFails.Count,1,ConsecFails.Count);'],
     ['', states([25, 43]) + 'ONS(ONS.6)MOVE(0,ConsecFails.Count);'],
     ['Handshake to the pick and place', 'XIC(PartLoadedUpstream)OTE(p_PartLoadedUpstream);'], ['', 'XIC(PartLoadedDownstream)OTE(p_PartLoadedDownstream);'],
-    ['', 'XIC(XAxisPick.InPos)XIO(iq_XAxis.MotionStatus.0)XIC(PresenterUpstreamExtended)XIC(PresenterDownstreamExtended)OTE(p_EscapementSafeForPick);'],
+    ['', 'XIC(XAxisPick.InPos)XIO(iq_XAxis.MotionStatus.0)XIC(RotaryUpstreamExtended)XIC(RotaryDownstreamExtended)OTE(p_EscapementSafeForPick);'],
     ['', st(49) + 'XIC(p_EscapementSafeForPick)OTE(p_PartsPresented);'],
     ['', '[XIC(LockoutUpstream) ,XIC(RotaryGripperUpstreamOpened) ][XIC(LockoutDownstream) ,XIC(RotaryGripperDownstreamOpened) ]OTE(p_EscapementGrippersOpen);'],
     ['Feeder bowl runs while the cycle runs', 'XIC(Status.State[1])XIC(HMI_Momentary.9)OTL(FeederBowlManLatch);'],
     ['', 'XIC(FeederBowlManLatch)[XIC(HMI_Momentary.10) ,XIO(Status.State[1]) ]OTU(FeederBowlManLatch);'],
     ['', '[XIO(Status.State[1]) XIC(CycleRunning) XIO(Lockout) XIO(Status.State[127]) ,XIC(Status.State[1]) XIC(FeederBowlManLatch) ]XIC(SafetyOK)OTE(q_FeederBowlEnable);'],
-    ['Blade Control: retracted only with the shuttle at a load position', outputRung('q_RetractBlade', states([10, 28]), 'XIO(Status.State[19]) XIO(Status.State[37]) XIO(Status.State[100])', 12, 11, 'XIC(PnpClear) XIC(ShuttleAtLoad) ')],
-    ['', outputRung('q_ExtendBlade', states([19, 37, 100]), 'XIO(Status.State[10]) XIO(Status.State[28])', 11, 12, 'XIC(PnpClear) ')],
+    ['Blade Control: retracted only with the shuttle at a load position', outputRung('q_RetractEscapement', states([10, 28]), 'XIO(Status.State[19]) XIO(Status.State[37]) XIO(Status.State[100])', 12, 11, 'XIC(PnpClear) XIC(ShuttleAtLoad) ')],
+    ['', outputRung('q_ExtendEscapement', states([19, 37, 100]), 'XIO(Status.State[10]) XIO(Status.State[28])', 11, 12, 'XIC(PnpClear) ')],
     ['Reject Blow-Off Control: single solenoid, timed', '[XIO(Status.State[1]) ' + states([70, 79]) + ' ,XIC(Status.State[1]) [XIC(HMI_Momentary.8) ,XIC(q_RejectBlowOff) XIO(BlowOffDelay.DN) ] ]XIC(PnpClear)OTE(q_RejectBlowOff);'],
   ];
   SIDES.forEach((s, i) => {
     const b = i * 2, g = 4 + i * 2, on = i === 0 ? [16] : [34], off = i === 0 ? [52, 70, 106] : [52, 79, 106];
-    R03.push(['Rotary ' + s + ' Control: presented to the pick and place or returned', outputRung('q_ExtendPresenter' + s, st(46), 'XIO(Status.State[55]) XIO(Status.State[103])', b, b + 1, 'XIC(PnpClear) ')]);
-    R03.push(['', outputRung('q_RetractPresenter' + s, states([55, 103]), 'XIO(Status.State[46])', b + 1, b, 'XIC(PnpClear) ')]);
+    R03.push(['Rotary ' + s + ' Control: presented to the pick and place or returned', outputRung('q_ExtendRotary' + s, st(46), 'XIO(Status.State[55]) XIO(Status.State[103])', b, b + 1, 'XIC(PnpClear) ')]);
+    R03.push(['', outputRung('q_RetractRotary' + s, states([55, 103]), 'XIO(Status.State[46])', b + 1, b, 'XIC(PnpClear) ')]);
     R03.push(['Rotary Gripper ' + s + ' Control: closed on the spike until picked or rejected', outputRung('q_CloseRotaryGripper' + s, states(on), off.map((n) => 'XIO(Status.State[' + n + '])').join(' '), g, g + 1, 'XIC(PnpClear) ')]);
     R03.push(['', outputRung('q_OpenRotaryGripper' + s, states(off), 'XIO(Status.State[' + on[0] + '])', g + 1, g, 'XIC(PnpClear) ')]);
   });
@@ -147,17 +147,17 @@ function build({ S01, S05, PREFIX, STA }) {
   const R20 = [
     ...servo.rungs,
     [alarms[0], waitAlarm(0, [7, 73, 109], 5000, 'XIO(XAxisLoadUpstream.InPos) ', A + 0)],
-    [alarms[1], waitAlarm(1, [10, 28], 3000, 'XIO(BladeRetracted) ', A + 1)],
+    [alarms[1], waitAlarm(1, [10, 28], 3000, 'XIO(EscapementRetracted) ', A + 1)],
     [alarms[2], warnAlarm(2, st(13) + 'MOVE(30000,Control.FaultTime)XIC(Status.TimeoutFlt)', A + 2)],
     [alarms[3], warnAlarm(3, st(67), A + 3)],
     [alarms[4], waitAlarm(4, [25, 82], 5000, 'XIO(XAxisLoadDownstream.InPos) ', A + 4)],
     [alarms[5], warnAlarm(5, st(31) + 'MOVE(30000,Control.FaultTime)XIC(Status.TimeoutFlt)', A + 5)],
     [alarms[6], warnAlarm(6, st(76), A + 6)],
     [alarms[7], waitAlarm(7, [43], 5000, 'XIO(XAxisPick.InPos) ', A + 7)],
-    [alarms[8], waitAlarm(8, [46], 3000, 'XIO(PresenterUpstreamExtended) ', A + 8)],
-    [alarms[9], waitAlarm(9, [46], 3000, 'XIO(PresenterDownstreamExtended) ', A + 9)],
-    [alarms[10], waitAlarm(10, [55, 103], 3000, 'XIO(PresenterUpstreamRetracted) ', A + 10)],
-    [alarms[11], waitAlarm(11, [55, 103], 3000, 'XIO(PresenterDownstreamRetracted) ', A + 11)],
+    [alarms[8], waitAlarm(8, [46], 3000, 'XIO(RotaryUpstreamExtended) ', A + 8)],
+    [alarms[9], waitAlarm(9, [46], 3000, 'XIO(RotaryDownstreamExtended) ', A + 9)],
+    [alarms[10], waitAlarm(10, [55, 103], 3000, 'XIO(RotaryUpstreamRetracted) ', A + 10)],
+    [alarms[11], waitAlarm(11, [55, 103], 3000, 'XIO(RotaryDownstreamRetracted) ', A + 11)],
     [alarms[12], waitAlarm(12, [67], 5000, 'XIO(XAxisRejectUpstream.InPos) ', A + 12)],
     [alarms[13], waitAlarm(13, [76], 5000, 'XIO(XAxisRejectDownstream.InPos) ', A + 13)],
     [alarms[14], sealedAlarm(14, 'GT(ConsecFails.Count,ConsecFails.Setpoint)', A + 14)],
