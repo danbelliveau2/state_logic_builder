@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 /**
- * build1163S4.cjs — 1163 v0.9: L2S04 (EC) Spike and Cap Load on the v0.8.1 stamp.
+ * build1163S4.cjs — 1163 v0.9 / v0.9.1: L2S04 (EC) Spike and Cap Load on the v0.8.1 stamp. SUPERSEDED 2026-11-06 by Jason's returned copy
+ * (_v0.9.1_returned stamp) and scripts/apply1163_v010.cjs, which rebuilds the four programs from scripts/lib/s4 on that copy.
  *
  *   node scripts/build1163S4.cjs [--dry]
  *
