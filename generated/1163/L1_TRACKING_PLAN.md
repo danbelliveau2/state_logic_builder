@@ -74,3 +74,7 @@ Nests circulate (linear loop); all numbers wrap MOD 18, same math as L2 without 
 - `g_StationList`: rename per dial or one offset list.
 - Production: count L1 rejects or not.
 - Station 6/7 stay empty; positions 2/3 and 4/5 are one program each (confirmed).
+
+## Built
+- v0.8 (2026-11-06): L1_Tracking, L1_S00_IndexerNoSP, L1Tracking_* / L2Tracking_* UDTs, sd21 / a21, HMI_L2NestIndicator + HMI_L1NestIndicatorA/B (`scripts/build1163L1.cjs`).
+- v0.8.1 (2026-11-06): `g_StationList` → `g_L2StationList` (Jason's call: rename per dial); L2_S00 R03 StationCompleteTimes[10] rung for S10 (`scripts/apply1163_v081.cjs`). Open items above closed. L1 stations still pending.

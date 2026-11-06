@@ -68,6 +68,9 @@ const JOB = {
     [/^L2_S01_TubeFeed(Upstream|Downstream)$/, [215, 170, 8, 'S05_ServoPNP one axis (~100 tags / 95 rungs) + S03_PartLoad pneumatics for cutter, selector, inserter, two grippers (~60 / 40) + S04_PartVerify result (~10 / 5) +25 %']],
     [/^L2_S01_Dereeler(Upstream|Downstream)$/, [120, 100, 8, 'S10_FlexFeedConveyor VFD half (~60 tags / 55 rungs, 4 manual-latch OTL/OTU) + 1146 fd01_FFConv rungs (~10 / 8) + dereeler state machine (~15 / 10) +25 %; +4 OTL/OTU for the two spool-empty memories']],
     [/^L2_S10_BlueTubeCoiler$/, [360, 280, 8,'S05_ServoPNP (~136 tags / 95 rungs, 2 axes) scaled to 5 axes (+3 x ~45 tags / 23 rungs) + two heads of grippers and nest openers (S03 form, ~40 / 20) + chassis MCCP / MAPC cam rungs (~14 / 6) +25 %; latches are tracking only']],
+    // 1163 L1 (2026-11-06): the L2 indexer and tracking programs re-pointed - L2_S00 92 tags / 84 rungs + 4 StationCompleteTimes rungs; L2_Tracking 40 tags / 10 rungs + one position table
+    [/^L1_S00_IndexerNoSP$/, [115, 110, 2, 'L2_S00_IndexerNoSP (template S00_IndexerNoSP, 92 tags / 84 rungs) + 4 StationCompleteTimes rungs +25 %']],
+    [/^L1_Tracking$/, [52, 19, 0, 'L2_Tracking (template Tracking, 40 tags / 15 rungs) + p_StationPositionB +25 %']],
   ],
 
   // Task schedule this job must satisfy. heatStationPrograms: [] when a job has no heaters.
