@@ -4,7 +4,7 @@ One common folder: `X:\Electrical Dept\SDC Engineer\`. Everything the code build
 
 ## Point your Claude at it (once)
 1. Install Claude Code (desktop app). Map N: and X:.
-2. Clone the tool once: `git clone https://github.com/danbelliveau2/state_logic_builder.git C:\SDC-StateLogic`, then `npm install` in that folder. Pull before each session.
+2. Clone the tool once: `git clone -b v3 https://github.com/danbelliveau2/state_logic_builder.git C:\SDC-StateLogic`, then `npm install` in that folder. Pull before each session.
 3. In Claude Code, open the folder `X:\Electrical Dept\SDC Engineer`. Its CLAUDE.md and the `.claude\skills` inside load automatically.
 
 ## The prompt to give people
@@ -15,13 +15,14 @@ One common folder: `X:\Electrical Dept\SDC Engineer\`. Everything the code build
 - `/sdc-build <job>` — build or add an increment. One delivered file.
 - `/sdc-review` — standards review before the CE sees it.
 - `/sdc-cover-note` — the one-document note.
-- `/sdc-learn-return` — a returned file, a CE note or a session export becomes rules.
+- `/sdc-learn-return` — return a corrected file for your job. Jason's and Dan's returns also become rules.
 
 ## Rules of the folder
 - `Knowledge\` is Jason's. Append under `## Engineer additions` only when he asks.
 - `Examples\` is Jason's. Add nothing without him.
 - `Playbook\` and `.claude\skills\` are synced from the repo (`node scripts/syncSharedFolder.cjs`). Edit them in the repo, not here.
 - `Playbook\DEVIATIONS.csv` — the live deviation grid (Excel). Every deviation an engineer builds is a row, Status Open. The controls manager sets Approved / Denied. A deviation never blocks a build.
-- `Lessons\<your username>\lessons.md` — your sessions write what you teach them here, one dated line each. Merged daily.
+- `Lessons\` — Jason's and Dan's only. Their sessions write lessons here; merged daily into the team rules.
+- `Deliveries\<job>\returns.md` — everyone else: your sessions write your corrections here, one dated line each. They hold for that job. Jason decides which become rules.
 - `Sessions\` — export your Claude session zip here when a session settled rules worth learning.
 - `Deliveries\<job>\` — delivered L5X and cover note per job, so the team finds the latest in one place.
