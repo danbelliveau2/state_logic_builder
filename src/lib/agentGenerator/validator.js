@@ -822,13 +822,44 @@ function checkDuplicateDestructiveBits(xml, errors) {
 const READABLE_DESCRIPTION_CHARS = 30;
 const READABLE_COMMENT_CHARS = 160;
 const PROVENANCE_TOKENS = /\bSTUB\b|DECLARED EXTENSION|\[CTX\]|\[CALL\]|\[BOM\]|\[ELEC\]|question #|NAMES.CONTRACT|\b20\d\d-\d\d-\d\d\b|\bv\d\.\d\b/i;
+const isLongComment = (c) => c.length > READABLE_COMMENT_CHARS || /[.!?]\s+[A-Z(\\]/.test(c);
+// The SDC templates carry a few long instructional comments of their own (Restart Logic, Cycle Time, Home Select,
+// maximum speed, "No Homing Required For <device>"). A station that keeps them reads like the template, which is the
+// standard - they are not findings (Jason, 1163 v0.11, 2026-11-12). Matched exactly, or with the device name swapped.
+let _templateLongComments = null;
+function templateLongComments() {
+  if (_templateLongComments) return _templateLongComments;
+  _templateLongComments = [];
+  try {
+    const fs = require('fs'), path = require('path');
+    const dir = path.join(__dirname, '..', '..', '..', 'plc-reference', 'training-material', 'SDC Standard Templates');
+    const seen = new Set();
+    for (const f of fs.readdirSync(dir).filter((n) => /\.L5X$/i.test(n))) {
+      for (const m of fs.readFileSync(path.join(dir, f), 'utf8').matchAll(/<Comment>\s*<!\[CDATA\[([\s\S]*?)\]\]>/g)) {
+        const c = m[1].replace(/\s+/g, ' ').trim();
+        if (isLongComment(c) && !seen.has(c)) { seen.add(c); _templateLongComments.push({ text: c, words: new Set(c.split(' ')) }); }
+      }
+    }
+  } catch (_) { /* templates unavailable - every long comment is reported */ }
+  return _templateLongComments;
+}
+function isTemplateComment(c) {
+  const words = new Set(c.split(' '));
+  for (const t of templateLongComments()) {
+    if (t.text === c) return true;
+    let shared = 0;
+    for (const w of words) if (t.words.has(w)) shared++;
+    if (shared / (words.size + t.words.size - shared) >= 0.5) return true;
+  }
+  return false;
+}
 function checkReadability(xml, warnings) {
   for (const p of xml.matchAll(/<Program\b[^>]*?\sName="([^"]+)"[^>]*>([\s\S]*?)<\/Program>/g)) {
     const [, name, body] = p;
     let multi = 0, longDesc = 0, prov = 0;
     for (const m of body.matchAll(/<Comment>\s*<!\[CDATA\[([\s\S]*?)\]\]>/g)) {
       const c = m[1].replace(/\s+/g, ' ').trim();
-      if (c.length > READABLE_COMMENT_CHARS || /[.!?]\s+[A-Z(\\]/.test(c)) multi++;
+      if (isLongComment(c) && !isTemplateComment(c)) multi++;
       if (PROVENANCE_TOKENS.test(c)) prov++;
     }
     const tagsSec = (body.match(/<Tags>([\s\S]*?)<\/Tags>/) || [])[1] || '';
@@ -860,14 +891,29 @@ function checkExitlessWaits(rungs, warnings) {
   const alarmCoveredStates = new Set(
     [...alarmBlob.matchAll(/Status\.State\[(\d+)\]/g)].map(m => parseInt(m[1], 10)));
 
+  // A decision state leaves on a condition or on its opposite (LengthOK to the cut, XIO(LengthOK) to a correction
+  // move): one exit is always true, so it cannot get stuck and needs no fault (Jason, 2026-10-19 / 1163 v0.11).
+  const seenTrue = new Map(), seenFalse = new Map();
+  for (const rung of r02Rungs) {
+    if (!/MOVE?\(\d+,\s*Control\.StateReg\)/.test(rung.text)) continue;
+    const src = [...rung.text.matchAll(/XIC\(Status\.State\[(\d+)\]\)/g)].map(m => parseInt(m[1], 10));
+    for (const m of rung.text.matchAll(/XI([CO])\(([^)]+)\)/g)) {
+      if (/^Status\.State\[/.test(m[2])) continue;
+      const map = m[1] === 'C' ? seenTrue : seenFalse;
+      for (const n of src) { if (!map.has(n)) map.set(n, new Set()); map.get(n).add(m[2]); }
+    }
+  }
+  const isDecision = (states, op) => states.some(n => seenTrue.has(n) && seenFalse.has(n) && seenTrue.get(n).has(op) && seenFalse.get(n).has(op));
+
   for (const rung of r02Rungs) {
     if (!/MOVE?\(\d+,\s*Control\.StateReg\)/.test(rung.text)) continue;
 
     // Source states this rung waits in (flowchart range only — init/mode
-    // states are template law and have their own recovery paths).
+    // states are template law and have their own recovery paths). State 4 is
+    // the start-of-sequence idle: it sits until there is work, by design.
     const srcStates = [...rung.text.matchAll(/XIC\(Status\.State\[(\d+)\]\)/g)]
       .map(m => parseInt(m[1], 10))
-      .filter(n => n >= 4 && n <= 97);
+      .filter(n => n > 4 && n <= 97);
     if (srcStates.length === 0) continue;
 
     // Wait-style = conditioned on identifiers beyond state refs + exempt gates.
@@ -888,6 +934,7 @@ function checkExitlessWaits(rungs, warnings) {
     const uncovered = conditions.filter(op => {
       const root = op.split(/[.\[]/)[0];
       if (timerDerived.has(root)) return false;
+      if (isDecision(srcStates, op)) return false;
       return !alarmBlob.includes(root);
     });
     if (uncovered.length > 0) {
