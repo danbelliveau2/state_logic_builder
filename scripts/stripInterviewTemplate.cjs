@@ -21,15 +21,22 @@
  *            (--keep-safety-rack keeps that rack - the one EtherNet/IP exception - and all of Zone 2)
  *
  *   node scripts/stripInterviewTemplate.cjs --out "<dir>" [--name SoftwareStandardization_CETest] [--keep-safety-rack]
+ *
+ *   --v2  the read-then-fill-in test (Jason, 2026-11-11, after Hailey's trial run): keeps S01_PartLoad and
+ *         S05_ServoPNP with their R02 transition conditions and R03 / R04 / R05 state ties blanked to
+ *         AlwaysOff (the candidate fills them), S19_GoodUnload complete as the reading exercise (its
+ *         outfeed placeholder becomes a real i_OutfeedReady input), the S05 drives and axes, and every
+ *         poll of those three stations. Default output: Deliveries\CE Interview Test v2\SoftwareStandardization_CETest_v2.L5X
  */
 const fs = require('fs');
 const path = require('path');
 const argv = process.argv.slice(2);
 const flag = (n, d) => { const i = argv.indexOf('--' + n); return i >= 0 ? argv[i + 1] : d; };
 const has = (n) => argv.includes('--' + n);
+const V2 = has('v2');                                                      // read-then-fill-in test (see header)
 const SRC = flag('src', 'X:/Electrical Dept/SDC Engineer/Templates/SoftwareStandardizationNew.L5X');
-const OUT_DIR = flag('out', 'X:/Electrical Dept/SDC Engineer/Deliveries/CE Interview Test');
-const NAME = flag('name', 'SoftwareStandardization_CETest');
+const OUT_DIR = flag('out', V2 ? 'X:/Electrical Dept/SDC Engineer/Deliveries/CE Interview Test v2' : 'X:/Electrical Dept/SDC Engineer/Deliveries/CE Interview Test');
+const NAME = flag('name', V2 ? 'SoftwareStandardization_CETest_v2' : 'SoftwareStandardization_CETest');
 const KEEP_SAFETY_RACK = has('keep-safety-rack');                          // keep the 1734 rack Zone 2 lives on
 const fail = (m) => { console.error('  !! ' + m); process.exit(1); };
 const log = [];
@@ -40,6 +47,15 @@ const KEEP = new Set(['MapInputs', 'Supervisor', 'Tracking', 'StateMachine', 'S0
 const KEEP_MODULES = new Set(['Local', 'SIN1', 'SOUT1', 'sd01_Indexer', 'sd02_ShotPin']);
 const KEEP_CTL_TAGS = new Set(['MotionGroup', 'a01_Indexer', 'a02_ShotPin']);
 if (KEEP_SAFETY_RACK) for (const n of ['io01_MainMachine', 'io01_SIN2', 'io1_SOUT2']) KEEP_MODULES.add(n);
+// v2: the two build stations, the reading station, and the servo station's drives and axes
+const V2_BUILD = ['S01_PartLoad', 'S05_ServoPNP'], V2_READ = 'S19_GoodUnload';
+if (V2) {
+  for (const p of [...V2_BUILD, V2_READ]) KEEP.add(p);
+  // the Z axis (a04, sd04, iq_ZAxis, R05_ZAxisServo) is the candidate's to add (Jason, 2026-11-12);
+  // the strip pipeline removes the module, the axis tag, their ParameterConnection and the Supervisor EIP rung
+  for (const m of ['sd03_S01PNPXAxis']) KEEP_MODULES.add(m);
+  for (const t of ['a03_S01PNPXAxis']) KEEP_CTL_TAGS.add(t);
+}
 // AOIs / UDTs the two target station types need, kept even though no kept program uses them
 const KEEP_TYPES_FOR_CANDIDATE = new Set(['AOI_Debounce', 'StationPerformance']);
 
@@ -174,7 +190,7 @@ editRoutine('S00_IndexerSP', 'R01_Inputs', (rungs) => rungs.map((r) => {
   const t = rungText(r); if (!remRe.test(t)) return r;
   let nt = stripRemovedTerms(t);
   if (/^\s*OTE/.test(nt)) nt = AON + nt;                                   // "all stations complete / safe" with no stations
-  return setRungComment(setRungText(r, nt), rungComment(r) + ' - add your station');
+  return V2 ? setRungText(r, nt) : setRungComment(setRungText(r, nt), rungComment(r) + ' - add your station');
 }));
 editRoutine('S00_IndexerSP', 'R03_StateLogic', (rungs) => rungs.filter((r) => !(remRe.test(rungText(r)) && /StationCompleteTimes\[/.test(rungText(r)))));
 editRoutine('S00_IndexerSP', 'R20_Alarms', (rungs) => rungs.map((r) => (remRe.test(rungText(r)) ? setRungText(r, stripRemovedTerms(rungText(r))) : r)));
@@ -234,6 +250,203 @@ for (const [prog, c] of [['MapInputs', 'Map EtherNet/IP inputs here with a CPS p
   if (!/HMI_Toggle/.test(b.replace(/<Tag Name="HMI_Toggle"[\s\S]*?<\/Tag>/, ''))) b = dropTagIn(b, 'HMI_Toggle');
   replaceProgram('StateMachine', b);
   log.push('StateMachine R01_Inputs: single-step block from S03_PartLoad (AutoIdle, Lockout, DryRun, SingleStep / SingleCycle, SS_OK with p_OnStation); HMI_Toggle form removed');
+}
+
+// ═══ 4b. v2: blank the candidate rungs, finish the reading station ══════════
+if (V2) {
+  const REPLACE = ' *Replace always off with real conditions';
+  const mark = (r) => (rungComment(r) && !rungComment(r).includes('Replace always off') ? setRungComment(r, rungComment(r) + REPLACE) : r);
+  const stateOf = (t) => { const m = /MOVE\((\d+),Control\.StateReg\)/.exec(t); return m ? Number(m[1]) : null; };
+  // S05's Z speed-change states (fast approach / slow finish, slow retreat / fast finish) are given,
+  // and its two blending options go altogether (Jason, 2026-11-11): the parameters i_DisableCornerRounding /
+  // i_DisableZSpeedTransition, the bits DisableCornerRounding / DisableZSpeedTransition, their R01 rungs,
+  // and every term that read them - the speed change is simply always on
+  // Later the same day: ONE speed for Z, no MCD, and the four speed-change states leave the sequence
+  // altogether, so S05 runs the same 4..31 grid as S01 and every transition is the candidate's.
+  const SPEED_STATES = [10, 19, 31, 40];
+  const RENUMBER = { 13: 10, 16: 13, 22: 16, 25: 19, 28: 22, 34: 25, 37: 28, 43: 31 };
+  const BLEND_RE = /Disable(CornerRounding|ZSpeedTransition)/;
+  const isSequenceState = (n) => n !== null && ((n >= 4 && n <= 96 && (n - 4) % 3 === 0) || [100, 103, 106, 124].includes(n));
+  /** Drop every branch leg that carries a `term`, inline a group left with one leg, then drop bare terms. */
+  const dropLegAware = (text, term, what) => {
+    // mask array subscripts (Status.State[4], Alarm[0]) so only branch brackets are seen; a subscript
+    // follows an identifier character and never holds an instruction
+    let t = text;
+    for (let guard = 0; guard < 8; guard++) { const n = t.replace(/(\w)\[([^\[\]()]*)\]/g, '$1⦃$2⦄'); if (n === t) break; t = n; }
+    const unmask = (s) => s.replace(/⦃/g, '[').replace(/⦄/g, ']');
+    for (let guard = 0; guard < 8; guard++) {
+      const next = t.replace(/\[([^\[\]]*)\]/g, (m, inner) => {
+        if (!inner.includes('(')) return m;
+        const legs = inner.split(/\s,\s*/).map((l) => l.trim()).filter((l) => l.length);
+        const kept = legs.filter((l) => !term.test(unmask(l)));
+        if (kept.length === legs.length) return m;
+        if (kept.length === 0) fail('a branch had only ' + what + ' legs: ' + unmask(m));
+        return kept.length === 1 ? kept[0] : '[' + kept.join(' ,') + ' ]';
+      });
+      if (next === t) break;
+      t = next;
+    }
+    t = unmask(t).replace(new RegExp(term.source + '\\s*', 'g'), '').replace(/\s+/g, ' ');
+    if (/,\s*,|\[\s*,|,\s*\]/.test(t)) fail('an empty branch leg was left after dropping ' + what + ' terms: ' + t);
+    return t;
+  };
+  // Auto Mode: only the state bits that pick a position go; the speed branches stay as the example
+  const blankPositionBits = (t) => t
+    .replace(/(\[(?:XIC\(Status\.State\[\d+\]\)\s*,?\s*)+\]|XIC\(Status\.State\[\d+\]\))\s*(?=MOVE\(HMI_[XZ]Axis\.Parameters\.Positions\[)/g, AOFF + ' ')
+    .replace(/\s+/g, ' ');
+  // the Z Auto Mode rung: the "fast when the speed change is disabled" leg goes whole, the XIO term goes
+  const dropSpeedOption = (t) => t
+    .replace(/\[(\[XIC\(Status\.State\[7\]\) ,XIC\(Status\.State\[28\]\) ,XIC\(Status\.State\[100\]\) \]) ,\[XIC\(Status\.State\[16\]\) ,XIC\(Status\.State\[37\]\) \] XIC\(DisableZSpeedTransition\) \]/, '$1')
+    .replace(/XI[CO]\(DisableZSpeedTransition\)\s*/g, '')
+    .replace(/\s+/g, ' ');
+  // R02: everything before the MOVE goes; what follows it (the tracking latches) stays
+  const blankTransition = (t) => AOFF + t.slice(t.indexOf('MOVE('));
+  // R03: only the coils stay
+  const blankOutput = (t) => { const outs = [...t.matchAll(/OTE\([A-Za-z0-9_.\[\]]+\)/g)].map((m) => m[0]); return AOFF + (outs.length === 1 ? outs[0] : '[' + outs.join(' ,') + ' ]') + ';'; };
+  // R04 / R05: every state bit but State[1] (manual) goes, singly or as a whole branch group
+  const blankStateBits = (t) => t
+    .replace(/\[((?:XIC\(Status\.State\[\d+\]\)\s*,?\s*)+)\]/g, (m, inner) => (/State\[1\]/.test(inner) ? m : AOFF))
+    .replace(/XIC\(Status\.State\[(\d+)\]\)/g, (m, n) => (n === '1' ? m : AOFF))
+    .replace(/\s+/g, ' ');
+  const count = {};
+  const tally = (p) => { count[p] = (count[p] || 0) + 1; };
+  // ── S05 first: one Z speed, no MCD, speed-change states out, sequence renumbered to 4..31 ──
+  {
+    const p = 'S05_ServoPNP';
+    const pb0 = programBody(p) || fail('v2 build station missing: ' + p);
+    const routines = (pb) => [...pb.matchAll(/<Routine\b[^>]*\bName="([^"]+)"/g)].map((m) => m[1]);
+    const goneTerm = new RegExp('XI[CO]\\(Status\\.State\\[(?:' + SPEED_STATES.join('|') + ')\\]\\)');
+    const num = (n) => String(RENUMBER[n] ?? n);
+    // the four transitions and the MCD rung go; the Z Auto Mode rung takes the X axis form (one speed)
+    editRoutine(p, 'R02_StateTransitions', (rungs) => rungs.filter((r) => !SPEED_STATES.includes(stateOf(rungText(r)))));
+    editRoutine(p, 'R05_ZAxisServo', (rungs) => rungs.filter((r) => !/MCD\(/.test(rungText(r))).map((r) => {
+      if (!/^Auto Mode/.test(rungComment(r))) return r;
+      const pos = [...rungText(r).matchAll(/(\[(?:XIC\(Status\.State\[\d+\]\)\s*,?\s*)+\]|XIC\(Status\.State\[\d+\]\)) (MOVE\(HMI_ZAxis\.Parameters\.Positions\[\d\],ZAxisMotionParameters\.Position\))/g)].map((m) => m[1] + ' ' + m[2]);
+      if (pos.length !== 3) fail('S05 Z Auto Mode: expected 3 position branches, found ' + pos.length);
+      const t = 'XIC(SafetyOK)XIO(Status.State[1])[MOVE(0,ZAxisMotionParameters.MoveType) ,MOVE(HMI_ZAxis.Parameters.AutoSpeed[0],ZAxisMotionParameters.Speed) ,MOVE(HMI_ZAxis.Parameters.Accel[0],ZAxisMotionParameters.Accel) ,MOVE(HMI_ZAxis.Parameters.Decel[0],ZAxisMotionParameters.Decel) ,' + pos.join(' ,') + ' ];';
+      return setRungComment(setRungText(r, t), 'Auto Mode');
+    }));
+    // every rung: legs and terms naming a gone state go, then one-pass renumbering of logic and comments
+    for (const rn of routines(pb0)) editRoutine(p, rn, (rungs) => rungs.map((r) => {
+      let t = rungText(r);
+      if (goneTerm.test(t)) t = dropLegAware(t, goneTerm, 'removed-state');
+      if (SPEED_STATES.includes(stateOf(t))) fail(p + '/' + rn + ': a rung still enters a removed state: ' + t);
+      t = t.replace(/Status\.State\[(\d+)\]/g, (m, n) => 'Status.State[' + num(n) + ']').replace(/MOVE\((\d+),Control\.StateReg\)/g, (m, n) => 'MOVE(' + num(n) + ',Control.StateReg)');
+      const c0 = rungComment(r);
+      const c = c0.replace(/^State (\d+):\s*/, (m, n) => 'State ' + num(n) + ': ').replace(/\s*\((fast approach|slow retreat)\)/g, '');
+      r = setRungText(r, t);
+      return c !== c0 ? setRungComment(r, c) : r;
+    }));
+    // Status.State[n] operand comments follow the states; the MCD tags go
+    let pb = programBody(p);
+    for (const n of SPEED_STATES) pb = pb.replace(new RegExp('<Comment Operand="\\.STATE\\[' + n + '\\]">[\\s\\S]*?</Comment>\\s*'), '');
+    pb = pb.replace(/Operand="\.STATE\[(\d+)\]"/g, (m, n) => 'Operand=".STATE[' + num(n) + ']"');
+    pb = pb.replace(/(<Comment Operand="\.STATE\[\d+\]">\s*<!\[CDATA\[[^\]]*?)\s*\((Fast Approach|Slow Retreat)\)/g, '$1');
+    for (const t of ['ZAxis_MCD', 'ZAxisMCDSpeed', 'ZAxisMCDAccel', 'ZAxisMCDDecel']) pb = dropTagIn(pb, t);
+    replaceProgram(p, pb);
+    if (/MCD/.test(programBody(p))) fail('S05: MCD still present');
+    const targets = [...new Set(rungList(getRoutine(programBody(p), 'R02_StateTransitions')).map((r) => stateOf(rungText(r))).filter((n) => n !== null))].sort((a, b) => a - b);
+    log.push(p + ': Z one speed, MCD removed, states ' + SPEED_STATES.join('/') + ' removed, sequence renumbered; R02 targets now ' + targets.join(' '));
+  }
+  for (const p of V2_BUILD) {
+    const b = programBody(p) || fail('v2 build station missing: ' + p);
+    editRoutine(p, 'R02_StateTransitions', (rungs) => rungs.map((r) => (isSequenceState(stateOf(rungText(r))) ? (tally(p), mark(setRungText(r, blankTransition(rungText(r))))) : r)));
+    const coils = p === 'S05_ServoPNP' ? /OTE\((q_ActuatorsSafe|q_CloseGripper|q_OpenGripper)\)/ : /OTE\((q_ActuatorsSafe|OkMan(Extend|Retract)X|q_(Extend|Retract)[XZ]Axis|q_(Close|Open)Gripper)\)/;
+    editRoutine(p, 'R03_StateLogic', (rungs) => rungs.map((r) => (coils.test(rungText(r)) ? (tally(p), mark(setRungText(r, blankOutput(rungText(r))))) : r)));
+    // R01: one derived input per station is the candidate's, its twin stays as the worked example
+    // (Jason, 2026-11-11: S01 shows the X axis, candidate does Z; S05 shows GripperOpened, candidate does GripperClosed)
+    const inputs = p === 'S05_ServoPNP' ? /OTE\(GripperClosed\)/ : /OTE\(ZAxis(Extended|Retracted)\)/;
+    editRoutine(p, 'R01_Inputs', (rungs) => rungs.map((r) => (inputs.test(rungText(r)) ? (tally(p), mark(setRungText(r, blankOutput(rungText(r))))) : r)));
+    // the candidate declares the timer behind that input too (Jason, 2026-11-11)
+    for (const t of (p === 'S05_ServoPNP' ? ['CloseGripperDelay'] : ['ZAxisExtendedDelay'])) {
+      let pb = programBody(p);
+      if (!new RegExp('<Tag Name="' + t + '"').test(pb)) fail(p + ': timer tag not found: ' + t);
+      pb = dropTagIn(pb, t);
+      if (new RegExp('(?<![A-Za-z0-9_])' + t + '(?![A-Za-z0-9_])').test(pb)) fail(p + ': ' + t + ' is still referenced after blanking');
+      replaceProgram(p, pb);
+    }
+    for (const rn of [...b.matchAll(/<Routine\b[^>]*\bName="(R0[45]_[A-Za-z]+Servo)"/g)].map((m) => m[1]))
+      editRoutine(p, rn, (rungs) => rungs.map((r) => {
+        const c = rungComment(r), t = rungText(r);
+        if (/^Auto Mode/.test(c)) { tally(p); return mark(setRungText(r, blankPositionBits(/DisableZSpeedTransition/.test(t) ? dropSpeedOption(t) : t))); }
+        if (/^Axis Motion Command/.test(c)) { tally(p); return mark(setRungText(r, blankStateBits(t))); }
+        return r;
+      }));
+    if (p === 'S05_ServoPNP') {
+      // the blending options: setter rungs, every remaining term (the given speed-change transitions), the tags
+      let pb = programBody(p);
+      // a branch leg that starts with the option (the template's "or blended entry" legs) goes whole;
+      // a bare series term goes alone; a group left with one leg is inlined
+      const dropBlendTerms = (text) => dropLegAware(text, /XI[CO]\(Disable(?:CornerRounding|ZSpeedTransition)\)/, 'blending-option');
+      for (const rn of [...pb.matchAll(/<Routine\b[^>]*\bName="([^"]+)"/g)].map((m) => m[1]))
+        editRoutine(p, rn, (rungs) => rungs.filter((r) => !/OTE\(Disable(CornerRounding|ZSpeedTransition)\)/.test(rungText(r)))
+          .map((r) => (BLEND_RE.test(rungText(r)) ? setRungText(r, dropBlendTerms(rungText(r))) : r)));
+      pb = programBody(p);
+      for (const t of ['i_DisableCornerRounding', 'i_DisableZSpeedTransition', 'DisableCornerRounding', 'DisableZSpeedTransition']) pb = dropTagIn(pb, t);
+      replaceProgram(p, pb);
+      const left = [...programBody(p).matchAll(/[^\n]*Disable(?:CornerRounding|ZSpeedTransition)[^\n]*/g)].map((m) => m[0].trim().slice(0, 120));
+      if (left.length) fail(p + ': blending option still referenced:\n      ' + left.join('\n      '));
+      if (BLEND_RE.test(x.replace(programBody(p), ''))) fail('a blending option of ' + p + ' is referenced outside it');
+      log.push(p + ': blending options removed (2 parameters, 2 bits, their R01 rungs)');
+      // Z axis: the candidate adds a04 / sd04, the iq_ZAxis parameter + connection, R05_ZAxisServo and its JSR
+      // (Jason, 2026-11-12). The Z program-scope tags stay. Rungs that read the axis outside R05 become candidate rungs
+      // (R03 q_StartOK, R04 XAxisPermissive); the two Z alarm rungs go (alarms are out of scope).
+      editRoutine(p, 'R00_Main', (rungs) => rungs.filter((r) => !/JSR\(R05_ZAxisServo/.test(rungText(r))));
+      editRoutine(p, 'R03_StateLogic', (rungs) => rungs.map((r) => {
+        const t = rungText(r); if (!/OTE\(q_StartOK\)/.test(t)) return r;
+        const z = 'XIC(iq_ZAxis.ServoActionStatus)XIC(iq_ZAxis.AxisHomedStatus)';
+        if (!t.includes(z)) fail(p + ': q_StartOK rung does not read the Z axis as expected');
+        tally(p); return mark(setRungText(r, t.replace(z, AOFF)));
+      }));
+      editRoutine(p, 'R04_XAxisServo', (rungs) => rungs.map((r) => {
+        const t = rungText(r); if (!/OTE\(XAxisPermissive\)/.test(t)) return r;
+        tally(p); return mark(setRungText(r, AOFF + 'OTE(XAxisPermissive);'));
+      }));
+      editRoutine(p, 'R20_Alarms', (rungs) => rungs.filter((r) => !/iq_ZAxis/.test(rungText(r))));
+      pb = programBody(p);
+      pb = pb.replace(/<Routine\b[^>]*\bName="R05_ZAxisServo"[\s\S]*?<\/Routine>\s*/, '');
+      pb = dropTagIn(pb, 'iq_ZAxis');
+      replaceProgram(p, pb);
+      const zLeft = [...programBody(p).matchAll(/[^\n]*(?:iq_ZAxis|R05_ZAxisServo)[^\n]*/g)].map((m) => m[0].trim().slice(0, 120));
+      if (zLeft.length) fail(p + ': Z axis still referenced:\n      ' + zLeft.join('\n      '));
+      count[p] -= 2; // the R05 Auto Mode / Axis Motion Command rungs were tallied before the routine went
+      log.push(p + ': Z axis removed (R05_ZAxisServo, its JSR, iq_ZAxis, the two Z alarm rungs); q_StartOK and XAxisPermissive blanked');
+    }
+  }
+  // S19: the outfeed placeholder becomes a real input so the station reads as finished
+  {
+    let b = programBody(V2_READ) || fail('v2 reading station missing: ' + V2_READ);
+    const form = (/<Tag Name="i_ZAxisRetracted"[\s\S]*?<\/Tag>/.exec(b) || [])[0] || fail('S19 i_ZAxisRetracted tag not found');
+    if (!/<Tag Name="i_OutfeedReady"/.test(b)) b = b.replace(form, form + '\n' + form.replace('i_ZAxisRetracted', 'i_OutfeedReady').replace('Z Axis Is Retracted', 'Outfeed Ready For Part'));
+    replaceProgram(V2_READ, b);
+    let fixed = 0;
+    editRoutine(V2_READ, 'R02_StateTransitions', (rungs) => rungs.map((r) => {
+      const t = rungText(r); if (!(/XIC\(Status\.State\[19\]\)/.test(t) && t.includes(AOFF))) return r;
+      fixed++;
+      return setRungComment(setRungText(r, t.replace(AOFF, 'XIC(i_OutfeedReady)')), rungComment(r).replace(/\s*\*\*\*Replace AlwaysOff.*$/, ''));
+    }));
+    if (fixed !== 1) fail('S19 outfeed placeholder: expected 1 rung, found ' + fixed);
+    // the candidate reads the rungs, not the comments (Jason, 2026-11-12)
+    let blanked = 0;
+    editRoutine(V2_READ, 'R02_StateTransitions', (rungs) => rungs.map((r, i) => {
+      const m = /^State (\d+):/.exec(rungComment(r));
+      if (i < 4 || i > 17 || !m) return r;
+      blanked++; return setRungComment(r, 'State ' + m[1] + ':');
+    }));
+    if (blanked !== 14) fail('S19 R02 rung comments: expected 14 blanked, got ' + blanked);
+    let sb = programBody(V2_READ), dropped = 0;
+    sb = sb.replace(/<Comment Operand="\.STATE\[(\d+)\]">\s*<!\[CDATA\[[\s\S]*?\]\]>\s*<\/Comment>\s*/g, (m, k) => (Number(k) >= 7 && Number(k) <= 124 ? (dropped++, '') : m));
+    if (dropped !== 15) fail('S19 state descriptions: expected 15 removed, got ' + dropped);
+    replaceProgram(V2_READ, sb);
+    log.push(V2_READ + ': R02 rungs 4-17 comments reduced to "State N:", state descriptions 7-124 removed');
+  }
+  // the S05 drives and axes carry the program's number (Jason, 2026-11-12): a03_S05PNPXAxis / sd03_S05PNPXAxis
+  { const hits = (x.match(/S01PNP(?=[XZ]Axis)/g) || []).length; x = x.replace(/S01PNP(?=[XZ]Axis)/g, 'S05PNP'); if (hits < 6) fail('v2: expected the 6 S01PNP axis/drive names, found ' + hits); log.push('v2: S01PNP[XZ]Axis renamed S05PNP (' + hits + ' places)'); }
+  for (const gone of ['a04_S05PNPZAxis', 'sd04_S05PNPZAxis', 'a04_S01PNPZAxis', 'sd04_S01PNPZAxis', 'S01PNP', 'iq_ZAxis', 'R05_ZAxisServo']) {
+    const hit = new RegExp('(?<![A-Za-z0-9_])' + gone + '(?![A-Za-z0-9_])').exec(x);
+    if (hit) fail('v2: ' + gone + ' still in the file near: ' + x.slice(Math.max(0, hit.index - 80), hit.index + 80).replace(/\s+/g, ' '));
+  }
+  log.push('v2 candidate rungs blanked: ' + Object.entries(count).map(([p, n]) => p + ' ' + n).join(', ') + '; S19_GoodUnload completed with i_OutfeedReady');
 }
 
 // ═══ 5. SafetyProgram: the rungs that read hardware no longer in the file ═════
