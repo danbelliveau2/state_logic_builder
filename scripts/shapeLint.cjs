@@ -55,6 +55,8 @@ const JOB = {
     'C:/1163 AI Code/AI Inputs/_1146_AlconNewRegisters.L5X',
     // the cam form (MCCP / MAPC / MAS Position Cam) for the L2S10 coiler comes from the chassis template Chassis program
     'plc-reference/training-material/SDC Standard Templates/ChassisStandard_2UP_2026-09-17.L5X',
+    // State_Engine_128Max 5.1 backing image (8 values): v0.14, verified in Studio by Jason 2026-11-13; the older corpus files carry the 5.0 image
+    'X:/Electrical Dept/SDC Engineer/Deliveries/1163/_history/1163_Haemonetics_v0.14_2026-11-13.L5X',
   ],
 
   // Instructions this job legitimately uses that the corpus cannot supply.
@@ -81,6 +83,10 @@ const JOB = {
     [/^L2_S0[6-9]_InsertRobot$/, [140, 140, 12, 'S08_EpsonRobotPNP (~66 tags / 88 rungs) + S03 one-sensor cylinder (~10 / 6) + S04 load cell judge and ConsecFails (~20 / 14) +25 %; latches = force-watch memories (3) + tracking']],
     [/^L2_S0[6-9]_SoftCapGripper$/, [90, 80, 2, 'S03_PartLoad pneumatics for a slide, a gripper and a nest opener (~45 tags / 40 rungs) + state engine block +25 %; latch = the held-cap memory']],
     [/^L2_S0[6-9]_Dispenser$/, [90, 75, 2, 'L2_S04_Dispenser clone: S10_FlexFeedConveyor follower half (~60 tags / 55 rungs) + Dosaset handshake (~15 / 12) +25 %']],
+    // 1163 L2S12 / L2S13 (2026-11-13): the L2S6 forms again - robot and dispenser unchanged, the gripper locate-only (a slide and a gripper, no nest opener, no held-part memory)
+    [/^L2_S1[23]_InsertRobot$/, [140, 140, 12, 'L2_S06_InsertRobot (Jason v0.13): S08_EpsonRobotPNP + S03 one-sensor cylinder + S04 load cell judge and ConsecFails +25 %; latches = force-watch memories (3) + tracking']],
+    [/^L2_S1[23]_YSiteGripper$/, [75, 65, 0, 'L2_S06_SoftCapGripper less the nest opener and the held-cap memory: S03_PartLoad pneumatics for a slide and a gripper (~35 tags / 32 rungs) + state engine block +25 %']],
+    [/^L2_S1[23]_Dispenser$/, [90, 75, 2, 'L2_S06_Dispenser clone: S10_FlexFeedConveyor follower half (~60 tags / 55 rungs) + Dosaset handshake (~15 / 12) +25 %']],
   ],
 
   // Task schedule this job must satisfy. heatStationPrograms: [] when a job has no heaters.

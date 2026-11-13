@@ -24,21 +24,25 @@ const withComments = (tag, map) => {
   return tag.replace(/<Comments>[\s\S]*?<\/Comments>/, block);
 };
 
-// cfg: { sta, pre, ab ('A' upstream nest / 'B' downstream nest), side, prefix, capGate (station of the soft cap record or 0), gripperProg, dispenserProg }
+// cfg: { sta, pre, ab ('A' upstream nest / 'B' downstream nest), side, prefix, capGate (station of the soft cap record or 0), gripperProg, dispenserProg,
+//        held (the part the gripper program presents for the insertion; default = the L2S6 soft cap, L2S12 / L2S13 = the Y site) }
+const SOFT_CAP = { tag: 'SoftCap', words: 'Soft Cap', sentence: 'Soft cap', gripper: 'soft cap gripper', clear: 'p_RobotClearOfCap', clearDesc: 'Robot Clear Of Soft Cap',
+  insertedDesc: 'Insert Done, Place The Cap', wait: 'Tube out of the dispenser, wait for the soft cap in the funnel gripper' };
 function build({ S01, S05, S08, TRK, IDXB, cfg }) {
   const PROG = 'L2_S' + String(cfg.sta).padStart(2, '0') + '_InsertRobot';
   const GRIP = '\\' + cfg.gripperProg + '.', DISP = '\\' + cfg.dispenserProg + '.';
+  const held = cfg.held || SOFT_CAP;
   const code = (n) => cfg.sta * 10 + n;
   const stateComments = { ...C.baseStates,
     4: 'Wait For Index And Part', 7: 'Trigger Pick Program', 10: 'Wait For Robot At Pick', 13: 'Open Tube Nest', 16: 'Wait For Pick Program Complete',
-    19: 'Trigger Get Glue Program', 22: 'Wait For Robot At Dispenser', 25: 'Dispense', 28: 'Wait For Get Glue Program Complete', 31: 'Wait For Soft Cap Presented',
+    19: 'Trigger Get Glue Program', 22: 'Wait For Robot At Dispenser', 25: 'Dispense', 28: 'Wait For Get Glue Program Complete', 31: 'Wait For ' + held.words + ' Presented',
     34: 'Trigger Insert Program', 37: 'Wait For Insert Program Complete', 40: 'Cycle Complete', 43: 'Stop Robot Program',
     100: 'Initialization Turn Robot Motors On', 103: 'Initialization Start Robot Program', 106: 'Initialization Trigger Safe Home Program', 109: 'Initialization Wait For Safe Home Program', 112: 'Initialization Close Tube Nest' };
   const alarms = ['Robot Is Faulted', 'Waiting For Part In Nest', 'Invalid Program Command', 'Robot Program Did Not Start', 'Robot Handshakes Incorrect',
     'Waiting For Robot Program To Stop', 'Waiting For Safe Home Program To Start', 'Waiting For Safe Home Program To Complete',
     'Waiting For Pick Program To Start', 'Waiting For Robot At Pick', 'Waiting For Pick Program To Complete',
     'Waiting For Get Glue Program To Start', 'Waiting For Robot At Dispenser', 'Waiting For Dispenser Ready', 'Waiting For Dispense',
-    'Waiting For Get Glue Program To Complete', 'Waiting For Soft Cap Presented', 'Waiting For Insert Program To Start', 'Waiting For Insert Program To Complete',
+    'Waiting For Get Glue Program To Complete', 'Waiting For ' + held.words + ' Presented', 'Waiting For Insert Program To Start', 'Waiting For Insert Program To Complete',
     'Waiting For Robot Motors To Turn On', 'Waiting For Tube Nest To Open', 'Waiting For Tube Nest To Close',
     'Tube Not Inserted, No Force', 'Insertion Force High, Part Rejected', 'Insert Stopped Short, Part Rejected', 'Cycle Aborted, Nest Failed', 'Consecutive Insertion Failures'];
 
@@ -68,9 +72,9 @@ function build({ S01, S05, S08, TRK, IDXB, cfg }) {
     H.copyTag(S05, 'SingleResetDelay', 'SingleResetDelay'), H.copyTag(S05, 'StationPerformance', 'StationPerformance'), H.copyTag(S01, 'ConsecFails', 'ConsecFails'),
     H.boolTag('q_ActuatorsSafe', { usage: 'Output', desc: 'Actuators Safe For Index' }), H.boolTag('q_StationComplete', { usage: 'Output' }), H.boolTag('q_Pause', { usage: 'Output' }),
     // handshakes
-    H.boolTag('SoftCapPresented'), H.boolTag('DispenseReady'), H.boolTag('DispenseComplete'), H.timerTag('DispenseDwellDelay', 700, 'Dwell In The Dispenser'),
-    H.boolTag('p_CycleStarted', { usage: 'Public', desc: 'Working This Nest' }), H.boolTag('p_RobotClearOfCap', { usage: 'Public', desc: 'Robot Clear Of Soft Cap' }),
-    H.boolTag('p_TubeInserted', { usage: 'Public', desc: 'Insert Done, Place The Cap' }), H.boolTag('p_DispenseRequest', { usage: 'Public', desc: 'Tube In The Dispenser' }),
+    H.boolTag(held.tag + 'Presented'), H.boolTag('DispenseReady'), H.boolTag('DispenseComplete'), H.timerTag('DispenseDwellDelay', 700, 'Dwell In The Dispenser'),
+    H.boolTag('p_CycleStarted', { usage: 'Public', desc: 'Working This Nest' }), H.boolTag(held.clear, { usage: 'Public', desc: held.clearDesc }),
+    H.boolTag('p_TubeInserted', { usage: 'Public', desc: held.insertedDesc }), H.boolTag('p_DispenseRequest', { usage: 'Public', desc: 'Tube In The Dispenser' }),
     H.boolTag('p_TubeOutOfDispenser', { usage: 'Public', desc: 'Tube Out Of Dispenser' }),
   ];
 
@@ -81,7 +85,7 @@ function build({ S01, S05, S08, TRK, IDXB, cfg }) {
     ['', 'LT(i_LoadCellByte0,0)ADD(LoadCellCounts,256,LoadCellCounts);'],
     ['', 'CPT(Force,(LoadCellCounts-HMI_ForceZeroCounts)*HMI_ForceLbPerCount);'],
     ['', 'MovingAverage(ForceFilter,Force,10);'],
-    ['Soft cap gripper and dispenser handshakes', 'XIC(' + GRIP + 'p_SoftCapPresented)OTE(SoftCapPresented);'],
+    [held.sentence + ' gripper and dispenser handshakes', 'XIC(' + GRIP + 'p_' + held.tag + 'Presented)OTE(' + held.tag + 'Presented);'],
     ['', 'XIC(' + DISP + 'p_DispenseReady)OTE(DispenseReady);'],
     ['', 'XIC(' + DISP + 'p_DispenseComplete)OTE(DispenseComplete);'],
     ['Robot positions from the InsideBox outputs: 2 pick, 3 dispenser, 4 insert, 5 home', 'XIC(' + R + 'InsideBox2)OTE(AtPick);'],
@@ -118,8 +122,8 @@ function build({ S01, S05, S08, TRK, IDXB, cfg }) {
     ['State 22: Get glue program running, wait for the robot at the dispenser', st(19) + started(4) + 'XIC(SS_OK)MOVE(22,Control.StateReg);'],
     ['State 25: Tube in the bushing and the dispenser ready, dispense', st(22) + 'XIC(AtDispenser)XIC(DispenseReady)XIC(SS_OK)MOVE(25,Control.StateReg);'],
     ['State 28: Solvent applied, tell the robot to proceed and wait for the get glue to finish', st(25) + 'XIC(DispenseComplete)XIC(DispenseDwellDelay.DN)XIC(SS_OK)MOVE(28,Control.StateReg);'],
-    ['State 31: Tube out of the dispenser, wait for the soft cap in the funnel gripper', st(28) + idle + 'XIC(SS_OK)MOVE(31,Control.StateReg);'],
-    ['State 34: Soft cap presented, trigger the insert program', st(31) + 'XIC(SoftCapPresented)XIC(SS_OK)MOVE(34,Control.StateReg);'],
+    ['State 31: ' + held.wait, st(28) + idle + 'XIC(SS_OK)MOVE(31,Control.StateReg);'],
+    ['State 34: ' + held.sentence + ' presented, trigger the insert program', st(31) + 'XIC(' + held.tag + 'Presented)XIC(SS_OK)MOVE(34,Control.StateReg);'],
     ['State 37: Insert program running, watch the force', st(34) + started(3) + 'XIC(SS_OK)MOVE(37,Control.StateReg);'],
     ['State 40: Cycle Complete, the insertion is judged', st(37) + idle + 'MOVE(40,Control.StateReg);'],
     ['State 43: Stop the robot program when the cycle stops', st(40) + 'XIO(CycleRunning)MOVE(43,Control.StateReg);'],
@@ -149,8 +153,8 @@ function build({ S01, S05, S08, TRK, IDXB, cfg }) {
     ['', st(4) + 'OTU(Engaged)OTU(OverForce)OTU(InsertReached);'],
     ['Judge the insertion once at state 40', st(40) + 'ONS(ONS.5)XIO(SingleDisableTracking)XIC(Engaged)XIO(OverForce)XIC(InsertReached)OTL(' + trk('Success') + ')MOVE(0,ConsecFails.Count);'],
     ['', st(40) + 'ONS(ONS.6)XIO(SingleDisableTracking)[XIO(Engaged) MOVE(' + code(1) + ',' + FT + ') ,XIC(Engaged) XIC(OverForce) MOVE(' + code(2) + ',' + FT + ') ,XIC(Engaged) XIO(OverForce) XIO(InsertReached) MOVE(' + code(3) + ',' + FT + ') ]OTL(' + trk('Failure') + ')ADD(ConsecFails.Count,1,ConsecFails.Count);'],
-    ['Handshakes to the soft cap gripper and the dispenser', 'LIMIT(7,Control.StateReg,37)OTE(p_CycleStarted);'],
-    ['', 'XIO(AtInsert)OTE(p_RobotClearOfCap);'],
+    ['Handshakes to the ' + held.gripper + ' and the dispenser', 'LIMIT(7,Control.StateReg,37)OTE(p_CycleStarted);'],
+    ['', 'XIO(AtInsert)OTE(' + held.clear + ');'],
     ['', '[' + st(40) + ' ,LIMIT(100,Control.StateReg,124) ]OTE(p_TubeInserted);'],
     ['', st(25) + 'OTE(p_DispenseRequest);'],
     ['', 'XIO(AtDispenser)XIO(Status.State[25])OTE(p_TubeOutOfDispenser);'],
