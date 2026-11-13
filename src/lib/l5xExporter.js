@@ -45,7 +45,8 @@
  *    553- 686   AOI control/status tags       buildControlTagXml (553),
  *                                             buildStatusTagXml (573),
  *                                             buildStateEngineTagXml (644),
- *                                             buildStateHistoryTagXml (663)
+ *                                             buildStateHistoryTagXml (663),
+ *                                             buildStateDurationHistoryTagXml
  *    688-1372   generateAllTags               Per-SM tag emit (devices,
  *                                             timers, signals, robots,
  *                                             servos, PT, network)
@@ -610,14 +611,6 @@ ${cdata(String(defaultValue.toFixed(6)))}
 
 // ── 128-element BOOL array helpers ───────────────────────────────────────────
 
-export function generate128DintL5K() {
-  return Array(128).fill('0').join(',');
-}
-
-export function generate128DintDecorated() {
-  return Array.from({ length: 128 }, (_, i) => `<Element Index="[${i}]" Value="0"/>`).join('\n');
-}
-
 export function generate128BoolL5K() {
   return Array(128).fill('2#0').join(',');
 }
@@ -705,8 +698,6 @@ function buildStatusTagXml(orderedNodes, stepMap, devices) {
 
   const boolL5K = generate128BoolL5K();
   const boolDec = generate128BoolDecorated();
-  const dintL5K = generate128DintL5K();
-  const dintDec = generate128DintDecorated();
 
   return `
 <Tag Name="Status" TagType="Base" DataType="StateLogicStatus" Usage="Public" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
@@ -714,7 +705,7 @@ function buildStatusTagXml(orderedNodes, stepMap, devices) {
 ${comments.join('\n')}
 </Comments>
 <Data Format="L5K">
-${cdata(`[[${boolL5K}],0,0,[${dintL5K}]]`)}
+${cdata(`[[${boolL5K}],0,0,0]`)}
 </Data>
 <Data Format="Decorated">
 <Structure DataType="StateLogicStatus">
@@ -725,9 +716,7 @@ ${boolDec}
 <DataValueMember Name="StateChangeOccurred_OS" DataType="BOOL" Value="0"/>
 <DataValueMember Name="TimeoutFlt" DataType="BOOL" Value="0"/>
 <DataValueMember Name="TransitionTimerDone" DataType="BOOL" Value="0"/>
-<ArrayMember Name="StateDuration" DataType="DINT" Dimensions="128" Radix="Decimal">
-${dintDec}
-</ArrayMember>
+<DataValueMember Name="CurrentStateDuration" DataType="DINT" Radix="Decimal" Value="0"/>
 </Structure>
 </Data>
 </Tag>`;
@@ -737,12 +726,11 @@ ${dintDec}
 
 export function buildStateEngineTagXml() {
   const boolL5K = generate128BoolL5K();
-  const dintL5K = generate128DintL5K();
 
   return `
 <Tag Name="StateEngine" TagType="Base" DataType="State_Engine_128Max" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
 <Data Format="L5K">
-${cdata(`[1,[1,0,0,0,0,0,0,0,0,4,0,0],0,0,[1,0,0,0,0,0,0,0,0,4,0,0],[[${boolL5K}],0,0,[${dintL5K}]],0]`)}
+${cdata(`[1,[1,0,0,0,0,0,0,0,0,4,0,0],0,0,[1,0,0,0,0,0,0,0,0,4,0,0],[[${boolL5K}],0,0,0],0,0]`)}
 </Data>
 <Data Format="Decorated">
 <Structure DataType="State_Engine_128Max">
@@ -778,6 +766,34 @@ ${cdata('[0,0,0,0,0,0,0,0,0,0]')}
 </Tag>`;
 }
 
+// ── StateDurationHistory tag (DINT[10], ms in each of the last 10 states) ────
+
+export function buildStateDurationHistoryTagXml() {
+  return `
+<Tag Name="StateDurationHistory" TagType="Base" DataType="DINT" Dimensions="10" Radix="Decimal" Constant="false" ExternalAccess="Read/Write" OpcUaAccess="None">
+<Description>
+${cdata('Last 10 state durations (ms)')}
+</Description>
+<Data Format="L5K">
+${cdata('[0,0,0,0,0,0,0,0,0,0]')}
+</Data>
+<Data Format="Decorated">
+<Array DataType="DINT" Dimensions="10" Radix="Decimal">
+<Element Index="[0]" Value="0"/>
+<Element Index="[1]" Value="0"/>
+<Element Index="[2]" Value="0"/>
+<Element Index="[3]" Value="0"/>
+<Element Index="[4]" Value="0"/>
+<Element Index="[5]" Value="0"/>
+<Element Index="[6]" Value="0"/>
+<Element Index="[7]" Value="0"/>
+<Element Index="[8]" Value="0"/>
+<Element Index="[9]" Value="0"/>
+</Array>
+</Data>
+</Tag>`;
+}
+
 // ── Generate all program tags ────────────────────────────────────────────────
 
 function generateAllTags(sm, orderedNodes, stepMap, trackingFields = []) {
@@ -796,6 +812,7 @@ function generateAllTags(sm, orderedNodes, stepMap, trackingFields = []) {
   addTag(buildStatusTagXml(orderedNodes, stepMap, sm.devices ?? []), 'Status');
   addTag(buildStateEngineTagXml(), 'StateEngine');
   addTag(buildStateHistoryTagXml(), 'StateHistory');
+  addTag(buildStateDurationHistoryTagXml(), 'StateDurationHistory');
 
   // ── Standard scaffold tags (1116 pattern) ─────────────────────────────
 
@@ -2400,7 +2417,7 @@ function generateR02StateTransitions(sm, orderedNodes, stepMap, allSMs = [], tra
     buildRung(
       rungNum++,
       'State Engine',
-      'State_Engine_128Max(StateEngine,Control,Status,StateHistory);'
+      'State_Engine_128Max(StateEngine,Control,Status,StateHistory,StateDurationHistory);'
     )
   );
 
@@ -3584,9 +3601,9 @@ ${cdata('State Timeout Fault')}
 ${cdata('State Transition Time Done')}
 </Description>
 </Member>
-<Member Name="StateDuration" DataType="DINT" Dimension="128" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Member Name="CurrentStateDuration" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
 <Description>
-${cdata('Duration (ms) In Each State')}
+${cdata('Time In Current State (ms)')}
 </Description>
 </Member>
 </Members>
@@ -3793,8 +3810,6 @@ ${cdata('LIMIT(MinWide,Actual,MaxWide)OTE(InPosWide);')}
 export function generateAOI(hasServos = false, hasRobots = false, hasDebouncedSensors = false) {
   const boolL5K = generate128BoolL5K();
   const boolDec = generate128BoolDecorated();
-  const dintL5K = generate128DintL5K();
-  const dintDec = generate128DintDecorated();
 
   // FBD_TIMER default data (used for StateDurationTimer and FaultTimer local tags)
   const fbdTimerL5K = '[1,0,0,0,0,0,0,0,0,4,0,0]';
@@ -3814,7 +3829,7 @@ export function generateAOI(hasServos = false, hasRobots = false, hasDebouncedSe
 </Structure>`;
 
   // StateLogicStatus default for localStatus local tag
-  const localStatusL5K = `[[${boolL5K}],0,0,[${dintL5K}]]`;
+  const localStatusL5K = `[[${boolL5K}],0,0,0]`;
   const localStatusDec = `<Structure DataType="StateLogicStatus">
 <ArrayMember Name="State" DataType="BOOL" Dimensions="128" Radix="Decimal">
 ${boolDec}
@@ -3823,9 +3838,7 @@ ${boolDec}
 <DataValueMember Name="StateChangeOccurred_OS" DataType="BOOL" Value="0"/>
 <DataValueMember Name="TimeoutFlt" DataType="BOOL" Value="0"/>
 <DataValueMember Name="TransitionTimerDone" DataType="BOOL" Value="0"/>
-<ArrayMember Name="StateDuration" DataType="DINT" Dimensions="128" Radix="Decimal">
-${dintDec}
-</ArrayMember>
+<DataValueMember Name="CurrentStateDuration" DataType="DINT" Radix="Decimal" Value="0"/>
 </Structure>`;
 
   // Structured Text logic lines
@@ -3833,6 +3846,7 @@ ${dintDec}
     'StateDurationTimer.Reset := 0;',
     'StateDurationTimer.PRE := 2147483647;',
     'SIZE(StateHistoryArray,0,HistoryArraySize);',
+    'SIZE(StateDurationHistory,0,DurationArraySize);',
     '',
     'TONR(StateDurationTimer);',
     '',
@@ -3843,7 +3857,7 @@ ${dintDec}
     '',
     '\t//State Duration Timer',
     '\tStateDurationTimer.TimerEnable := 1;',
-    '\tlocalStatus.StateDuration[StateLogicControl.StateReg]:=StateDurationTimer.ACC;',
+    '\tlocalStatus.CurrentStateDuration := StateDurationTimer.ACC;',
     '',
     '\t//State Fault Timer',
     '\tIF (StateDurationTimer.ACC >= StateLogicControl.FaultTime ) THEN',
@@ -3873,6 +3887,15 @@ ${dintDec}
     '\tend_if;',
     '\tStateHistoryArray[0] := StateReg_Prev;',
     '',
+    '\t//Shift state duration history the same way; index i of both arrays is the same visit',
+    '\tif DurationArraySize > 1 then',
+    '\t\tfor i := DurationArraySize-1 to 1 by -1 do',
+    '\t\t\tStateDurationHistory[i] := StateDurationHistory[i-1];',
+    '\t\tend_for;',
+    '\tend_if;',
+    '\tStateDurationHistory[0] := StateDurationTimer.ACC;',
+    '\tlocalStatus.CurrentStateDuration := 0;',
+    '',
     '\tStateDurationTimer.Reset := 1;',
     '\tStateDurationTimer.TimerEnable := 0;',
     '\t//Default to DINT Max value.',
@@ -3900,7 +3923,7 @@ ${dintDec}
 
   return `
 <AddOnInstructionDefinitions Use="Context">
-<AddOnInstructionDefinition Name="State_Engine_128Max" Class="Standard" Revision="5.0" Vendor="Steven Douglas Corp." ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" CreatedDate="2013-06-25T13:55:13.933Z" CreatedBy="SDC" EditedDate="2026-10-26T13:47:19.162Z" EditedBy="SDC"
+<AddOnInstructionDefinition Name="State_Engine_128Max" Class="Standard" Revision="5.1" Vendor="Steven Douglas Corp." ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false" CreatedDate="2013-06-25T13:55:13.933Z" CreatedBy="SDC" EditedDate="2026-11-13T12:00:00.000Z" EditedBy="SDC"
  SoftwareRevision="v35.00">
 <Description>
 ${cdata('State Logic Engine For 128 States')}
@@ -3910,7 +3933,8 @@ ${cdata(`-Separated UDT into Control & Status Pieces For better use with standar
 -Removed Timer,OS,Bit, Counter from Control UDT (Use local program tags instead)
 -4.1 optimizations
 -4.2 optimizations. Ena--Timer bits no longer needed.
--5.0 added integrated state history array (variable length) 1/14/23 D.G.`)}
+-5.0 added integrated state history array (variable length) 1/14/23 D.G.
+-5.1 StateDuration[128] replaced by CurrentStateDuration and a variable-length StateDurationHistory (ms per visit, shifted with the state history) 11/13/26`)}
 </RevisionNote>
 <Parameters>
 <Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input" Radix="Decimal" Required="false" Visible="false" ExternalAccess="Read Only">
@@ -3928,6 +3952,11 @@ ${cdata('Enable Output - System Defined Parameter')}
 <Parameter Name="StateHistoryArray" TagType="Base" DataType="SINT" Dimensions="1" Usage="InOut" Radix="Decimal" Required="true" Visible="true" Constant="false">
 <Description>
 ${cdata('State history array')}
+</Description>
+</Parameter>
+<Parameter Name="StateDurationHistory" TagType="Base" DataType="DINT" Dimensions="1" Usage="InOut" Radix="Decimal" Required="true" Visible="true" Constant="false">
+<Description>
+${cdata('State duration history (ms)')}
 </Description>
 </Parameter>
 </Parameters>
@@ -3978,6 +4007,17 @@ ${localStatusDec}
 <LocalTag Name="HistoryArraySize" DataType="SINT" Radix="Decimal" ExternalAccess="None">
 <Description>
 ${cdata('Size of state history array')}
+</Description>
+<DefaultData Format="L5K">
+${cdata('0')}
+</DefaultData>
+<DefaultData Format="Decorated">
+<DataValue DataType="SINT" Radix="Decimal" Value="0"/>
+</DefaultData>
+</LocalTag>
+<LocalTag Name="DurationArraySize" DataType="SINT" Radix="Decimal" ExternalAccess="None">
+<Description>
+${cdata('Size of state duration history array')}
 </Description>
 <DefaultData Format="L5K">
 ${cdata('0')}

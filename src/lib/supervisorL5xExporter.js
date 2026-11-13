@@ -33,6 +33,7 @@ import {
   buildControlTagXml,
   buildStateEngineTagXml,
   buildStateHistoryTagXml,
+  buildStateDurationHistoryTagXml,
   generate128BoolL5K,
   generate128BoolDecorated,
   generateDataTypes,
@@ -113,7 +114,7 @@ function buildSupervisorStatusTagXml() {
 ${comments.join('\n')}
 </Comments>
 <Data Format="L5K">
-${cdata(`[[${boolL5K}],0,0]`)}
+${cdata(`[[${boolL5K}],0,0,0]`)}
 </Data>
 <Data Format="Decorated">
 <Structure DataType="StateLogicStatus">
@@ -124,6 +125,7 @@ ${boolDec}
 <DataValueMember Name="StateChangeOccurred_OS" DataType="BOOL" Value="0"/>
 <DataValueMember Name="TimeoutFlt" DataType="BOOL" Value="0"/>
 <DataValueMember Name="TransitionTimerDone" DataType="BOOL" Value="0"/>
+<DataValueMember Name="CurrentStateDuration" DataType="DINT" Radix="Decimal" Value="0"/>
 </Structure>
 </Data>
 </Tag>`;
@@ -139,6 +141,7 @@ function generateSupervisorTags(linkedStations, standardsProfile, machineConfig 
   tags.push(buildSupervisorStatusTagXml());
   tags.push(buildStateEngineTagXml());
   tags.push(buildStateHistoryTagXml());
+  tags.push(buildStateDurationHistoryTagXml());
 
   // ── Output tags (Usage="Output") — published to stations ─────────────────
   tags.push(buildBoolTagXml('q_ManualMode',         'Manual mode active (published to stations)',          'Output', 'Read Only'));
@@ -438,7 +441,7 @@ function generateR02StateTransitions() {
   // Rung 15: State Engine AOI call
   rungs.push(buildRung(rungNum++,
     'State Engine AOI',
-    'State_Engine_128Max(StateEngine,Control,Status,StateHistory);'));
+    'State_Engine_128Max(StateEngine,Control,Status,StateHistory,StateDurationHistory);'));
 
   return `
 <Routine Name="R02_StateTransitions" Type="RLL">
