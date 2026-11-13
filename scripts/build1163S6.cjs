@@ -24,7 +24,8 @@ const ROOT = path.join(__dirname, '..');
 const D = 'X:/Electrical Dept/SDC Engineer/Deliveries/1163', H_ = D + '/_history';
 const BASE = H_ + '/1163_Haemonetics_v0.11_2026-11-12.L5X';
 const V54 = path.join(ROOT, 'plc-reference/training-material/SDC Standard Templates/SoftwareStandardization.L5X');
-const M = '1163_Haemonetics', VERSION = '0.12';
+const M = '1163_Haemonetics';
+const VERSION = (() => { const i = process.argv.indexOf('--version'); return i >= 0 ? process.argv[i + 1] : '0.12'; })();   // --version 0.13gen: re-run the generator with Jason's v0.13 corrections to check it against his file
 const ISO = new Date().toISOString().slice(0, 10);
 const DRY = process.argv.includes('--dry');
 const PROGDIR = path.join(ROOT, 'generated', '1163', 'build', 'programs');
@@ -75,6 +76,7 @@ const NEW = progs.map(([n]) => n);
   const norm = (s, c) => s.split('L2_S0' + c.sta + '_').join('L2_S0#_').split(sn(c.sta) + ' ').join('L2S0# ')
     .replace('MOVE(' + c.sta + ',StaNum)', 'MOVE(#,StaNum)').replace('MOVE(' + c.pre + ',StaNumPre)', 'MOVE(#,StaNumPre)')
     .replace(/(NestNum|Lockout|DryRun|SingleStep|SingleCycle|SingleTrigger|SingleDisableTracking|SingleClearTracking|Attempts|Successes|Failures|Efficiency|HMIColorStatus)[AB]\b/g, '$1#')
+    .replace('Station[' + (c.sta - 1) + '].NestNum#,NestNumIncoming', 'Station[#].NestNum#,NestNumIncoming')
     .replace(new RegExp('(MOVE\\(|FailureType,)' + c.sta + '([1-4])(?=[,)])', 'g'), '$1#$2')
     .replace(/ \[XIC\(\\L2_Tracking\.p_Data\.Nest\[NestNumCurrent\]\.PartStatus\.Station\[16\]\.Success\) ,XIC\(\\L2_Tracking\.p_Data\.Nest\[NestNumCurrent\]\.PartStatus\.Station\[16\]\.Lockout\) \]/g, '').replace(' and the soft cap record', '');
   for (const kind of ['InsertRobot', 'SoftCapGripper', 'Dispenser']) {

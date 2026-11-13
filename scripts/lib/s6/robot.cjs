@@ -4,6 +4,8 @@
 // L2_S04 escapement blade (one-sensor cylinder). Handshake form (Jason, 2026-11-12): trigger the robot program, wait for the robot at the
 // location (InsideBox), do the PLC action, raise Proceed (UserOut[0].5), wait for Program Done. INSERT is one state with the force watch;
 // InsertStop (UserOut[0].6) halts the slow move on over force. Boxes: 1 Safe For Index (1 = safe), 2 TubePick, 3 GluePos, 4 CapInsert, 5 HomePos.
+// v0.13 (Jason's S06 corrections, 2026-11-13): NestNumIncoming from the station before this one; no Work memory (state 7 on CycleStationA, the
+// force watch / judge / result alarms on the state alone); AtHome derived from Box 5; nest opener alarm timers 1 s; robot I/O numbers in the tag comments.
 const H = require('../l5xBuild.cjs');
 const C = require('../s4/common.cjs');
 const { st, states, outputRung, waitAlarm, warnAlarm, sealedAlarm } = H;
@@ -13,6 +15,14 @@ const ECHO = R + 'UserWord[0]', DONE = R + 'UserIn[0].0';
 const NEST = '\\L2_Tracking.p_Data.Nest[NestNumCurrent]';
 const trk = (bit) => NEST + '.PartStatus.Station[StaNum].' + bit;
 const FT = NEST + '.PartStatus.FailureType';
+// operand comments on a copied UDT tag (replace or add), Studio's alphabetical order
+const withComments = (tag, map) => {
+  const cur = new Map([...tag.matchAll(/<Comment Operand="([^"]+)">\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*<\/Comment>/g)].map((m) => [m[1], m[2].trim()]));
+  for (const [k, v] of Object.entries(map)) cur.set(k, v);
+  const block = '<Comments>\n' + [...cur.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([k, v]) => '<Comment Operand="' + k + '">\n<![CDATA[' + v + ']]>\n</Comment>').join('\n') + '\n</Comments>';
+  if (!/<Comments>[\s\S]*?<\/Comments>/.test(tag)) H.fail('withComments: no <Comments> block to replace');
+  return tag.replace(/<Comments>[\s\S]*?<\/Comments>/, block);
+};
 
 // cfg: { sta, pre, ab ('A' upstream nest / 'B' downstream nest), side, prefix, capGate (station of the soft cap record or 0), gripperProg, dispenserProg }
 function build({ S01, S05, S08, TRK, IDXB, cfg }) {
@@ -35,16 +45,17 @@ function build({ S01, S05, S08, TRK, IDXB, cfg }) {
   const tags = [
     ...C.engineTags(S01, cfg.prefix, stateComments, alarms, []),
     // robot (V5.4 S08 form)
-    H.copyTag(S08, 'i_RobotStatus', 'i_RobotStatus'), H.copyTag(S08, 'q_RobotControl', 'q_RobotControl'),
+    withComments(H.copyTag(S08, 'i_RobotStatus', 'i_RobotStatus'), { '.INSIDEBOX1': 'Robot Safe For Index (Out 543)', '.INSIDEBOX2': 'Robot At Pick Position (Out 544)', '.INSIDEBOX3': 'Robot At Place Position (Out 545)', '.INSIDEBOX4': 'Robot At Insert Position (Out 546)', '.INSIDEBOX5': 'Robot At Home Position (Out 547)' }),
+    withComments(H.copyTag(S08, 'q_RobotControl', 'q_RobotControl'), { '.USEROUT[0].4': 'Machine In Manual Mode (In 596)', '.USEROUT[0].5': 'Proceed (Nest Open, Solvent Applied) (In 597)', '.USEROUT[0].6': 'Insert Stop, Over Force (In 598)' }),
     H.copyTag(S08, 'AutoStopRobotTimer', 'AutoStopRobotTimer'), H.copyTag(S08, 'AutoResetRobotDelay', 'AutoResetRobotDelay'), H.copyTag(S08, 'AlarmTimerProgramStart', 'AlarmTimerProgramStart'), H.copyTag(S08, 'AlarmTimerHandshakes', 'AlarmTimerHandshakes'),
-    H.boolTag('StoppingRobot'), H.boolTag('Permissive'), H.boolTag('AtPick'), H.boolTag('AtDispenser'), H.boolTag('AtInsert'), H.boolTag('TubeInRobotGripper'),
+    H.boolTag('StoppingRobot'), H.boolTag('Permissive'), H.boolTag('AtPick'), H.boolTag('AtDispenser'), H.boolTag('AtHome'), H.boolTag('AtInsert'), H.boolTag('TubeInRobotGripper'),
     H.dintCommentTag('HMI_Hold', [[0, 'Start Robot Program'], [1, 'Stop Robot Program'], [2, 'Turn Robot Motors On'], [3, 'Turn Robot Motors Off']]),
     H.dintCommentTag('HMI_Momentary', [[0, 'Trigger Pick Program'], [1, 'Trigger Get Glue Program'], [2, 'Trigger Insert Program'], [3, 'Trigger Safe Home Program'], [4, 'Proceed To Robot'], [5, 'Open Tube Nest'], [6, 'Close Tube Nest']]),
     // tube nest opener: retracted sensor, extended by delay (L2S01 inserter form)
     H.boolTag('i_TubeNestOpenerRetracted', { usage: 'Input', desc: 'Tube Nest Opener Retracted' }),
     H.boolTag('q_ExtendTubeNestOpener', { usage: 'Output', desc: 'Open Tube Nest' }), H.boolTag('q_RetractTubeNestOpener', { usage: 'Output', desc: 'Close Tube Nest' }),
     H.boolTag('TubeNestOpenerRetracted'), H.boolTag('TubeNestOpenerExtended'), H.timerTag('TubeNestOpenerExtendedDelay', 100, 'Tube Nest Open Delay'),
-    H.alarmTimerTag('AlarmTimerTubeNestOpenerExtended'), H.alarmTimerTag('AlarmTimerTubeNestOpenerRetracted'),
+    H.timerTag('AlarmTimerTubeNestOpenerExtended', 1000, 'Alarm Timer'), H.timerTag('AlarmTimerTubeNestOpenerRetracted', 1000, 'Alarm Timer'),
     // load cell (L2_S04_SpikePNP form, one cell)
     H.sintTag('i_LoadCellByte0', 0, { usage: 'Input', desc: 'Load Cell Byte 0' }), H.sintTag('i_LoadCellByte1', 0, { usage: 'Input', desc: 'Load Cell Byte 1' }),
     H.dintTag('LoadCellCounts', 0, { desc: 'Load Cell Counts' }), H.realTag('Force', 0, { desc: 'Insertion Force lb' }), H.copyTag(IDXB, 'MovingAverageA', 'ForceFilter', ''),
@@ -53,7 +64,7 @@ function build({ S01, S05, S08, TRK, IDXB, cfg }) {
     H.boolTag('Engaged'), H.boolTag('OverForce'), H.boolTag('InsertReached'),
     // tracking (S10 / S04 form, one nest side)
     H.boolTag('SingleCycle'), H.boolTag('SingleDisableTracking'), H.dintTag('StaNumPre', 0), H.copyTag(TRK, 'ZeroPartAssyStat', 'ZeroPartAssyStat'),
-    H.dintTag('NestNumCurrent', 0), H.dintTag('NestNumIncoming', 0), H.boolTag('CycleStationA'), H.boolTag('CycleStationB'), H.boolTag('DryRun'), H.boolTag('Work'),
+    H.dintTag('NestNumCurrent', 0), H.dintTag('NestNumIncoming', 0), H.boolTag('CycleStationA'), H.boolTag('CycleStationB'), H.boolTag('DryRun'),
     H.copyTag(S05, 'SingleResetDelay', 'SingleResetDelay'), H.copyTag(S05, 'StationPerformance', 'StationPerformance'), H.copyTag(S01, 'ConsecFails', 'ConsecFails'),
     H.boolTag('q_ActuatorsSafe', { usage: 'Output', desc: 'Actuators Safe For Index' }), H.boolTag('q_StationComplete', { usage: 'Output' }), H.boolTag('q_Pause', { usage: 'Output' }),
     // handshakes
@@ -65,7 +76,7 @@ function build({ S01, S05, S08, TRK, IDXB, cfg }) {
 
   const R00 = [['Subroutine Calls', 'JSR(R01_Inputs,0);'], ['', 'JSR(R02_StateTransitions,0);'], ['', 'JSR(R03_StateLogic,0);'], ['', 'JSR(R20_Alarms,0);']];
   const R01 = [
-    ['Nest & Station Numbers', '[MOVE(' + cfg.sta + ',StaNum) MOVE(' + cfg.pre + ',StaNumPre) ,MOVE(\\L2_Tracking.p_Data.Station[StaNum].NestNum' + cfg.ab + ',NestNumCurrent) MOVE(\\L2_Tracking.p_Data.Station[StaNumPre].NestNum' + cfg.ab + ',NestNumIncoming) ];'],
+    ['Nest & Station Numbers', '[MOVE(' + cfg.sta + ',StaNum) MOVE(' + cfg.pre + ',StaNumPre) ,MOVE(\\L2_Tracking.p_Data.Station[StaNum].NestNum' + cfg.ab + ',NestNumCurrent) MOVE(\\L2_Tracking.p_Data.Station[' + (cfg.sta - 1) + '].NestNum' + cfg.ab + ',NestNumIncoming) ];'],
     ['Load cell: two EX600-AXA bytes to counts, counts to pounds, filtered', 'MUL(i_LoadCellByte1,256,LoadCellCounts)ADD(LoadCellCounts,i_LoadCellByte0,LoadCellCounts);'],
     ['', 'LT(i_LoadCellByte0,0)ADD(LoadCellCounts,256,LoadCellCounts);'],
     ['', 'CPT(Force,(LoadCellCounts-HMI_ForceZeroCounts)*HMI_ForceLbPerCount);'],
@@ -73,15 +84,16 @@ function build({ S01, S05, S08, TRK, IDXB, cfg }) {
     ['Soft cap gripper and dispenser handshakes', 'XIC(' + GRIP + 'p_SoftCapPresented)OTE(SoftCapPresented);'],
     ['', 'XIC(' + DISP + 'p_DispenseReady)OTE(DispenseReady);'],
     ['', 'XIC(' + DISP + 'p_DispenseComplete)OTE(DispenseComplete);'],
-    ['Robot positions from the InsideBox outputs: 2 pick, 3 dispenser, 4 insert', 'XIC(' + R + 'InsideBox2)OTE(AtPick);'],
+    ['Robot positions from the InsideBox outputs: 2 pick, 3 dispenser, 4 insert, 5 home', 'XIC(' + R + 'InsideBox2)OTE(AtPick);'],
     ['', 'XIC(' + R + 'InsideBox3)OTE(AtDispenser);'],
     ['', 'XIC(' + R + 'InsideBox4)OTE(AtInsert);'],
+    ['', 'XIC(' + R + 'InsideBox5)OTE(AtHome);'],
     ['Robot gripper closed on a tube', 'XIC(' + R + 'UserIn[0].6)OTE(TubeInRobotGripper);'],
     ['Tube nest opener: retracted sensor, extended by delay', 'XIC(i_TubeNestOpenerRetracted)XIC(q_RetractTubeNestOpener)XIO(q_ExtendTubeNestOpener)OTE(TubeNestOpenerRetracted);'],
     ['', 'XIO(i_TubeNestOpenerRetracted)XIC(q_ExtendTubeNestOpener)XIO(q_RetractTubeNestOpener)TON(TubeNestOpenerExtendedDelay,?,?)XIC(TubeNestOpenerExtendedDelay.DN)OTE(TubeNestOpenerExtended);'],
     ...C.logicInputs({
       sides: [cfg.ab], dial: true, nestSides: [{ name: '', ab: cfg.ab }],
-      initialized: 'XIC(' + R + 'Running)EQ(' + ECHO + ',0)XIC(' + DONE + ')XIC(' + R + 'InsideBox5)XIC(TubeNestOpenerRetracted)',
+      initialized: 'XIC(' + R + 'Running)EQ(' + ECHO + ',0)XIC(' + DONE + ')XIC(AtHome)XIC(TubeNestOpenerRetracted)',
       lockoutRungs: [['Lockout', 'XIC(' + C.OP + 'Lockout' + cfg.ab + ')XIO(ManualMode)OTE(Lockout);']],
       dryRunRungs: [['Dry run logic (can add supervisor dry run condition if needed as parallel branch)', '[XIC(' + C.OP + 'DryRun' + cfg.ab + ') ,XIC(g_HMI_DryRun) ]OTE(DryRun);']],
     }),
@@ -98,7 +110,7 @@ function build({ S01, S05, S08, TRK, IDXB, cfg }) {
     ['State 2: Auto mode idle not ready', '[XIC(Status.State[0]) XIC(SafetyOK) ,XIC(Status.State[1]) XIO(ManualMode) ,[XIC(Status.State[3]) ,XIC(CycleStopped) ] XIO(Initialized) ,XIC(Status.State[99]) XIO(CycleRunning) ,XIC(Status.State[127]) XIO(q_AlarmActive) ]MOVE(2,Control.StateReg);'],
     ['State 3: Auto mode idle ready', '[[XIC(Status.State[2]) ,XIC(CycleStopped) ] XIC(Initialized) ,[' + states([4, 40, 124]) + ' ,' + st(43) + ' XIO(' + R + 'Running) ] XIO(CycleRunning) ]MOVE(3,Control.StateReg);'],
     ['State 4: Start of sequence, wait for the index and a part in the nest', '[XIC(Status.State[3]) XIC(Initialized) ,XIC(Status.State[40]) ,XIC(Status.State[124]) ]XIC(CycleRunning)XIO(Lockout)MOVE(4,Control.StateReg);'],
-    ['State 7: Nest on station with a part, trigger the pick program', st(4) + 'XIC(' + C.IDX + 'q_WaitStationsComplete)XIC(Work)XIO(TubeInRobotGripper)' + idle + 'XIC(Permissive)XIC(SS_OK)MOVE(7,Control.StateReg)XIO(SingleDisableTracking)OTL(' + trk('Attempt') + ');'],
+    ['State 7: Nest on station with a part, trigger the pick program', st(4) + 'XIC(' + C.IDX + 'q_WaitStationsComplete)XIC(CycleStationA)XIO(TubeInRobotGripper)' + idle + 'XIC(Permissive)XIC(SS_OK)MOVE(7,Control.StateReg)XIO(SingleDisableTracking)OTL(' + trk('Attempt') + ');'],
     ['State 10: Pick program running, wait for the robot at the tube', st(7) + started(2) + 'XIC(SS_OK)MOVE(10,Control.StateReg);'],
     ['State 13: Robot gripper closed on the tube, open the tube nest', st(10) + 'XIC(AtPick)XIC(TubeInRobotGripper)XIC(SS_OK)MOVE(13,Control.StateReg);'],
     ['State 16: Nest open, tell the robot to proceed and wait for the pick to finish', st(13) + 'XIC(TubeNestOpenerExtended)XIC(SS_OK)MOVE(16,Control.StateReg);'],
@@ -114,9 +126,9 @@ function build({ S01, S05, S08, TRK, IDXB, cfg }) {
     ...C.r02Tail(),
     ['State 100:Start of initialization sequence, turn the robot motors on', 'XIC(Status.State[2])XIO(Initialized)XIC(CycleRunning)XIC(SS_OK)MOVE(100,Control.StateReg);'],
     ['State 103: Initialization start the robot program', st(100) + 'XIC(' + R + 'MotorOn)XIC(SS_OK)MOVE(103,Control.StateReg);'],
-    ['State 106: Initialization trigger the safe home program', st(103) + 'XIC(' + R + 'Running)' + idle + 'XIO(' + R + 'InsideBox5)XIC(SS_OK)MOVE(106,Control.StateReg);'],
+    ['State 106: Initialization trigger the safe home program', st(103) + 'XIC(' + R + 'Running)' + idle + 'XIO(AtHome)XIC(SS_OK)MOVE(106,Control.StateReg);'],
     ['State 109: Initialization wait for the safe home program', st(106) + started(100) + 'XIC(SS_OK)MOVE(109,Control.StateReg);'],
-    ['State 112: Initialization robot at home, close the tube nest', '[' + st(103) + ' XIC(' + R + 'Running) ,' + st(109) + ' ]' + idle + 'XIC(' + R + 'InsideBox5)XIC(SS_OK)MOVE(112,Control.StateReg);'],
+    ['State 112: Initialization robot at home, close the tube nest', '[' + st(103) + ' XIC(' + R + 'Running) ,' + st(109) + ' ]' + idle + 'XIC(AtHome)XIC(SS_OK)MOVE(112,Control.StateReg);'],
     ['State 124: Initialization complete', st(112) + 'XIC(TubeNestOpenerRetracted)MOVE(124,Control.StateReg);'],
     ...C.r02End(),
   ];
@@ -127,17 +139,16 @@ function build({ S01, S05, S08, TRK, IDXB, cfg }) {
     ['Permissive for every robot command', 'XIC(' + R + 'Running)XIO(' + R + 'Error)XIC(SafetyOK)OTE(Permissive);'],
     ['Actuators Safe For Index: the robot reports safe (InsideBox1) and the tube nest is closed', 'XIC(' + R + 'InsideBox1)XIC(TubeNestOpenerRetracted)OTE(q_ActuatorsSafe);'],
     ['Pause Request To Indexer', 'XIC(g_MachineBasic.AlwaysOff)OTE(q_Pause);'],
-    ['Working this cycle: a part in the nest and not locked out, held through the cycle; an attempt without a result (restart) counts', '[XIC(Status.State[4]) XIC(CycleStationA) XIO(Lockout) ,XIC(Work) XIO(Status.State[1]) XIO(Status.State[2]) XIO(Status.State[3]) XIO(Status.State[4]) XIO(Status.State[127]) ,XIC(' + trk('Attempt') + ') XIO(' + trk('Success') + ') XIO(' + trk('Failure') + ') XIO(' + trk('Lockout') + ') ]OTE(Work);'],
     ['A cycle left unfinished fails its nest at initialization', 'XIC(Status.State[100])ONS(ONS.8)XIO(SingleDisableTracking)XIC(' + trk('Attempt') + ')XIO(' + trk('Success') + ')XIO(' + trk('Failure') + ')XIO(' + trk('Lockout') + ')OTL(' + trk('Failure') + ')MOVE(' + code(4) + ',' + FT + ');'],
     ['Set Part Tracking If Station Is Locked Out', 'XIC(' + C.IDX + 'q_WaitStationsComplete)XIC(Status.State[99])XIC(' + NEST + '.PartStatus.PartLoaded)OTL(' + trk('Lockout') + ');'],
     ['Station Complete', 'XIC(' + C.IDX + 'q_WaitStationsComplete)[XIC(CycleStationB) [XIC(' + trk('Success') + ') ,XIC(' + trk('Failure') + ') ,XIC(' + trk('Lockout') + ') ] ,XIO(CycleStationB) ]OTE(q_StationComplete);'],
     ['Dispense dwell', st(25) + 'TON(DispenseDwellDelay,?,?);'],
-    ['Force watch while inserting: engaged, over force, insert depth reached', states([34, 37]) + 'XIC(Work)GE(' + F + ',HMI_EngageForce)OTL(Engaged);'],
-    ['', states([34, 37]) + 'XIC(Work)GT(' + F + ',HMI_ForceMax)OTL(OverForce);'],
+    ['Force watch while inserting: engaged, over force, insert depth reached', states([34, 37]) + 'GE(' + F + ',HMI_EngageForce)OTL(Engaged);'],
+    ['', states([34, 37]) + 'GT(' + F + ',HMI_ForceMax)OTL(OverForce);'],
     ['', states([34, 37]) + 'XIC(AtInsert)OTL(InsertReached);'],
     ['', st(4) + 'OTU(Engaged)OTU(OverForce)OTU(InsertReached);'],
-    ['Judge the insertion once at state 40', st(40) + 'ONS(ONS.5)XIC(Work)XIO(SingleDisableTracking)XIC(Engaged)XIO(OverForce)XIC(InsertReached)OTL(' + trk('Success') + ')MOVE(0,ConsecFails.Count);'],
-    ['', st(40) + 'ONS(ONS.6)XIC(Work)XIO(SingleDisableTracking)[XIO(Engaged) MOVE(' + code(1) + ',' + FT + ') ,XIC(Engaged) XIC(OverForce) MOVE(' + code(2) + ',' + FT + ') ,XIC(Engaged) XIO(OverForce) XIO(InsertReached) MOVE(' + code(3) + ',' + FT + ') ]OTL(' + trk('Failure') + ')ADD(ConsecFails.Count,1,ConsecFails.Count);'],
+    ['Judge the insertion once at state 40', st(40) + 'ONS(ONS.5)XIO(SingleDisableTracking)XIC(Engaged)XIO(OverForce)XIC(InsertReached)OTL(' + trk('Success') + ')MOVE(0,ConsecFails.Count);'],
+    ['', st(40) + 'ONS(ONS.6)XIO(SingleDisableTracking)[XIO(Engaged) MOVE(' + code(1) + ',' + FT + ') ,XIC(Engaged) XIC(OverForce) MOVE(' + code(2) + ',' + FT + ') ,XIC(Engaged) XIO(OverForce) XIO(InsertReached) MOVE(' + code(3) + ',' + FT + ') ]OTL(' + trk('Failure') + ')ADD(ConsecFails.Count,1,ConsecFails.Count);'],
     ['Handshakes to the soft cap gripper and the dispenser', 'LIMIT(7,Control.StateReg,37)OTE(p_CycleStarted);'],
     ['', 'XIO(AtInsert)OTE(p_RobotClearOfCap);'],
     ['', '[' + st(40) + ' ,LIMIT(100,Control.StateReg,124) ]OTE(p_TubeInserted);'],
@@ -163,10 +174,10 @@ function build({ S01, S05, S08, TRK, IDXB, cfg }) {
   ];
 
   const A = 'AlarmONS.';
-  const failWarn = (i, n) => warnAlarm(i, st(40) + 'XIC(Work)EQ(' + FT + ',' + code(n) + ')', A + i);
+  const failWarn = (i, n) => warnAlarm(i, st(40) + 'EQ(' + FT + ',' + code(n) + ')', A + i);
   const R20 = [
     [alarms[0], sealedAlarm(0, 'XIC(' + R + 'Error)', A + 0)],
-    [alarms[1], warnAlarm(1, st(4) + 'XIC(' + C.IDX + 'q_WaitStationsComplete)XIO(Work)MOVE(30000,Control.FaultTime)XIC(Status.TimeoutFlt)', A + 1)],
+    [alarms[1], warnAlarm(1, st(4) + 'XIC(' + C.IDX + 'q_WaitStationsComplete)MOVE(30000,Control.FaultTime)XIC(Status.TimeoutFlt)', A + 1)],
     [alarms[2], sealedAlarm(2, 'XIC(' + R + 'UserIn[0].1)', A + 2)],
     [alarms[3], sealedAlarm(3, 'XIC(Status.State[103])XIO(' + R + 'Running)TON(AlarmTimerProgramStart,?,?)XIC(AlarmTimerProgramStart.DN)', A + 3)],
     [alarms[4], sealedAlarm(4, 'XIC(Status.State[103])[NE(' + ECHO + ',0) ,XIO(' + DONE + ') ]TON(AlarmTimerHandshakes,?,?)XIC(AlarmTimerHandshakes.DN)', A + 4)],
@@ -187,10 +198,10 @@ function build({ S01, S05, S08, TRK, IDXB, cfg }) {
     [alarms[19], waitAlarm(19, [100], 5000, '', A + 19)],
     [alarms[20], H.deviceAlarm(20, 'Lockout', 'q_ExtendTubeNestOpener', 'TubeNestOpenerExtended', 'AlarmTimerTubeNestOpenerExtended', A + 20)],
     [alarms[21], H.deviceAlarm(21, 'Lockout', 'q_RetractTubeNestOpener', 'TubeNestOpenerRetracted', 'AlarmTimerTubeNestOpenerRetracted', A + 21)],
-    [alarms[22], sealedAlarm(22, st(40) + 'XIC(Work)XIO(DryRun)EQ(' + FT + ',' + code(1) + ')', A + 22)],
+    [alarms[22], sealedAlarm(22, st(40) + 'XIO(DryRun)EQ(' + FT + ',' + code(1) + ')', A + 22)],
     [alarms[23], failWarn(23, 2)],
     [alarms[24], failWarn(24, 3)],
-    [alarms[25], warnAlarm(25, st(100) + 'XIC(Work)EQ(' + FT + ',' + code(4) + ')', A + 25)],
+    [alarms[25], warnAlarm(25, st(100) + 'EQ(' + FT + ',' + code(4) + ')', A + 25)],
     [alarms[26], sealedAlarm(26, 'GT(ConsecFails.Count,ConsecFails.Setpoint)', A + 26)],
     ['', 'XIC(Alarm[26].Active)MOVE(0,ConsecFails.Count);'],
     ...C.r20Tail(false),
