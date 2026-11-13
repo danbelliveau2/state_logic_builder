@@ -1,6 +1,6 @@
 'use strict';
 // L2_S0n_InsertRobot — the indexed program of a tube insert station (L2S6-L2S9): Epson LS4-C SCARA, tube nest opener, load cell.
-// Form: V5.4 S08_EpsonRobotPNP (Jason's Epson form, playbook 7e) + L2_S04_SpikePNP (per-side tracking, force judge, ConsecFails) +
+// Form: V5.3 S08_EpsonRobotPNP (Jason's Epson form, playbook 7e) + L2_S04_SpikePNP (per-side tracking, force judge, ConsecFails) +
 // L2_S04 escapement blade (one-sensor cylinder). Handshake form (Jason, 2026-11-12): trigger the robot program, wait for the robot at the
 // location (InsideBox), do the PLC action, raise Proceed (UserOut[0].5), wait for Program Done. INSERT is one state with the force watch;
 // InsertStop (UserOut[0].6) halts the slow move on over force. Boxes: 1 Safe For Index (1 = safe), 2 TubePick, 3 GluePos, 4 CapInsert, 5 HomePos.
@@ -44,7 +44,7 @@ function build({ S01, S05, S08, TRK, IDXB, cfg }) {
 
   const tags = [
     ...C.engineTags(S01, cfg.prefix, stateComments, alarms, []),
-    // robot (V5.4 S08 form)
+    // robot (V5.3 S08 form)
     withComments(H.copyTag(S08, 'i_RobotStatus', 'i_RobotStatus'), { '.INSIDEBOX1': 'Robot Safe For Index (Out 543)', '.INSIDEBOX2': 'Robot At Pick Position (Out 544)', '.INSIDEBOX3': 'Robot At Place Position (Out 545)', '.INSIDEBOX4': 'Robot At Insert Position (Out 546)', '.INSIDEBOX5': 'Robot At Home Position (Out 547)' }),
     withComments(H.copyTag(S08, 'q_RobotControl', 'q_RobotControl'), { '.USEROUT[0].4': 'Machine In Manual Mode (In 596)', '.USEROUT[0].5': 'Proceed (Nest Open, Solvent Applied) (In 597)', '.USEROUT[0].6': 'Insert Stop, Over Force (In 598)' }),
     H.copyTag(S08, 'AutoStopRobotTimer', 'AutoStopRobotTimer'), H.copyTag(S08, 'AutoResetRobotDelay', 'AutoResetRobotDelay'), H.copyTag(S08, 'AlarmTimerProgramStart', 'AlarmTimerProgramStart'), H.copyTag(S08, 'AlarmTimerHandshakes', 'AlarmTimerHandshakes'),

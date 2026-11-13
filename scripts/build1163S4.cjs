@@ -37,7 +37,7 @@ const v = fs.readFileSync(V54, 'utf8');
 const S01 = programBody(x, 'L2_S01_TubeFeedUpstream') || fail('L2_S01_TubeFeedUpstream');
 const TRK = programBody(x, 'L2_Tracking') || fail('L2_Tracking');
 const IDXB = programBody(x, 'L2_S00_IndexerNoSP') || fail('L2_S00_IndexerNoSP');
-const S05 = programBody(v, 'S05_ServoPNP') || fail('V5.4 S05_ServoPNP');
+const S05 = programBody(v, 'S05_ServoPNP') || fail('V5.3 S05_ServoPNP');
 const editRoutine = (prog, rn, fn) => { let b = programBody(x, prog) || fail('no program ' + prog); b = putRungs(b, rn, fn(rungList(getRoutine(b, rn) || fail('no routine ' + prog + '/' + rn)))); const m = H.progRe(prog).exec(x); x = x.slice(0, m.index) + b + x.slice(m.index + m[0].length); };
 const replaceProgram = (name, body) => { const m = H.progRe(name).exec(x) || fail('program not found: ' + name); x = x.slice(0, m.index) + body + x.slice(m.index + m[0].length); };
 

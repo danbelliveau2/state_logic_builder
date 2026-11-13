@@ -8,7 +8,7 @@
  *   Three programs per station (Jason, 2026-11-12): L2_S0n_InsertRobot (Epson LS4-C SCARA + tube nest opener + load cell, Station[n] tracking on
  *   its nest side), L2_S0n_SoftCapGripper (cap nest opener, gripper Z, gripper - runs in parallel with the robot), L2_S0n_Dispenser (DST503 on VB5's
  *   DMPF). S6 downstream nest, S7 upstream, S8 downstream, S9 upstream; S6 / S7 gate on Station[4] and the soft cap record Station[16].
- *   Hardware: rob03-rob06 (IP tab .65 / .67 / .69 / .71, V5.4 rob03_EpsonPNP form, Epson UDTs + AOI_Epson_IN / OUT carried from V5.4),
+ *   Hardware: rob03-rob06 (IP tab .65 / .67 / .69 / .71, V5.3 rob03_EpsonPNP form, Epson UDTs + AOI_Epson_IN / OUT carried from V5.3),
  *   vb05_MainAssembly (.92, in 12 / out 6). Then gates, deliver, stamp. Cover note: scripts/coverNote1163S6.cjs.
  */
 const fs = require('fs');
@@ -37,8 +37,8 @@ const v = fs.readFileSync(V54, 'utf8');
 const S01 = programBody(x, 'L2_S01_TubeFeedUpstream') || fail('L2_S01_TubeFeedUpstream');
 const TRK = programBody(x, 'L2_Tracking') || fail('L2_Tracking');
 const IDXB = programBody(x, 'L2_S00_IndexerNoSP') || fail('L2_S00_IndexerNoSP');
-const S05 = programBody(v, 'S05_ServoPNP') || fail('V5.4 S05_ServoPNP');
-const S08 = programBody(v, 'S08_EpsonRobotPNP') || fail('V5.4 S08_EpsonRobotPNP');
+const S05 = programBody(v, 'S05_ServoPNP') || fail('V5.3 S05_ServoPNP');
+const S08 = programBody(v, 'S08_EpsonRobotPNP') || fail('V5.3 S08_EpsonRobotPNP');
 const editRoutine = (prog, rn, fn) => { let b = programBody(x, prog) || fail('no program ' + prog); b = putRungs(b, rn, fn(rungList(getRoutine(b, rn) || fail('no routine ' + prog + '/' + rn)))); const m = H.progRe(prog).exec(x); x = x.slice(0, m.index) + b + x.slice(m.index + m[0].length); };
 const replaceProgram = (name, body) => { const m = H.progRe(name).exec(x) || fail('program not found: ' + name); x = x.slice(0, m.index) + body + x.slice(m.index + m[0].length); };
 const sn = (n) => 'L2S' + String(n).padStart(2, '0');
@@ -86,23 +86,23 @@ const NEW = progs.map(([n]) => n);
   log.push('S7 / S8 / S9 programs identical to S6 except names, station numbers, nest side and failure codes');
 }
 
-// ═══ 2. Epson types from V5.4 (first robot in the job) ══════════════════════
+// ═══ 2. Epson types from V5.3 (first robot in the job) ══════════════════════
 {
-  const udt = (n) => (new RegExp('<DataType Name="' + n + '"[^>]*>[\\s\\S]*?</DataType>').exec(v) || [null])[0] || fail('V5.4 UDT ' + n);
-  const aoi = (n) => (new RegExp('<AddOnInstructionDefinition [^>]*Name="' + n + '"[^>]*>[\\s\\S]*?</AddOnInstructionDefinition>').exec(v) || [null])[0] || fail('V5.4 AOI ' + n);
+  const udt = (n) => (new RegExp('<DataType Name="' + n + '"[^>]*>[\\s\\S]*?</DataType>').exec(v) || [null])[0] || fail('V5.3 UDT ' + n);
+  const aoi = (n) => (new RegExp('<AddOnInstructionDefinition [^>]*Name="' + n + '"[^>]*>[\\s\\S]*?</AddOnInstructionDefinition>').exec(v) || [null])[0] || fail('V5.3 AOI ' + n);
   must(!/Epson_Robot_Status|AOI_Epson_IN/.test(base), 'Epson types absent in the base');
   x = insertBefore(x, '</DataTypes>', udt('Epson_Robot_Control') + '\n' + udt('Epson_Robot_Status') + '\n', '</DataTypes>');
   x = insertBefore(x, '</AddOnInstructionDefinitions>', aoi('AOI_Epson_IN') + '\n' + aoi('AOI_Epson_OUT') + '\n', '</AddOnInstructionDefinitions>');
-  log.push('types: Epson_Robot_Status / Epson_Robot_Control UDTs, AOI_Epson_IN / AOI_Epson_OUT (V5.4)');
+  log.push('types: Epson_Robot_Status / Epson_Robot_Control UDTs, AOI_Epson_IN / AOI_Epson_OUT (V5.3)');
 }
 
 // ═══ 3. modules + controller tags ════════════════════════════════════════════
 {
   const mods = [], tags = [];
   const cloneTag = (src, from, to) => { const t = tagXml(src, from) || fail('tag ' + from); return t.replace('<Tag Name="' + from + '"', '<Tag Name="' + to + '"'); };
-  // robots: V5.4 rob03_EpsonPNP (generic ETHERNET-MODULE, in 100 / out 150, 32 INT, config 1 size 0) and its four controller tags
+  // robots: V5.3 rob03_EpsonPNP (generic ETHERNET-MODULE, in 100 / out 150, 32 INT, config 1 size 0) and its four controller tags
   const robTpl = moduleXml(v, 'rob03_EpsonPNP');
-  must(/InputCxnPoint="100" OutputCxnPoint="150" OutputSize="64" InputSize="64"/.test(robTpl) && /ConfigSize="0"/.test(robTpl), 'V5.4 rob03 connection 100 / 150, 64 / 64, config 0');
+  must(/InputCxnPoint="100" OutputCxnPoint="150" OutputSize="64" InputSize="64"/.test(robTpl) && /ConfigSize="0"/.test(robTpl), 'V5.3 rob03 connection 100 / 150, 64 / 64, config 0');
   for (const c of STATIONS) {
     mods.push(robTpl.split('rob03_EpsonPNP').join(c.robot).replace(/Address="[^"]*" Type="Ethernet"/, 'Address="' + SUBNET + c.ip + '" Type="Ethernet"').replace(/DataExchangeId="\{[^}]*\}"/, 'DataExchangeId="' + guid() + '"'));
     tags.push(cloneTag(v, 'rob03_EpsonPNPStatus', c.robot + 'Status'), cloneTag(v, 'rob03_EpsonPNPControl', c.robot + 'Control'), cloneTag(v, 'EpsonPNPInputs', 'Epson' + sn(c.sta) + 'Inputs'), cloneTag(v, 'EpsonPNPOutputs', 'Epson' + sn(c.sta) + 'Outputs'));
@@ -147,7 +147,7 @@ const NEW = progs.map(([n]) => n);
   x = replaceTagIn(x, 'g_L2StationList', head + '<Data Format="L5K">\n<![CDATA[[' + names.map((s) => l5kStr(s, 82)).join(',') + ']]]>\n</Data>\n<Data Format="Decorated">\n<Array DataType="STRING" Dimensions="17">\n' + names.map((s, i) => strElemDec(i, s)).join('\n') + '\n</Array>\n</Data>\n</Tag>');
 }
 
-// ═══ 5. MapInputs / MapOutputs: VB5 CPS in the general rung, one AOI_Epson rung per robot (V5.4 form) ═══
+// ═══ 5. MapInputs / MapOutputs: VB5 CPS in the general rung, one AOI_Epson rung per robot (V5.3 form) ═══
 for (const [prog, dir] of [['MapInputs', 'Inputs'], ['MapOutputs', 'Outputs']]) editRoutine(prog, 'R01_Logic', (r) => {
   const cps = (mod) => dir === 'Inputs' ? 'CPS(' + mod + ':I,' + mod + '_IN,1)' : 'CPS(' + mod + '_OUT,' + mod + ':O,1)';
   const g = r.findIndex((rg) => rungText(rg).includes(cps(VB6)));

@@ -143,7 +143,7 @@ function hmiAxisTag(body, srcName, newName, positions) {
 const L2S00 = programBody(x, 'L2_S00_IndexerNoSP') || fail('L2_S00_IndexerNoSP');
 const S01 = programBody(x, 'L2_S01_TubeFeedUpstream') || fail('L2_S01_TubeFeedUpstream');
 const TRK = programBody(x, 'L2_Tracking') || fail('L2_Tracking');
-const S05 = programBody(v, 'S05_ServoPNP') || fail('V5.4 S05_ServoPNP');
+const S05 = programBody(v, 'S05_ServoPNP') || fail('V5.3 S05_ServoPNP');
 function statusTag(states) {
   let t = tagXml(S01, 'Status') || fail('L2_S01 Status tag');
   const cm = '<Comments>\n' + Object.entries(states).map(([n, c]) => '<Comment Operand=".STATE[' + n + ']">\n<![CDATA[' + c + ']]>\n</Comment>').join('\n') + '\n</Comments>\n';
@@ -479,7 +479,7 @@ AX_ORDER.forEach((a, i) => {
   mods.push(sdTpl.replace('Name="sd02_L2S01FeedUpstream"', 'Name="' + C.drive + '"').replace(/Address="[^"]*" Type="Ethernet"/, 'Address="' + C.ip + '" Type="Ethernet"').replace(/DataExchangeId="\{[^}]*\}"/, 'DataExchangeId="' + guid() + '"'));
   let ax = axTpl.replace('<Tag Name="a02_L2S01FeedUpstream"', '<Tag Name="' + C.tag + '"').replace('MotionModule="sd02_L2S01FeedUpstream:Ch1"', 'MotionModule="' + C.drive + ':Ch1"');
   const setAttr = (k, val) => { must(new RegExp(' ' + k + '="[^"]*"').test(ax), 'axis attribute ' + k); ax = ax.replace(new RegExp(' ' + k + '="[^"]*"'), ' ' + k + '="' + val + '"'); };
-  // scaling in the template forms: screw (V5.4 a03/a04: lead 10 -> ConversionConstant 10000, MotionResolution 10000, Limited);
+  // scaling in the template forms: screw (V5.3 a03/a04: lead 10 -> ConversionConstant 10000, MotionResolution 10000, Limited);
   // rotary in degrees through a gearbox (chassis a01_Cam: 1000 counts/deg, MotionResolution 360000, unwind 360000, Cyclic)
   setAttr('AxisID', String(maxAxisId + 1 + i)); setAttr('MotorCatalogNumber', C.motor);
   const brake = motorBrake(C.motor);
@@ -648,14 +648,14 @@ const headF = OUT + '/' + JOB + '_CoverNote_head.html', backF = OUT + '/' + JOB 
 let h = fs.readFileSync(headF, 'utf8'), b = fs.readFileSync(backF, 'utf8'), f = fs.readFileSync(frontF, 'utf8');
 const meta = JSON.parse(fs.readFileSync(metaF, 'utf8'));
 if (!h.includes('<tr><td>0.7</td>')) {
-  h = h.replace(/<\/table>\r?\n<h2>What I was given<\/h2>/, '<tr><td>0.7</td><td>' + SHORT + '</td><td>L2S10 (EJ) Blue Tube Coiler: one program <code>' + PROG + '</code> with five axes (a10&ndash;a14 on sd10&ndash;sd14), VB6, two nest openers, SCHUNK spike and 3-jaw coil grippers L / R; coil = MAPC position cams on the rotary and Z axes with the X axis as master. Every module moved to the Master Electrical IP tab (10.68.167.x). Indexer stations-complete, actuators-safe and pause rungs take S10. LightControl V5.4 rides in.</td><td>Jason, ' + SHORT + ': &ldquo;write the logic for 1163 L2S10 &hellip; S10 should only be 1 program. The x axis is shared &hellip; Q2 MAPC cam per slave &hellip; Q4 nest openers have retracted sensors. Defaults for remaining.&rdquo;</td></tr>\n</table>\n<h2>What I was given</h2>');
+  h = h.replace(/<\/table>\r?\n<h2>What I was given<\/h2>/, '<tr><td>0.7</td><td>' + SHORT + '</td><td>L2S10 (EJ) Blue Tube Coiler: one program <code>' + PROG + '</code> with five axes (a10&ndash;a14 on sd10&ndash;sd14), VB6, two nest openers, SCHUNK spike and 3-jaw coil grippers L / R; coil = MAPC position cams on the rotary and Z axes with the X axis as master. Every module moved to the Master Electrical IP tab (10.68.167.x). Indexer stations-complete, actuators-safe and pause rungs take S10. LightControl V5.3 rides in.</td><td>Jason, ' + SHORT + ': &ldquo;write the logic for 1163 L2S10 &hellip; S10 should only be 1 program. The x axis is shared &hellip; Q2 MAPC cam per slave &hellip; Q4 nest openers have retracted sensors. Defaults for remaining.&rdquo;</td></tr>\n</table>\n<h2>What I was given</h2>');
   h = rep1(h, 'answered Oct 30</td></tr>', 'answered Oct 30. EJ walkthrough Nov 3 (Jason, Vipin, Caleb, Tim), questions answered Nov 4</td></tr>', 'head row 1');
   h = rep1(h, 'WA, WB)</td></tr>', 'WA, WB). EJ: gantry screenshot, no balloons</td></tr>', 'head row 2');
   h = rep1(h, 'walkthrough and I/O list govern</td></tr>', 'walkthrough and I/O list govern. EJ rows 118&ndash;122 (budget-era: two rotary heads, head openers, push-off, load verify)</td></tr>', 'head row 3');
   h = rep1(h, 'PLC MOD 6 CH0/CH1)</td></tr>', 'PLC MOD 6 CH0/CH1). EJ: five 2198-C1004-ERS, TLP-A070-040-DJA32A (rotary, horizontal) and DJA34A brake (vertical); no sensors, nest opener or push-off</td></tr>', 'head row 4');
   h = rep1(h, 'VB1 unit sizes and order from Jason (Oct 30)</td></tr>', 'VB1 unit sizes and order from Jason (Oct 30). EJ rows 42&ndash;50: five motors, SCHUNK EJ1&ndash;EJ4; no valve or input assignments (&ldquo;VB6 waiting for final station designs&rdquo;)</td></tr>', 'head row 5');
   h = rep1(h, 'no circuit drawing</td></tr>', 'no circuit drawing. VB6 manifold layout (SY3000, 16 stations, EX600 2x DXPC), no station map</td></tr>', 'head row 6');
-  h = rep1(h, '1117 HoseFeed / Dereeler as sequence reference only</td></tr>', '1117 HoseFeed / Dereeler as sequence reference only. S10: V5.4 S05_ServoPNP (servo form), chassis template Chassis (MCCP / MAPC cam form), 2UP S01 / S11 (per-side tracking); no example has five axes or a cam slaved to a PNP axis</td></tr>', 'head row 8');
+  h = rep1(h, '1117 HoseFeed / Dereeler as sequence reference only</td></tr>', '1117 HoseFeed / Dereeler as sequence reference only. S10: V5.3 S05_ServoPNP (servo form), chassis template Chassis (MCCP / MAPC cam form), 2UP S01 / S11 (per-side tracking); no example has five axes or a cam slaved to a PNP axis</td></tr>', 'head row 8');
   h = rep1(h, '<tr><td>9 Ethernet device list</td><td>partial</td><td>Module sizes set by Jason in Studio (0.3.2); CB-EP100 manual section 3-3 for the micrometer map; IPs still assumed</td></tr>', '<tr><td>9 Ethernet device list</td><td>yes</td><td>Master Electrical &ldquo;IP Addresses&rdquo; tab (Nov 3): every device IP on 10.68.167.x, device order = axis / drive numbers; VB6 sizes still assumed</td></tr>', 'head row 9');
   h = rep1(h, 'pick and place (not designed yet).</td></tr>', 'pick and place (not designed yet). <b>L2S10 (EJ)</b>, the blue tube coiler: a shared X gantry carrying two heads (Upstream = nest A = the IP tab&rsquo;s Left, Downstream = nest B = Right), each a Z axis, a rotary axis with a spike gripper and a 3-jaw coil gripper, plus a nest opener per side. The heads pick the tube by its spike, pre-tension, lift, and coil three turns onto the 3-jaw while the X axis carries them to place.</td></tr>', 'head platform');
   h = rep1(h, 'L2_S01_DereelerDownstream</b>, Production', 'L2_S01_DereelerDownstream, ' + PROG + '</b>, Production', 'head controller');
@@ -741,7 +741,7 @@ if (!c.includes('## L2S10 (EJ)')) {
 }
 const exF = B + '/plan/station-examples.json';
 const ex = JSON.parse(fs.readFileSync(exF, 'utf8'));
-ex[PROG] = ex[PROG] || { example: 'SoftwareStandardization V5.4 S05_ServoPNP (servo form per axis) + S03_PartLoad (pneumatic derived states, R20 alarm form) + 2UP S01_PartLoadA/B, S11_RejectUnloadA (per-side tracking) + ChassisStandard_2UP Chassis program (MCCP / MAPC cam form)', reference: 'EJ walkthrough 2026-11-03 (sequence), chassis dial cam (MAPC)' };
+ex[PROG] = ex[PROG] || { example: 'SoftwareStandardization V5.3 S05_ServoPNP (servo form per axis) + S03_PartLoad (pneumatic derived states, R20 alarm form) + 2UP S01_PartLoadA/B, S11_RejectUnloadA (per-side tracking) + ChassisStandard_2UP Chassis program (MCCP / MAPC cam form)', reference: 'EJ walkthrough 2026-11-03 (sequence), chassis dial cam (MAPC)' };
 const cfgF = B + '/intake.json';
 const cfg = JSON.parse(fs.readFileSync(cfgF, 'utf8'));
 cfg.programs = '^(L2_S0[01]_|L2_S10_|Supervisor$)'; cfg.shapeLintPrograms = '^L2_S(01|10)_'; cfg.title = '1163 Haemonetics - L2 Indexer, L2S01 (EA) Tube Load, L2S10 (EJ) Blue Tube Coiler';

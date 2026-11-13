@@ -3,7 +3,7 @@
 const H = require('../l5xBuild.cjs');
 const { legs } = H;
 
-// program tags for one axis; S01 = L2_S01_TubeFeedUpstream body (template forms), S05 = V5.4 S05_ServoPNP body (range-check form)
+// program tags for one axis; S01 = L2_S01_TubeFeedUpstream body (template forms), S05 = V5.3 S05_ServoPNP body (range-check form)
 function servoTags(S01, S05, a, { label, positions = [], homeSelect = 1, ranges = [], extraMotion = [] }) {
   const short = label.replace(' Axis', '');
   const t = [

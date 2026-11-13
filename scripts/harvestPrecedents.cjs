@@ -38,7 +38,7 @@ const L5X_DIRS = [
 // Retired exports: superseded by another file in the same corpus, so harvesting them
 // double-counts the old shape and lets a stale form win a precedent vote.
 // SoftwareStandardization.L5X (Aug 31) -> SoftwareStandardizationNew.L5X (Jason, 2026-09-23) -> SoftwareStandardization.L5X
-// V5.4 (Jason, 2026-11-03). The live template carries the original name again; the retired exports sit in
+// V5.3 (Jason, 2026-11-03). The live template carries the original name again; the retired exports sit in
 // SDC Standard Templates/_archive, which listFiles never enters, so only the New-era name needs retiring here.
 const RETIRED = [/^SoftwareStandardizationNew/i];
 

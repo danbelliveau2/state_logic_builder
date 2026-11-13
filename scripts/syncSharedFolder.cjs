@@ -30,7 +30,7 @@ for (const f of ['buildReadiness.cjs', 'logDeviation.cjs', 'mergeLessons.cjs', '
   const src = path.join(ROOT, 'scripts', f); if (fs.existsSync(src)) done.push(copy(src, path.join(SHARE, 'Scripts', path.basename(f))));
 }
 // Templates the readiness check and the build reference
-// SoftwareStandardizationNew.L5X (v37, Oct 5) is RETIRED (Jason, 2026-11-03) — SoftwareStandardization.L5X (V5.4,
+// SoftwareStandardizationNew.L5X (v37, Oct 5) is RETIRED (Jason, 2026-11-03) — SoftwareStandardization.L5X (V5.3,
 // Studio 38.03, his Nov 3 export) replaces it; the retired files sit in Templates/_archive and are never synced.
 for (const f of ['ChassisStandard_2UP_2026-09-17.L5X', 'ChassisStandard_1UP.L5X', 'SoftwareStandardization.L5X']) {
   const src = path.join(ROOT, 'plc-reference/training-material/SDC Standard Templates', f); if (fs.existsSync(src)) done.push(copy(src, path.join(SHARE, 'Templates', f)));

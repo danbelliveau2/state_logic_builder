@@ -126,8 +126,8 @@ if (!c.includes('(0.10, Jason 2026-11-06)')) {
 }
 const exF = B + '/plan/station-examples.json';
 const ex = JSON.parse(fs.readFileSync(exF, 'utf8'));
-ex[ESC] = ex[ESC] || { example: 'MidBaseLoad escapement rulings (2026-09-01 / 09-23) + V5.4 S05_ServoPNP one axis + S03_PartLoad pneumatics + L2_S01 ConsecFails', reference: 'EC walkthrough 2026-11-06, binder L2S03 Timing' };
-ex[PNP] = ex[PNP] || { example: 'job L2_S10_BlueTubeCoiler (Jason-corrected servo PNP, per-side tracking) + V5.4 S05_ServoPNP three axes + S03_PartLoad pneumatics + L2_S01 TubeFeed pass / fail', reference: 'EC walkthrough 2026-11-06 (Tim: force-watched fixed moves + optional seat jog)' };
+ex[ESC] = ex[ESC] || { example: 'MidBaseLoad escapement rulings (2026-09-01 / 09-23) + V5.3 S05_ServoPNP one axis + S03_PartLoad pneumatics + L2_S01 ConsecFails', reference: 'EC walkthrough 2026-11-06, binder L2S03 Timing' };
+ex[PNP] = ex[PNP] || { example: 'job L2_S10_BlueTubeCoiler (Jason-corrected servo PNP, per-side tracking) + V5.3 S05_ServoPNP three axes + S03_PartLoad pneumatics + L2_S01 TubeFeed pass / fail', reference: 'EC walkthrough 2026-11-06 (Tim: force-watched fixed moves + optional seat jog)' };
 ex[DU] = ex[DU] || { example: 'L2_S01_DereelerUpstream (self-actuated follower, no servo) + DST manual ch. 13 handshake', reference: 'DST Manual rev. 20260930, Tim notes' };
 ex[DD] = ex[DD] || { example: 'twin of ' + DU + ' by the same builder' };
 const cfgF = B + '/intake.json';

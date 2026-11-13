@@ -59,7 +59,7 @@ if (AOI_RE.test(xml)) {
 }
 
 // 1b. Standard AOIs whose source of truth is the dial template (Jason, 2026-11-03: "The LightControl AOI was also
-//     updated" - V5.4 resets the horn counter when the fault clears). Logic-only changes: parameters and local tags must
+//     updated" - V5.3 resets the horn counter when the fault clears). Logic-only changes: parameters and local tags must
 //     match, or the instance tag data image would be wrong and the file is left alone with a warning.
 const TEMPLATE = path.join(__dirname, '..', 'plc-reference', 'training-material', 'SDC Standard Templates', 'SoftwareStandardization.L5X');
 const TEMPLATE_AOIS = ['LightControl'];

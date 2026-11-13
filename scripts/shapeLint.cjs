@@ -37,7 +37,7 @@ const JOB = {
 
   // 'chassis-1up' cam chassis, one nest      ChassisStandard_1UP.L5X        (13 programs, single-sided)
   // 'chassis-2up' cam chassis, two-up        ChassisStandard_2UP_*.L5X      (19 programs, A/B twins)
-  // 'dial'        indexing dial / ring       SoftwareStandardization.L5X (V5.4, 23 programs; replaced SoftwareStandardizationNew 2026-11-03)
+  // 'dial'        indexing dial / ring       SoftwareStandardization.L5X (V5.3, 23 programs; replaced SoftwareStandardizationNew 2026-11-03)
   // 'standalone'  no indexer, no cams        1131 Tarkett (Dan 2026-09-28, D006): services from the standard project,
   //               stations self-actuated with p_ handshakes; single step is the StateMachine-skeleton HMI_Toggle form
   // 1163 L2 is the 2UP linear indexer (SoftwareStandardization2UP): single step is required, no cam positions.
@@ -76,7 +76,7 @@ const JOB = {
     [/^L2_S04_SpikeEscapement$/, [240, 200, 10, 'S05_ServoPNP one axis (~100 tags / 95 rungs) + S03 pneumatics for blade, two rotaries, two grippers, blow-off (~60 / 45) + two reject blocks and feeder (~15 / 15) +25 %; latches = part-held memories and feeder bowl']],
     [/^L2_S04_SpikePNP$/, [360, 260, 24, 'S05_ServoPNP (~136 tags / 95 rungs, 2 axes) + a third axis (~45 / 23) + four grippers (S03 form, ~40 / 20) + S04 pass / fail with two load cells (~40 / 25) +25 %; latches = force-watch memories per side (8) + tracking']],
     [/^L2_S04_Dispenser(Upstream|Downstream)$/, [90, 75, 2, 'S10_FlexFeedConveyor follower half (~60 tags / 55 rungs) + Dosaset handshake (~15 / 12) +25 %']],
-    // 1163 L2S6-L2S9 (2026-11-12): Epson tube insert - robot (V5.4 S08 form + a one-sensor nest opener + S04 force judge), soft cap gripper
+    // 1163 L2S6-L2S9 (2026-11-12): Epson tube insert - robot (V5.3 S08 form + a one-sensor nest opener + S04 force judge), soft cap gripper
     // (three pneumatics, S03 form), dispenser (the S04 clone)
     [/^L2_S0[6-9]_InsertRobot$/, [140, 140, 12, 'S08_EpsonRobotPNP (~66 tags / 88 rungs) + S03 one-sensor cylinder (~10 / 6) + S04 load cell judge and ConsecFails (~20 / 14) +25 %; latches = force-watch memories (3) + tracking']],
     [/^L2_S0[6-9]_SoftCapGripper$/, [90, 80, 2, 'S03_PartLoad pneumatics for a slide, a gripper and a nest opener (~45 tags / 40 rungs) + state engine block +25 %; latch = the held-cap memory']],
