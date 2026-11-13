@@ -74,7 +74,7 @@ It reads the code, so it also finds things: state 67 of 1131 S07 had no success 
 - 1756 modules in the local chassis are addressed by slot in parameter connections: `Local:<slot>:I.<member>` / `Local:<slot>:O.<member>` (HSC1 in slot 6 = `Local:6:I.PresentValue[0]`), never `<name>:I` - that form is for Ethernet adapters (Jason, 1163 0.4.5 returned, 2026-10-30). Motion states exit on the instruction done bit (MAM.PC, MAJ.IP), not the axis status bits.
 
 ## 7d. State engine (Jason, 2026-10-26)
-- Every new delivery carries the current `State_Engine_128Max` (edited 2026-10-26): `StateLogicStatus.StateDuration[128]` holds the ms spent in each state. Source: `plc-reference/standard/aoi/`. Run `node scripts/applyStateEngine.cjs <file.L5X>` on every assembled file before the validator; `--check` says whether a file is current.
+- Every new delivery carries the current `State_Engine_128Max` (5.1, verified 2026-11-13): `StateLogicStatus.CurrentStateDuration` is the ms in the current state; each program's `StateDurationHistory` DINT[10], the AOI's fifth argument, holds the ms of the last ten states, shifted with `StateHistory`. Source: `plc-reference/standard/aoi/` (the `_v5.0` copies are only the widening image for pre-5.0 files). Run `node scripts/applyStateEngine.cjs <file.L5X>` on every assembled file before the validator; `--check` says whether a file is current.
 - Same carrier for the AOIs the dial template owns: `LightControl` (V5.4, 2026-11-03: the horn counter resets when the fault clears, so the three-pulse horn sounds on every fault). An AOI change is never a re-delivery on its own; it rides with the job's next increment (Jason, 2026-10-29).
 
 ## 7e. Epson robot form (Jason, 2026-10-29, returned V5.3)

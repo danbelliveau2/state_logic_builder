@@ -30,9 +30,9 @@
 <![CDATA[State Transition Time Done]]>
 </Description>
 </Member>
-<Member Name="StateDuration" DataType="DINT" Dimension="128" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
+<Member Name="CurrentStateDuration" DataType="DINT" Dimension="0" Radix="Decimal" Hidden="false" ExternalAccess="Read/Write">
 <Description>
-<![CDATA[Duration (ms) In Each State]]>
+<![CDATA[Time In Current State (ms)]]>
 </Description>
 </Member>
 </Members>
