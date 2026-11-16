@@ -3,6 +3,7 @@
 // Runs in parallel with the robot (Jason, 2026-11-12). Form: L2_S04 escapement / PNP pneumatics (one-sensor cylinders, sensorless gripper,
 // TubeFeed device-form faults), no tracking (reads Station[n].OpStatus of its nest side), HoldingCap memory survives every stop and
 // initialization never opens the gripper while it holds a cap.
+// v0.16 (Jason, 2026-11-16): p_TubeInserted is a one-scan handshake, so "tube inserted" and "robot clear" are two states, never one rung.
 const H = require('../l5xBuild.cjs');
 const C = require('../s4/common.cjs');
 const { st, states, outputRung, waitAlarm } = H;
@@ -12,10 +13,10 @@ function build({ S01, cfg }) {
   const ROB = '\\' + cfg.robotProg + '.';
   const stateComments = { ...C.baseStates,
     4: 'Wait For Cycle Start', 7: 'Extend Z To The Soft Cap', 10: 'Close Soft Cap Gripper', 13: 'Open Soft Cap Nest', 16: 'Retract Z With The Soft Cap',
-    19: 'Wait For Tube Inserted', 22: 'Extend Z To Place', 25: 'Close Soft Cap Nest', 28: 'Open Soft Cap Gripper', 31: 'Retract Z', 34: 'Cycle Complete',
+    19: 'Wait For Tube Inserted', 22: 'Wait For Robot Clear Of Soft Cap', 25: 'Extend Z To Place', 28: 'Close Soft Cap Nest', 31: 'Open Soft Cap Gripper', 34: 'Retract Z', 37: 'Cycle Complete',
     100: 'Initialization Retract Z', 103: 'Initialization Close Soft Cap Nest', 106: 'Initialization Open Soft Cap Gripper' };
   const alarms = ['Waiting For Soft Cap Gripper Z To Extend', 'Waiting For Soft Cap Gripper Z To Retract', 'Waiting For Soft Cap Gripper To Close', 'Waiting For Soft Cap Gripper To Open',
-    'Waiting For Soft Cap Nest To Open', 'Waiting For Soft Cap Nest To Close', 'Waiting For Tube Insertion'];
+    'Waiting For Soft Cap Nest To Open', 'Waiting For Soft Cap Nest To Close', 'Waiting For Tube Insertion', 'Waiting For Robot Clear Of Soft Cap'];
 
   const tags = [
     ...C.engineTags(S01, cfg.prefix, stateComments, alarms, []),
@@ -51,18 +52,19 @@ function build({ S01, cfg }) {
     ...C.clearMomentary(),
   ];
   const R02 = [
-    ...C.r02Head([34]),
-    ['State 4: Start of sequence, wait for the robot to start on the nest; holding a cap it re-enters at the wait for the insertion', '[XIC(Status.State[3]) XIC(Initialized) ,XIC(Status.State[34]) ,XIC(Status.State[124]) ]XIC(CycleRunning)XIO(Lockout)MOVE(4,Control.StateReg);'],
+    ...C.r02Head([37]),
+    ['State 4: Start of sequence, wait for the robot to start on the nest; holding a cap it re-enters at the wait for the insertion', '[XIC(Status.State[3]) XIC(Initialized) ,XIC(Status.State[37]) ,XIC(Status.State[124]) ]XIC(CycleRunning)XIO(Lockout)MOVE(4,Control.StateReg);'],
     ['State 7: Robot working this nest, lower the gripper onto the soft cap', st(4) + 'XIO(HoldingCap)XIC(CycleStarted)XIC(SS_OK)MOVE(7,Control.StateReg);'],
     ['State 10: Close the gripper on the soft cap', st(7) + 'XIC(SoftCapGripperZExtended)XIC(SS_OK)MOVE(10,Control.StateReg);'],
     ['State 13: Open the soft cap nest', st(10) + 'XIC(SoftCapGripperClosed)XIC(SS_OK)MOVE(13,Control.StateReg);'],
     ['State 16: Lift the soft cap out of the nest', st(13) + 'XIC(SoftCapNestOpenerExtended)XIC(SS_OK)MOVE(16,Control.StateReg);'],
     ['State 19: Cap presented as the funnel, wait for the robot to insert the tube', '[' + st(16) + ' XIC(SoftCapGripperZRetracted) ,' + st(4) + ' XIC(HoldingCap) ]XIC(SS_OK)MOVE(19,Control.StateReg);'],
-    ['State 22: Tube inserted and the robot clear, lower the cap and tube into the nest', st(19) + 'XIC(TubeInserted)XIC(RobotClearOfCap)XIC(SoftCapNestOpenerExtended)XIC(SS_OK)MOVE(22,Control.StateReg);'],
-    ['State 25: Close the soft cap nest', st(22) + 'XIC(SoftCapGripperZExtended)XIC(SS_OK)MOVE(25,Control.StateReg);'],
-    ['State 28: Open the gripper', st(25) + 'XIC(SoftCapNestOpenerRetracted)XIC(SS_OK)MOVE(28,Control.StateReg);'],
-    ['State 31: Retract the gripper Z', st(28) + 'XIC(SoftCapGripperOpened)XIC(SS_OK)MOVE(31,Control.StateReg);'],
-    ['State 34: Cycle Complete', st(31) + 'XIC(SoftCapGripperZRetracted)MOVE(34,Control.StateReg);'],
+    ['State 22: Tube inserted, wait for the robot to back out of the cap', st(19) + 'XIC(TubeInserted)XIC(SS_OK)MOVE(22,Control.StateReg);'],
+    ['State 25: Robot clear, lower the cap and tube into the nest', st(22) + 'XIC(RobotClearOfCap)XIC(SoftCapNestOpenerExtended)XIC(SS_OK)MOVE(25,Control.StateReg);'],
+    ['State 28: Close the soft cap nest', st(25) + 'XIC(SoftCapGripperZExtended)XIC(SS_OK)MOVE(28,Control.StateReg);'],
+    ['State 31: Open the gripper', st(28) + 'XIC(SoftCapNestOpenerRetracted)XIC(SS_OK)MOVE(31,Control.StateReg);'],
+    ['State 34: Retract the gripper Z', st(31) + 'XIC(SoftCapGripperOpened)XIC(SS_OK)MOVE(34,Control.StateReg);'],
+    ['State 37: Cycle Complete', st(34) + 'XIC(SoftCapGripperZRetracted)MOVE(37,Control.StateReg);'],
     ...C.r02Tail(),
     ['State 100:Start of initialization sequence, retract the gripper Z', 'XIC(Status.State[2])XIO(Initialized)XIC(CycleRunning)XIC(SS_OK)MOVE(100,Control.StateReg);'],
     ['State 103: Initialization close the soft cap nest (no cap held)', st(100) + 'XIC(SoftCapGripperZRetracted)XIO(HoldingCap)XIC(SS_OK)MOVE(103,Control.StateReg);'],
@@ -73,24 +75,25 @@ function build({ S01, cfg }) {
   const R03 = [
     ...C.r03Head('XIC(SafetyOK)', [cfg.ab], false),
     ['Actuators Safe For Index: gripper Z up and the soft cap nest closed', 'XIC(SoftCapGripperZRetracted)XIC(SoftCapNestOpenerRetracted)OTE(q_ActuatorsSafe);'],
-    ['Holding a soft cap from the lift until the gripper opens (kept through every stop)', '[' + st(16) + ' OTL(HoldingCap) ,' + states([31, 106]) + ' OTU(HoldingCap) ];'],
+    ['Holding a soft cap from the lift until the gripper opens (kept through every stop)', '[' + st(16) + ' OTL(HoldingCap) ,' + states([34, 106]) + ' OTU(HoldingCap) ];'],
     ['Handshake to the robot: cap lifted, gripper closed, nest open', st(19) + 'XIC(SoftCapGripperZRetracted)XIC(SoftCapGripperClosed)XIC(SoftCapNestOpenerExtended)OTE(p_SoftCapPresented);'],
-    ['Soft Cap Gripper Z Control: down onto the cap and down to place, up with the cap and after placing', outputRung('q_ExtendSoftCapGripperZ', states([7, 22]), 'XIO(Status.State[16]) XIO(Status.State[31]) XIO(Status.State[100])', 0, 1)],
-    ['', outputRung('q_RetractSoftCapGripperZ', states([16, 31, 100]), 'XIO(Status.State[7]) XIO(Status.State[22])', 1, 0)],
-    ['Soft Cap Gripper Control: closed while it holds a cap, re-commanded from the held memory after a stop', outputRung('q_CloseSoftCapGripper', '[' + st(10) + ' ,XIC(HoldingCap) XIO(Status.State[106]) ]', 'XIO(Status.State[28]) XIO(Status.State[106])', 2, 3)],
-    ['', outputRung('q_OpenSoftCapGripper', states([28, 106]), 'XIO(Status.State[10])', 3, 2)],
-    ['Soft Cap Nest Opener Control: open while the cap is out of the nest', outputRung('q_ExtendSoftCapNestOpener', states([13, 19, 22]), 'XIO(Status.State[25]) XIO(Status.State[103])', 4, 5)],
-    ['', outputRung('q_RetractSoftCapNestOpener', states([25, 103]), 'XIO(Status.State[13])', 5, 4)],
+    ['Soft Cap Gripper Z Control: down onto the cap and down to place, up with the cap and after placing', outputRung('q_ExtendSoftCapGripperZ', states([7, 25]), 'XIO(Status.State[16]) XIO(Status.State[34]) XIO(Status.State[100])', 0, 1)],
+    ['', outputRung('q_RetractSoftCapGripperZ', states([16, 34, 100]), 'XIO(Status.State[7]) XIO(Status.State[25])', 1, 0)],
+    ['Soft Cap Gripper Control: closed while it holds a cap, re-commanded from the held memory after a stop', outputRung('q_CloseSoftCapGripper', '[' + st(10) + ' ,XIC(HoldingCap) XIO(Status.State[106]) ]', 'XIO(Status.State[31]) XIO(Status.State[106])', 2, 3)],
+    ['', outputRung('q_OpenSoftCapGripper', states([31, 106]), 'XIO(Status.State[10])', 3, 2)],
+    ['Soft Cap Nest Opener Control: open while the cap is out of the nest', outputRung('q_ExtendSoftCapNestOpener', states([13, 19, 22, 25]), 'XIO(Status.State[28]) XIO(Status.State[103])', 4, 5)],
+    ['', outputRung('q_RetractSoftCapNestOpener', states([28, 103]), 'XIO(Status.State[13])', 5, 4)],
   ];
   const A = 'AlarmONS.';
   const R20 = [
     [alarms[0], H.deviceAlarm(0, 'Lockout', 'q_ExtendSoftCapGripperZ', 'SoftCapGripperZExtended', 'AlarmTimerSoftCapGripperZExtended', A + 0)],
     [alarms[1], H.deviceAlarm(1, 'Lockout', 'q_RetractSoftCapGripperZ', 'SoftCapGripperZRetracted', 'AlarmTimerSoftCapGripperZRetracted', A + 1)],
     [alarms[2], waitAlarm(2, [10], 3000, 'XIO(SoftCapGripperClosed) ', A + 2)],
-    [alarms[3], waitAlarm(3, [28, 106], 3000, 'XIO(SoftCapGripperOpened) ', A + 3)],
+    [alarms[3], waitAlarm(3, [31, 106], 3000, 'XIO(SoftCapGripperOpened) ', A + 3)],
     [alarms[4], H.deviceAlarm(4, 'Lockout', 'q_ExtendSoftCapNestOpener', 'SoftCapNestOpenerExtended', 'AlarmTimerSoftCapNestOpenerExtended', A + 4)],
     [alarms[5], H.deviceAlarm(5, 'Lockout', 'q_RetractSoftCapNestOpener', 'SoftCapNestOpenerRetracted', 'AlarmTimerSoftCapNestOpenerRetracted', A + 5)],
     [alarms[6], waitAlarm(6, [19], 60000, 'XIO(TubeInserted) ', A + 6)],
+    [alarms[7], waitAlarm(7, [22], 10000, 'XIO(RobotClearOfCap) ', A + 7)],
     ...C.r20Tail(false),
   ];
   return { PROG, xml: H.programXml(PROG, tags, [{ name: 'R00_Main', rungs: R00 }, { name: 'R01_Inputs', rungs: R01 }, { name: 'R02_StateTransitions', rungs: R02 }, { name: 'R03_StateLogic', rungs: R03 }, { name: 'R20_Alarms', rungs: R20 }]) };

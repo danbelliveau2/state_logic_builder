@@ -7,9 +7,10 @@ const IDX = '\\L2_S00_IndexerNoSP.';
 const SUP = '\\Supervisor.';
 
 // state-engine + alarm + mode tags; alarms: list of messages; servo: [[axis,label],...] or []
+// State_Engine_128Max 5.1 (Jason, 2026-11-16): every program carries StateDurationHistory DINT[10] and passes it as the fifth argument - copied from S01, which must be a 5.1 program
 function engineTags(S01, PREFIX, stateComments, alarms, servoList) {
   const t = [
-    H.copyTag(S01, 'Control', 'Control'), H.statusTag(S01, stateComments), H.copyTag(S01, 'StateEngine', 'StateEngine'), H.copyTag(S01, 'StateHistory', 'StateHistory'),
+    H.copyTag(S01, 'Control', 'Control'), H.statusTag(S01, stateComments), H.copyTag(S01, 'StateEngine', 'StateEngine'), H.copyTag(S01, 'StateHistory', 'StateHistory'), H.copyTag(S01, 'StateDurationHistory', 'StateDurationHistory'),
     H.alarmArrayTag('Alarm', PREFIX, alarms, alarms.length), H.stringArrayTag('AlarmList', alarms, alarms.length), H.copyTag(S01, 'ProgramFaultHandler', 'ProgramFaultHandler'),
     H.boolTag('AlarmActive'), H.boolTag('WarningActive'), H.dintTag('AlarmONS', 0),
     H.boolTag('q_AlarmActive', { usage: 'Output' }), H.boolTag('q_WarningActive', { usage: 'Output' }), H.boolTag('q_AutoMode', { usage: 'Output' }), H.boolTag('q_AutoStopped', { usage: 'Output' }), H.boolTag('q_StartOK', { usage: 'Output' }),
@@ -71,7 +72,7 @@ const r02End = () => [
   ['State 127: Fault', 'XIC(q_AlarmActive)[ONS(ONS.2) LIMIT(4,Control.StateReg,99) MOVE(Control.StateReg,FaultState) MOVE(Control.StateReg,RestartState) ,MOVE(127,Control.StateReg) ];'],
   ['State 1: Manual Mode', 'XIC(ManualMode)MOVE(1,Control.StateReg);'],
   ['State 0: Safety Stop', '[XIO(SafetyOK) ,XIC(S:FS) ][ONS(ONS.3) LIMIT(4,Control.StateReg,98) MOVE(Control.StateReg,SafetyStopState) MOVE(Control.StateReg,RestartState) ,MOVE(0,Control.StateReg) ];'],
-  ['', 'State_Engine_128Max(StateEngine,Control,Status,StateHistory);'],
+  ['', 'State_Engine_128Max(StateEngine,Control,Status,StateHistory,StateDurationHistory);'],
   ['Cycle Time  **Limit Instruction Low & High Limits Populated WIth Range Of States In Which Station Is Running (Example, PNP Is Picking & Placing A Part) **Cycle Complete State Shown As Example', '[XIC(Status.State[4]) ONS(ONS.4) DIV(CycleTimer.ACC,1000,p_CycleTime) RES(CycleTimer) ,LIMIT(4,Control.StateReg,98) RTO(CycleTimer,?,?) ];'],
 ];
 // R03 head: supervisor outputs. startOk: condition fragment before the single-step XIOs

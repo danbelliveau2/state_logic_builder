@@ -119,8 +119,35 @@ if (!on51) {
   report.upgrade = `5.0 -> 5.1 (${r.report.statusTags} programs)`;
 }
 
-const behind = /replaced/.test(report.aoi) || report.udt === 'replaced' || report.statusTags || report.engineTags || report.templateAois.some(s => /replaced/.test(s)) || !on51;
-console.log(`${path.basename(inFile)}: AOI ${report.aoi}; UDT ${report.udt}; Status tags widened ${report.statusTags} (current ${report.statusTagsCurrent}); engine tags widened ${report.engineTags} (current ${report.engineTagsCurrent}); template AOIs: ${report.templateAois.join(', ') || 'none'}; State_Engine ${report.upgrade}`);
+// 5b. A 5.1 file may still carry programs built without the per-program history (1163 v0.15: the six S12 / S13 programs shipped
+//     without the StateDurationHistory tag and the fifth argument - Jason, 2026-11-16). Add both per program, nothing else.
+report.programs51 = 0;
+if (on51) {
+  const CALL_OLD = 'State_Engine_128Max(StateEngine,Control,Status,StateHistory);', CALL_NEW = 'State_Engine_128Max(StateEngine,Control,Status,StateHistory,StateDurationHistory);';
+  xml = xml.replace(/<Program\b[^>]*>[\s\S]*?<\/Program>/g, (prog) => {
+    if (!/State_Engine_128Max\(/.test(prog)) return prog;
+    // a program that already passes its own DINT[10] as the fifth argument is on 5.1 whatever it named the tag (1163 v0.15 returned:
+    // Jason typed StateHistoryDuration in one program); say so, leave it to the job's apply script to rename
+    const own = /State_Engine_128Max\(StateEngine,Control,Status,StateHistory,([A-Za-z_][A-Za-z0-9_]*)\)/.exec(prog);
+    if (own && own[1] !== 'StateDurationHistory' && new RegExp('<Tag Name="' + own[1] + '" TagType="Base" DataType="DINT" Dimensions="10"').test(prog)) {
+      console.warn(((prog.match(/<Program Name="([^"]+)"/) || [])[1] || "?") + ': fifth argument is ' + own[1] + ', not StateDurationHistory - on 5.1, rename it');
+      return prog;
+    }
+    let p = prog, changed = false;
+    if (!/<Tag Name="StateDurationHistory" /.test(p)) {
+      const m = /<Tag Name="StateHistory" TagType="Base" DataType="SINT" Dimensions="10"[^>]*>[\s\S]*?<\/Tag>/.exec(p);
+      if (!m) { console.warn('no StateHistory tag to derive StateDurationHistory from: ' + prog.split('\n')[0]); return prog; }
+      const dur = m[0].replace('<Tag Name="StateHistory" TagType="Base" DataType="SINT"', '<Tag Name="StateDurationHistory" TagType="Base" DataType="DINT"').replace('<Array DataType="SINT"', '<Array DataType="DINT"');
+      p = p.replace(m[0], () => m[0] + '\n' + dur); changed = true;
+    }
+    if (p.includes(CALL_OLD)) { p = p.split(CALL_OLD).join(CALL_NEW); changed = true; }
+    if (changed) report.programs51++;
+    return p;
+  });
+}
+
+const behind = report.programs51 > 0 || /replaced/.test(report.aoi) || report.udt === 'replaced' || report.statusTags || report.engineTags || report.templateAois.some(s => /replaced/.test(s)) || !on51;
+console.log(`${path.basename(inFile)}: AOI ${report.aoi}; UDT ${report.udt}; Status tags widened ${report.statusTags} (current ${report.statusTagsCurrent}); engine tags widened ${report.engineTags} (current ${report.engineTagsCurrent}); template AOIs: ${report.templateAois.join(', ') || 'none'}; State_Engine ${report.upgrade}${report.programs51 ? '; ' + report.programs51 + ' program(s) given StateDurationHistory + the fifth argument' : ''}`);
 if (checkOnly) process.exit(behind ? 1 : 0);
 if (behind) { fs.writeFileSync(outFile, xml); console.log('written ' + outFile); }
 else console.log('already current, nothing written');

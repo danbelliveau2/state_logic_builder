@@ -3,6 +3,7 @@
 // has inserted the tube and backed out, then opens and lifts. The Y site is never lifted (Jason, 2026-11-13), so the gripper always
 // opens before Z retracts, in the sequence and at initialization. Form: the L2S6 SoftCapGripper (L2_S04 / S03 pneumatics: one-sensor
 // slide, sensorless gripper, TubeFeed device-form faults), no tracking, no held-part memory.
+// v0.16 (Jason, 2026-11-16): p_TubeInserted is a one-scan handshake, so "tube inserted" and "robot clear" are two states, never one rung.
 const H = require('../l5xBuild.cjs');
 const C = require('../s4/common.cjs');
 const { st, states, outputRung, waitAlarm } = H;
@@ -11,9 +12,9 @@ function build({ S01, cfg }) {
   const PROG = 'L2_S' + String(cfg.sta).padStart(2, '0') + '_YSiteGripper';
   const ROB = '\\' + cfg.robotProg + '.';
   const stateComments = { ...C.baseStates,
-    4: 'Wait For Cycle Start', 7: 'Extend Z To The Y Site', 10: 'Close Y Site Gripper', 13: 'Wait For Tube Inserted', 16: 'Open Y Site Gripper', 19: 'Retract Z', 22: 'Cycle Complete',
+    4: 'Wait For Cycle Start', 7: 'Extend Z To The Y Site', 10: 'Close Y Site Gripper', 13: 'Wait For Tube Inserted', 16: 'Wait For Robot Clear Of Y Site', 19: 'Open Y Site Gripper', 22: 'Retract Z', 25: 'Cycle Complete',
     100: 'Initialization Open Y Site Gripper', 103: 'Initialization Retract Z' };
-  const alarms = ['Waiting For Y Site Gripper Z To Extend', 'Waiting For Y Site Gripper Z To Retract', 'Waiting For Y Site Gripper To Close', 'Waiting For Y Site Gripper To Open', 'Waiting For Tube Insertion'];
+  const alarms = ['Waiting For Y Site Gripper Z To Extend', 'Waiting For Y Site Gripper Z To Retract', 'Waiting For Y Site Gripper To Close', 'Waiting For Y Site Gripper To Open', 'Waiting For Tube Insertion', 'Waiting For Robot Clear Of Y Site'];
 
   const tags = [
     ...C.engineTags(S01, cfg.prefix, stateComments, alarms, []),
@@ -45,14 +46,15 @@ function build({ S01, cfg }) {
     ...C.clearMomentary(),
   ];
   const R02 = [
-    ...C.r02Head([22]),
-    ['State 4: Start of sequence, wait for the robot to start on the nest', '[XIC(Status.State[3]) XIC(Initialized) ,XIC(Status.State[22]) ,XIC(Status.State[124]) ]XIC(CycleRunning)XIO(Lockout)MOVE(4,Control.StateReg);'],
+    ...C.r02Head([25]),
+    ['State 4: Start of sequence, wait for the robot to start on the nest', '[XIC(Status.State[3]) XIC(Initialized) ,XIC(Status.State[25]) ,XIC(Status.State[124]) ]XIC(CycleRunning)XIO(Lockout)MOVE(4,Control.StateReg);'],
     ['State 7: Robot working this nest, lower the gripper onto the Y site', st(4) + 'XIC(CycleStarted)XIC(SS_OK)MOVE(7,Control.StateReg);'],
     ['State 10: Close the gripper to locate the Y site', st(7) + 'XIC(YSiteGripperZExtended)XIC(SS_OK)MOVE(10,Control.StateReg);'],
     ['State 13: Y site located, wait for the robot to insert the tube', st(10) + 'XIC(YSiteGripperClosed)XIC(SS_OK)MOVE(13,Control.StateReg);'],
-    ['State 16: Tube inserted and the robot clear, open the gripper', st(13) + 'XIC(TubeInserted)XIC(RobotClearOfYSite)XIC(SS_OK)MOVE(16,Control.StateReg);'],
-    ['State 19: Retract the gripper Z', st(16) + 'XIC(YSiteGripperOpened)XIC(SS_OK)MOVE(19,Control.StateReg);'],
-    ['State 22: Cycle Complete', st(19) + 'XIC(YSiteGripperZRetracted)MOVE(22,Control.StateReg);'],
+    ['State 16: Tube inserted, wait for the robot to back out of the Y site', st(13) + 'XIC(TubeInserted)XIC(SS_OK)MOVE(16,Control.StateReg);'],
+    ['State 19: Robot clear, open the gripper', st(16) + 'XIC(RobotClearOfYSite)XIC(SS_OK)MOVE(19,Control.StateReg);'],
+    ['State 22: Retract the gripper Z', st(19) + 'XIC(YSiteGripperOpened)XIC(SS_OK)MOVE(22,Control.StateReg);'],
+    ['State 25: Cycle Complete', st(22) + 'XIC(YSiteGripperZRetracted)MOVE(25,Control.StateReg);'],
     ...C.r02Tail(),
     ['State 100:Start of initialization sequence, open the gripper so the Y site stays in its nest', 'XIC(Status.State[2])XIO(Initialized)XIC(CycleRunning)XIC(SS_OK)MOVE(100,Control.StateReg);'],
     ['State 103: Initialization retract the gripper Z', st(100) + 'XIC(YSiteGripperOpened)XIC(SS_OK)MOVE(103,Control.StateReg);'],
@@ -63,18 +65,19 @@ function build({ S01, cfg }) {
     ...C.r03Head('XIC(SafetyOK)', [cfg.ab], false),
     ['Actuators Safe For Index: gripper Z up', 'XIC(YSiteGripperZRetracted)OTE(q_ActuatorsSafe);'],
     ['Handshake to the robot: Z down and the gripper closed on the Y site', st(13) + 'XIC(YSiteGripperZExtended)XIC(YSiteGripperClosed)OTE(p_YSitePresented);'],
-    ['Y Site Gripper Z Control: down onto the Y site, up once the gripper has opened', outputRung('q_ExtendYSiteGripperZ', st(7), 'XIO(Status.State[19]) XIO(Status.State[103])', 0, 1)],
-    ['', outputRung('q_RetractYSiteGripperZ', states([19, 103]), 'XIO(Status.State[7])', 1, 0)],
-    ['Y Site Gripper Control: closed from locating the Y site until the tube is in', outputRung('q_CloseYSiteGripper', st(10), 'XIO(Status.State[16]) XIO(Status.State[100])', 2, 3)],
-    ['', outputRung('q_OpenYSiteGripper', states([16, 100]), 'XIO(Status.State[10])', 3, 2)],
+    ['Y Site Gripper Z Control: down onto the Y site, up once the gripper has opened', outputRung('q_ExtendYSiteGripperZ', st(7), 'XIO(Status.State[22]) XIO(Status.State[103])', 0, 1)],
+    ['', outputRung('q_RetractYSiteGripperZ', states([22, 103]), 'XIO(Status.State[7])', 1, 0)],
+    ['Y Site Gripper Control: closed from locating the Y site until the robot is clear', outputRung('q_CloseYSiteGripper', st(10), 'XIO(Status.State[19]) XIO(Status.State[100])', 2, 3)],
+    ['', outputRung('q_OpenYSiteGripper', states([19, 100]), 'XIO(Status.State[10])', 3, 2)],
   ];
   const A = 'AlarmONS.';
   const R20 = [
     [alarms[0], H.deviceAlarm(0, 'Lockout', 'q_ExtendYSiteGripperZ', 'YSiteGripperZExtended', 'AlarmTimerYSiteGripperZExtended', A + 0)],
     [alarms[1], H.deviceAlarm(1, 'Lockout', 'q_RetractYSiteGripperZ', 'YSiteGripperZRetracted', 'AlarmTimerYSiteGripperZRetracted', A + 1)],
     [alarms[2], waitAlarm(2, [10], 3000, 'XIO(YSiteGripperClosed) ', A + 2)],
-    [alarms[3], waitAlarm(3, [16, 100], 3000, 'XIO(YSiteGripperOpened) ', A + 3)],
+    [alarms[3], waitAlarm(3, [19, 100], 3000, 'XIO(YSiteGripperOpened) ', A + 3)],
     [alarms[4], waitAlarm(4, [13], 60000, 'XIO(TubeInserted) ', A + 4)],
+    [alarms[5], waitAlarm(5, [16], 10000, 'XIO(RobotClearOfYSite) ', A + 5)],
     ...C.r20Tail(false),
   ];
   return { PROG, xml: H.programXml(PROG, tags, [{ name: 'R00_Main', rungs: R00 }, { name: 'R01_Inputs', rungs: R01 }, { name: 'R02_StateTransitions', rungs: R02 }, { name: 'R03_StateLogic', rungs: R03 }, { name: 'R20_Alarms', rungs: R20 }]) };
